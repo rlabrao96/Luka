@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from modules.auth.router import router as auth_router
 from modules.households.router import router as households_router, invite_router
+from modules.email.router import router as email_router
 
 
 def create_app() -> FastAPI:
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(households_router)
     app.include_router(invite_router)
+    app.include_router(email_router)
 
     return app
 
