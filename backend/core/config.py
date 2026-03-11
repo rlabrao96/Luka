@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     frontend_url: str = "http://localhost:3000"
     environment: str = "development"
+    gcp_project_id: str = "luka-project"
 
 
 settings = Settings()
