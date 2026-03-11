@@ -1,1 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.env
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+.next/
+.vercel/
+*.local
+
+# OS
+.DS_Store
+
+# Worktrees
 .worktrees/
+
+# Secrets baseline (detect-secrets)
+.secrets.baseline
