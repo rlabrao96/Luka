@@ -5,7 +5,7 @@ from core.database import get_db
 from core.security import get_current_user
 from modules.auth.models import User
 from modules.households import service
-from modules.households.models import Household
+from modules.households.models import Household, HouseholdMember
 from modules.households.schemas import CreateHouseholdRequest, HouseholdResponse, InviteRequest
 
 # Two routers: one under /households, one at root for the invite accept link
@@ -33,6 +33,15 @@ async def invite_partner(
     household = result.scalar_one_or_none()
     if not household:
         raise HTTPException(404, "Household not found")
+    member_result = await db.execute(
+        select(HouseholdMember).where(
+            HouseholdMember.household_id == household.id,
+            HouseholdMember.user_id == current_user.id,
+            HouseholdMember.role == "owner",
+        )
+    )
+    if not member_result.scalar_one_or_none():
+        raise HTTPException(403, "Only the household owner can invite members")
     invite = await service.create_invite(db, household, current_user, body.email)
     # TODO Plan 2: enqueue invite email ARQ job
     return {"token": invite.token, "expires_at": invite.expires_at}
@@ -45,5 +54,8 @@ async def accept_invite(
     current_user: User = Depends(get_current_user),
 ):
     """Partner clicks this link from their invite email to join the household."""
-    invite = await service.accept_invite(db, token, current_user)
+    try:
+        invite = await service.accept_invite(db, token, current_user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"household_id": invite.household_id, "accepted_at": invite.accepted_at}
