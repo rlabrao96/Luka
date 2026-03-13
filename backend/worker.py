@@ -1,6 +1,12 @@
 import redis.asyncio as aioredis
-from arq.connections import RedisSettings
+from arq import cron
 from core.config import settings
+from jobs.tasks import (
+    process_email,
+    renew_mail_watches,
+    purge_raw_emails,
+    cleanup_processed_webhooks,
+)
 
 
 async def startup(ctx: dict) -> None:
@@ -12,8 +18,14 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = []  # jobs registered in later plans
-    cron_jobs = []
+    functions = [process_email]
+    cron_jobs = [
+        cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
+        cron(purge_raw_emails, minute=0),  # every hour
+        cron(cleanup_processed_webhooks, hour=4, minute=0),  # 4am daily
+    ]
     on_startup = startup
     on_shutdown = shutdown
-    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    redis_settings = settings.redis_url
+    max_jobs = 10
+    job_timeout = 60

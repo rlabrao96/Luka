@@ -1,0 +1,168 @@
+import redis.asyncio as aioredis
+from core.config import settings
+from core.database import AsyncSessionLocal
+from modules.email.parser import parse_bank_email
+from modules.merchants.service import lookup_merchant
+from modules.whatsapp.sender import send_expense_alert
+from modules.whatsapp.session import WhatsAppSession, save_session
+from modules.transactions.models import Transaction, TransactionSplit, ProcessedWebhook, FailedJob
+from modules.auth.models import User
+from modules.households.models import BankAccount
+from sqlalchemy import select, and_, delete, update
+from datetime import datetime, timedelta, timezone
+
+
+async def process_email(
+    ctx: dict,
+    provider: str,
+    email_address: str = "",
+    history_id: str = "",
+    message_id: str = "",
+) -> None:
+    """
+    Core pipeline job: fetch email → parse → lookup merchant → send WhatsApp alert.
+    Enqueued by Gmail/Outlook webhook endpoints.
+    """
+    redis_client = ctx.get("redis") or await aioredis.from_url(settings.redis_url)
+
+    async with AsyncSessionLocal() as db:
+        # Find user by email
+        result = await db.execute(select(User).where(User.email == email_address))
+        user = result.scalar_one_or_none()
+        if not user or not user.whatsapp_verified:
+            return  # can't send WhatsApp without verified number
+
+        # Fetch email from provider
+        from modules.email.factory import get_email_provider
+
+        # Access token retrieved from Supabase Vault in production
+        # For now, use a placeholder — Vault integration added in Plan 3
+        provider_instance = get_email_provider(user, access_token="", refresh_token="")
+        emails = await provider_instance.fetch_new_emails(
+            str(user.id), history_id=history_id, message_id=message_id
+        )
+
+        for raw_email in emails:
+            # Check bank account email_sender_pattern
+            bank_result = await db.execute(
+                select(BankAccount).where(
+                    and_(
+                        BankAccount.user_id == user.id,
+                        BankAccount.is_active is True,
+                    )
+                )
+            )
+            bank_account = bank_result.scalars().first()
+
+            # Parse email
+            parsed = parse_bank_email(raw_email.body)
+            if not parsed:
+                continue
+
+            # Lookup merchant categories (to provide options via WhatsApp)
+            await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
+
+            # Create pending transaction
+            txn = Transaction(
+                user_id=user.id,
+                household_id=user.id,  # placeholder, will be set from bank account
+                bank_account_id=bank_account.id if bank_account else None,
+                raw_merchant_name=parsed.raw_merchant,
+                amount=parsed.amount,
+                transaction_date=parsed.transaction_date,
+                source=provider,
+                status="pending",
+                raw_email_text=raw_email.body,
+            )
+
+            # Set household from bank account
+            if bank_account:
+                txn.household_id = bank_account.household_id
+
+            db.add(txn)
+            await db.commit()
+            await db.refresh(txn)
+
+            # Add transaction split AFTER commit so txn.id exists
+            if bank_account and bank_account.account_type == "joint":
+                # Auto-classify as shared, just ask for category
+                split = TransactionSplit(
+                    transaction_id=txn.id,
+                    split_type="shared",
+                )
+                db.add(split)
+                await db.commit()
+
+            # Build WhatsApp session
+            # Retrieve phone from Supabase Vault (placeholder)
+            phone = "+56900000000"  # TODO: retrieve from Vault in Plan 3
+
+            is_joint = bank_account and bank_account.account_type == "joint"
+            session = WhatsAppSession(
+                transaction_id=str(txn.id),
+                step="awaiting_category" if is_joint else "awaiting_split",
+                raw_merchant=parsed.raw_merchant,
+            )
+            await save_session(phone, session, redis_client)
+
+            # Send WhatsApp message
+            await send_expense_alert(
+                to=phone,
+                amount=parsed.amount,
+                merchant=parsed.raw_merchant,
+                partner_name="tu pareja",
+                is_joint=is_joint,
+            )
+
+
+async def renew_mail_watches(ctx: dict) -> None:
+    """Daily job: renew Gmail (7d) and Outlook (~3d) subscriptions."""
+    async with AsyncSessionLocal() as db:
+        cutoff = datetime.now(timezone.utc) + timedelta(hours=24)
+        result = await db.execute(
+            select(User).where(
+                and_(User.mail_watch_expiry is not None, User.mail_watch_expiry <= cutoff)
+            )
+        )
+        users = result.scalars().all()
+        for user in users:
+            try:
+                from modules.email.factory import get_email_provider
+
+                provider = get_email_provider(user, access_token="")
+                await provider.renew_watch(str(user.id))
+            except Exception as e:
+                await _record_failed_job(
+                    "renew_mail_watches", {"user_id": str(user.id)}, str(e), db
+                )
+
+
+async def purge_raw_emails(ctx: dict) -> None:
+    """Hourly job: clear raw_email_text after 24h."""
+    async with AsyncSessionLocal() as db:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        await db.execute(
+            update(Transaction)
+            .where(
+                and_(
+                    Transaction.raw_email_text is not None,
+                    Transaction.created_at < cutoff,
+                )
+            )
+            .values(raw_email_text=None)
+        )
+        await db.commit()
+
+
+async def cleanup_processed_webhooks(ctx: dict) -> None:
+    """Daily job: delete idempotency records older than 7 days."""
+    async with AsyncSessionLocal() as db:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        await db.execute(delete(ProcessedWebhook).where(ProcessedWebhook.processed_at < cutoff))
+        await db.commit()
+
+
+async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> None:
+    """Helper to log failed job to database."""
+    db.add(FailedJob(job_name=job_name, payload=payload, error_message=error))
+    await db.commit()
