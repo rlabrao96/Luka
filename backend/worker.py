@@ -1,5 +1,6 @@
 import redis.asyncio as aioredis
 from arq import cron
+from arq.connections import RedisSettings
 from core.config import settings
 from jobs.tasks import (
     process_email,
@@ -26,6 +27,6 @@ class WorkerSettings:
     ]
     on_startup = startup
     on_shutdown = shutdown
-    redis_settings = settings.redis_url
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 10
     job_timeout = 60

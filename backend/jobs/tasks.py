@@ -23,7 +23,11 @@ async def process_email(
     Core pipeline job: fetch email → parse → lookup merchant → send WhatsApp alert.
     Enqueued by Gmail/Outlook webhook endpoints.
     """
-    redis_client = ctx.get("redis") or await aioredis.from_url(settings.redis_url)
+    _redis_owned = False
+    redis_client = ctx.get("redis")
+    if redis_client is None:
+        redis_client = await aioredis.from_url(settings.redis_url)
+        _redis_owned = True
 
     async with AsyncSessionLocal() as db:
         # Find user by email
@@ -43,76 +47,87 @@ async def process_email(
         )
 
         for raw_email in emails:
-            # Check bank account email_sender_pattern
-            bank_result = await db.execute(
-                select(BankAccount).where(
-                    and_(
-                        BankAccount.user_id == user.id,
-                        BankAccount.is_active == True,
+            try:
+                # Check bank account email_sender_pattern
+                bank_result = await db.execute(
+                    select(BankAccount).where(
+                        and_(
+                            BankAccount.user_id == user.id,
+                            BankAccount.is_active,
+                        )
                     )
                 )
-            )
-            bank_account = bank_result.scalars().first()
+                bank_account = bank_result.scalars().first()
+                if not bank_account:
+                    continue  # no registered bank account yet, skip
 
-            # Parse email
-            parsed = parse_bank_email(raw_email.body)
-            if not parsed:
+                # Parse email
+                parsed = parse_bank_email(raw_email.body)
+                if not parsed:
+                    continue
+
+                # Lookup merchant categories (to provide options via WhatsApp)
+                await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
+
+                # Create pending transaction
+                txn = Transaction(
+                    user_id=user.id,
+                    household_id=None,  # placeholder, will be set from bank account
+                    bank_account_id=bank_account.id if bank_account else None,
+                    raw_merchant_name=parsed.raw_merchant,
+                    amount=parsed.amount,
+                    transaction_date=parsed.transaction_date,
+                    source=provider,
+                    status="pending",
+                    raw_email_text=raw_email.body,
+                )
+
+                # Set household from bank account
+                if bank_account:
+                    txn.household_id = bank_account.household_id
+
+                db.add(txn)
+                await db.commit()
+                await db.refresh(txn)
+
+                # Add transaction split AFTER commit so txn.id exists
+                if bank_account and bank_account.account_type == "joint":
+                    # Auto-classify as shared, just ask for category
+                    split = TransactionSplit(
+                        transaction_id=txn.id,
+                        split_type="shared",
+                    )
+                    db.add(split)
+                    await db.commit()
+
+                # Build WhatsApp session
+                # Retrieve phone from Supabase Vault (placeholder)
+                phone = "+56900000000"  # TODO: retrieve from Vault in Plan 3
+
+                is_joint = bank_account and bank_account.account_type == "joint"
+                session = WhatsAppSession(
+                    transaction_id=str(txn.id),
+                    step="awaiting_category" if is_joint else "awaiting_split",
+                    raw_merchant=parsed.raw_merchant,
+                )
+                await save_session(phone, session, redis_client)
+
+                # Send WhatsApp message
+                await send_expense_alert(
+                    to=phone,
+                    amount=parsed.amount,
+                    merchant=parsed.raw_merchant,
+                    partner_name="tu pareja",
+                    is_joint=is_joint,
+                )
+            except Exception as e:
+                await _record_failed_job(
+                    "process_email", {"email_address": email_address}, str(e), db
+                )
                 continue
 
-            # Lookup merchant categories (to provide options via WhatsApp)
-            await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
-
-            # Create pending transaction
-            txn = Transaction(
-                user_id=user.id,
-                household_id=None,  # placeholder, will be set from bank account
-                bank_account_id=bank_account.id if bank_account else None,
-                raw_merchant_name=parsed.raw_merchant,
-                amount=parsed.amount,
-                transaction_date=parsed.transaction_date,
-                source=provider,
-                status="pending",
-                raw_email_text=raw_email.body,
-            )
-
-            # Set household from bank account
-            if bank_account:
-                txn.household_id = bank_account.household_id
-
-            db.add(txn)
-            await db.commit()
-            await db.refresh(txn)
-
-            # Add transaction split AFTER commit so txn.id exists
-            if bank_account and bank_account.account_type == "joint":
-                # Auto-classify as shared, just ask for category
-                split = TransactionSplit(
-                    transaction_id=txn.id,
-                    split_type="shared",
-                )
-                db.add(split)
-                await db.commit()
-
-            # Build WhatsApp session
-            # Retrieve phone from Supabase Vault (placeholder)
-            phone = "+56900000000"  # TODO: retrieve from Vault in Plan 3
-
-            is_joint = bank_account and bank_account.account_type == "joint"
-            session = WhatsAppSession(
-                transaction_id=str(txn.id),
-                step="awaiting_category" if is_joint else "awaiting_split",
-                raw_merchant=parsed.raw_merchant,
-            )
-            await save_session(phone, session, redis_client)
-
-            # Send WhatsApp message
-            await send_expense_alert(
-                to=phone,
-                amount=parsed.amount,
-                merchant=parsed.raw_merchant,
-                partner_name="tu pareja",
-                is_joint=is_joint,
-            )
+    if _redis_owned:
+        await redis_client.aclose()
 
 
 async def renew_mail_watches(ctx: dict) -> None:
@@ -121,7 +136,7 @@ async def renew_mail_watches(ctx: dict) -> None:
         cutoff = datetime.now(timezone.utc) + timedelta(hours=24)
         result = await db.execute(
             select(User).where(
-                and_(User.mail_watch_expiry != None, User.mail_watch_expiry <= cutoff)
+                and_(User.mail_watch_expiry.isnot(None), User.mail_watch_expiry <= cutoff)
             )
         )
         users = result.scalars().all()
@@ -145,7 +160,7 @@ async def purge_raw_emails(ctx: dict) -> None:
             update(Transaction)
             .where(
                 and_(
-                    Transaction.raw_email_text != None,
+                    Transaction.raw_email_text.isnot(None),
                     Transaction.created_at < cutoff,
                 )
             )
