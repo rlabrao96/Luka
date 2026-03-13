@@ -72,8 +72,8 @@ async def process_email(
                 # Create pending transaction
                 txn = Transaction(
                     user_id=user.id,
-                    household_id=None,  # placeholder, will be set from bank account
-                    bank_account_id=bank_account.id if bank_account else None,
+                    household_id=bank_account.household_id,
+                    bank_account_id=bank_account.id,
                     raw_merchant_name=parsed.raw_merchant,
                     amount=parsed.amount,
                     transaction_date=parsed.transaction_date,
@@ -82,16 +82,13 @@ async def process_email(
                     raw_email_text=raw_email.body,
                 )
 
-                # Set household from bank account
-                if bank_account:
-                    txn.household_id = bank_account.household_id
-
                 db.add(txn)
                 await db.commit()
                 await db.refresh(txn)
 
                 # Add transaction split AFTER commit so txn.id exists
-                if bank_account and bank_account.account_type == "joint":
+                is_joint = bank_account.account_type == "joint"
+                if is_joint:
                     # Auto-classify as shared, just ask for category
                     split = TransactionSplit(
                         transaction_id=txn.id,
@@ -103,8 +100,6 @@ async def process_email(
                 # Build WhatsApp session
                 # Retrieve phone from Supabase Vault (placeholder)
                 phone = "+56900000000"  # TODO: retrieve from Vault in Plan 3
-
-                is_joint = bank_account and bank_account.account_type == "joint"
                 session = WhatsAppSession(
                     transaction_id=str(txn.id),
                     step="awaiting_category" if is_joint else "awaiting_split",
