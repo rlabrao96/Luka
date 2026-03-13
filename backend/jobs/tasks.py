@@ -48,7 +48,7 @@ async def process_email(
                 select(BankAccount).where(
                     and_(
                         BankAccount.user_id == user.id,
-                        BankAccount.is_active is True,
+                        BankAccount.is_active == True,
                     )
                 )
             )
@@ -65,7 +65,7 @@ async def process_email(
             # Create pending transaction
             txn = Transaction(
                 user_id=user.id,
-                household_id=user.id,  # placeholder, will be set from bank account
+                household_id=None,  # placeholder, will be set from bank account
                 bank_account_id=bank_account.id if bank_account else None,
                 raw_merchant_name=parsed.raw_merchant,
                 amount=parsed.amount,
@@ -121,7 +121,7 @@ async def renew_mail_watches(ctx: dict) -> None:
         cutoff = datetime.now(timezone.utc) + timedelta(hours=24)
         result = await db.execute(
             select(User).where(
-                and_(User.mail_watch_expiry is not None, User.mail_watch_expiry <= cutoff)
+                and_(User.mail_watch_expiry != None, User.mail_watch_expiry <= cutoff)
             )
         )
         users = result.scalars().all()
@@ -145,7 +145,7 @@ async def purge_raw_emails(ctx: dict) -> None:
             update(Transaction)
             .where(
                 and_(
-                    Transaction.raw_email_text is not None,
+                    Transaction.raw_email_text != None,
                     Transaction.created_at < cutoff,
                 )
             )
