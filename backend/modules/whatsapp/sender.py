@@ -16,13 +16,18 @@ def _url() -> str:
 
 
 async def send_expense_alert(
-    to: str, amount: int, merchant: str, partner_name: str, is_joint: bool
+    to: str,
+    amount: int,
+    merchant: str,
+    partner_name: str,
+    is_joint: bool,
+    categories: list[str] | None = None,
 ) -> str:
     """Send expense alert with split buttons (personal/partner/shared). Returns message ID."""
     if is_joint:
         # Joint account: skip split question, go straight to category
         body_text = f"Gasto compartido de ${amount:,} en {merchant}. ¿Qué categoría le asignamos?"
-        return await send_category_list(to=to, categories=[], context_msg=body_text)
+        return await send_category_list(to=to, categories=categories or [], context_msg=body_text)
 
     body_text = f"Gasto de ${amount:,} en {merchant}. ¿Cómo lo dividimos?"
     payload = {

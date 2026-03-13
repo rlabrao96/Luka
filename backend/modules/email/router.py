@@ -76,6 +76,7 @@ async def outlook_webhook(request: Request, validationToken: str = None):
             raise HTTPException(403)
 
         message_id = notification.get("resourceData", {}).get("id", "")
+        subscription_id = notification.get("subscriptionId", "")
         if message_id:
             try:
                 from modules.transactions.models import ProcessedWebhook
@@ -92,6 +93,11 @@ async def outlook_webhook(request: Request, validationToken: str = None):
             except Exception:
                 pass  # DB unavailable — still ACK the webhook
 
-        await enqueue_job("process_email", provider="outlook", message_id=message_id)
+        await enqueue_job(
+            "process_email",
+            provider="outlook",
+            message_id=message_id,
+            subscription_id=subscription_id,
+        )
 
     return {"status": "ok"}

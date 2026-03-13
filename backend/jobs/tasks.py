@@ -18,6 +18,7 @@ async def process_email(
     email_address: str = "",
     history_id: str = "",
     message_id: str = "",
+    subscription_id: str = "",
 ) -> None:
     """
     Core pipeline job: fetch email → parse → lookup merchant → send WhatsApp alert.
@@ -30,8 +31,13 @@ async def process_email(
         _redis_owned = True
 
     async with AsyncSessionLocal() as db:
-        # Find user by email
-        result = await db.execute(select(User).where(User.email == email_address))
+        # Find user by email (Gmail) or subscription ID (Outlook)
+        if email_address:
+            result = await db.execute(select(User).where(User.email == email_address))
+        else:
+            result = await db.execute(
+                select(User).where(User.mail_watch_subscription_id == subscription_id)
+            )
         user = result.scalar_one_or_none()
         if not user or not user.whatsapp_verified:
             return  # can't send WhatsApp without verified number
@@ -67,7 +73,7 @@ async def process_email(
                     continue
 
                 # Lookup merchant categories (to provide options via WhatsApp)
-                await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
+                categories = await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
 
                 # Create pending transaction
                 txn = Transaction(
@@ -114,6 +120,7 @@ async def process_email(
                     merchant=parsed.raw_merchant,
                     partner_name="tu pareja",
                     is_joint=is_joint,
+                    categories=categories,
                 )
             except Exception as e:
                 await _record_failed_job(
