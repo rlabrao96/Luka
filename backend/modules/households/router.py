@@ -1,3 +1,4 @@
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,3 +60,21 @@ async def accept_invite(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"household_id": invite.household_id, "accepted_at": invite.accepted_at}
+
+
+@router.get("/{household_id}/summary")
+async def household_summary(
+    household_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await service.get_contribution_summary(db, uuid.UUID(household_id))
+
+
+@router.get("/{household_id}/partner-stats")
+async def partner_stats(
+    household_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await service.get_partner_stats(db, uuid.UUID(household_id), current_user.id)

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from modules.households.models import Household, HouseholdMember, HouseholdInvite
 from modules.auth.models import User
 
@@ -50,3 +50,36 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
     await db.commit()
     await db.refresh(invite)
     return invite
+
+
+async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) -> list[dict]:
+    """Monthly household spending by member. No privacy restriction — both members see this."""
+    result = await db.execute(
+        text("""
+        SELECT
+            t.user_id,
+            u.full_name,
+            COALESCE(SUM(t.amount), 0) AS total_paid,
+            COALESCE(SUM(t.amount) FILTER (WHERE ts.split_type = 'shared'), 0) AS shared_paid,
+            COALESCE(SUM(t.amount) FILTER (WHERE ts.split_type = 'personal'), 0) AS personal_paid
+        FROM transactions t
+        JOIN transaction_splits ts ON ts.transaction_id = t.id
+        JOIN users u ON u.id = t.user_id
+        WHERE t.household_id = :household_id
+          AND DATE_TRUNC('month', t.transaction_date) = DATE_TRUNC('month', NOW())
+        GROUP BY t.user_id, u.full_name
+        """),
+        {"household_id": str(household_id)},
+    )
+    return [dict(row._mapping) for row in result.all()]
+
+
+async def get_partner_stats(
+    db: AsyncSession, household_id: uuid.UUID, requester_id: uuid.UUID
+) -> dict:
+    """Aggregate stats for partner only — no individual transaction rows."""
+    result = await db.execute(
+        text("SELECT get_partner_stats(:household_id, :viewer_id)"),
+        {"household_id": str(household_id), "viewer_id": str(requester_id)},
+    )
+    return result.scalar()

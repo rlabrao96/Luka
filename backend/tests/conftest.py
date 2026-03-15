@@ -55,3 +55,14 @@ def mock_partner():
         email_provider="gmail",
         whatsapp_verified=False,
     )
+
+
+@pytest.fixture
+async def mock_household(db, mock_user, mock_partner):
+    from modules.households.service import create_household
+    from modules.households.models import Household, HouseholdMember  # noqa: F401
+
+    h = await create_household(db, mock_user, "Test Hogar", "couple")
+    db.add(HouseholdMember(household_id=h.id, user_id=mock_partner.id, role="member"))
+    await db.commit()
+    return h
