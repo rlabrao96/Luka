@@ -37,6 +37,10 @@ def upgrade():
         );
     """)
 
+    # INSERT/UPDATE/DELETE policies are not needed here:
+    # The backend (ARQ worker + FastAPI) connects via Supabase service_role
+    # which has BYPASSRLS privilege in Supabase — writes always succeed.
+
     # Partner aggregate stats function — SECURITY DEFINER so it can read all rows
     # but returns only aggregates, never raw partner rows
     op.execute("""
@@ -54,6 +58,14 @@ def upgrade():
             partner_id UUID;
             result JSON;
         BEGIN
+            -- Guard: viewer must be a member of this household
+            IF NOT EXISTS (
+                SELECT 1 FROM household_members
+                WHERE household_id = p_household_id AND user_id = p_viewer_id
+            ) THEN
+                RETURN '{"error": "not a member"}'::JSON;
+            END IF;
+
             -- Find partner (other member of household)
             SELECT user_id INTO partner_id
             FROM household_members
@@ -72,7 +84,7 @@ def upgrade():
                     FROM transactions t2
                     JOIN transaction_splits ts ON ts.transaction_id = t2.id
                     WHERE t2.user_id = partner_id
-                      AND DATE_TRUNC('month', t2.transaction_date) = p_month::TIMESTAMPTZ
+                      AND DATE_TRUNC('month', t2.transaction_date::DATE) = p_month
                       AND ts.category IS NOT NULL
                     GROUP BY ts.category
                     ORDER BY SUM(t2.amount) DESC
@@ -81,7 +93,7 @@ def upgrade():
             ) INTO result
             FROM transactions t
             WHERE t.user_id = partner_id
-              AND DATE_TRUNC('month', t.transaction_date) = p_month::TIMESTAMPTZ;
+              AND DATE_TRUNC('month', t.transaction_date::DATE) = p_month;
 
             RETURN result;
         END;

@@ -14,6 +14,23 @@ router = APIRouter(prefix="/households", tags=["households"])
 invite_router = APIRouter(tags=["households"])  # no prefix — produces /invite/{token}
 
 
+async def _require_membership(
+    household_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
+) -> None:
+    """Raise 403 if user is not a member of the household."""
+    from sqlalchemy import select
+    from modules.households.models import HouseholdMember
+
+    result = await db.execute(
+        select(HouseholdMember).where(
+            HouseholdMember.household_id == household_id,
+            HouseholdMember.user_id == user_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Not a member of this household")
+
+
 @router.post("/", response_model=HouseholdResponse)
 async def create_household(
     body: CreateHouseholdRequest,
@@ -25,7 +42,7 @@ async def create_household(
 
 @router.post("/{household_id}/invite")
 async def invite_partner(
-    household_id: str,
+    household_id: uuid.UUID,
     body: InviteRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -36,7 +53,7 @@ async def invite_partner(
         raise HTTPException(404, "Household not found")
     member_result = await db.execute(
         select(HouseholdMember).where(
-            HouseholdMember.household_id == household.id,
+            HouseholdMember.household_id == household_id,
             HouseholdMember.user_id == current_user.id,
             HouseholdMember.role == "owner",
         )
@@ -64,17 +81,19 @@ async def accept_invite(
 
 @router.get("/{household_id}/summary")
 async def household_summary(
-    household_id: str,
+    household_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await service.get_contribution_summary(db, uuid.UUID(household_id))
+    await _require_membership(household_id, current_user.id, db)
+    return await service.get_contribution_summary(db, household_id)
 
 
 @router.get("/{household_id}/partner-stats")
 async def partner_stats(
-    household_id: str,
+    household_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await service.get_partner_stats(db, uuid.UUID(household_id), current_user.id)
+    await _require_membership(household_id, current_user.id, db)
+    return await service.get_partner_stats(db, household_id, current_user.id)

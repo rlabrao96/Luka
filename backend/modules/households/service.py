@@ -82,4 +82,5 @@ async def get_partner_stats(
         text("SELECT get_partner_stats(:household_id, :viewer_id)"),
         {"household_id": str(household_id), "viewer_id": str(requester_id)},
     )
-    return result.scalar()
+    data = result.scalar()
+    return data if data is not None else {"total_spent": 0, "by_category": []}
