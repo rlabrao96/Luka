@@ -18,9 +18,6 @@ async def _require_membership(
     household_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
 ) -> None:
     """Raise 403 if user is not a member of the household."""
-    from sqlalchemy import select
-    from modules.households.models import HouseholdMember
-
     result = await db.execute(
         select(HouseholdMember).where(
             HouseholdMember.household_id == household_id,

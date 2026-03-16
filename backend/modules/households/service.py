@@ -66,7 +66,7 @@ async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) ->
         JOIN transaction_splits ts ON ts.transaction_id = t.id
         JOIN users u ON u.id = t.user_id
         WHERE t.household_id = :household_id
-          AND DATE_TRUNC('month', t.transaction_date) = DATE_TRUNC('month', NOW())
+          AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
         GROUP BY t.user_id, u.full_name
         """),
         {"household_id": str(household_id)},
