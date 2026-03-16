@@ -36,7 +36,7 @@ export default function BudgetsPage() {
       <Card className="bg-white">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-luka-dark">
-            {new Date(budget.month).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+            {new Date(`${budget.month}-01`).toLocaleDateString("es-CL", { month: "long", year: "numeric", timeZone: "UTC" })}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -53,7 +53,7 @@ export default function BudgetsPage() {
               />
             </div>
             <div className="flex justify-between text-xs text-luka-muted">
-              <span>Gastado: {CLP(budget.spent)} ({pct}%)</span>
+              <span>Gastado: {CLP(budget.spent)} ({Math.round(pct)}%)</span>
               <span className={budget.available < 0 ? "text-luka-danger font-semibold" : "text-luka-success font-semibold"}>
                 {budget.available >= 0 ? `Disponible: ${CLP(budget.available)}` : `Excedido: ${CLP(Math.abs(budget.available))}`}
               </span>
