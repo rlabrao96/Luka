@@ -51,10 +51,10 @@ def test_match_within_3_day_window():
             "id": "txn-1",
             "amount": 32000,
             "raw_merchant_name": "COPEC",
-            "transaction_date": datetime(2026, 3, 8),
+            "transaction_date": datetime(2026, 3, 10),
         },
     ]
-    ftc = make_fintoc_txn(32000, "COPEC LAS CONDES", days_offset=2)  # 2 days later
+    ftc = make_fintoc_txn(32000, "COPEC LAS CONDES", days_offset=2)  # 2 days later (March 12)
     result = find_match(ftc, pending)
     assert result is not None
 

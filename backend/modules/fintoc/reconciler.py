@@ -4,7 +4,7 @@ from rapidfuzz import fuzz
 from modules.fintoc.client import FintocTransaction
 from modules.merchants.normalizer import normalize_merchant
 
-_DATE_WINDOW_DAYS = 4
+_DATE_WINDOW_DAYS = 3
 _FUZZY_THRESHOLD = 70.0
 
 
