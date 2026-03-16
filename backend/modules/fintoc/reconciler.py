@@ -58,6 +58,8 @@ def find_match(
 async def reconcile_transactions(
     fintoc_transactions: list[FintocTransaction],
     db,
+    user_id,
+    household_id,
 ) -> dict:
     """
     Run reconciliation for a list of Fintoc settled transactions.
@@ -92,8 +94,8 @@ async def reconcile_transactions(
         else:
             # Insert as new settled transaction from Fintoc
             new_txn = Transaction(
-                user_id=None,  # enriched from account owner in production
-                household_id=None,
+                user_id=user_id,
+                household_id=household_id,
                 raw_merchant_name=ftc_txn.description,
                 amount=ftc_txn.amount,
                 transaction_date=ftc_txn.transaction_date,

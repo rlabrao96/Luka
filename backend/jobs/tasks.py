@@ -201,7 +201,9 @@ async def run_fintoc_sync(ctx: dict) -> None:
                     since=date.today() - timedelta(days=7),
                     until=date.today(),
                 )
-                await reconcile_transactions(transactions, db)
+                await reconcile_transactions(
+                    transactions, db, user_id=account.user_id, household_id=account.household_id
+                )
             except Exception as e:
                 await _record_failed_job(
                     "run_fintoc_sync", {"account_id": str(account.id)}, str(e), db
