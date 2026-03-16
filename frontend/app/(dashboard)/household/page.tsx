@@ -24,9 +24,34 @@ function ContributionBar({ name, amount, total }: { name: string; amount: number
 }
 
 export default function HouseholdPage() {
-  const { data: summary = [] } = useHouseholdSummary();
+  const { data: summary = [], isLoading } = useHouseholdSummary();
   const { data: partnerStats } = usePartnerStats();
   const myName = useLukaStore((s) => s.userFullName) ?? "Tú";
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-luka-dark">Mi Hogar</h2>
+        <p className="text-sm text-luka-muted">Cargando...</p>
+      </div>
+    );
+  }
+
+  if (summary.length === 0) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-luka-dark">Mi Hogar</h2>
+        <Card className="bg-white">
+          <CardContent className="py-10 text-center">
+            <p className="text-sm text-luka-muted">
+              No perteneces a un hogar todavía.<br />
+              Invita a tu pareja desde Configuración.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const total = summary.reduce((sum, r) => sum + r.total_paid, 0);
   const partnerRow = summary[1];
