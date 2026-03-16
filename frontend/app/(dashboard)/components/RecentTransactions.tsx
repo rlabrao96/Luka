@@ -26,7 +26,7 @@ export function RecentTransactions({ transactions }: RecentTransactionsProps) {
   return (
     <div className="divide-y divide-slate-100">
       {transactions.map((txn) => {
-        const badge = SPLIT_BADGE[txn.split_type ?? "personal"];
+        const badge = SPLIT_BADGE[txn.split_type ?? "personal"] ?? SPLIT_BADGE.personal;
         return (
           <div key={txn.id} className="flex items-center justify-between py-3 gap-4">
             <div className="flex-1 min-w-0">

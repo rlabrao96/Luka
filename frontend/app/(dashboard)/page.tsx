@@ -1,4 +1,5 @@
 "use client";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "./components/KpiCard";
 import { SpendingChart } from "./components/SpendingChart";
@@ -18,20 +19,27 @@ export default function DashboardPage() {
 
   const myRow = summary[0];
   const personalSpent = myRow?.personal_paid ?? 0;
-  const sharedSpent = summary.reduce((sum, r) => sum + r.shared_paid, 0) / 2;
-  const recentAll = [...myTxns, ...sharedTxns]
-    .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
-    .slice(0, 8);
+  const memberCount = summary.length || 1;
+  const sharedSpent = summary.reduce((sum, r) => sum + r.shared_paid, 0) / memberCount;
 
-  // Build category data from recent transactions
-  const categoryMap: Record<string, number> = {};
-  recentAll.forEach((t) => {
-    if (t.category) categoryMap[t.category] = (categoryMap[t.category] ?? 0) + t.amount;
-  });
-  const categoryData = Object.entries(categoryMap)
-    .map(([category, amount]) => ({ category, amount }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5);
+  const recentAll = useMemo(
+    () =>
+      [...myTxns, ...sharedTxns]
+        .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
+        .slice(0, 8),
+    [myTxns, sharedTxns]
+  );
+
+  const categoryData = useMemo(() => {
+    const categoryMap: Record<string, number> = {};
+    recentAll.forEach((t) => {
+      if (t.category) categoryMap[t.category] = (categoryMap[t.category] ?? 0) + t.amount;
+    });
+    return Object.entries(categoryMap)
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [recentAll]);
 
   return (
     <div className="space-y-6">
@@ -63,8 +71,8 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-semibold text-luka-dark">Tendencia de gastos</CardTitle>
           </CardHeader>
           <CardContent>
+            {/* TODO: aggregate transactions by month for trend chart */}
             <SpendingChart data={[]} />
-            {/* Data populated from monthly transactions in production */}
           </CardContent>
         </Card>
         <Card className="bg-white">
