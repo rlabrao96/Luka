@@ -179,6 +179,35 @@ async def cleanup_processed_webhooks(ctx: dict) -> None:
         await db.commit()
 
 
+async def run_fintoc_sync(ctx: dict) -> None:
+    """Nightly job: fetch settled Fintoc transactions and reconcile with pending."""
+    from datetime import date, timedelta
+    from modules.fintoc.client import FintocClient
+    from modules.fintoc.reconciler import reconcile_transactions
+    from modules.households.models import BankAccount
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(BankAccount).where(BankAccount.is_active))
+        accounts = result.scalars().all()
+
+        for account in accounts:
+            if not account.fintoc_link_id:
+                continue
+            try:
+                client = FintocClient(link_token=account.fintoc_link_id)
+                transactions = await client.fetch_transactions(
+                    account_id=str(account.id),
+                    since=date.today() - timedelta(days=7),
+                    until=date.today(),
+                )
+                await reconcile_transactions(transactions, db)
+            except Exception as e:
+                await _record_failed_job(
+                    "run_fintoc_sync", {"account_id": str(account.id)}, str(e), db
+                )
+
+
 async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> None:
     """Helper to log failed job to database."""
     db.add(FailedJob(job_name=job_name, payload=payload, error_message=error))
