@@ -29,7 +29,7 @@ async def _require_membership(
 @router.get("/monthly/{household_id}", response_model=BudgetStatusResponse)
 async def monthly_budget(
     household_id: uuid.UUID,
-    month: date = None,
+    month: date | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

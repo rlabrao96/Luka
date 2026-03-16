@@ -1,7 +1,7 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, literal
+from sqlalchemy import select, func
 from modules.households.models import HouseholdBudget, BankAccount
 from modules.transactions.models import Transaction, TransactionSplit
 
@@ -23,15 +23,20 @@ async def get_budget_status(
     )
     total_budgeted = float(budget_result.scalar() or 0)
 
-    # Sum all shared spending this month
+    # Sum all shared spending this month (range filter avoids date_trunc type issues)
+    first_day = datetime(month.year, month.month, 1, tzinfo=timezone.utc)
+    next_month_year = month.year + 1 if month.month == 12 else month.year
+    next_month_num = 1 if month.month == 12 else month.month + 1
+    first_day_next = datetime(next_month_year, next_month_num, 1, tzinfo=timezone.utc)
+
     spent_result = await db.execute(
         select(func.sum(Transaction.amount))
         .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .where(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
-            func.date_trunc("month", Transaction.transaction_date)
-            == func.date_trunc("month", literal(month)),
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
         )
     )
     total_spent = float(spent_result.scalar() or 0)
