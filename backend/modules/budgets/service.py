@@ -1,7 +1,7 @@
 import uuid
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, literal
 from modules.households.models import HouseholdBudget, BankAccount
 from modules.transactions.models import Transaction, TransactionSplit
 
@@ -31,7 +31,7 @@ async def get_budget_status(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
             func.date_trunc("month", Transaction.transaction_date)
-            == func.date_trunc("month", func.cast(month, Transaction.transaction_date.type)),
+            == func.date_trunc("month", literal(month)),
         )
     )
     total_spent = float(spent_result.scalar() or 0)
