@@ -7,6 +7,7 @@ interface LukaStore {
   userFullName: string | null;
   setHousehold: (id: string) => void;
   setUser: (id: string, name: string) => void;
+  reset: () => void;
 }
 
 export const useLukaStore = create<LukaStore>()(
@@ -17,6 +18,7 @@ export const useLukaStore = create<LukaStore>()(
       userFullName: null,
       setHousehold: (id) => set({ householdId: id }),
       setUser: (id, name) => set({ userId: id, userFullName: name }),
+      reset: () => set({ householdId: null, userId: null, userFullName: null }),
     }),
     { name: "luka-store" }
   )

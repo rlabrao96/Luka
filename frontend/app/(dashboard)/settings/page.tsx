@@ -7,12 +7,16 @@ import { useLukaStore } from "@/app/lib/store";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { userFullName } = useLukaStore();
+  const { userFullName, reset } = useLukaStore();
 
   const signOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } finally {
+      reset();
+      router.push("/login");
+    }
   };
 
   return (
@@ -22,7 +26,7 @@ export default function SettingsPage() {
       <Card className="bg-white">
         <CardHeader><CardTitle className="text-sm font-semibold">Cuenta</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-luka-muted">Conectado como <span className="font-medium text-luka-dark">{userFullName}</span></p>
+          <p className="text-sm text-luka-muted">Conectado como <span className="font-medium text-luka-dark">{userFullName ?? "tu cuenta"}</span></p>
           <Button variant="outline" className="text-luka-danger border-luka-danger hover:bg-red-50" onClick={signOut}>
             Cerrar sesión
           </Button>
