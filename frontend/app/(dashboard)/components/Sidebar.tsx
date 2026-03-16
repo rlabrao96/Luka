@@ -16,6 +16,8 @@ const NAV = [
 export function Sidebar() {
   const pathname = usePathname();
   const name = useLukaStore((s) => s.userFullName);
+  const isActive = (href: string) =>
+    href === "/dashboard" ? pathname === href : pathname.startsWith(href);
 
   return (
     <aside className="hidden lg:flex flex-col w-60 min-h-screen bg-white border-r border-slate-200 px-4 py-6 gap-2">
@@ -29,7 +31,7 @@ export function Sidebar() {
           href={href}
           className={cn(
             "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-            pathname === href
+            isActive(href)
               ? "bg-luka-light text-luka-primary"
               : "text-luka-muted hover:bg-slate-50 hover:text-luka-dark"
           )}
