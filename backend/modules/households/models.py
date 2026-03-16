@@ -48,6 +48,8 @@ class BankAccount(Base):
     account_type: Mapped[str] = mapped_column(String, nullable=False)  # 'personal' | 'joint'
     cardholder_name: Mapped[str | None] = mapped_column(String, nullable=True)
     email_sender_pattern: Mapped[str | None] = mapped_column(String, nullable=True)
+    fintoc_link_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    fintoc_account_id: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

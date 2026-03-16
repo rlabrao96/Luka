@@ -13,7 +13,13 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, limit: int =
         .limit(limit)
     )
     rows = result.all()
-    return [{**vars(txn), "split_type": split.split_type if split else None} for txn, split in rows]
+    return [
+        {
+            **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
+            "split_type": split.split_type if split else None,
+        }
+        for txn, split in rows
+    ]
 
 
 async def get_shared_transactions(
@@ -30,4 +36,10 @@ async def get_shared_transactions(
         .limit(limit)
     )
     rows = result.all()
-    return [{**vars(txn), "split_type": split.split_type} for txn, split in rows]
+    return [
+        {
+            **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
+            "split_type": split.split_type,
+        }
+        for txn, split in rows
+    ]

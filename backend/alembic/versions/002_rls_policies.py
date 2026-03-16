@@ -80,15 +80,18 @@ def upgrade():
             SELECT json_build_object(
                 'total_spent', COALESCE(SUM(t.amount), 0),
                 'by_category', (
-                    SELECT json_agg(json_build_object('category', ts.category, 'amount', SUM(t2.amount)))
-                    FROM transactions t2
-                    JOIN transaction_splits ts ON ts.transaction_id = t2.id
-                    WHERE t2.user_id = partner_id
-                      AND DATE_TRUNC('month', t2.transaction_date::DATE) = p_month
-                      AND ts.category IS NOT NULL
-                    GROUP BY ts.category
-                    ORDER BY SUM(t2.amount) DESC
-                    LIMIT 5
+                    SELECT json_agg(cat_row)
+                    FROM (
+                        SELECT json_build_object('category', ts.category, 'amount', SUM(t2.amount)) AS cat_row
+                        FROM transactions t2
+                        JOIN transaction_splits ts ON ts.transaction_id = t2.id
+                        WHERE t2.user_id = partner_id
+                          AND DATE_TRUNC('month', t2.transaction_date::DATE) = p_month
+                          AND ts.category IS NOT NULL
+                        GROUP BY ts.category
+                        ORDER BY SUM(t2.amount) DESC
+                        LIMIT 5
+                    ) subq
                 )
             ) INTO result
             FROM transactions t

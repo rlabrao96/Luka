@@ -192,12 +192,12 @@ async def run_fintoc_sync(ctx: dict) -> None:
         accounts = result.scalars().all()
 
         for account in accounts:
-            if not account.fintoc_link_id:
+            if not account.fintoc_link_id or not account.fintoc_account_id:
                 continue
             try:
                 client = FintocClient(link_token=account.fintoc_link_id)
                 transactions = await client.fetch_transactions(
-                    account_id=str(account.id),
+                    account_id=account.fintoc_account_id,
                     since=date.today() - timedelta(days=7),
                     until=date.today(),
                 )

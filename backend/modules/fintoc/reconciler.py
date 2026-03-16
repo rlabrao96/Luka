@@ -68,7 +68,13 @@ async def reconcile_transactions(
     from sqlalchemy import select, update
     from modules.transactions.models import Transaction
 
-    result = await db.execute(select(Transaction).where(Transaction.status == "pending"))
+    result = await db.execute(
+        select(Transaction).where(
+            Transaction.status == "pending",
+            Transaction.user_id == user_id,
+            Transaction.household_id == household_id,
+        )
+    )
     pending = [
         {
             "id": str(t.id),
@@ -91,6 +97,8 @@ async def reconcile_transactions(
                 .values(status="reconciled", fintoc_id=ftc_txn.id)
             )
             matched += 1
+            # Remove matched pending to prevent duplicate matching
+            pending = [p for p in pending if str(p["id"]) != match.transaction_id]
         else:
             # Insert as new settled transaction from Fintoc
             new_txn = Transaction(
