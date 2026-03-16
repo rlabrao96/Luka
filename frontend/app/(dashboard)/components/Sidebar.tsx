@@ -6,18 +6,18 @@ import { cn } from "@/lib/utils";
 import { useLukaStore } from "@/app/lib/store";
 
 const NAV = [
-  { href: "/dashboard", label: "Inicio", icon: Home },
-  { href: "/dashboard/transactions", label: "Transacciones", icon: CreditCard },
-  { href: "/dashboard/household", label: "Hogar", icon: Users },
-  { href: "/dashboard/budgets", label: "Presupuesto", icon: PieChart },
-  { href: "/dashboard/settings", label: "Configuración", icon: Settings },
+  { href: "/", label: "Inicio", icon: Home },
+  { href: "/transactions", label: "Transacciones", icon: CreditCard },
+  { href: "/household", label: "Hogar", icon: Users },
+  { href: "/budgets", label: "Presupuesto", icon: PieChart },
+  { href: "/settings", label: "Configuración", icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const name = useLukaStore((s) => s.userFullName);
   const isActive = (href: string) =>
-    href === "/dashboard" ? pathname === href : pathname.startsWith(href);
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
     <aside className="hidden lg:flex flex-col w-60 min-h-screen bg-white border-r border-slate-200 px-4 py-6 gap-2">
