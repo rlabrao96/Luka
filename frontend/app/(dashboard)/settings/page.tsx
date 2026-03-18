@@ -16,6 +16,7 @@ declare global {
         publicKey: string;
         product: string;
         country: string;
+        holderType?: string;
         onSuccess: (linkToken: string) => void;
         onExit: () => void;
         onError: (err: Error) => void;
@@ -36,11 +37,28 @@ function ConnectBankSection() {
   function openWidget() {
     if (!window.Fintoc) return;
     setMessage(null);
+
+    // Fintoc SDK v1 bug: it tries to postMessage() the options object (including
+    // our callback functions) to its internal wizard window, which throws DataCloneError
+    // because functions can't be structured-cloned. We patch postMessage temporarily
+    // to silently swallow these unserializable calls so the widget can open.
+    const origPostMessage = window.postMessage.bind(window);
+    window.postMessage = ((msg: unknown, ...args: unknown[]) => {
+      try {
+        origPostMessage(msg, ...(args as [string]));
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "DataCloneError") return;
+        throw e;
+      }
+    }) as typeof window.postMessage;
+
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
       product: "movements",
       country: "cl",
+      holderType: "individual",
       onSuccess: async (token: string) => {
+        window.postMessage = origPostMessage;
         setLinkToken(token);
         try {
           const accounts = await api.getFintocAccounts(token);
@@ -50,9 +68,10 @@ function ConnectBankSection() {
           setMessage("Error al cargar las cuentas.");
         }
       },
-      onExit: function () { setMessage("Conexión cancelada."); },
-      onError: function () { setMessage("Error al conectar."); },
+      onExit: () => { window.postMessage = origPostMessage; setMessage("Conexión cancelada."); },
+      onError: () => { window.postMessage = origPostMessage; setMessage("Error al conectar."); },
     });
+
     widget.open();
   }
 

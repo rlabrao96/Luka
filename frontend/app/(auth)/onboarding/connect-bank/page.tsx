@@ -16,6 +16,7 @@ declare global {
         publicKey: string;
         product: string;
         country: string;
+        holderType?: string;
         onSuccess: (linkToken: string) => void;
         onExit: () => void;
         onError: (err: Error) => void;
@@ -41,11 +42,26 @@ export default function ConnectBankPage() {
       return;
     }
     setError(null);
+
+    // Fintoc SDK v1 bug: postMessages the options object (including callbacks) to its
+    // internal window, throwing DataCloneError. Patch postMessage to swallow these.
+    const origPostMessage = window.postMessage.bind(window);
+    window.postMessage = ((msg: unknown, ...args: unknown[]) => {
+      try {
+        origPostMessage(msg, ...(args as [string]));
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "DataCloneError") return;
+        throw e;
+      }
+    }) as typeof window.postMessage;
+
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
       product: "movements",
       country: "cl",
+      holderType: "individual",
       onSuccess: async (token: string) => {
+        window.postMessage = origPostMessage;
         setLinkToken(token);
         try {
           const accounts = await api.getFintocAccounts(token);
@@ -55,9 +71,10 @@ export default function ConnectBankPage() {
           setError("No se pudieron cargar las cuentas. Intenta de nuevo.");
         }
       },
-      onExit: function () { setError("Conexión cancelada."); },
-      onError: function () { setError("Error al conectar. Intenta de nuevo."); },
+      onExit: () => { window.postMessage = origPostMessage; setError("Conexión cancelada."); },
+      onError: () => { window.postMessage = origPostMessage; setError("Error al conectar. Intenta de nuevo."); },
     });
+
     widget.open();
   }
 
