@@ -27,19 +27,40 @@ export default function ConnectBankPage() {
     return () => { proto.postMessage = orig; };
   }, []);
 
-  function openFintocWidget() {
+  async function openFintocWidget() {
     if (!window.Fintoc) {
       setError("Widget no disponible. Recarga la página.");
       return;
     }
-    if (!householdId || !userId) {
-      setError("No se pudo identificar tu hogar. Recarga la página.");
-      return;
-    }
     setError(null);
 
+    let hId = householdId;
+    let uId = userId;
+
+    // Graceful fallback: if Zustand is empty, fetch the source of truth immediately
+    if (!hId || !uId) {
+      try {
+        const { api } = await import("@/app/lib/api");
+        const user = await api.getMe();
+        hId = user.household_id;
+        uId = String(user.id);
+        
+        // Hydrate store so we don't need to fetch again
+        if (hId) useLukaStore.getState().setHousehold(hId);
+        if (uId) useLukaStore.getState().setUser(uId, user.full_name);
+      } catch (e) {
+        setError("Falló la conexión de tu sesión. Asegúrate de estar conectado.");
+        return;
+      }
+    }
+
+    if (!hId || !uId) {
+      setError("No tienes un hogar creado todavía. Por favor vuelve al paso anterior.");
+      return;
+    }
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://luka-production-eb87.up.railway.app";
-    const webhookUrl = `${apiUrl}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
+    const webhookUrl = `${apiUrl}/bank-accounts/webhooks/fintoc-link?household_id=${hId}&user_id=${uId}`;
 
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",

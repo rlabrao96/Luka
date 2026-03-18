@@ -12,21 +12,13 @@ export default function VerifyWhatsAppPage() {
   const [pinSent, setPinSent] = useState(false);
 
   const sendPin = async () => {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/whatsapp/send-pin`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone }),
-    });
-    setPinSent(true);
+    // Mock the send for now until backend is implemented
+    setTimeout(() => setPinSent(true), 500);
   };
 
   const verifyPin = async () => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/whatsapp/verify-pin`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, pin }),
-    });
-    if (res.ok) router.push("/onboarding/setup-household");
+    // Mock successful verification
+    router.push("/onboarding/setup-household");
   };
 
   return (
