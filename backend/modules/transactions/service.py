@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from modules.transactions.models import Transaction, TransactionSplit
 
 
@@ -19,6 +19,75 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, limit: int =
             "split_type": split.split_type if split else None,
         }
         for txn, split in rows
+    ]
+
+
+async def get_monthly_summary(
+    db: AsyncSession, household_id: uuid.UUID, user_id: uuid.UUID
+) -> list[dict]:
+    MONTH_ABBR = [
+        "Ene",
+        "Feb",
+        "Mar",
+        "Abr",
+        "May",
+        "Jun",
+        "Jul",
+        "Ago",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dic",
+    ]
+    result = await db.execute(
+        text("""
+        WITH months AS (
+            SELECT generate_series(
+                DATE_TRUNC('month', NOW()) - INTERVAL '5 months',
+                DATE_TRUNC('month', NOW()),
+                INTERVAL '1 month'
+            ) AS month_start
+        ),
+        personal_agg AS (
+            SELECT
+                DATE_TRUNC('month', t.transaction_date::DATE) AS month_start,
+                COALESCE(SUM(t.amount), 0) AS personal
+            FROM transactions t
+            JOIN transaction_splits ts ON ts.transaction_id = t.id
+            WHERE t.user_id = :user_id
+              AND t.household_id = :household_id
+              AND ts.split_type = 'personal'
+            GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
+        ),
+        shared_agg AS (
+            SELECT
+                DATE_TRUNC('month', t.transaction_date::DATE) AS month_start,
+                COALESCE(SUM(t.amount), 0) AS compartido
+            FROM transactions t
+            JOIN transaction_splits ts ON ts.transaction_id = t.id
+            WHERE t.household_id = :household_id
+              AND ts.split_type = 'shared'
+            GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
+        )
+        SELECT
+            m.month_start,
+            COALESCE(p.personal, 0) AS personal,
+            COALESCE(s.compartido, 0) AS compartido
+        FROM months m
+        LEFT JOIN personal_agg p ON p.month_start = m.month_start
+        LEFT JOIN shared_agg s ON s.month_start = m.month_start
+        ORDER BY m.month_start ASC
+        """),
+        {"household_id": str(household_id), "user_id": str(user_id)},
+    )
+    rows = result.all()
+    return [
+        {
+            "month": f"{MONTH_ABBR[row.month_start.month - 1]} {str(row.month_start.year)[2:]}",
+            "personal": float(row.personal),
+            "compartido": float(row.compartido),
+        }
+        for row in rows
     ]
 
 

@@ -17,3 +17,12 @@ export function useSharedTransactions(limit = 50) {
     enabled: !!householdId,
   });
 }
+
+export function useMonthlySpending() {
+  const householdId = useLukaStore((s) => s.householdId);
+  return useQuery({
+    queryKey: ["transactions", "monthly-summary", householdId],
+    queryFn: () => api.getMonthlySpending(householdId!),
+    enabled: !!householdId,
+  });
+}

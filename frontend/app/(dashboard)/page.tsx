@@ -5,7 +5,7 @@ import { KpiCard } from "./components/KpiCard";
 import { SpendingChart } from "./components/SpendingChart";
 import { CategoryDonut } from "./components/CategoryDonut";
 import { RecentTransactions } from "./components/RecentTransactions";
-import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
+import { useMyTransactions, useSharedTransactions, useMonthlySpending } from "@/app/lib/hooks/useTransactions";
 import { useHouseholdSummary } from "@/app/lib/hooks/useHousehold";
 import { useBudgetStatus } from "@/app/lib/hooks/useBudget";
 import { useLukaStore } from "@/app/lib/store";
@@ -13,6 +13,7 @@ import { useLukaStore } from "@/app/lib/store";
 export default function DashboardPage() {
   const name = useLukaStore((s) => s.userFullName) ?? "tú";
   const { data: myTxns    = [] } = useMyTransactions(10);
+  const { data: monthlySpending = [] } = useMonthlySpending();
   const { data: sharedTxns = [] } = useSharedTransactions(10);
   const { data: summary   = [] } = useHouseholdSummary();
   const { data: budget }          = useBudgetStatus();
@@ -108,7 +109,7 @@ export default function DashboardPage() {
               <p className="text-xs text-luka-muted mt-0.5">Personal vs. compartido</p>
             </div>
           </div>
-          <SpendingChart data={[]} />
+          <SpendingChart data={monthlySpending} />
         </div>
 
         {/* Category donut */}

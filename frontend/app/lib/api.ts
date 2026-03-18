@@ -58,6 +58,12 @@ export interface PartnerStats {
   by_category: Array<{ category: string; amount: number }>;
 }
 
+export interface MonthlySpendingPoint {
+  month: string;
+  personal: number;
+  compartido: number;
+}
+
 export interface BudgetStatus {
   household_id: string;
   month: string;
@@ -95,4 +101,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  acceptInvite: (token: string) =>
+    apiFetch<{ household_id: string; accepted_at: string }>(`/invite/${token}`),
+
+  getMonthlySpending: (householdId: string) =>
+    apiFetch<MonthlySpendingPoint[]>(`/transactions/monthly-summary?household_id=${householdId}`),
 };

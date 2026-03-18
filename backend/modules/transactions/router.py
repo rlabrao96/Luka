@@ -21,6 +21,24 @@ async def my_transactions(
     return await service.get_my_transactions(db, current_user.id, limit=limit)
 
 
+@router.get("/monthly-summary")
+async def monthly_summary(
+    household_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Verify current user is a member of this household
+    result = await db.execute(
+        select(HouseholdMember).where(
+            HouseholdMember.household_id == household_id,
+            HouseholdMember.user_id == current_user.id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Not a member of this household")
+    return await service.get_monthly_summary(db, household_id, current_user.id)
+
+
 @router.get("/shared", response_model=list[TransactionResponse])
 async def shared_transactions(
     household_id: uuid.UUID,
