@@ -56,13 +56,20 @@ export default function ConnectBankPage() {
         }
       },
       onExit: () => setError("Conexión cancelada."),
-      onError: () => setError("Error al conectar. Intenta de nuevo."),
+      onError: (err: Error) => {
+        console.error("Fintoc widget error:", err);
+        setError("Error al conectar. Intenta de nuevo.");
+      },
     });
     widget.open();
   }
 
   async function handleConfirm(selected: SelectedFintocAccount[]) {
-    if (!householdId) return;
+    if (!householdId) {
+      setError("No se pudo identificar tu hogar. Recarga la página.");
+      setStep("pick");
+      return;
+    }
     setStep("loading");
     try {
       await api.connectFintocAccounts({
@@ -86,8 +93,7 @@ export default function ConnectBankPage() {
   return (
     <>
       <Script src="https://js.fintoc.com/v1/" onReady={() => setScriptReady(true)} />
-      <div className="min-h-screen bg-luka-light flex items-center justify-center p-4">
-        <Card className="w-full max-w-lg shadow-sm">
+      <Card className="w-full shadow-sm">
           <CardHeader>
             <CardTitle className="text-luka-dark">Conecta tu banco</CardTitle>
             <CardDescription className="text-luka-muted">
@@ -148,8 +154,7 @@ export default function ConnectBankPage() {
               </div>
             )}
           </CardContent>
-        </Card>
-      </div>
+      </Card>
     </>
   );
 }
