@@ -320,7 +320,7 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 ## Deployment
 
 **Backend (Railway):** ✅ LIVE
-- URL: `https://luka-production-14f5.up.railway.app`
+- URL: `https://luka-production-eb87.up.railway.app`
 - Configured via `backend/railway.toml`
 - Entry: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 - Worker: separate Railway service running `arq worker.WorkerSettings`

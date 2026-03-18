@@ -9,7 +9,7 @@ This document walks through every decision and credential that requires your inp
 - **Redis** — Railway add-on configured
 - **OpenAI** — API key loaded in Railway
 - **Database migrations** — `alembic upgrade head` run, all 3 migrations at `003 head`
-- **Railway backend** — live at `https://luka-production-14f5.up.railway.app`
+- **Railway backend** — live at `https://luka-production-eb87.up.railway.app`
 - **Vercel frontend** — live at `https://luka-lovat.vercel.app`
 - **Gap 3.1** — Auth middleware (`frontend/middleware.ts`) ✅
 - **Gap 3.2** — Accept-invite flow (backend + frontend page) ✅
@@ -116,7 +116,7 @@ API key loaded in Railway.
 ## Phase 2: Infrastructure Setup ✅ COMPLETE
 
 - **2.1** Database migrations — done (`003 head`)
-- **2.2** Railway backend — live at `https://luka-production-14f5.up.railway.app`
+- **2.2** Railway backend — live at `https://luka-production-eb87.up.railway.app`
 - **2.3** Vercel frontend — live at `https://luka-lovat.vercel.app`
 - **2.4** Supabase redirect URL configured for Vercel callback
 
