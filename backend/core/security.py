@@ -33,8 +33,13 @@ async def get_current_user(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Supabase auth error: {str(e)}"
+        )
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(User).where(User.email == supabase_user.email))
