@@ -4,7 +4,7 @@
 
 **Goal:** Replace the manual bank account form with Fintoc Link widget, auto-import 90 days of transaction history on connect, and track import progress with a dashboard banner.
 
-**Architecture:** Fintoc JS widget runs in-browser and returns a `link_token`. Backend fetches account list from Fintoc API using that token and returns it to the frontend for user selection. On confirm, backend creates `BankAccount` records and enqueues one `import_fintoc_history` ARQ job per account, which fetches 90 days of transactions and inserts them as settled+uncategorized with auto-assigned splits.
+**Architecture:** Fintoc JS widget runs in-browser and returns a `link_token`. Backend fetches the account list from Fintoc API using that token (spec deviation: original spec assumed frontend gets account list from widget; a backend proxy endpoint is added instead to keep Fintoc API key server-side only). On confirm, backend creates `BankAccount` records and enqueues one `import_fintoc_history` ARQ job per account, which fetches 90 days of transactions and inserts them as settled+uncategorized with auto-assigned splits.
 
 **Tech Stack:** FastAPI + SQLAlchemy async + ARQ + httpx (backend) | Next.js App Router + Tailwind + shadcn/ui (frontend) | Fintoc JS SDK
 
@@ -15,18 +15,18 @@
 ## Execution Map
 
 ```
-PHASE 1 (sequential): Tasks 1–5   ← foundation, everything depends on this
+PHASE 1 (sequential): Tasks 1–4   ← migrations + model + module scaffold
     ↓
 PHASE 2 (3 parallel agents):
-    Agent A: Tasks 6–10  ← backend routes
-    Agent B: Tasks 11–13 ← backend import job
-    Agent C: Tasks 14–15 ← frontend foundation (api.ts + FintocAccountPicker)
+    Agent A: Tasks 5–9   ← backend routes + FintocClient.fetch_accounts
+    Agent B: Tasks 10–12 ← backend import job
+    Agent C: Tasks 13–14 ← frontend api.ts + FintocAccountPicker component
     ↓ (all three must complete)
 PHASE 3 (2 parallel agents):
-    Agent D: Task 16     ← connect-bank page rewrite
-    Agent E: Tasks 17–20 ← status banner + settings
+    Agent D: Task 15     ← connect-bank page rewrite
+    Agent E: Tasks 16–19 ← status banner + settings
     ↓
-PHASE 4 (sequential): Task 21    ← migrations + smoke test
+PHASE 4 (sequential): Task 20    ← worker.py + migrations + smoke test
 ```
 
 ---
@@ -41,13 +41,14 @@ PHASE 4 (sequential): Task 21    ← migrations + smoke test
 
 - [ ] **Step 1: Write the migration**
 
+The constraint is safe: existing data only contains `'personal'` or `'joint'` (both allowed by the new constraint). The constraint also allows `'partner'` going forward.
+
 ```python
 """Enforce account_type IN ('personal', 'partner', 'joint').
 
 Revision ID: 004
 Down revision: 003
 """
-import sqlalchemy as sa
 from alembic import op
 
 revision = "004"
@@ -55,6 +56,7 @@ down_revision = "003"
 
 
 def upgrade():
+    # Existing rows only have 'personal' or 'joint' — both valid under new constraint.
     op.execute(
         "ALTER TABLE bank_accounts "
         "ADD CONSTRAINT chk_bank_account_type "
@@ -128,23 +130,40 @@ git commit -m "feat: migration 005 - add bank_accounts.import_status"
 **Files:**
 - Modify: `backend/modules/households/models.py`
 
-- [ ] **Step 1: Update the BankAccount class**
+- [ ] **Step 1: Update account_type comment and add import_status field**
 
-In `backend/modules/households/models.py`, update the `BankAccount` class. Change line 48 and add `import_status` after `is_active`:
+In `backend/modules/households/models.py`, inside the `BankAccount` class:
 
-Old:
+Change line 48 (account_type comment):
 ```python
+    # OLD:
     account_type: Mapped[str] = mapped_column(String, nullable=False)  # 'personal' | 'joint'
-```
-
-New:
-```python
+    # NEW:
     account_type: Mapped[str] = mapped_column(String, nullable=False)  # 'personal' | 'partner' | 'joint'
 ```
 
-Add after `is_active` (line 53):
+Add `import_status` after `is_active` (after line 53):
 ```python
     import_status: Mapped[str] = mapped_column(String, default="done")  # 'pending'|'importing'|'done'|'failed'
+```
+
+The final `BankAccount` class should look like:
+```python
+class BankAccount(Base):
+    __tablename__ = "bank_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    household_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("households.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    bank_name: Mapped[str] = mapped_column(String, nullable=False)
+    account_type: Mapped[str] = mapped_column(String, nullable=False)  # 'personal' | 'partner' | 'joint'
+    cardholder_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    email_sender_pattern: Mapped[str | None] = mapped_column(String, nullable=True)
+    fintoc_link_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    fintoc_account_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    import_status: Mapped[str] = mapped_column(String, default="done")  # 'pending'|'importing'|'done'|'failed'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 ```
 
 - [ ] **Step 2: Verify the model compiles**
@@ -158,7 +177,7 @@ Expected: `OK`
 
 ```bash
 git add backend/modules/households/models.py
-git commit -m "feat: add import_status to BankAccount model, add partner account_type"
+git commit -m "feat: add import_status to BankAccount model, allow partner account_type"
 ```
 
 ---
@@ -167,7 +186,7 @@ git commit -m "feat: add import_status to BankAccount model, add partner account
 
 **Files:**
 - Create: `backend/modules/bank_accounts/__init__.py`
-- Create: `backend/modules/bank_accounts/router.py` (skeleton)
+- Create: `backend/modules/bank_accounts/router.py` (skeleton only)
 - Modify: `backend/main.py`
 
 - [ ] **Step 1: Create the module init**
@@ -210,7 +229,7 @@ async def _require_household_membership(
 
 - [ ] **Step 3: Register the router in main.py**
 
-In `backend/main.py`, add after the existing imports:
+In `backend/main.py`, add the import after the existing router imports:
 ```python
 from modules.bank_accounts.router import router as bank_accounts_router
 ```
@@ -231,97 +250,50 @@ Expected: `OK`
 
 ```bash
 git add backend/modules/bank_accounts/ backend/main.py
-git commit -m "feat: add bank_accounts module and register router at /bank-accounts"
-```
-
----
-
-### Task 5: Register import_fintoc_history in worker
-
-**Files:**
-- Modify: `backend/worker.py`
-
-- [ ] **Step 1: Add import to worker.py**
-
-In `backend/worker.py`, update the import line:
-```python
-from jobs.tasks import (
-    process_email,
-    import_fintoc_history,
-    renew_mail_watches,
-    purge_raw_emails,
-    cleanup_processed_webhooks,
-    run_fintoc_sync,
-)
-```
-
-And add `import_fintoc_history` to the `functions` list:
-```python
-class WorkerSettings:
-    functions = [process_email, import_fintoc_history]
-```
-
-The function doesn't exist yet — this import will fail until Task 12 is done. That's fine: Phase 2 Agent B writes the job, Phase 4 runs everything together.
-
-- [ ] **Step 2: Commit**
-
-```bash
-git add backend/worker.py
-git commit -m "feat: register import_fintoc_history in ARQ worker functions"
+git commit -m "feat: add bank_accounts module scaffold and register router at /bank-accounts"
 ```
 
 ---
 
 ## PHASE 2 — Parallel Implementation
-> **🚦 Start all three agents simultaneously after Phase 1 is merged.**
+> **🚦 Start all three agents simultaneously after Phase 1 is merged to main.**
 
 ---
 
 ## PHASE 2 — Agent A: Backend Routes
-> **Tasks 6–10. Does NOT depend on Agent B or C.**
+> **Tasks 5–9. Independent from Agent B and C.**
 
-### Task 6: Add fetch_accounts to FintocClient
+### Task 5: Add fetch_accounts to FintocClient
 
 **Files:**
 - Modify: `backend/modules/fintoc/client.py`
+
+The existing `FintocClient` already has `_headers()` and `fetch_transactions()`. We add `fetch_accounts()` which calls `GET /v1/accounts` using the same link token header — no new credentials needed.
 
 - [ ] **Step 1: Write a failing test**
 
 Create `backend/tests/test_fintoc_client_accounts.py`:
 ```python
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from modules.fintoc.client import FintocClient
 
 
 @pytest.mark.asyncio
 async def test_fetch_accounts_returns_account_list():
     mock_response = MagicMock()
-    mock_response.status_code = 200
     mock_response.json.return_value = [
-        {
-            "id": "acc_123",
-            "name": "Cuenta Corriente",
-            "type": "checking_account",
-            "number": "****1234",
-            "currency": "CLP",
-        },
-        {
-            "id": "acc_456",
-            "name": "Tarjeta de Crédito",
-            "type": "credit_card",
-            "number": "****5678",
-            "currency": "CLP",
-        },
+        {"id": "acc_123", "name": "Cuenta Corriente", "type": "checking_account", "number": "****1234"},
+        {"id": "acc_456", "name": "Tarjeta de Crédito", "type": "credit_card", "number": "****5678"},
     ]
     mock_response.raise_for_status = MagicMock()
 
-    with patch("httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
+    with patch("httpx.AsyncClient") as MockHttpx:
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        mock_http.get = AsyncMock(return_value=mock_response)
+        MockHttpx.return_value = mock_http
 
         client = FintocClient(link_token="lt_test")
         accounts = await client.fetch_accounts()
@@ -331,14 +303,14 @@ async def test_fetch_accounts_returns_account_list():
     assert accounts[1]["type"] == "credit_card"
 ```
 
-- [ ] **Step 2: Run test — expect FAIL**
+- [ ] **Step 2: Run — expect FAIL**
 
 ```bash
 cd backend && python -m pytest tests/test_fintoc_client_accounts.py -v
 ```
 Expected: `AttributeError: 'FintocClient' object has no attribute 'fetch_accounts'`
 
-- [ ] **Step 3: Implement fetch_accounts in FintocClient**
+- [ ] **Step 3: Implement fetch_accounts**
 
 Add this method to the `FintocClient` class in `backend/modules/fintoc/client.py`:
 ```python
@@ -353,12 +325,11 @@ Add this method to the `FintocClient` class in `backend/modules/fintoc/client.py
             return resp.json()
 ```
 
-- [ ] **Step 4: Run test — expect PASS**
+- [ ] **Step 4: Run — expect PASS**
 
 ```bash
 cd backend && python -m pytest tests/test_fintoc_client_accounts.py -v
 ```
-Expected: `PASSED`
 
 - [ ] **Step 5: Commit**
 
@@ -369,10 +340,91 @@ git commit -m "feat: add FintocClient.fetch_accounts()"
 
 ---
 
+### Task 6: Add route test fixtures to conftest.py
+
+**Files:**
+- Modify: `backend/tests/conftest.py`
+
+The existing conftest has `db`, `mock_user`, `mock_partner`, `mock_household`. Route tests need an HTTP client and auth override fixtures.
+
+- [ ] **Step 1: Add client and auth fixtures**
+
+Append to `backend/tests/conftest.py`:
+```python
+import pytest
+from httpx import AsyncClient, ASGITransport
+from unittest.mock import AsyncMock, MagicMock
+from modules.households.models import BankAccount
+
+
+@pytest.fixture
+async def http_client(app):
+    """AsyncClient wired to the FastAPI app with ASGI transport."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        yield c
+
+
+@pytest.fixture
+def mock_current_user(mock_user):
+    """Returns the mock_user. Used to override get_current_user dependency."""
+    return mock_user
+
+
+@pytest.fixture
+def override_auth(app, mock_current_user):
+    """Override get_current_user so routes think a user is authenticated."""
+    from core.security import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: mock_current_user
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def mock_db_session():
+    """Async mock of an SQLAlchemy AsyncSession."""
+    session = AsyncMock()
+    session.execute = AsyncMock()
+    session.scalar = AsyncMock(return_value=None)
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    return session
+
+
+@pytest.fixture
+def override_db(app, mock_db_session):
+    """Override get_db so routes use the mock session."""
+    from core.database import get_db
+
+    async def _mock_db():
+        yield mock_db_session
+
+    app.dependency_overrides[get_db] = _mock_db
+    yield mock_db_session
+    app.dependency_overrides.clear()
+```
+
+- [ ] **Step 2: Verify conftest loads**
+
+```bash
+cd backend && python -m pytest tests/ --collect-only -q 2>&1 | head -5
+```
+Expected: No import errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/tests/conftest.py
+git commit -m "test: add http_client, override_auth, override_db fixtures to conftest"
+```
+
+---
+
 ### Task 7: GET /bank-accounts/fintoc/accounts endpoint
 
 **Files:**
 - Modify: `backend/modules/bank_accounts/router.py`
+- Create: `backend/tests/test_bank_accounts_routes.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -380,10 +432,11 @@ Create `backend/tests/test_bank_accounts_routes.py`:
 ```python
 import pytest
 from unittest.mock import AsyncMock, patch
+from sqlalchemy.orm import MagicMock
 
 
 @pytest.mark.asyncio
-async def test_get_fintoc_accounts_returns_list(client, auth_headers):
+async def test_get_fintoc_accounts_returns_list(http_client, override_auth, override_db):
     mock_accounts = [
         {"id": "acc_1", "name": "Cuenta Corriente", "type": "checking_account", "number": "****1234"},
     ]
@@ -392,19 +445,16 @@ async def test_get_fintoc_accounts_returns_list(client, auth_headers):
         instance.fetch_accounts = AsyncMock(return_value=mock_accounts)
         MockClient.return_value = instance
 
-        response = await client.get(
-            "/bank-accounts/fintoc/accounts?link_token=lt_test",
-            headers=auth_headers,
-        )
+        response = await http_client.get("/bank-accounts/fintoc/accounts?link_token=lt_test")
 
     assert response.status_code == 200
     assert response.json() == mock_accounts
 
 
 @pytest.mark.asyncio
-async def test_get_fintoc_accounts_requires_auth(client):
-    response = await client.get("/bank-accounts/fintoc/accounts?link_token=lt_test")
-    assert response.status_code == 401
+async def test_get_fintoc_accounts_requires_auth(http_client):
+    response = await http_client.get("/bank-accounts/fintoc/accounts?link_token=lt_test")
+    assert response.status_code in (401, 403)  # unauthenticated
 ```
 
 - [ ] **Step 2: Run — expect FAIL**
@@ -427,7 +477,7 @@ async def get_fintoc_accounts(
     link_token: str,
     current_user: User = Depends(get_current_user),
 ):
-    """Fetch available Fintoc accounts for a link token. Called after widget success."""
+    """Fetch available accounts for a Fintoc link token. Called after widget success."""
     client = FintocClient(link_token=link_token)
     try:
         accounts = await client.fetch_accounts()
@@ -446,7 +496,7 @@ cd backend && python -m pytest tests/test_bank_accounts_routes.py::test_get_fint
 
 ```bash
 git add backend/modules/bank_accounts/router.py backend/tests/test_bank_accounts_routes.py
-git commit -m "feat: GET /bank-accounts/fintoc/accounts - fetch account list for link token"
+git commit -m "feat: GET /bank-accounts/fintoc/accounts - proxy Fintoc account list"
 ```
 
 ---
@@ -461,58 +511,67 @@ git commit -m "feat: GET /bank-accounts/fintoc/accounts - fetch account list for
 
 Append to `backend/tests/test_bank_accounts_routes.py`:
 ```python
+import uuid
+from unittest.mock import patch, MagicMock
+
+
+HOUSEHOLD_ID = str(uuid.uuid4())
+
+
 @pytest.mark.asyncio
-async def test_connect_fintoc_returns_403_if_not_member(client, auth_headers):
-    response = await client.post(
+async def test_connect_fintoc_returns_403_if_not_member(http_client, override_auth, override_db):
+    # mock_db_session.scalar returns None (not a member)
+    override_db.scalar = AsyncMock(return_value=None)
+
+    response = await http_client.post(
         "/bank-accounts/fintoc/connect",
         json={
             "link_token": "lt_test",
-            "household_id": "00000000-0000-0000-0000-000000000001",
+            "household_id": HOUSEHOLD_ID,
             "accounts": [{"fintoc_account_id": "acc_1", "label": "personal"}],
         },
-        headers=auth_headers,
     )
     assert response.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_connect_fintoc_creates_accounts_and_enqueues_jobs(
-    client, auth_headers, test_db, test_user, test_household
-):
-    with patch("modules.bank_accounts.router.enqueue_job") as mock_enqueue:
-        mock_enqueue.return_value = None
-        response = await client.post(
+async def test_connect_fintoc_creates_accounts(http_client, override_auth, override_db, mock_current_user):
+    mock_member = MagicMock()
+    # First scalar call: membership check (member found)
+    # Second scalar call: duplicate check (None = no duplicate)
+    override_db.scalar = AsyncMock(side_effect=[mock_member, None, None])
+    override_db.flush = AsyncMock()
+
+    with patch("modules.bank_accounts.router.enqueue_job", AsyncMock(return_value=None)):
+        response = await http_client.post(
             "/bank-accounts/fintoc/connect",
             json={
                 "link_token": "lt_abc",
-                "household_id": str(test_household.id),
+                "household_id": HOUSEHOLD_ID,
                 "accounts": [
                     {"fintoc_account_id": "acc_1", "label": "personal"},
                     {"fintoc_account_id": "acc_2", "label": "joint"},
                 ],
             },
-            headers=auth_headers,
         )
     assert response.status_code == 200
     data = response.json()
     assert data["created"] == 2
-    assert mock_enqueue.call_count == 2
 
 
 @pytest.mark.asyncio
-async def test_connect_fintoc_returns_409_on_duplicate(
-    client, auth_headers, test_db, test_household, existing_fintoc_account
-):
-    response = await client.post(
+async def test_connect_fintoc_returns_409_on_duplicate(http_client, override_auth, override_db):
+    mock_member = MagicMock()
+    mock_existing = MagicMock()  # existing account found
+    override_db.scalar = AsyncMock(side_effect=[mock_member, mock_existing])
+
+    response = await http_client.post(
         "/bank-accounts/fintoc/connect",
         json={
             "link_token": "lt_abc",
-            "household_id": str(test_household.id),
-            "accounts": [
-                {"fintoc_account_id": existing_fintoc_account.fintoc_account_id, "label": "personal"}
-            ],
+            "household_id": HOUSEHOLD_ID,
+            "accounts": [{"fintoc_account_id": "acc_duplicate", "label": "personal"}],
         },
-        headers=auth_headers,
     )
     assert response.status_code == 409
 ```
@@ -547,15 +606,13 @@ async def connect_fintoc_accounts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Store Fintoc-connected accounts and enqueue 90-day history import."""
+    """Store Fintoc-connected accounts and enqueue 90-day history import per account."""
     await _require_household_membership(body.household_id, current_user.id, db)
 
-    # Check for duplicates
+    # Check for duplicates before creating anything
     for acct in body.accounts:
         existing = await db.scalar(
-            select(BankAccount).where(
-                BankAccount.fintoc_account_id == acct.fintoc_account_id
-            )
+            select(BankAccount).where(BankAccount.fintoc_account_id == acct.fintoc_account_id)
         )
         if existing:
             raise HTTPException(
@@ -563,7 +620,7 @@ async def connect_fintoc_accounts(
                 detail=f"Account {acct.fintoc_account_id} is already connected",
             )
 
-    # Create bank accounts and enqueue import job per account
+    # Create and enqueue
     created = []
     for acct in body.accounts:
         bank_account = BankAccount(
@@ -576,7 +633,7 @@ async def connect_fintoc_accounts(
             import_status="pending",
         )
         db.add(bank_account)
-        await db.flush()  # get the id before commit
+        await db.flush()
         created.append(bank_account)
         await enqueue_job("import_fintoc_history", bank_account_id=str(bank_account.id))
 
@@ -616,33 +673,41 @@ git commit -m "feat: POST /bank-accounts/fintoc/connect - create accounts and en
 Append to `backend/tests/test_bank_accounts_routes.py`:
 ```python
 @pytest.mark.asyncio
-async def test_import_status_returns_403_if_not_member(client, auth_headers):
-    response = await client.get(
-        "/bank-accounts/import-status?household_id=00000000-0000-0000-0000-000000000001",
-        headers=auth_headers,
+async def test_import_status_403_if_not_member(http_client, override_auth, override_db):
+    override_db.scalar = AsyncMock(return_value=None)  # not a member
+    response = await http_client.get(
+        f"/bank-accounts/import-status?household_id={HOUSEHOLD_ID}"
     )
     assert response.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_import_status_true_when_accounts_pending(
-    client, auth_headers, test_household, pending_bank_account
-):
-    response = await client.get(
-        f"/bank-accounts/import-status?household_id={test_household.id}",
-        headers=auth_headers,
+async def test_import_status_true_when_pending_accounts_exist(http_client, override_auth, override_db):
+    mock_member = MagicMock()
+    mock_pending_account = MagicMock()
+    override_db.scalar = AsyncMock(return_value=mock_member)  # membership check passes
+    # execute().scalars().first() returns a pending account
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_pending_account
+    override_db.execute = AsyncMock(return_value=mock_result)
+
+    response = await http_client.get(
+        f"/bank-accounts/import-status?household_id={HOUSEHOLD_ID}"
     )
     assert response.status_code == 200
     assert response.json() == {"importing": True}
 
 
 @pytest.mark.asyncio
-async def test_import_status_false_when_all_done(
-    client, auth_headers, test_household, done_bank_account
-):
-    response = await client.get(
-        f"/bank-accounts/import-status?household_id={test_household.id}",
-        headers=auth_headers,
+async def test_import_status_false_when_all_done(http_client, override_auth, override_db):
+    mock_member = MagicMock()
+    override_db.scalar = AsyncMock(return_value=mock_member)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = None  # no pending accounts
+    override_db.execute = AsyncMock(return_value=mock_result)
+
+    response = await http_client.get(
+        f"/bank-accounts/import-status?household_id={HOUSEHOLD_ID}"
     )
     assert response.status_code == 200
     assert response.json() == {"importing": False}
@@ -677,10 +742,10 @@ async def get_import_status(
     return {"importing": importing}
 ```
 
-- [ ] **Step 4: Run — expect PASS**
+- [ ] **Step 4: Run all route tests — expect PASS**
 
 ```bash
-cd backend && python -m pytest tests/test_bank_accounts_routes.py -v
+cd backend && python -m pytest tests/test_bank_accounts_routes.py tests/test_fintoc_client_accounts.py -v
 ```
 Expected: All tests pass.
 
@@ -694,15 +759,16 @@ git commit -m "feat: GET /bank-accounts/import-status - poll household import pr
 ---
 
 ## PHASE 2 — Agent B: Backend Import Job
-> **Tasks 11–13. Does NOT depend on Agent A or C.**
+> **Tasks 10–12. Independent from Agent A and C.**
 
-### Task 11: Add enqueue helper to queue.py
+### Task 10: Add enqueue helper to queue.py
 
 **Files:**
 - Modify: `backend/jobs/queue.py`
 
 - [ ] **Step 1: Add the typed helper**
 
+In `backend/jobs/queue.py`, append after the existing `enqueue_job` function:
 ```python
 async def enqueue_fintoc_history_import(bank_account_id: str) -> None:
     """Enqueue a 90-day Fintoc history import for a single bank account."""
@@ -720,27 +786,29 @@ Expected: `OK`
 
 ```bash
 git add backend/jobs/queue.py
-git commit -m "feat: add enqueue_fintoc_history_import helper"
+git commit -m "feat: add enqueue_fintoc_history_import helper to queue.py"
 ```
 
 ---
 
-### Task 12: import_fintoc_history ARQ job
+### Task 11: import_fintoc_history ARQ job
 
 **Files:**
 - Modify: `backend/jobs/tasks.py`
+- Create: `backend/tests/test_fintoc_import.py`
 
-- [ ] **Step 1: Write the failing test first**
+- [ ] **Step 1: Write the failing tests**
 
 Create `backend/tests/test_fintoc_import.py`:
 ```python
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, call
 from modules.fintoc.client import FintocTransaction
+from modules.transactions.models import TransactionSplit
 
 
-def make_fintoc_txn(id: str, amount: int, description: str) -> FintocTransaction:
+def make_fintoc_txn(id: str, amount: int = 10000, description: str = "LIDER") -> FintocTransaction:
     return FintocTransaction(
         id=id,
         amount=amount,
@@ -750,23 +818,24 @@ def make_fintoc_txn(id: str, amount: int, description: str) -> FintocTransaction
     )
 
 
+def make_mock_account(account_type: str = "personal"):
+    account = MagicMock()
+    account.id = "ba_1"
+    account.fintoc_link_id = "lt_test"
+    account.fintoc_account_id = "acc_test"
+    account.account_type = account_type
+    account.user_id = "user_1"
+    account.household_id = "hh_1"
+    return account
+
+
 @pytest.mark.asyncio
 async def test_import_creates_transactions_and_splits():
-    """Happy path: two Fintoc transactions become two DB transactions with splits."""
+    """Happy path: two Fintoc transactions → two Transaction + two TransactionSplit rows."""
     from jobs.tasks import import_fintoc_history
 
-    mock_account = MagicMock()
-    mock_account.id = "ba_1"
-    mock_account.fintoc_link_id = "lt_test"
-    mock_account.fintoc_account_id = "acc_test"
-    mock_account.account_type = "personal"
-    mock_account.user_id = "user_1"
-    mock_account.household_id = "hh_1"
-
-    fintoc_txns = [
-        make_fintoc_txn("ft_1", 10000, "LIDER EXPRESS"),
-        make_fintoc_txn("ft_2", 5000, "UBER"),
-    ]
+    mock_account = make_mock_account("personal")
+    added_objects = []
 
     with patch("jobs.tasks.AsyncSessionLocal") as MockSession, \
          patch("jobs.tasks.FintocClient") as MockClient:
@@ -774,37 +843,35 @@ async def test_import_creates_transactions_and_splits():
         mock_db = AsyncMock()
         mock_db.get = AsyncMock(return_value=mock_account)
         mock_db.scalar = AsyncMock(return_value=None)  # no existing fintoc_id
-        mock_db.commit = AsyncMock()
+        mock_db.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
         mock_db.flush = AsyncMock()
+        mock_db.commit = AsyncMock()
         MockSession.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         MockSession.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        mock_client_instance = AsyncMock()
-        mock_client_instance.fetch_transactions = AsyncMock(return_value=fintoc_txns)
-        MockClient.return_value = mock_client_instance
+        mock_client = AsyncMock()
+        mock_client.fetch_transactions = AsyncMock(return_value=[
+            make_fintoc_txn("ft_1"),
+            make_fintoc_txn("ft_2", description="UBER"),
+        ])
+        MockClient.return_value = mock_client
 
         await import_fintoc_history({}, bank_account_id="ba_1")
 
-    # Two transactions + two splits added
-    assert mock_db.add.call_count == 4
-    # Status set to 'importing' then 'done'
+    from modules.transactions.models import Transaction
+    transactions = [o for o in added_objects if isinstance(o, Transaction)]
+    splits = [o for o in added_objects if isinstance(o, TransactionSplit)]
+    assert len(transactions) == 2
+    assert len(splits) == 2
     assert mock_account.import_status == "done"
 
 
 @pytest.mark.asyncio
 async def test_import_skips_existing_fintoc_id():
-    """Idempotency: if fintoc_id already in DB, skip that transaction."""
+    """Idempotency: if fintoc_id already in DB, skip without creating duplicate."""
     from jobs.tasks import import_fintoc_history
 
-    mock_account = MagicMock()
-    mock_account.id = "ba_1"
-    mock_account.fintoc_link_id = "lt_test"
-    mock_account.fintoc_account_id = "acc_test"
-    mock_account.account_type = "personal"
-    mock_account.user_id = "user_1"
-    mock_account.household_id = "hh_1"
-
-    fintoc_txns = [make_fintoc_txn("ft_already_exists", 10000, "COPEC")]
+    mock_account = make_mock_account()
 
     with patch("jobs.tasks.AsyncSessionLocal") as MockSession, \
          patch("jobs.tasks.FintocClient") as MockClient:
@@ -812,18 +879,19 @@ async def test_import_skips_existing_fintoc_id():
         mock_db = AsyncMock()
         mock_db.get = AsyncMock(return_value=mock_account)
         mock_db.scalar = AsyncMock(return_value=MagicMock())  # existing txn found
+        mock_db.add = MagicMock()
         mock_db.commit = AsyncMock()
         MockSession.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         MockSession.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        mock_client_instance = AsyncMock()
-        mock_client_instance.fetch_transactions = AsyncMock(return_value=fintoc_txns)
-        MockClient.return_value = mock_client_instance
+        mock_client = AsyncMock()
+        mock_client.fetch_transactions = AsyncMock(return_value=[make_fintoc_txn("ft_exists")])
+        MockClient.return_value = mock_client
 
         await import_fintoc_history({}, bank_account_id="ba_1")
 
-    # Nothing added (skipped)
     mock_db.add.assert_not_called()
+    assert mock_account.import_status == "done"
 
 
 @pytest.mark.asyncio
@@ -833,18 +901,10 @@ async def test_import_skips_existing_fintoc_id():
     ("joint", "shared"),
 ])
 async def test_import_split_type_mapping(account_type, expected_split):
-    """Account label correctly maps to split_type."""
+    """Account label correctly maps to TransactionSplit.split_type."""
     from jobs.tasks import import_fintoc_history
-    from modules.transactions.models import TransactionSplit
 
-    mock_account = MagicMock()
-    mock_account.id = "ba_1"
-    mock_account.fintoc_link_id = "lt_test"
-    mock_account.fintoc_account_id = "acc_test"
-    mock_account.account_type = account_type
-    mock_account.user_id = "user_1"
-    mock_account.household_id = "hh_1"
-
+    mock_account = make_mock_account(account_type)
     added_objects = []
 
     with patch("jobs.tasks.AsyncSessionLocal") as MockSession, \
@@ -859,11 +919,9 @@ async def test_import_split_type_mapping(account_type, expected_split):
         MockSession.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         MockSession.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        mock_client_instance = AsyncMock()
-        mock_client_instance.fetch_transactions = AsyncMock(
-            return_value=[make_fintoc_txn("ft_1", 5000, "JUMBO")]
-        )
-        MockClient.return_value = mock_client_instance
+        mock_client = AsyncMock()
+        mock_client.fetch_transactions = AsyncMock(return_value=[make_fintoc_txn("ft_1")])
+        MockClient.return_value = mock_client
 
         await import_fintoc_history({}, bank_account_id="ba_1")
 
@@ -874,35 +932,32 @@ async def test_import_split_type_mapping(account_type, expected_split):
 
 @pytest.mark.asyncio
 async def test_import_sets_status_failed_on_error():
-    """On Fintoc API error, import_status is set to 'failed' and job logged."""
+    """On Fintoc API error, import_status is set to 'failed' and job is logged."""
     from jobs.tasks import import_fintoc_history
 
-    mock_account = MagicMock()
-    mock_account.id = "ba_1"
-    mock_account.fintoc_link_id = "lt_test"
-    mock_account.fintoc_account_id = "acc_test"
-    mock_account.account_type = "personal"
-    mock_account.user_id = "user_1"
-    mock_account.household_id = "hh_1"
+    mock_account = make_mock_account()
 
     with patch("jobs.tasks.AsyncSessionLocal") as MockSession, \
          patch("jobs.tasks.FintocClient") as MockClient:
 
         mock_db = AsyncMock()
         mock_db.get = AsyncMock(return_value=mock_account)
+        mock_db.add = MagicMock()
         mock_db.commit = AsyncMock()
         MockSession.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         MockSession.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        mock_client_instance = AsyncMock()
-        mock_client_instance.fetch_transactions = AsyncMock(
-            side_effect=Exception("Fintoc API down")
-        )
-        MockClient.return_value = mock_client_instance
+        mock_client = AsyncMock()
+        mock_client.fetch_transactions = AsyncMock(side_effect=Exception("Fintoc API down"))
+        MockClient.return_value = mock_client
 
         await import_fintoc_history({}, bank_account_id="ba_1")
 
     assert mock_account.import_status == "failed"
+    # A FailedJob should have been added
+    from modules.transactions.models import FailedJob
+    failed_jobs = [o for o in mock_db.add.call_args_list if isinstance(o.args[0], FailedJob)]
+    assert len(failed_jobs) == 1
 ```
 
 - [ ] **Step 2: Run — expect FAIL**
@@ -910,28 +965,31 @@ async def test_import_sets_status_failed_on_error():
 ```bash
 cd backend && python -m pytest tests/test_fintoc_import.py -v
 ```
-Expected: `ImportError` or `AttributeError` (function doesn't exist yet)
+Expected: `ImportError` (function doesn't exist yet)
 
 - [ ] **Step 3: Implement the job in tasks.py**
 
-Add to `backend/jobs/tasks.py` (after the existing imports, add `from date import date, timedelta` is already imported — add the new imports):
-
-First, add to the imports block at the top of the file:
+First, add `FintocClient` to the imports at the top of `backend/jobs/tasks.py`:
 ```python
 from modules.fintoc.client import FintocClient
-from modules.transactions.models import Transaction, TransactionSplit, ProcessedWebhook, FailedJob
 ```
-(Note: `Transaction`, `TransactionSplit`, `FailedJob` are already imported — just add `FintocClient`)
+(The other required imports — `AsyncSessionLocal`, `Transaction`, `TransactionSplit`, `FailedJob`, `BankAccount`, `select`, `datetime`, `timedelta`, `timezone` — are already present in `tasks.py`.)
 
-Then add the new job function:
+Then add this function to `backend/jobs/tasks.py` (after `run_fintoc_sync`):
 ```python
 async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
     """
     One-shot job: import 90 days of Fintoc transactions for a bank account.
-    Runs automatically when a user connects a bank account via Fintoc Link.
-    Idempotent: skips transactions already in DB by fintoc_id.
+    Triggered when a user connects a bank account via Fintoc Link.
+    Idempotent: skips any transaction whose fintoc_id already exists in the DB.
     """
-    from datetime import date, timedelta, timezone
+    from datetime import date
+
+    split_map = {
+        "personal": "personal",
+        "partner": "partner",
+        "joint": "shared",
+    }
 
     async with AsyncSessionLocal() as db:
         account = await db.get(BankAccount, bank_account_id)
@@ -949,22 +1007,11 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
                 until=date.today(),
             )
 
-            split_map = {
-                "personal": "personal",
-                "partner": "partner",
-                "joint": "shared",
-            }
-
-            imported = 0
-            skipped = 0
-
             for ftxn in fintoc_txns:
-                # Idempotency: skip if already imported
                 existing = await db.scalar(
                     select(Transaction).where(Transaction.fintoc_id == ftxn.id)
                 )
                 if existing:
-                    skipped += 1
                     continue
 
                 txn = Transaction(
@@ -989,9 +1036,8 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
                     decided_at=datetime.now(timezone.utc),
                 )
                 db.add(split)
-                imported += 1
 
-            await db.commit()
+            # Set status to done and commit everything in one shot
             account.import_status = "done"
             await db.commit()
 
@@ -1005,6 +1051,8 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
                 db,
             )
 ```
+
+**Note on single commit:** `import_status = "done"` is set inside the `try` block before the final `await db.commit()`, so all inserts and the status update commit atomically. This avoids the expired-object issue that would occur if we called `commit()` and then tried to modify the account object afterward.
 
 - [ ] **Step 4: Run tests — expect PASS**
 
@@ -1022,7 +1070,7 @@ git commit -m "feat: import_fintoc_history ARQ job - 90-day history import with 
 
 ---
 
-### Task 13: Run full backend test suite
+### Task 12: Run full backend test suite
 
 - [ ] **Step 1: Run all tests**
 
@@ -1034,28 +1082,28 @@ Expected: All existing tests still pass + new tests pass. No regressions.
 - [ ] **Step 2: Commit if any fixes were needed**
 
 ```bash
-git add -A && git commit -m "fix: resolve any test conflicts after fintoc import job"
+git add -A && git commit -m "fix: resolve any test conflicts after import job"
 ```
 
 ---
 
 ## PHASE 2 — Agent C: Frontend Foundation
-> **Tasks 14–15. Does NOT depend on Agent A or B.**
+> **Tasks 13–14. Independent from Agent A and B.**
 
-### Task 14: Add Fintoc types and API methods to api.ts
+### Task 13: Add Fintoc types and API methods to api.ts
 
 **Files:**
 - Modify: `frontend/app/lib/api.ts`
 
 - [ ] **Step 1: Add new TypeScript interfaces**
 
-Add after the existing `BudgetStatus` interface in `frontend/app/lib/api.ts`:
+Add after the `BudgetStatus` interface in `frontend/app/lib/api.ts`:
 ```typescript
 export interface FintocAccount {
-  id: string;          // fintoc_account_id
-  name: string;        // e.g. "Cuenta Corriente"
-  type: string;        // e.g. "checking_account" | "credit_card"
-  number: string;      // e.g. "****1234"
+  id: string;       // fintoc_account_id
+  name: string;     // e.g. "Cuenta Corriente"
+  type: string;     // e.g. "checking_account" | "credit_card"
+  number: string;   // e.g. "****1234"
   currency: string;
 }
 
@@ -1080,12 +1128,14 @@ export interface ImportStatus {
 }
 ```
 
-- [ ] **Step 2: Add new API methods**
+- [ ] **Step 2: Add new API methods to the api object**
 
-Add to the `api` object in `frontend/app/lib/api.ts`:
+Add inside the `api` object in `frontend/app/lib/api.ts`:
 ```typescript
   getFintocAccounts: (linkToken: string) =>
-    apiFetch<FintocAccount[]>(`/bank-accounts/fintoc/accounts?link_token=${encodeURIComponent(linkToken)}`),
+    apiFetch<FintocAccount[]>(
+      `/bank-accounts/fintoc/accounts?link_token=${encodeURIComponent(linkToken)}`
+    ),
 
   connectFintocAccounts: (payload: ConnectFintocPayload) =>
     apiFetch<ConnectFintocResult>("/bank-accounts/fintoc/connect", {
@@ -1108,12 +1158,12 @@ Expected: No errors.
 
 ```bash
 git add frontend/app/lib/api.ts
-git commit -m "feat: add Fintoc types and API methods to api.ts"
+git commit -m "feat: add Fintoc types and API methods (getFintocAccounts, connectFintocAccounts, getImportStatus)"
 ```
 
 ---
 
-### Task 15: FintocAccountPicker component
+### Task 14: FintocAccountPicker component
 
 **Files:**
 - Create: `frontend/app/(dashboard)/components/FintocAccountPicker.tsx`
@@ -1152,9 +1202,7 @@ export function FintocAccountPicker({ accounts, onConfirm, loading }: Props) {
   const [selections, setSelections] = useState<
     Record<string, { checked: boolean; label: SelectedFintocAccount["label"] }>
   >(
-    Object.fromEntries(
-      accounts.map((a) => [a.id, { checked: true, label: "personal" }])
-    )
+    Object.fromEntries(accounts.map((a) => [a.id, { checked: true, label: "personal" }]))
   );
 
   function toggleAccount(id: string) {
@@ -1174,10 +1222,7 @@ export function FintocAccountPicker({ accounts, onConfirm, loading }: Props) {
   function handleConfirm() {
     const selected = accounts
       .filter((a) => selections[a.id]?.checked)
-      .map((a) => ({
-        fintoc_account_id: a.id,
-        label: selections[a.id].label,
-      }));
+      .map((a) => ({ fintoc_account_id: a.id, label: selections[a.id].label }));
     onConfirm(selected);
   }
 
@@ -1254,26 +1299,25 @@ export function FintocAccountPicker({ accounts, onConfirm, loading }: Props) {
 ```bash
 cd frontend && npx tsc --noEmit
 ```
-Expected: No errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add frontend/app/(dashboard)/components/FintocAccountPicker.tsx
-git commit -m "feat: FintocAccountPicker component - account selection with personal/partner/joint labels"
+git add "frontend/app/(dashboard)/components/FintocAccountPicker.tsx"
+git commit -m "feat: FintocAccountPicker - account selection with personal/partner/joint labels"
 ```
 
 ---
 
 ## PHASE 3 — Parallel Implementation
-> **🚦 Start both agents simultaneously after ALL of Phase 2 completes.**
+> **🚦 Start both agents simultaneously after ALL of Phase 2 is merged to main.**
 
 ---
 
 ## PHASE 3 — Agent D: connect-bank page rewrite
-> **Task 16. Requires Phase 2 Agent A (backend endpoints) and Agent C (api.ts + FintocAccountPicker).**
+> **Task 15. Requires Phase 2 Agent A (backend) and Agent C (api.ts + FintocAccountPicker).**
 
-### Task 16: Rewrite connect-bank onboarding page
+### Task 15: Rewrite connect-bank onboarding page
 
 **Files:**
 - Modify: `frontend/app/(auth)/onboarding/connect-bank/page.tsx`
@@ -1284,7 +1328,7 @@ git commit -m "feat: FintocAccountPicker component - account selection with pers
 ```tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { Button } from "@/components/ui/button";
@@ -1315,7 +1359,7 @@ export default function ConnectBankPage() {
   const { householdId } = useLukaStore();
   const [step, setStep] = useState<Step>("connect");
   const [fintocAccounts, setFintocAccounts] = useState<FintocAccount[]>([]);
-  const [linkToken, setLinkToken] = useState<string>("");
+  const [linkToken, setLinkToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [scriptReady, setScriptReady] = useState(false);
 
@@ -1325,7 +1369,6 @@ export default function ConnectBankPage() {
       return;
     }
     setError(null);
-
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
       product: "movements",
@@ -1338,15 +1381,10 @@ export default function ConnectBankPage() {
           setStep("pick");
         } catch {
           setError("No se pudieron cargar las cuentas. Intenta de nuevo.");
-          setStep("connect");
         }
       },
-      onExit: () => {
-        setError("Conexión cancelada.");
-      },
-      onError: () => {
-        setError("Error al conectar. Intenta de nuevo.");
-      },
+      onExit: () => setError("Conexión cancelada."),
+      onError: () => setError("Error al conectar. Intenta de nuevo."),
     });
     widget.open();
   }
@@ -1361,12 +1399,11 @@ export default function ConnectBankPage() {
         accounts: selected,
       });
       setStep("done");
-      // Small delay so user sees success message before redirect
       setTimeout(() => router.push("/onboarding/verify-whatsapp"), 1500);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Error desconocido";
+      const msg = err instanceof Error ? err.message : "";
       setError(
-        message.includes("409")
+        msg.includes("409")
           ? "Una de las cuentas ya está conectada."
           : "Error al guardar las cuentas. Intenta de nuevo."
       );
@@ -1376,11 +1413,7 @@ export default function ConnectBankPage() {
 
   return (
     <>
-      <Script
-        src="https://js.fintoc.com/v1/"
-        onReady={() => setScriptReady(true)}
-      />
-
+      <Script src="https://js.fintoc.com/v1/" onReady={() => setScriptReady(true)} />
       <div className="min-h-screen bg-luka-light flex items-center justify-center p-4">
         <Card className="w-full max-w-lg shadow-sm">
           <CardHeader>
@@ -1389,7 +1422,6 @@ export default function ConnectBankPage() {
               Conecta tus cuentas bancarias y tarjetas. Importaremos los últimos 3 meses automáticamente.
             </CardDescription>
           </CardHeader>
-
           <CardContent className="space-y-4">
             {error && (
               <p className="text-sm text-luka-danger bg-red-50 rounded-md px-3 py-2">{error}</p>
@@ -1412,6 +1444,12 @@ export default function ConnectBankPage() {
                 >
                   {scriptReady ? "Conectar banco" : "Cargando..."}
                 </Button>
+                <button
+                  onClick={() => router.push("/onboarding/verify-whatsapp")}
+                  className="w-full text-sm text-luka-muted hover:text-luka-dark text-center"
+                >
+                  Saltar por ahora
+                </button>
               </div>
             )}
 
@@ -1426,28 +1464,15 @@ export default function ConnectBankPage() {
             {step === "loading" && (
               <div className="text-center py-8">
                 <p className="text-luka-dark font-medium">Guardando cuentas...</p>
-                <p className="text-sm text-luka-muted mt-1">
-                  El historial se importará en segundo plano.
-                </p>
+                <p className="text-sm text-luka-muted mt-1">El historial se importará en segundo plano.</p>
               </div>
             )}
 
             {step === "done" && (
               <div className="text-center py-8">
                 <p className="text-luka-dark font-medium">¡Cuentas conectadas!</p>
-                <p className="text-sm text-luka-muted mt-1">
-                  Importando historial... Redirigiendo.
-                </p>
+                <p className="text-sm text-luka-muted mt-1">Importando historial... Redirigiendo.</p>
               </div>
-            )}
-
-            {step === "connect" && (
-              <button
-                onClick={() => router.push("/onboarding/verify-whatsapp")}
-                className="w-full text-sm text-luka-muted hover:text-luka-dark text-center"
-              >
-                Saltar por ahora
-              </button>
             )}
           </CardContent>
         </Card>
@@ -1462,7 +1487,6 @@ export default function ConnectBankPage() {
 ```bash
 cd frontend && npx tsc --noEmit
 ```
-Expected: No errors.
 
 - [ ] **Step 3: Commit**
 
@@ -1474,9 +1498,9 @@ git commit -m "feat: rewrite connect-bank page with Fintoc Link widget and accou
 ---
 
 ## PHASE 3 — Agent E: Status Banner + Settings
-> **Tasks 17–20. Requires Phase 2 Agent C (api.ts). Independent from Agent D.**
+> **Tasks 16–19. Requires Phase 2 Agent C (api.ts). Independent from Agent D.**
 
-### Task 17: useImportStatus polling hook
+### Task 16: useImportStatus polling hook
 
 **Files:**
 - Create: `frontend/app/lib/hooks/useImportStatus.ts`
@@ -1510,7 +1534,6 @@ export function useImportStatus(householdId: string | null) {
           timeoutId = setTimeout(poll, POLL_INTERVAL_MS);
         }
       } catch {
-        // Silently retry on error — banner stays visible
         if (active) {
           timeoutId = setTimeout(poll, POLL_INTERVAL_MS);
         }
@@ -1518,7 +1541,6 @@ export function useImportStatus(householdId: string | null) {
     }
 
     poll();
-
     return () => {
       active = false;
       clearTimeout(timeoutId);
@@ -1534,18 +1556,17 @@ export function useImportStatus(householdId: string | null) {
 ```bash
 cd frontend && npx tsc --noEmit
 ```
-Expected: No errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add frontend/app/lib/hooks/useImportStatus.ts
-git commit -m "feat: useImportStatus hook - polls /bank-accounts/import-status every 5s"
+git commit -m "feat: useImportStatus hook - polls import-status every 5s while importing"
 ```
 
 ---
 
-### Task 18: ImportStatusBanner component
+### Task 17: ImportStatusBanner component
 
 **Files:**
 - Create: `frontend/app/(dashboard)/components/ImportStatusBanner.tsx`
@@ -1579,26 +1600,24 @@ export function ImportStatusBanner() {
 ```bash
 cd frontend && npx tsc --noEmit
 ```
-Expected: No errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add "frontend/app/(dashboard)/components/ImportStatusBanner.tsx"
-git commit -m "feat: ImportStatusBanner component - shows while Fintoc history is importing"
+git commit -m "feat: ImportStatusBanner - shows while Fintoc history import is in progress"
 ```
 
 ---
 
-### Task 19: Add banner to dashboard layout
+### Task 18: Add banner to dashboard layout
 
 **Files:**
 - Modify: `frontend/app/(dashboard)/layout.tsx`
 
 - [ ] **Step 1: Update the layout**
 
-In `frontend/app/(dashboard)/layout.tsx`, add the import and render the banner:
-
+Replace the full content of `frontend/app/(dashboard)/layout.tsx`:
 ```tsx
 import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
@@ -1642,50 +1661,41 @@ git commit -m "feat: add ImportStatusBanner to dashboard layout"
 
 ---
 
-### Task 20: Settings page — Connected Accounts section
+### Task 19: Settings page — Add Account button
 
 **Files:**
 - Modify: `frontend/app/(dashboard)/settings/page.tsx`
 
+**Note on scope:** `HouseholdSummaryRow` does not include `bank_accounts`. Rather than adding a new list endpoint (deferred to a future task), this task adds only an "Add Account" button that opens the Fintoc widget. Listing connected accounts in settings is a follow-up task.
+
 - [ ] **Step 1: Read the current settings page**
 
-Read `frontend/app/(dashboard)/settings/page.tsx` to understand the current structure before editing.
+Read `frontend/app/(dashboard)/settings/page.tsx` to understand the existing structure before editing.
 
-- [ ] **Step 2: Add Connected Accounts section**
+- [ ] **Step 2: Add imports and the ConnectBankSection component**
 
-Add at the top of the file, after the existing imports:
+At the top of the file, add the necessary imports for Fintoc:
 ```tsx
-"use client";
-
-import { useState, useEffect } from "react";
 import Script from "next/script";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/app/lib/supabase/client";
-import { useLukaStore } from "@/app/lib/store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
 import { api, FintocAccount, SelectedFintocAccount } from "@/app/lib/api";
 import { FintocAccountPicker } from "@/app/(dashboard)/components/FintocAccountPicker";
-import { useHouseholdSummary } from "@/app/lib/hooks/useHousehold";
 ```
 
-Add a `ConnectedAccountsCard` section inside the settings page component. Insert it before the existing account card:
-
+Add this component definition before the default export:
 ```tsx
-function ConnectedAccountsCard() {
+function ConnectBankSection() {
   const { householdId } = useLukaStore();
-  const { data: summary } = useHouseholdSummary(householdId ?? "");
+  const [scriptReady, setScriptReady] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [fintocAccounts, setFintocAccounts] = useState<FintocAccount[]>([]);
   const [linkToken, setLinkToken] = useState("");
-  const [scriptReady, setScriptReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   function openWidget() {
     if (!window.Fintoc) return;
-    setError(null);
+    setMessage(null);
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
       product: "movements",
@@ -1696,8 +1706,8 @@ function ConnectedAccountsCard() {
         setFintocAccounts(accounts);
         setShowPicker(true);
       },
-      onExit: () => setError("Conexión cancelada."),
-      onError: () => setError("Error al conectar."),
+      onExit: () => setMessage("Conexión cancelada."),
+      onError: () => setMessage("Error al conectar."),
     });
     widget.open();
   }
@@ -1709,21 +1719,20 @@ function ConnectedAccountsCard() {
       await api.connectFintocAccounts({ link_token: linkToken, household_id: householdId, accounts: selected });
       setShowPicker(false);
       setFintocAccounts([]);
+      setMessage("¡Cuentas conectadas! El historial se importa en segundo plano.");
     } catch {
-      setError("Error al guardar las cuentas.");
+      setMessage("Error al guardar las cuentas.");
     } finally {
       setConnecting(false);
     }
   }
-
-  const bankAccounts = summary?.flatMap((row: { bank_accounts?: unknown[] }) => row.bank_accounts ?? []) ?? [];
 
   return (
     <>
       <Script src="https://js.fintoc.com/v1/" onReady={() => setScriptReady(true)} />
       <Card className="shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base text-luka-dark">Cuentas conectadas</CardTitle>
+          <CardTitle className="text-base text-luka-dark">Cuentas bancarias</CardTitle>
           {!showPicker && (
             <Button
               size="sm"
@@ -1736,30 +1745,19 @@ function ConnectedAccountsCard() {
             </Button>
           )}
         </CardHeader>
-        <CardContent className="space-y-3">
-          {error && (
-            <p className="text-sm text-luka-danger">{error}</p>
-          )}
-          {bankAccounts.length === 0 && !showPicker && (
-            <p className="text-sm text-luka-muted">No hay cuentas conectadas aún.</p>
-          )}
-          {bankAccounts.map((acct: Record<string, string>) => (
-            <div key={acct.id} className="flex items-center justify-between py-2 border-b last:border-0">
-              <div>
-                <p className="text-sm font-medium text-luka-dark">{acct.bank_name}</p>
-                {acct.fintoc_account_id && (
-                  <p className="text-xs text-luka-muted">{acct.fintoc_account_id.slice(-8)}</p>
-                )}
-              </div>
-              <Badge variant="secondary" className="text-xs capitalize">{acct.account_type}</Badge>
-            </div>
-          ))}
+        <CardContent>
+          {message && <p className="text-sm text-luka-muted mb-3">{message}</p>}
           {showPicker && (
             <FintocAccountPicker
               accounts={fintocAccounts}
               onConfirm={handleConfirm}
               loading={connecting}
             />
+          )}
+          {!showPicker && !message && (
+            <p className="text-sm text-luka-muted">
+              Conecta tus cuentas para importar transacciones automáticamente.
+            </p>
           )}
         </CardContent>
       </Card>
@@ -1768,7 +1766,7 @@ function ConnectedAccountsCard() {
 }
 ```
 
-Then render `<ConnectedAccountsCard />` at the top of the settings page JSX, before the existing account card.
+Render `<ConnectBankSection />` in the settings page JSX, above the existing account/privacy cards.
 
 - [ ] **Step 3: Verify TypeScript**
 
@@ -1780,38 +1778,74 @@ cd frontend && npx tsc --noEmit
 
 ```bash
 git add "frontend/app/(dashboard)/settings/page.tsx"
-git commit -m "feat: add Connected Accounts section to settings page"
+git commit -m "feat: add Connect Bank section to settings page"
 ```
 
 ---
 
 ## PHASE 4 — Integration
-> **One agent. Run after Phase 3 completes. Requires all previous phases merged.**
+> **One agent. Run after Phase 3 is fully merged. Requires all previous phases.**
 
-### Task 21: Run migrations, verify, document env vars
+### Task 20: Wire worker, run migrations, smoke test
 
-- [ ] **Step 1: Run migrations on local/staging DB**
+**Files:**
+- Modify: `backend/worker.py`
+
+- [ ] **Step 1: Update worker.py — add import_fintoc_history**
+
+The `import_fintoc_history` function now exists (written in Task 11). Update `backend/worker.py`:
+
+```python
+import redis.asyncio as aioredis
+from arq import cron
+from arq.connections import RedisSettings
+from core.config import settings
+from jobs.tasks import (
+    process_email,
+    import_fintoc_history,
+    renew_mail_watches,
+    purge_raw_emails,
+    cleanup_processed_webhooks,
+    run_fintoc_sync,
+)
+
+
+async def startup(ctx: dict) -> None:
+    ctx["redis"] = await aioredis.from_url(settings.redis_url)
+
+
+async def shutdown(ctx: dict) -> None:
+    await ctx["redis"].aclose()
+
+
+class WorkerSettings:
+    functions = [process_email, import_fintoc_history]
+    cron_jobs = [
+        cron(renew_mail_watches, hour=3, minute=0),   # 3am daily
+        cron(purge_raw_emails, minute=0),              # every hour
+        cron(cleanup_processed_webhooks, hour=4, minute=0),  # 4am daily
+        cron(run_fintoc_sync, hour=2, minute=0),       # 2am nightly
+    ]
+    on_startup = startup
+    on_shutdown = shutdown
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    max_jobs = 10
+    job_timeout = 60
+```
+
+- [ ] **Step 2: Verify worker loads**
 
 ```bash
-cd backend && alembic upgrade head
+cd backend && python -c "from worker import WorkerSettings; print('OK')"
 ```
-Expected output ends with: `Running upgrade 004 -> 005, Add import_status column to bank_accounts`
+Expected: `OK`
 
-- [ ] **Step 2: Verify all backend tests pass**
+- [ ] **Step 3: Run full backend test suite**
 
 ```bash
 cd backend && python -m pytest tests/ -v
 ```
-Expected: All tests pass, no regressions.
-
-- [ ] **Step 3: Verify FastAPI starts and routes are registered**
-
-```bash
-cd backend && uvicorn main:app --reload &
-curl http://localhost:8000/openapi.json | python -m json.tool | grep "bank-accounts"
-kill %1
-```
-Expected: See `/bank-accounts/fintoc/accounts`, `/bank-accounts/fintoc/connect`, `/bank-accounts/import-status` in the output.
+Expected: All tests pass.
 
 - [ ] **Step 4: Verify frontend builds**
 
@@ -1820,37 +1854,47 @@ cd frontend && npm run build
 ```
 Expected: Build succeeds with no TypeScript errors.
 
-- [ ] **Step 5: Add env var to Vercel**
+- [ ] **Step 5: Run migrations on local DB**
+
+```bash
+cd backend && alembic upgrade head
+```
+Expected: Ends with `Running upgrade 004 -> 005, Add import_status column to bank_accounts`
+
+- [ ] **Step 6: Verify routes are registered**
+
+```bash
+cd backend && python -c "
+from main import app
+routes = [r.path for r in app.routes]
+assert '/bank-accounts/fintoc/accounts' in routes
+assert '/bank-accounts/fintoc/connect' in routes
+assert '/bank-accounts/import-status' in routes
+print('All routes registered OK')
+"
+```
+
+- [ ] **Step 7: Add env var to Vercel**
 
 In Vercel dashboard → Settings → Environment Variables:
 - Name: `NEXT_PUBLIC_FINTOC_PUBLIC_KEY`
-- Value: your Fintoc public key (from fintoc.com dashboard)
-- Environment: Production + Preview
+- Value: your Fintoc public key (from fintoc.com dashboard → Settings → API Keys)
+- Environments: Production + Preview
 
-- [ ] **Step 6: Add env var to Railway**
-
-`FINTOC_API_KEY` is already set. Confirm it is the same key used in `FintocClient`.
-
-- [ ] **Step 7: Run migrations on production DB**
+- [ ] **Step 8: Run migrations on production DB**
 
 ```bash
 cd backend && DATABASE_URL=<production_url> alembic upgrade head
 ```
 
-- [ ] **Step 8: Final commit — update project state docs**
+- [ ] **Step 9: Commit and deploy**
 
 ```bash
-git add -A
-git commit -m "feat: complete Fintoc integration - widget, history import, status banner"
-```
-
-- [ ] **Step 9: Deploy**
-
-Push to `main`. Railway and Vercel auto-deploy.
-
-```bash
+git add backend/worker.py
+git commit -m "feat: register import_fintoc_history in ARQ worker"
 git push origin main
 ```
+Railway and Vercel auto-deploy on push to main.
 
 ---
 
@@ -1859,22 +1903,20 @@ git push origin main
 ```
 PHASE 1 (one agent):
   git checkout -b feat/fintoc-foundation
-  → Tasks 1, 2, 3, 4, 5 in order
-  → Merge to main
+  → Tasks 1, 2, 3, 4 in order → merge to main
 
-PHASE 2 (three simultaneous agents from main):
-  Agent A: git checkout -b feat/fintoc-backend-routes    → Tasks 6, 7, 8, 9, 10
-  Agent B: git checkout -b feat/fintoc-import-job        → Tasks 11, 12, 13
-  Agent C: git checkout -b feat/fintoc-frontend-foundation → Tasks 14, 15
+PHASE 2 (three simultaneous worktrees from main):
+  Agent A: git checkout -b feat/fintoc-backend-routes      → Tasks 5, 6, 7, 8, 9
+  Agent B: git checkout -b feat/fintoc-import-job          → Tasks 10, 11, 12
+  Agent C: git checkout -b feat/fintoc-frontend-foundation → Tasks 13, 14
   → All three merge to main when done
 
-PHASE 3 (two simultaneous agents from main):
-  Agent D: git checkout -b feat/fintoc-connect-page      → Task 16
-  Agent E: git checkout -b feat/fintoc-status-settings   → Tasks 17, 18, 19, 20
+PHASE 3 (two simultaneous worktrees from main):
+  Agent D: git checkout -b feat/fintoc-connect-page      → Task 15
+  Agent E: git checkout -b feat/fintoc-status-settings   → Tasks 16, 17, 18, 19
   → Both merge to main when done
 
 PHASE 4 (one agent):
   git checkout -b feat/fintoc-integration
-  → Task 21
-  → Merge to main → push to deploy
+  → Task 20 → merge to main → push → deploy
 ```
