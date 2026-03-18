@@ -13,6 +13,8 @@ from modules.fintoc.client import FintocClient
 from sqlalchemy import select, and_, delete, update
 from datetime import datetime, timedelta, timezone
 
+logger = logging.getLogger(__name__)
+
 
 async def process_email(
     ctx: dict,
@@ -254,32 +256,40 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
                     skipped += 1
                     continue
 
-                txn = Transaction(
-                    user_id=account.user_id,
-                    household_id=account.household_id,
-                    bank_account_id=account.id,
-                    raw_merchant_name=ftxn.description,
-                    amount=ftxn.amount,
-                    currency="CLP",
-                    transaction_date=ftxn.transaction_date,
-                    source="fintoc",
-                    status="settled",
-                    fintoc_id=ftxn.id,
-                )
-                db.add(txn)
-                await db.flush()
+                try:
+                    txn = Transaction(
+                        user_id=account.user_id,
+                        household_id=account.household_id,
+                        bank_account_id=account.id,
+                        raw_merchant_name=ftxn.description,
+                        amount=ftxn.amount,
+                        currency="CLP",
+                        transaction_date=ftxn.transaction_date,
+                        source="fintoc",
+                        status="settled",
+                        fintoc_id=ftxn.id,
+                    )
+                    db.add(txn)
+                    await db.flush()
 
-                split = TransactionSplit(
-                    transaction_id=txn.id,
-                    split_type=split_map.get(account.account_type, "personal"),
-                    decided_by_user_id=account.user_id,
-                    decided_at=datetime.now(timezone.utc),
-                )
-                db.add(split)
-                await db.commit()
-                imported += 1
+                    split = TransactionSplit(
+                        transaction_id=txn.id,
+                        split_type=split_map.get(account.account_type, "personal"),
+                        decided_by_user_id=account.user_id,
+                        decided_at=datetime.now(timezone.utc),
+                    )
+                    db.add(split)
+                    await db.commit()
+                    imported += 1
+                except Exception as loop_err:
+                    await db.rollback()
+                    logger.warning(
+                        "import_fintoc_history: skipping txn fintoc_id=%s due to error: %s",
+                        ftxn.id,
+                        loop_err,
+                    )
+                    skipped += 1
 
-            logger = logging.getLogger(__name__)
             logger.info(
                 "import_fintoc_history: bank_account_id=%s imported=%d skipped=%d",
                 bank_account_id,
@@ -291,15 +301,24 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
             await db.commit()
 
         except Exception as e:
-            await db.refresh(account)
-            account.import_status = "failed"
-            await db.commit()
-            await _record_failed_job(
-                "import_fintoc_history",
-                {"bank_account_id": bank_account_id},
-                str(e),
-                db,
+            logger.error(
+                "import_fintoc_history: failed for bank_account_id=%s: %s",
+                bank_account_id,
+                e,
             )
+            # Use a fresh session to write the status update in case current session is invalid
+            async with AsyncSessionLocal() as fresh_db:
+                failed_account = await fresh_db.get(BankAccount, bank_account_id)
+                if failed_account:
+                    failed_account.import_status = "failed"
+                    await fresh_db.commit()
+                await _record_failed_job(
+                    "import_fintoc_history",
+                    {"bank_account_id": bank_account_id},
+                    str(e),
+                    fresh_db,
+                )
+            return
 
 
 async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> None:

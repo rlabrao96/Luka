@@ -142,27 +142,46 @@ async def test_import_sets_status_failed_on_error():
     from jobs.tasks import import_fintoc_history
 
     mock_account = make_mock_account()
+    mock_failed_account = MagicMock()
+
+    mock_main_db = AsyncMock()
+    mock_main_db.get = AsyncMock(return_value=mock_account)
+    mock_main_db.add = MagicMock()
+    mock_main_db.commit = AsyncMock()
+    mock_main_db.refresh = AsyncMock()
+
+    mock_fresh_db = AsyncMock()
+    mock_fresh_db.get = AsyncMock(return_value=mock_failed_account)
+    mock_fresh_db.add = MagicMock()
+    mock_fresh_db.commit = AsyncMock()
+
+    call_count = 0
+
+    def make_session_cm():
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            cm = AsyncMock()
+            cm.__aenter__ = AsyncMock(return_value=mock_main_db)
+            cm.__aexit__ = AsyncMock(return_value=None)
+        else:
+            cm = AsyncMock()
+            cm.__aenter__ = AsyncMock(return_value=mock_fresh_db)
+            cm.__aexit__ = AsyncMock(return_value=None)
+        return cm
 
     with (
-        patch("jobs.tasks.AsyncSessionLocal") as MockSession,
+        patch("jobs.tasks.AsyncSessionLocal", side_effect=make_session_cm),
         patch("jobs.tasks.FintocClient") as MockClient,
     ):
-        mock_db = AsyncMock()
-        mock_db.get = AsyncMock(return_value=mock_account)
-        mock_db.add = MagicMock()
-        mock_db.commit = AsyncMock()
-        MockSession.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        MockSession.return_value.__aexit__ = AsyncMock(return_value=None)
-
         mock_client = AsyncMock()
         mock_client.fetch_transactions = AsyncMock(side_effect=Exception("Fintoc API down"))
         MockClient.return_value = mock_client
 
         await import_fintoc_history({}, bank_account_id="ba_1")
 
-    assert mock_account.import_status == "failed"
-    # A FailedJob should have been added
+    assert mock_failed_account.import_status == "failed"
     from modules.transactions.models import FailedJob
 
-    failed_jobs = [o for o in mock_db.add.call_args_list if isinstance(o.args[0], FailedJob)]
+    failed_jobs = [o for o in mock_fresh_db.add.call_args_list if isinstance(o.args[0], FailedJob)]
     assert len(failed_jobs) == 1
