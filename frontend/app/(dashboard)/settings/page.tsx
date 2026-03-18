@@ -6,25 +6,59 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/app/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useLukaStore } from "@/app/lib/store";
-
+import { api } from "@/app/lib/api";
 
 function ConnectBankSection() {
-  const { householdId, userId } = useLukaStore();
+  // Read from store; if empty, fetch directly from /auth/me on mount
+  const storeHouseholdId = useLukaStore((s) => s.householdId);
+  const storeUserId = useLukaStore((s) => s.userId);
+  const setUser = useLukaStore((s) => s.setUser);
+  const setHousehold = useLukaStore((s) => s.setHousehold);
+
+  const [householdId, setHouseholdId] = useState<string | null>(storeHouseholdId);
+  const [userId, setUserId] = useState<string | null>(storeUserId);
   const [scriptReady, setScriptReady] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [loadingUser, setLoadingUser] = useState(false);
 
+  // Patch Fintoc SDK v1 postMessage DataCloneError bug
   useEffect(() => {
-    // Fintoc SDK v1 bug: internally calls postMessage() with options including callbacks,
-    // which throws DataCloneError (functions can't be structured-cloned).
-    // Patching Window.prototype intercepts all postMessage calls regardless of
-    // when the SDK captured the reference.
     const proto = Window.prototype;
     const orig = proto.postMessage;
     proto.postMessage = function (this: Window, msg: unknown, ...args: unknown[]) {
-      try { return orig.apply(this, [msg, ...args] as Parameters<typeof orig>); }
-      catch (e) { if (e instanceof DOMException && e.name === "DataCloneError") return; throw e; }
+      try {
+        return orig.apply(this, [msg, ...args] as Parameters<typeof orig>);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "DataCloneError") return;
+        throw e;
+      }
     };
-    return () => { proto.postMessage = orig; };
+    return () => {
+      proto.postMessage = orig;
+    };
+  }, []);
+
+  // Fetch user info directly from API if store is empty
+  // (StoreInitializer may not have run yet, or the backend just (re)deployed)
+  useEffect(() => {
+    if (householdId && userId) return;
+    setLoadingUser(true);
+    api
+      .getMe()
+      .then((user) => {
+        const uid = String(user.id);
+        setUserId(uid);
+        setUser(uid, user.full_name);
+        if (user.household_id) {
+          setHouseholdId(user.household_id);
+          setHousehold(user.household_id);
+        }
+      })
+      .catch(() => {
+        setMessage("No se pudo verificar tu sesión. Recarga la página.");
+      })
+      .finally(() => setLoadingUser(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openWidget() {
@@ -33,16 +67,13 @@ function ConnectBankSection() {
       return;
     }
     if (!householdId || !userId) {
-      setMessage("Error: sesión no inicializada. Recarga la página e intenta nuevamente.");
-      console.warn("[Fintoc] householdId or userId missing from store", { householdId, userId });
+      setMessage("Aún cargando tu sesión — espera un momento e intenta de nuevo.");
       return;
     }
     setMessage(null);
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
     const webhookUrl = `${apiUrl}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
-
-    console.log("[Fintoc] Opening widget with webhookUrl:", webhookUrl);
 
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
@@ -71,10 +102,10 @@ function ConnectBankSection() {
             size="sm"
             variant="outline"
             onClick={openWidget}
-            disabled={!scriptReady}
+            disabled={!scriptReady || loadingUser}
             className="text-luka-primary border-luka-primary hover:bg-luka-light"
           >
-            + Agregar cuenta
+            {loadingUser ? "Cargando..." : "+ Agregar cuenta"}
           </Button>
         </CardHeader>
         <CardContent>
