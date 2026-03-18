@@ -1,6 +1,6 @@
 # Luka — Project State Document
 **Date:** 2026-03-18
-**Status:** All 4 implementation plans complete + all critical gaps closed. App is LIVE in production (Railway + Vercel). Awaiting WhatsApp/Gmail/Outlook credentials to enable email capture pipeline.
+**Status:** All 4 implementation plans complete + Fintoc bank connect flow fully implemented. App is LIVE in production (Railway + Vercel). Multiple critical bugs fixed (user auto-provisioning, token refresh, hydration, CORS, asyncpg). Awaiting WhatsApp/Gmail/Outlook credentials to enable email capture pipeline.
 
 ---
 
@@ -53,11 +53,18 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   ├── jobs/
 │   │   ├── queue.py                ← ARQ enqueue helpers
 │   │   └── tasks.py                ← 5 async tasks (see ARQ Jobs below)
+│   ├── modules/
+│   │   └── bank_accounts/              ← BankAccount CRUD + Fintoc webhook handler
+│   │       └── router.py               ← GET /bank-accounts, POST /bank-accounts/fintoc/connect
+│   │                                     POST /bank-accounts/webhooks/fintoc-link (link.created)
+│   │                                     GET /bank-accounts/import-status
 │   ├── alembic/
 │   │   └── versions/
 │   │       ├── 001_initial_schema.py     ← All 12 tables
 │   │       ├── 002_rls_policies.py       ← RLS + get_partner_stats() SECURITY DEFINER
-│   │       └── 003_fintoc_bank_account_fields.py ← fintoc_link_id, fintoc_account_id
+│   │       ├── 003_fintoc_bank_account_fields.py ← fintoc_link_id, fintoc_account_id
+│   │       ├── 004_account_type_constraint.py    ← CHECK constraint on account_type
+│   │       └── 005_bank_account_import_status.py ← import_status column on bank_accounts
 │   └── tests/                      ← 17 test files (31 passing, 7 skipped/integration)
 │
 ├── frontend/
@@ -100,8 +107,11 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │           ├── SpendingChart.tsx   ← Recharts AreaChart (personal/shared)
 │   │           ├── CategoryDonut.tsx   ← Recharts PieChart donut
 │   │           ├── RecentTransactions.tsx ← Transaction list with split badges
-│   │           ├── StoreInitializer.tsx   ← Calls GET /auth/me on mount, populates Zustand
-│   │           └── InactivityGuard.tsx    ← Auto-logout after 1h inactivity
+│   │           ├── StoreInitializer.tsx       ← Calls GET /auth/me on mount, populates Zustand
+│   │           ├── InactivityGuard.tsx        ← Auto-logout after 1h inactivity
+│   │           └── ImportStatusBanner.tsx     ← Polls import-status, shows progress banner
+│   │   └── lib/
+│   │       └── fintoc.d.ts             ← Global Window.Fintoc type declaration (single source)
 │   ├── components/ui/              ← shadcn/ui: badge, button, card, input, tabs, table, separator, avatar
 │   └── lib/utils.ts                ← cn() Tailwind class merger
 │
@@ -180,6 +190,12 @@ GET  /transactions/monthly-summary?household_id=X → last 6 months aggregated (
 GET  /budgets/monthly/{id}?month=YYYY-MM   → budget status
 POST /budgets/monthly/{id}                 → set monthly budget
 
+GET  /bank-accounts                         → list user's bank accounts
+GET  /bank-accounts/fintoc/accounts?link_token=X → list Fintoc accounts for a link
+POST /bank-accounts/fintoc/connect          → store fintoc_link_id + fintoc_account_id
+POST /bank-accounts/webhooks/fintoc-link    → Fintoc link.created webhook → enqueue import job
+GET  /bank-accounts/import-status?household_id=X → check if import is in progress
+
 POST /webhooks/gmail                        → Gmail push notification
 POST /webhooks/outlook                      → Outlook push notification
 GET  /webhooks/whatsapp                    → WhatsApp verify webhook
@@ -237,6 +253,12 @@ luka-danger   = #EF4444  (budget exceeded, sign-out button)
 9. **Store reset on sign-out** — Zustand `reset()` called in `finally` block so stale householdId/userId never persists across sessions.
 
 10. **Inactivity auto-logout** — `InactivityGuard` tracks activity events and signs out after 1h idle. Uses `localStorage` timestamp so closing and reopening the browser after 1h also triggers sign-out on return.
+
+11. **User auto-provisioning** — `get_current_user()` in `security.py` auto-creates the `users` row on first authenticated request using Supabase JWT metadata (name, email, OAuth provider). No separate signup endpoint needed.
+
+12. **Fintoc connect flow** — Uses webhookUrl pattern: frontend opens Fintoc JS widget with `webhookUrl` pointing to backend; Fintoc POSTs `link.created` event with `link_token`; backend fetches accounts and enqueues import job. Onboarding and settings both wire this flow.
+
+13. **asyncpg compatibility** — `statement_cache_size=0` set on async engine to handle Supabase's PgBouncer transaction-mode pooler which doesn't support named prepared statements.
 
 ---
 
@@ -311,9 +333,9 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 |-----|--------|-------|
 | WhatsApp PIN verify | Low | Onboarding step exists in UI, backend logic not fully wired. Blocked on WhatsApp credentials. |
 | Email watch setup | Medium | Onboarding connects email — initial watch setup needs triggering once after first login. Blocked on GCP/Azure credentials. |
-| Fintoc OAuth link flow | Medium | FintocClient exists, cron job exists. Missing: UI flow for user to authorize Fintoc and store `fintoc_link_id` |
 | Vault integration | Low | Supabase Vault for OAuth tokens (noted in design spec, not wired) — optional hardening |
 | Google/Microsoft OAuth login | Blocking for real users | GCP OAuth credentials not yet configured in Supabase |
+| Connected accounts list in settings | Low | `GET /bank-accounts` endpoint exists; settings page doesn't yet render the list of connected accounts |
 
 ---
 
@@ -335,5 +357,5 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - Supabase redirect URL configured: `https://luka-lovat.vercel.app/auth/callback`
 
 **Database (Supabase):** ✅ LIVE
-- All 3 migrations applied (`alembic upgrade head` — confirmed at `003 head`)
+- All 5 migrations applied (`alembic upgrade head` — confirmed at `005 head`)
 - Project: `mvovcodijqjvzxxthsxg.supabase.co`

@@ -3,19 +3,27 @@
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
-## ✅ Completed This Session
+## ✅ Completed (all sessions to date)
 
 - **Supabase** — project live, all credentials loaded
 - **Redis** — Railway add-on configured
 - **OpenAI** — API key loaded in Railway
-- **Database migrations** — `alembic upgrade head` run, all 3 migrations at `003 head`
+- **Database migrations** — all 5 migrations at `005 head` (004: account_type constraint, 005: import_status column)
 - **Railway backend** — live at `https://luka-production-eb87.up.railway.app`
 - **Vercel frontend** — live at `https://luka-lovat.vercel.app`
 - **Gap 3.1** — Auth middleware (`frontend/middleware.ts`) ✅
 - **Gap 3.2** — Accept-invite flow (backend + frontend page) ✅
 - **Gap 3.3** — Zustand store initialization (`StoreInitializer`) ✅
 - **Gap 3.4** — SpendingChart monthly data (backend endpoint + hook) ✅
+- **Gap 3.6** — Fintoc bank connect UI flow (onboarding + settings) ✅
 - **Security** — Inactivity auto-logout after 1h ✅
+- **Bug fix** — User auto-provisioning on first OAuth login (no more 401 "User not found") ✅
+- **Bug fix** — Token refresh before API calls (`getUser()` before `getSession()`) ✅
+- **Bug fix** — React hydration error #418 (dynamic SSR:false wrapper on client-only components) ✅
+- **Bug fix** — CORS errors from 307 redirects resolved ✅
+- **Bug fix** — asyncpg PgBouncer compatibility (`statement_cache_size=0`) ✅
+- **Bug fix** — Fintoc DataCloneError (`Window.prototype.postMessage` patch) ✅
+- **Infra fix** — Railway domain rotated to `luka-production-eb87` (stale domain routing fixed) ✅
 
 ---
 
@@ -128,6 +136,7 @@ API key loaded in Railway.
 ### ✅ 3.2 Accept-Invite Flow — DONE
 ### ✅ 3.3 Populate Zustand Store on Login — DONE
 ### ✅ 3.4 SpendingChart Monthly Data — DONE
+### ✅ 3.6 Fintoc Bank Connect UI Flow — DONE
 
 ---
 
@@ -141,16 +150,13 @@ API key loaded in Railway.
 
 ---
 
-### 3.6 Fintoc Link UI Flow (Large — ~1 day, optional for MVP)
+### 3.7 Connected Accounts List in Settings (Small — ~1h)
 
-**Problem:** `run_fintoc_sync` cron needs `fintoc_link_id` and `fintoc_account_id` on `BankAccount`. These are set during Fintoc's OAuth flow, but there's no UI for it yet.
+**Problem:** `GET /bank-accounts` endpoint exists but the settings page doesn't render the list of connected bank accounts. Users can connect via the Fintoc widget but can't see what's already connected.
 
 **What to build:**
-- A "Connect bank via Fintoc" button in onboarding or settings
-- Open Fintoc's Link widget (their JS SDK)
-- On success, call backend endpoint to store `fintoc_link_id` + `fintoc_account_id`
-
-**Note:** Skip if launching email-only first.
+- In `settings/page.tsx`, fetch `GET /bank-accounts` and list connected accounts (name, type, masked number)
+- Add to `api.ts` if the `getMyBankAccounts()` call doesn't exist yet
 
 ---
 
@@ -159,11 +165,13 @@ API key loaded in Railway.
 Checklist before sharing Luka with anyone:
 
 - [x] All Phase 1 credentials obtained and loaded into Railway/Vercel
-- [x] `alembic upgrade head` run on production DB
+- [x] `alembic upgrade head` run on production DB (at `005 head`)
 - [x] Health check passes: `GET /health → {"status":"ok","app":"luka"}`
 - [ ] Can log in with Google or Microsoft account — **blocked on GCP OAuth setup (1.4)**
 - [x] Dashboard loads (no infinite spinner)
 - [x] Auth middleware redirects logged-out users
+- [x] User row auto-created on first login (no more 401 "User not found")
+- [ ] Fintoc widget opens and connects a real bank account end-to-end — **needs real Fintoc sandbox test**
 - [ ] WhatsApp sends test message successfully — **blocked on Meta credentials (1.3)**
 - [ ] Gmail webhook receives a test email — **blocked on GCP Pub/Sub setup (1.4)**
 - [x] Pre-commit hooks active: `pre-commit install`
@@ -175,11 +183,13 @@ Checklist before sharing Luka with anyone:
 ```
 ✅ Week 1: Credentials + first deploy — COMPLETE
 ✅ Week 2: Critical code gaps — COMPLETE (3.1, 3.2, 3.3, 3.4)
+✅ Week 3: Fintoc UI + all critical bug fixes — COMPLETE (3.6, user provisioning, hydration, CORS)
 
-Next: Enable login
+Next: Enable login (blocking everything else)
   → 1.4 Google Cloud: create OAuth 2.0 credentials → enable in Supabase Auth → Google
   → 1.5 Azure: app registration + Mail.Read permission → enable in Supabase Auth → Azure
   → Test: can log in with real Google/Microsoft account
+  → Test: Fintoc widget opens and connects real bank account
 
 Next: Enable email pipeline
   → 1.3 WhatsApp Cloud API (Meta for Developers)
@@ -187,9 +197,9 @@ Next: Enable email pipeline
   → 1.5 Azure Mail.Read delegated permission
   → Test end-to-end: bank email → transaction captured → WhatsApp alert
 
-Later: Polish
+Polish (optional, can do anytime):
   → 3.5 WhatsApp PIN verify (once WhatsApp credentials available)
-  → 3.6 Fintoc link UI (optional, post-MVP)
+  → 3.7 Connected accounts list in settings (~1h)
   → Write a test transaction email and verify the full pipeline
 ```
 
