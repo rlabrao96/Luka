@@ -73,6 +73,34 @@ export interface BudgetStatus {
   percent_used: number;
 }
 
+export interface FintocAccount {
+  id: string;       // fintoc_account_id
+  name: string;     // e.g. "Cuenta Corriente"
+  type: string;     // e.g. "checking_account" | "credit_card"
+  number: string;   // e.g. "****1234"
+  currency: string;
+}
+
+export interface SelectedFintocAccount {
+  fintoc_account_id: string;
+  label: "personal" | "partner" | "joint";
+}
+
+export interface ConnectFintocPayload {
+  link_token: string;
+  household_id: string;
+  accounts: SelectedFintocAccount[];
+}
+
+export interface ConnectFintocResult {
+  created: number;
+  accounts: Array<{ id: string; fintoc_account_id: string; account_type: string }>;
+}
+
+export interface ImportStatus {
+  importing: boolean;
+}
+
 // ── API calls ──────────────────────────────────────────────
 
 export const api = {
@@ -107,4 +135,18 @@ export const api = {
 
   getMonthlySpending: (householdId: string) =>
     apiFetch<MonthlySpendingPoint[]>(`/transactions/monthly-summary?household_id=${householdId}`),
+
+  getFintocAccounts: (linkToken: string) =>
+    apiFetch<FintocAccount[]>(
+      `/bank-accounts/fintoc/accounts?link_token=${encodeURIComponent(linkToken)}`
+    ),
+
+  connectFintocAccounts: (payload: ConnectFintocPayload) =>
+    apiFetch<ConnectFintocResult>("/bank-accounts/fintoc/connect", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getImportStatus: (householdId: string) =>
+    apiFetch<ImportStatus>(`/bank-accounts/import-status?household_id=${householdId}`),
 };
