@@ -12,6 +12,18 @@
 
 ---
 
+## Frontend Baseline
+
+Before any implementation begins, the frontend must be verified clean:
+
+```bash
+cd frontend && npx tsc --noEmit && npm run build
+```
+
+**Confirmed baseline (2026-03-18):** TypeScript passes, all 14 routes build successfully. Any frontend phase that introduces TypeScript errors or build failures must fix them before merging.
+
+---
+
 ## Execution Map
 
 ```
@@ -20,14 +32,19 @@ PHASE 1 (sequential): Tasks 1–4   ← migrations + model + module scaffold
 PHASE 2 (3 parallel agents):
     Agent A: Tasks 5–9   ← backend routes + FintocClient.fetch_accounts
     Agent B: Tasks 10–12 ← backend import job
-    Agent C: Tasks 13–14 ← frontend api.ts + FintocAccountPicker component
-    ↓ (all three must complete)
+    Agent C: Tasks 13–14 ← frontend api.ts + FintocAccountPicker
+             Task C-V    ← frontend verification agent (TypeScript + build)
+    ↓ (all three must complete, including C-V approval)
 PHASE 3 (2 parallel agents):
     Agent D: Task 15     ← connect-bank page rewrite
+             Task D-V    ← frontend verification agent
     Agent E: Tasks 16–19 ← status banner + settings
+             Task E-V    ← frontend verification agent
     ↓
-PHASE 4 (sequential): Task 20    ← worker.py + migrations + smoke test
+PHASE 4 (sequential): Task 20    ← worker.py + migrations + full smoke test
 ```
+
+**Verification agents (C-V, D-V, E-V):** After each frontend agent completes, a separate verification agent runs `tsc --noEmit` + `npm run build`, reads the full error output, fixes any issues it finds, and commits the fix before the phase is considered done. The implementing agent does NOT self-verify — verification is always a separate agent with fresh eyes.
 
 ---
 
@@ -1309,6 +1326,47 @@ git commit -m "feat: FintocAccountPicker - account selection with personal/partn
 
 ---
 
+## PHASE 2 — Agent C-V: Frontend Verification
+> **Run after Agent C completes and merges. Separate agent with fresh context.**
+
+### Task C-V: Verify frontend after api.ts + FintocAccountPicker
+
+**Files:** Any files with TypeScript errors found during verification.
+
+- [ ] **Step 1: Run TypeScript check**
+
+```bash
+cd frontend && npx tsc --noEmit 2>&1
+```
+
+If output is empty → TypeScript passes. If errors appear → read them carefully and fix each one before proceeding.
+
+- [ ] **Step 2: Run build**
+
+```bash
+cd frontend && npm run build 2>&1
+```
+
+Expected: Build succeeds, all routes listed, no red errors. If build fails → read the full error output, identify the root cause, fix it.
+
+- [ ] **Step 3: Common issues to check**
+
+  - Missing `export` on new interfaces in `api.ts`
+  - Import path errors in `FintocAccountPicker.tsx` (check `@/app/lib/api` resolves correctly)
+  - `"use client"` directive missing if the component uses hooks
+  - Unused import warnings that escalate to errors
+
+- [ ] **Step 4: Commit any fixes**
+
+```bash
+git add -A
+git commit -m "fix: resolve TypeScript/build issues after api.ts and FintocAccountPicker"
+```
+
+If no issues found, skip the commit. Leave a note: "C-V: no issues found, baseline clean."
+
+---
+
 ## PHASE 3 — Parallel Implementation
 > **🚦 Start both agents simultaneously after ALL of Phase 2 is merged to main.**
 
@@ -1493,6 +1551,43 @@ cd frontend && npx tsc --noEmit
 ```bash
 git add "frontend/app/(auth)/onboarding/connect-bank/page.tsx"
 git commit -m "feat: rewrite connect-bank page with Fintoc Link widget and account picker"
+```
+
+---
+
+## PHASE 3 — Agent D-V: Frontend Verification
+> **Run after Agent D completes and merges. Separate agent with fresh context.**
+
+### Task D-V: Verify frontend after connect-bank page rewrite
+
+- [ ] **Step 1: Run TypeScript check**
+
+```bash
+cd frontend && npx tsc --noEmit 2>&1
+```
+
+Fix any errors before continuing.
+
+- [ ] **Step 2: Run build**
+
+```bash
+cd frontend && npm run build 2>&1
+```
+
+Expected: All routes still appear in the output, including `/onboarding/connect-bank`. If the route disappears or shows an error, read the full build log.
+
+- [ ] **Step 3: Common issues to check**
+
+  - `window.Fintoc` type declaration conflicts — ensure the `declare global` block compiles
+  - `Script` from `next/script` is a server-side import; the page must be `"use client"` (it is — verify)
+  - `NEXT_PUBLIC_FINTOC_PUBLIC_KEY` missing from `.env.local` causes no TS error but widget will silently fail — acceptable for now, noted
+  - Props type mismatch when passing `onConfirm` to `FintocAccountPicker`
+
+- [ ] **Step 4: Commit any fixes**
+
+```bash
+git add -A
+git commit -m "fix: resolve TypeScript/build issues after connect-bank page rewrite"
 ```
 
 ---
@@ -1783,6 +1878,43 @@ git commit -m "feat: add Connect Bank section to settings page"
 
 ---
 
+## PHASE 3 — Agent E-V: Frontend Verification
+> **Run after Agent E completes and merges. Separate agent with fresh context.**
+
+### Task E-V: Verify frontend after banner + settings
+
+- [ ] **Step 1: Run TypeScript check**
+
+```bash
+cd frontend && npx tsc --noEmit 2>&1
+```
+
+Fix any errors before continuing.
+
+- [ ] **Step 2: Run build**
+
+```bash
+cd frontend && npm run build 2>&1
+```
+
+Expected: All 14 original routes still present plus any new ones. No build failures.
+
+- [ ] **Step 3: Common issues to check**
+
+  - `ImportStatusBanner` imports `useImportStatus` — verify hook path resolves
+  - `useImportStatus` uses `useState`/`useEffect` — verify `"use client"` directive is present in the hook file (it is — double-check)
+  - `ConnectBankSection` in settings imports `FintocAccountPicker` from dashboard components — this cross-route-group import is valid in Next.js App Router but verify the path `@/app/(dashboard)/components/FintocAccountPicker` resolves correctly. If it doesn't, move the component to `@/app/components/` and update all imports.
+  - `Script` component from `next/script` used inside a Client Component in settings — valid, but check for SSR warnings
+
+- [ ] **Step 4: Commit any fixes**
+
+```bash
+git add -A
+git commit -m "fix: resolve TypeScript/build issues after banner and settings"
+```
+
+---
+
 ## PHASE 4 — Integration
 > **One agent. Run after Phase 3 is fully merged. Requires all previous phases.**
 
@@ -1905,16 +2037,19 @@ PHASE 1 (one agent):
   git checkout -b feat/fintoc-foundation
   → Tasks 1, 2, 3, 4 in order → merge to main
 
-PHASE 2 (three simultaneous worktrees from main):
-  Agent A: git checkout -b feat/fintoc-backend-routes      → Tasks 5, 6, 7, 8, 9
-  Agent B: git checkout -b feat/fintoc-import-job          → Tasks 10, 11, 12
-  Agent C: git checkout -b feat/fintoc-frontend-foundation → Tasks 13, 14
-  → All three merge to main when done
+PHASE 2 (four simultaneous agents from main):
+  Agent A:   git checkout -b feat/fintoc-backend-routes      → Tasks 5–9
+  Agent B:   git checkout -b feat/fintoc-import-job          → Tasks 10–12
+  Agent C:   git checkout -b feat/fintoc-frontend-foundation → Tasks 13–14 → merge
+  Agent C-V: git checkout -b fix/fintoc-frontend-c-verify    → Task C-V (after C merges)
+  → All four done before Phase 3
 
-PHASE 3 (two simultaneous worktrees from main):
-  Agent D: git checkout -b feat/fintoc-connect-page      → Task 15
-  Agent E: git checkout -b feat/fintoc-status-settings   → Tasks 16, 17, 18, 19
-  → Both merge to main when done
+PHASE 3 (four simultaneous agents from main):
+  Agent D:   git checkout -b feat/fintoc-connect-page        → Task 15 → merge
+  Agent D-V: git checkout -b fix/fintoc-frontend-d-verify    → Task D-V (after D merges)
+  Agent E:   git checkout -b feat/fintoc-status-settings     → Tasks 16–19 → merge
+  Agent E-V: git checkout -b fix/fintoc-frontend-e-verify    → Task E-V (after E merges)
+  → All four done before Phase 4
 
 PHASE 4 (one agent):
   git checkout -b feat/fintoc-integration
