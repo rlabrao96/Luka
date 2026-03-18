@@ -55,11 +55,8 @@ export default function ConnectBankPage() {
           setError("No se pudieron cargar las cuentas. Intenta de nuevo.");
         }
       },
-      onExit: () => setError("Conexión cancelada."),
-      onError: (err: Error) => {
-        console.error("Fintoc widget error:", err);
-        setError("Error al conectar. Intenta de nuevo.");
-      },
+      onExit: function () { setError("Conexión cancelada."); },
+      onError: function () { setError("Error al conectar. Intenta de nuevo."); },
     });
     widget.open();
   }

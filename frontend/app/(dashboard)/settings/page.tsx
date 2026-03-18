@@ -50,8 +50,8 @@ function ConnectBankSection() {
           setMessage("Error al cargar las cuentas.");
         }
       },
-      onExit: () => setMessage("Conexión cancelada."),
-      onError: () => setMessage("Error al conectar."),
+      onExit: function () { setMessage("Conexión cancelada."); },
+      onError: function () { setMessage("Error al conectar."); },
     });
     widget.open();
   }
