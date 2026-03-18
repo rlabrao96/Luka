@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FintocAccountPicker } from "@/app/(dashboard)/components/FintocAccountPicker";
-import { api, FintocAccount, SelectedFintocAccount } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 
 declare global {
@@ -17,22 +15,21 @@ declare global {
         product: string;
         country: string;
         holderType?: string;
-        onSuccess: (linkToken: string) => void;
+        webhookUrl?: string;
+        onSuccess: () => void;
         onExit: () => void;
-        onError: (err: Error) => void;
+        onEvent?: (eventName: string, metadata?: unknown) => void;
       }) => { open: () => void };
     };
   }
 }
 
-type Step = "connect" | "pick" | "loading" | "done";
+type Step = "connect" | "done";
 
 export default function ConnectBankPage() {
   const router = useRouter();
-  const { householdId } = useLukaStore();
+  const { householdId, userId } = useLukaStore();
   const [step, setStep] = useState<Step>("connect");
-  const [fintocAccounts, setFintocAccounts] = useState<FintocAccount[]>([]);
-  const [linkToken, setLinkToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [scriptReady, setScriptReady] = useState(false);
 
@@ -51,54 +48,31 @@ export default function ConnectBankPage() {
       setError("Widget no disponible. Recarga la página.");
       return;
     }
+    if (!householdId || !userId) {
+      setError("No se pudo identificar tu hogar. Recarga la página.");
+      return;
+    }
     setError(null);
+
+    const webhookUrl = `${process.env.NEXT_PUBLIC_API_URL}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
 
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
       product: "movements",
       country: "cl",
       holderType: "individual",
-      onSuccess: async (token: string) => {
-        setLinkToken(token);
-        try {
-          const accounts = await api.getFintocAccounts(token);
-          setFintocAccounts(accounts);
-          setStep("pick");
-        } catch {
-          setError("No se pudieron cargar las cuentas. Intenta de nuevo.");
-        }
+      webhookUrl,
+      onSuccess: () => {
+        setStep("done");
+        setTimeout(() => router.push("/onboarding/verify-whatsapp"), 1500);
       },
       onExit: () => setError("Conexión cancelada."),
-      onError: () => setError("Error al conectar. Intenta de nuevo."),
+      onEvent: (eventName) => {
+        if (eventName === "closed") setError("Conexión cancelada.");
+      },
     });
 
     widget.open();
-  }
-
-  async function handleConfirm(selected: SelectedFintocAccount[]) {
-    if (!householdId) {
-      setError("No se pudo identificar tu hogar. Recarga la página.");
-      setStep("pick");
-      return;
-    }
-    setStep("loading");
-    try {
-      await api.connectFintocAccounts({
-        link_token: linkToken,
-        household_id: householdId,
-        accounts: selected,
-      });
-      setStep("done");
-      setTimeout(() => router.push("/onboarding/verify-whatsapp"), 1500);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "";
-      setError(
-        msg.includes("409")
-          ? "Una de las cuentas ya está conectada."
-          : "Error al guardar las cuentas. Intenta de nuevo."
-      );
-      setStep("pick");
-    }
   }
 
   return (
@@ -142,26 +116,10 @@ export default function ConnectBankPage() {
               </div>
             )}
 
-            {step === "pick" && fintocAccounts.length > 0 && (
-              <FintocAccountPicker
-                key={fintocAccounts[0]?.id}
-                accounts={fintocAccounts}
-                onConfirm={handleConfirm}
-                loading={false}
-              />
-            )}
-
-            {step === "loading" && (
-              <div className="text-center py-8">
-                <p className="text-luka-dark font-medium">Guardando cuentas...</p>
-                <p className="text-sm text-luka-muted mt-1">El historial se importará en segundo plano.</p>
-              </div>
-            )}
-
             {step === "done" && (
               <div className="text-center py-8">
-                <p className="text-luka-dark font-medium">¡Cuentas conectadas!</p>
-                <p className="text-sm text-luka-muted mt-1">Importando historial... Redirigiendo.</p>
+                <p className="text-luka-dark font-medium">¡Cuenta conectada!</p>
+                <p className="text-sm text-luka-muted mt-1">El historial se importa en segundo plano. Redirigiendo.</p>
               </div>
             )}
           </CardContent>
