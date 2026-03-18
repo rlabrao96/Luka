@@ -8,6 +8,7 @@ from modules.whatsapp.session import WhatsAppSession, save_session
 from modules.transactions.models import Transaction, TransactionSplit, ProcessedWebhook, FailedJob
 from modules.auth.models import User
 from modules.households.models import BankAccount
+from modules.fintoc.client import FintocClient
 from sqlalchemy import select, and_, delete, update
 from datetime import datetime, timedelta, timezone
 
@@ -208,6 +209,81 @@ async def run_fintoc_sync(ctx: dict) -> None:
                 await _record_failed_job(
                     "run_fintoc_sync", {"account_id": str(account.id)}, str(e), db
                 )
+
+
+async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
+    """
+    One-shot job: import 90 days of Fintoc transactions for a bank account.
+    Triggered when a user connects a bank account via Fintoc Link.
+    Idempotent: skips any transaction whose fintoc_id already exists in the DB.
+    """
+    from datetime import date
+
+    split_map = {
+        "personal": "personal",
+        "partner": "partner",
+        "joint": "shared",
+    }
+
+    async with AsyncSessionLocal() as db:
+        account = await db.get(BankAccount, bank_account_id)
+        if not account or not account.fintoc_link_id or not account.fintoc_account_id:
+            return
+
+        account.import_status = "importing"
+        await db.commit()
+
+        try:
+            client = FintocClient(link_token=account.fintoc_link_id)
+            fintoc_txns = await client.fetch_transactions(
+                account_id=account.fintoc_account_id,
+                since=date.today() - timedelta(days=90),
+                until=date.today(),
+            )
+
+            for ftxn in fintoc_txns:
+                existing = await db.scalar(
+                    select(Transaction).where(Transaction.fintoc_id == ftxn.id)
+                )
+                if existing:
+                    continue
+
+                txn = Transaction(
+                    user_id=account.user_id,
+                    household_id=account.household_id,
+                    bank_account_id=account.id,
+                    raw_merchant_name=ftxn.description,
+                    amount=ftxn.amount,
+                    currency="CLP",
+                    transaction_date=ftxn.transaction_date,
+                    source="fintoc",
+                    status="settled",
+                    fintoc_id=ftxn.id,
+                )
+                db.add(txn)
+                await db.flush()
+
+                split = TransactionSplit(
+                    transaction_id=txn.id,
+                    split_type=split_map.get(account.account_type, "personal"),
+                    decided_by_user_id=account.user_id,
+                    decided_at=datetime.now(timezone.utc),
+                )
+                db.add(split)
+
+            # Set status to done and commit everything in one shot
+            account.import_status = "done"
+            await db.commit()
+
+        except Exception as e:
+            account.import_status = "failed"
+            await db.commit()
+            await _record_failed_job(
+                "import_fintoc_history",
+                {"bank_account_id": bank_account_id},
+                str(e),
+                db,
+            )
 
 
 async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> None:
