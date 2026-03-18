@@ -22,9 +22,13 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // If Supabase is unreachable, fail open and let the page handle auth
+  }
 
   const { pathname } = request.nextUrl;
   const isPublic =
