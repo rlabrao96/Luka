@@ -1,3 +1,4 @@
+import logging
 import redis.asyncio as aioredis
 from core.config import settings
 from core.database import AsyncSessionLocal
@@ -232,6 +233,7 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
 
         account.import_status = "importing"
         await db.commit()
+        await db.refresh(account)
 
         try:
             client = FintocClient(link_token=account.fintoc_link_id)
@@ -241,11 +243,15 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
                 until=date.today(),
             )
 
+            imported = 0
+            skipped = 0
+
             for ftxn in fintoc_txns:
                 existing = await db.scalar(
                     select(Transaction).where(Transaction.fintoc_id == ftxn.id)
                 )
                 if existing:
+                    skipped += 1
                     continue
 
                 txn = Transaction(
@@ -270,12 +276,22 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
                     decided_at=datetime.now(timezone.utc),
                 )
                 db.add(split)
+                await db.commit()
+                imported += 1
 
-            # Set status to done and commit everything in one shot
+            logger = logging.getLogger(__name__)
+            logger.info(
+                "import_fintoc_history: bank_account_id=%s imported=%d skipped=%d",
+                bank_account_id,
+                imported,
+                skipped,
+            )
+
             account.import_status = "done"
             await db.commit()
 
         except Exception as e:
+            await db.refresh(account)
             account.import_status = "failed"
             await db.commit()
             await _record_failed_job(
