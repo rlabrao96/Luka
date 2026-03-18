@@ -1,6 +1,6 @@
 "use client";
 import Script from "next/script";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/app/lib/supabase/client";
@@ -28,6 +28,19 @@ declare global {
 function ConnectBankSection() {
   const { householdId } = useLukaStore();
   const [scriptReady, setScriptReady] = useState(false);
+
+  useEffect(() => {
+    // Fintoc SDK v1 bug: it calls postMessage() with the options object including
+    // our callback functions, which can't be structured-cloned. Patching the prototype
+    // intercepts all postMessage calls regardless of when the SDK captured the reference.
+    const proto = Window.prototype;
+    const orig = proto.postMessage;
+    proto.postMessage = function (this: Window, msg: unknown, ...args: unknown[]) {
+      try { return orig.apply(this, [msg, ...args] as Parameters<typeof orig>); }
+      catch (e) { if (e instanceof DOMException && e.name === "DataCloneError") return; throw e; }
+    };
+    return () => { proto.postMessage = orig; };
+  }, []);
   const [showPicker, setShowPicker] = useState(false);
   const [fintocAccounts, setFintocAccounts] = useState<FintocAccount[]>([]);
   const [linkToken, setLinkToken] = useState("");
@@ -37,28 +50,12 @@ function ConnectBankSection() {
   function openWidget() {
     if (!window.Fintoc) return;
     setMessage(null);
-
-    // Fintoc SDK v1 bug: it tries to postMessage() the options object (including
-    // our callback functions) to its internal wizard window, which throws DataCloneError
-    // because functions can't be structured-cloned. We patch postMessage temporarily
-    // to silently swallow these unserializable calls so the widget can open.
-    const origPostMessage = window.postMessage.bind(window);
-    window.postMessage = ((msg: unknown, ...args: unknown[]) => {
-      try {
-        origPostMessage(msg, ...(args as [string]));
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "DataCloneError") return;
-        throw e;
-      }
-    }) as typeof window.postMessage;
-
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
       product: "movements",
       country: "cl",
       holderType: "individual",
       onSuccess: async (token: string) => {
-        window.postMessage = origPostMessage;
         setLinkToken(token);
         try {
           const accounts = await api.getFintocAccounts(token);
@@ -68,10 +65,9 @@ function ConnectBankSection() {
           setMessage("Error al cargar las cuentas.");
         }
       },
-      onExit: () => { window.postMessage = origPostMessage; setMessage("Conexión cancelada."); },
-      onError: () => { window.postMessage = origPostMessage; setMessage("Error al conectar."); },
+      onExit: () => setMessage("Conexión cancelada."),
+      onError: () => setMessage("Error al conectar."),
     });
-
     widget.open();
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,16 @@ export default function ConnectBankPage() {
   const [error, setError] = useState<string | null>(null);
   const [scriptReady, setScriptReady] = useState(false);
 
+  useEffect(() => {
+    const proto = Window.prototype;
+    const orig = proto.postMessage;
+    proto.postMessage = function (this: Window, msg: unknown, ...args: unknown[]) {
+      try { return orig.apply(this, [msg, ...args] as Parameters<typeof orig>); }
+      catch (e) { if (e instanceof DOMException && e.name === "DataCloneError") return; throw e; }
+    };
+    return () => { proto.postMessage = orig; };
+  }, []);
+
   function openFintocWidget() {
     if (!window.Fintoc) {
       setError("Widget no disponible. Recarga la página.");
@@ -43,25 +53,12 @@ export default function ConnectBankPage() {
     }
     setError(null);
 
-    // Fintoc SDK v1 bug: postMessages the options object (including callbacks) to its
-    // internal window, throwing DataCloneError. Patch postMessage to swallow these.
-    const origPostMessage = window.postMessage.bind(window);
-    window.postMessage = ((msg: unknown, ...args: unknown[]) => {
-      try {
-        origPostMessage(msg, ...(args as [string]));
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "DataCloneError") return;
-        throw e;
-      }
-    }) as typeof window.postMessage;
-
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
       product: "movements",
       country: "cl",
       holderType: "individual",
       onSuccess: async (token: string) => {
-        window.postMessage = origPostMessage;
         setLinkToken(token);
         try {
           const accounts = await api.getFintocAccounts(token);
@@ -71,8 +68,8 @@ export default function ConnectBankPage() {
           setError("No se pudieron cargar las cuentas. Intenta de nuevo.");
         }
       },
-      onExit: () => { window.postMessage = origPostMessage; setError("Conexión cancelada."); },
-      onError: () => { window.postMessage = origPostMessage; setError("Error al conectar. Intenta de nuevo."); },
+      onExit: () => setError("Conexión cancelada."),
+      onError: () => setError("Error al conectar. Intenta de nuevo."),
     });
 
     widget.open();
