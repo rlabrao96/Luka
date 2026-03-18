@@ -4,6 +4,7 @@ from arq.connections import RedisSettings
 from core.config import settings
 from jobs.tasks import (
     process_email,
+    import_fintoc_history,
     renew_mail_watches,
     purge_raw_emails,
     cleanup_processed_webhooks,
@@ -20,7 +21,7 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_email]
+    functions = [process_email, import_fintoc_history]
     cron_jobs = [
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
         cron(purge_raw_emails, minute=0),  # every hour
