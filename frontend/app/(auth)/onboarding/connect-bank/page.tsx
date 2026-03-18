@@ -18,6 +18,10 @@ export default function ConnectBankPage() {
   const [scriptReady, setScriptReady] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && window.Fintoc) {
+      setScriptReady(true);
+    }
+    
     const proto = Window.prototype;
     const orig = proto.postMessage;
     proto.postMessage = function (this: Window, msg: unknown, ...args: unknown[]) {
