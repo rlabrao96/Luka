@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CreditCard, Users, Wallet } from "lucide-react";
 import { KpiCard } from "./components/KpiCard";
 import { SpendingChart } from "./components/SpendingChart";
 import { CategoryDonut } from "./components/CategoryDonut";
@@ -12,15 +12,15 @@ import { useLukaStore } from "@/app/lib/store";
 
 export default function DashboardPage() {
   const name = useLukaStore((s) => s.userFullName) ?? "tú";
-  const { data: myTxns = [] } = useMyTransactions(10);
+  const { data: myTxns    = [] } = useMyTransactions(10);
   const { data: sharedTxns = [] } = useSharedTransactions(10);
-  const { data: summary = [] } = useHouseholdSummary();
-  const { data: budget } = useBudgetStatus();
+  const { data: summary   = [] } = useHouseholdSummary();
+  const { data: budget }          = useBudgetStatus();
 
-  const myRow = summary[0];
+  const myRow       = summary[0];
   const personalSpent = myRow?.personal_paid ?? 0;
-  const memberCount = summary.length || 1;
-  const sharedSpent = summary.reduce((sum, r) => sum + r.shared_paid, 0) / memberCount;
+  const memberCount   = summary.length || 1;
+  const sharedSpent   = summary.reduce((sum, r) => sum + r.shared_paid, 0) / memberCount;
 
   const recentAll = useMemo(
     () =>
@@ -31,72 +31,116 @@ export default function DashboardPage() {
   );
 
   const categoryData = useMemo(() => {
-    const categoryMap: Record<string, number> = {};
+    const map: Record<string, number> = {};
     recentAll.forEach((t) => {
-      if (t.category) categoryMap[t.category] = (categoryMap[t.category] ?? 0) + t.amount;
+      if (t.category) map[t.category] = (map[t.category] ?? 0) + t.amount;
     });
-    return Object.entries(categoryMap)
+    return Object.entries(map)
       .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
   }, [recentAll]);
 
+  const firstName = name.split(" ")[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-luka-dark">Hola, {name.split(" ")[0]} 👋</h2>
-        <p className="text-luka-muted text-sm mt-0.5">Resumen de este mes</p>
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-luka-dark">
+            {greeting}, {firstName} 👋
+          </h1>
+          <p className="text-sm text-luka-muted mt-0.5">Aquí está el resumen de este mes</p>
+        </div>
+        <div className="text-xs text-luka-muted bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">
+          {new Date().toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+        </div>
       </div>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard label="Gasto personal" value={`$${Math.round(personalSpent).toLocaleString("es-CL")}`} />
-        <KpiCard label="Gasto compartido" value={`$${Math.round(sharedSpent).toLocaleString("es-CL")}`} />
-        {budget && (
+      {/* ── KPI Cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <KpiCard
+          label="Gasto personal"
+          value={`$${Math.round(personalSpent).toLocaleString("es-CL")}`}
+          icon={CreditCard}
+          iconColor="bg-blue-100"
+          iconTextColor="text-blue-600"
+        />
+        <KpiCard
+          label="Gasto compartido"
+          value={`$${Math.round(sharedSpent).toLocaleString("es-CL")}`}
+          icon={Users}
+          iconColor="bg-sky-100"
+          iconTextColor="text-sky-600"
+        />
+        {budget ? (
           <KpiCard
             label="Disponible (cuenta conjunta)"
             value={`$${Math.round(budget.available).toLocaleString("es-CL")}`}
-            sublabel={`${budget.percent_used}% usado`}
+            sublabel={`${budget.percent_used}% del presupuesto usado`}
             trend={budget.percent_used > 80 ? "down" : "neutral"}
-            className="col-span-2 lg:col-span-1"
+            icon={Wallet}
+            iconColor={budget.percent_used > 80 ? "bg-red-100" : "bg-emerald-100"}
+            iconTextColor={budget.percent_used > 80 ? "text-red-600" : "text-emerald-600"}
+          />
+        ) : (
+          <KpiCard
+            label="Presupuesto"
+            value="—"
+            sublabel="Sin presupuesto configurado"
+            icon={Wallet}
+            iconColor="bg-amber-100"
+            iconTextColor="text-amber-600"
           />
         )}
       </div>
 
-      {/* Charts Row */}
+      {/* ── Charts ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-luka-dark">Tendencia de gastos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* TODO: aggregate transactions by month for trend chart */}
-            <SpendingChart data={[]} />
-          </CardContent>
-        </Card>
-        <Card className="bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-luka-dark">Por categoría</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {categoryData.length > 0
-              ? <CategoryDonut data={categoryData} />
-              : <p className="text-sm text-luka-muted text-center py-8">Sin datos aún</p>
-            }
-          </CardContent>
-        </Card>
+        {/* Spending trend */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-luka-dark">Tendencia de gastos</h2>
+              <p className="text-xs text-luka-muted mt-0.5">Personal vs. compartido</p>
+            </div>
+          </div>
+          <SpendingChart data={[]} />
+        </div>
+
+        {/* Category donut */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-luka-dark">Por categoría</h2>
+            <p className="text-xs text-luka-muted mt-0.5">Este mes</p>
+          </div>
+          {categoryData.length > 0
+            ? <CategoryDonut data={categoryData} />
+            : (
+              <div className="h-[200px] flex flex-col items-center justify-center gap-2">
+                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                  <span className="text-xl">📊</span>
+                </div>
+                <p className="text-xs text-luka-muted">Sin datos aún</p>
+              </div>
+            )
+          }
+        </div>
       </div>
 
-      {/* Recent Transactions */}
-      <Card className="bg-white">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-luka-dark">Últimas transacciones</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RecentTransactions transactions={recentAll} />
-        </CardContent>
-      </Card>
+      {/* ── Recent Transactions ── */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-luka-dark">Últimas transacciones</h2>
+            <p className="text-xs text-luka-muted mt-0.5">Movimientos recientes</p>
+          </div>
+        </div>
+        <RecentTransactions transactions={recentAll} />
+      </div>
     </div>
   );
 }

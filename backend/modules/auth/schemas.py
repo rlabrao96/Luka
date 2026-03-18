@@ -8,6 +8,7 @@ class UserResponse(BaseModel):
     full_name: str
     email_provider: str
     whatsapp_verified: bool
+    household_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 

@@ -42,7 +42,6 @@ These are third-party accounts you need to create or configure. Without them, th
 **Decision needed:** Which Redis provider do you want?
 
 ---
-
 ### 1.3 WhatsApp Cloud API — Business Account
 
 **What you need:**

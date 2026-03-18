@@ -10,6 +10,6 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  // New users go to onboarding; existing users go to dashboard
-  return NextResponse.redirect(`${origin}/onboarding/connect-email`);
+  // Always go to dashboard — StoreInitializer will redirect to onboarding if needed
+  return NextResponse.redirect(`${origin}/`);
 }
