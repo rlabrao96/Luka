@@ -48,3 +48,13 @@ class FintocClient:
             for txn in data
             if txn.get("type") == "charge"  # only debits
         ]
+
+    async def fetch_accounts(self) -> list[dict]:
+        """Fetch all accounts associated with this link token."""
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{FINTOC_BASE}/accounts",
+                headers=self._headers(),
+            )
+            resp.raise_for_status()
+            return resp.json()

@@ -2,6 +2,8 @@ import pytest
 import uuid
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from unittest.mock import AsyncMock, MagicMock
+from httpx import AsyncClient, ASGITransport
 from core.config import settings
 
 
@@ -66,3 +68,51 @@ async def mock_household(db, mock_user, mock_partner):
     db.add(HouseholdMember(household_id=h.id, user_id=mock_partner.id, role="member"))
     await db.commit()
     return h
+
+
+@pytest.fixture
+async def http_client(app):
+    """AsyncClient wired to the FastAPI app with ASGI transport."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        yield c
+
+
+@pytest.fixture
+def mock_current_user(mock_user):
+    """Returns the mock_user. Used to override get_current_user dependency."""
+    return mock_user
+
+
+@pytest.fixture
+def override_auth(app, mock_current_user):
+    """Override get_current_user so routes think a user is authenticated."""
+    from core.security import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: mock_current_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.fixture
+def mock_db_session():
+    """Async mock of an SQLAlchemy AsyncSession."""
+    session = AsyncMock()
+    session.execute = AsyncMock()
+    session.scalar = AsyncMock(return_value=None)
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    return session
+
+
+@pytest.fixture
+def override_db(app, mock_db_session):
+    """Override get_db so routes use the mock session."""
+    from core.database import get_db
+
+    async def _mock_db():
+        yield mock_db_session
+
+    app.dependency_overrides[get_db] = _mock_db
+    yield mock_db_session
+    app.dependency_overrides.pop(get_db, None)
