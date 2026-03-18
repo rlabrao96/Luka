@@ -25,8 +25,8 @@ async def get_fintoc_accounts(
     client = FintocClient(link_token=link_token)
     try:
         accounts = await client.fetch_accounts()
-    except httpx.HTTPStatusError:
-        raise HTTPException(status_code=400, detail="Failed to fetch accounts from Fintoc")
+    except (httpx.HTTPStatusError, httpx.RequestError):
+        raise HTTPException(status_code=502, detail="Failed to fetch accounts from Fintoc")
     return accounts
 
 

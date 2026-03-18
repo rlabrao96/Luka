@@ -53,7 +53,7 @@ class FintocClient:
         """Fetch all accounts associated with this link token."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                "https://api.fintoc.com/v1/accounts",
+                f"{FINTOC_BASE}/accounts",
                 headers=self._headers(),
             )
             resp.raise_for_status()

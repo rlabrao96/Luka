@@ -90,7 +90,7 @@ def override_auth(app, mock_current_user):
 
     app.dependency_overrides[get_current_user] = lambda: mock_current_user
     yield
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.fixture
@@ -115,4 +115,4 @@ def override_db(app, mock_db_session):
 
     app.dependency_overrides[get_db] = _mock_db
     yield mock_db_session
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_db, None)
