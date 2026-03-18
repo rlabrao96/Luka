@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from core.config import settings
@@ -46,7 +48,7 @@ async def get_current_user(
                 meta.get("full_name") or meta.get("name") or supabase_user.email.split("@")[0]
             )
             user = User(
-                id=supabase_user.id,
+                id=uuid.UUID(supabase_user.id),
                 email=supabase_user.email,
                 full_name=full_name,
                 email_provider=email_provider,
