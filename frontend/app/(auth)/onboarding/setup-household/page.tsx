@@ -5,28 +5,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 
+import { api } from "@/app/lib/api";
+
 export default function SetupHouseholdPage() {
   const router = useRouter();
   const [type, setType] = useState<"individual" | "couple" | null>(null);
   const [partnerEmail, setPartnerEmail] = useState("");
 
   const create = async () => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/households`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Mi Hogar", type }),
-    });
-    const household = await res.json();
+    try {
+      const household = await api.createHousehold("Mi Hogar", type!);
 
-    if (type === "couple" && partnerEmail && household.id) {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/households/${household.id}/invite`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: partnerEmail }),
-      });
+      if (type === "couple" && partnerEmail && household.id) {
+        await api.invitePartner(household.id, partnerEmail);
+      }
+
+      router.push("/onboarding/connect-bank");
+    } catch (e) {
+      console.error("Failed to setup household:", e);
     }
-
-    router.push("/onboarding/connect-bank");
   };
 
   return (

@@ -141,6 +141,18 @@ export const api = {
       `/bank-accounts/fintoc/accounts?link_token=${encodeURIComponent(linkToken)}`
     ),
 
+  createHousehold: (name: string, type: "individual" | "couple") =>
+    apiFetch<{ id: string; name: string; type: string }>("/households", {
+      method: "POST",
+      body: JSON.stringify({ name, type }),
+    }),
+
+  invitePartner: (householdId: string, email: string) =>
+    apiFetch<{ id: string; email: string; household_id: string }>(
+      `/households/${householdId}/invite`,
+      { method: "POST", body: JSON.stringify({ email }) }
+    ),
+
   connectFintocAccounts: (payload: ConnectFintocPayload) =>
     apiFetch<ConnectFintocResult>("/bank-accounts/fintoc/connect", {
       method: "POST",

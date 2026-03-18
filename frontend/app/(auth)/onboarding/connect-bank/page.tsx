@@ -38,7 +38,8 @@ export default function ConnectBankPage() {
     }
     setError(null);
 
-    const webhookUrl = `${process.env.NEXT_PUBLIC_API_URL}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://luka-production-eb87.up.railway.app";
+    const webhookUrl = `${apiUrl}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
 
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",

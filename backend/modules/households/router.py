@@ -28,7 +28,7 @@ async def _require_membership(
         raise HTTPException(status_code=403, detail="Not a member of this household")
 
 
-@router.post("/", response_model=HouseholdResponse)
+@router.post("", response_model=HouseholdResponse)
 async def create_household(
     body: CreateHouseholdRequest,
     db: AsyncSession = Depends(get_db),
