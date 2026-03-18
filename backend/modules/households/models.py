@@ -54,7 +54,7 @@ class BankAccount(Base):
     fintoc_account_id: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     import_status: Mapped[str] = mapped_column(
-        String, default="done"
+        String, nullable=False, default="done", server_default="done"
     )  # 'pending'|'importing'|'done'|'failed'
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

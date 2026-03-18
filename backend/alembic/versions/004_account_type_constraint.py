@@ -13,9 +13,16 @@ down_revision = "003"
 def upgrade():
     # Existing rows only have 'personal' or 'joint' — both valid under new constraint.
     op.execute(
-        "ALTER TABLE bank_accounts "
-        "ADD CONSTRAINT chk_bank_account_type "
-        "CHECK (account_type IN ('personal', 'partner', 'joint'))"
+        """
+        DO $$
+        BEGIN
+            ALTER TABLE bank_accounts ADD CONSTRAINT chk_bank_account_type
+                CHECK (account_type IN ('personal', 'partner', 'joint'));
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END
+        $$;
+        """
     )
 
 
