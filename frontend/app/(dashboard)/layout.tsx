@@ -1,8 +1,15 @@
+import dynamic from "next/dynamic";
 import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
 import { StoreInitializer } from "./components/StoreInitializer";
 import { InactivityGuard } from "./components/InactivityGuard";
-import { ImportStatusBanner } from "./components/ImportStatusBanner";
+
+// Rendered client-side only to avoid hydration mismatch
+// (the banner polls an API and its initial state differs between server and client)
+const ImportStatusBanner = dynamic(
+  () => import("./components/ImportStatusBanner").then((m) => m.ImportStatusBanner),
+  { ssr: false }
+);
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
