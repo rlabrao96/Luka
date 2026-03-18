@@ -45,12 +45,17 @@ class BankAccount(Base):
     household_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("households.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     bank_name: Mapped[str] = mapped_column(String, nullable=False)
-    account_type: Mapped[str] = mapped_column(String, nullable=False)  # 'personal' | 'joint'
+    account_type: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # 'personal' | 'partner' | 'joint'
     cardholder_name: Mapped[str | None] = mapped_column(String, nullable=True)
     email_sender_pattern: Mapped[str | None] = mapped_column(String, nullable=True)
     fintoc_link_id: Mapped[str | None] = mapped_column(String, nullable=True)
     fintoc_account_id: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    import_status: Mapped[str] = mapped_column(
+        String, default="done"
+    )  # 'pending'|'importing'|'done'|'failed'
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
