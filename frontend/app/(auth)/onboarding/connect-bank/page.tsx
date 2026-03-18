@@ -49,7 +49,7 @@ export default function ConnectBankPage() {
       webhookUrl,
       onSuccess: () => {
         setStep("done");
-        setTimeout(() => router.push("/onboarding/verify-whatsapp"), 1500);
+        setTimeout(() => router.push("/"), 1500);
       },
       onExit: () => setError("Conexión cancelada."),
       onEvent: (eventName) => {
@@ -93,7 +93,7 @@ export default function ConnectBankPage() {
                   {scriptReady ? "Conectar banco" : "Cargando..."}
                 </Button>
                 <button
-                  onClick={() => router.push("/onboarding/verify-whatsapp")}
+                  onClick={() => router.push("/")}
                   className="w-full text-sm text-luka-muted hover:text-luka-dark text-center"
                 >
                   Saltar por ahora

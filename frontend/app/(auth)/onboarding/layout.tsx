@@ -15,11 +15,16 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
         backgroundPosition: "center",
       }}
     >
-      {/* Dark overlay so the white card pops out */}
-      <div className="absolute inset-0 bg-[#0F172A]/60 backdrop-blur-[2px]" />
+      {/* Lighter overlay to keep the background HD but ensure contrast */}
+      <div className="absolute inset-0 bg-[#0F172A]/50" />
 
-      <div className="w-full max-w-lg z-10 relative">
-        <h1 className="text-3xl font-bold text-white tracking-tight text-center mb-2">Luka</h1>
+      {/* Glassmorphism box container for the content */}
+      <div className="w-full max-w-lg z-10 relative bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-2xl">
+        <div className="text-center mb-6">
+          <h1 className="text-3xl font-bold text-white tracking-tight mb-1">Nuevo Usuario</h1>
+          <p className="text-white/80 text-sm">Configuración inicial de tu cuenta</p>
+        </div>
+
         <div className="flex justify-center gap-2 mb-8">
           {STEPS.map((step, i) => (
             <div key={step.label} className="flex items-center gap-2">
@@ -31,6 +36,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
             </div>
           ))}
         </div>
+        
         {children}
       </div>
     </div>

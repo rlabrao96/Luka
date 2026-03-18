@@ -37,14 +37,23 @@ export default function VerifyWhatsAppPage() {
           Luka te enviará alertas de gastos por WhatsApp. Necesitamos verificar tu número.
         </p>
         <Input placeholder="+56 9 1234 5678" value={phone} onChange={e => setPhone(e.target.value)} />
-        {!pinSent ? (
-          <Button className="w-full bg-luka-primary" onClick={sendPin}>Enviar PIN por WhatsApp</Button>
-        ) : (
-          <>
-            <Input placeholder="Código de 6 dígitos" value={pin} onChange={e => setPin(e.target.value)} />
-            <Button className="w-full bg-luka-primary" onClick={verifyPin}>Verificar →</Button>
-          </>
-        )}
+        <div className="space-y-2">
+          {!pinSent ? (
+            <Button className="w-full bg-luka-primary" onClick={sendPin}>Enviar PIN por WhatsApp</Button>
+          ) : (
+            <>
+              <Input placeholder="Código de 6 dígitos" value={pin} onChange={e => setPin(e.target.value)} />
+              <Button className="w-full bg-luka-primary" onClick={verifyPin}>Verificar →</Button>
+            </>
+          )}
+
+          <button
+            onClick={() => router.push("/onboarding/setup-household")}
+            className="w-full text-sm text-luka-muted hover:text-luka-dark text-center py-2"
+          >
+            Saltar por ahora
+          </button>
+        </div>
       </CardContent>
     </Card>
   );
