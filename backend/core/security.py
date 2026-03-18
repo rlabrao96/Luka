@@ -38,8 +38,20 @@ async def get_current_user(
         result = await session.execute(select(User).where(User.email == supabase_user.email))
         user = result.scalar_one_or_none()
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found. Complete onboarding.",
+            # Auto-provision user row on first authenticated request (post-OAuth signup)
+            meta = supabase_user.user_metadata or {}
+            provider = (supabase_user.app_metadata or {}).get("provider", "google")
+            email_provider = "outlook" if provider in ("azure", "microsoft") else "gmail"
+            full_name = (
+                meta.get("full_name") or meta.get("name") or supabase_user.email.split("@")[0]
             )
+            user = User(
+                id=supabase_user.id,
+                email=supabase_user.email,
+                full_name=full_name,
+                email_provider=email_provider,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
     return user

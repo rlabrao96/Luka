@@ -1,6 +1,6 @@
 import httpx
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,6 +90,59 @@ async def connect_fintoc_accounts(
             for a in created
         ],
     }
+
+
+@router.post("/webhooks/fintoc-link")
+async def fintoc_link_webhook(
+    request: Request,
+    household_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Receive link.created webhook from Fintoc (sent via webhookUrl in widget config).
+    Auto-creates BankAccount rows and enqueues 90-day history import per account.
+    household_id and user_id are passed as query params in the webhookUrl.
+    """
+    body = await request.json()
+
+    if body.get("type") != "link.created":
+        return {"ok": True}
+
+    data = body.get("data", {})
+    link_token = data.get("link_token")
+    accounts = data.get("accounts") or []
+    institution = data.get("institution") or {}
+    bank_name = institution.get("name", "Fintoc")
+
+    if not link_token:
+        raise HTTPException(status_code=400, detail="Missing link_token in event data")
+
+    created = 0
+    for acc in accounts:
+        fintoc_account_id = acc.get("id")
+        if not fintoc_account_id:
+            continue
+        existing = await db.scalar(
+            select(BankAccount).where(BankAccount.fintoc_account_id == fintoc_account_id)
+        )
+        if existing:
+            continue
+        bank_account = BankAccount(
+            household_id=household_id,
+            user_id=user_id,
+            bank_name=bank_name,
+            account_type="personal",
+            fintoc_link_id=link_token,
+            fintoc_account_id=fintoc_account_id,
+            import_status="pending",
+        )
+        db.add(bank_account)
+        await db.flush()
+        await enqueue_job("import_fintoc_history", bank_account_id=str(bank_account.id))
+        await db.commit()
+        created += 1
+
+    return {"ok": True, "created": created}
 
 
 @router.get("/import-status")
