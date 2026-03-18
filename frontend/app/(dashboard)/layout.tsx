@@ -1,11 +1,13 @@
 import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
 import { StoreInitializer } from "./components/StoreInitializer";
+import { InactivityGuard } from "./components/InactivityGuard";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-luka-surface">
       <StoreInitializer />
+      <InactivityGuard />
       {/* Sidebar — desktop only */}
       <Sidebar />
       {/* Main scrolling area */}
