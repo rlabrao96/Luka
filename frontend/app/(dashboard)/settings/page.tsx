@@ -28,10 +28,21 @@ function ConnectBankSection() {
   }, []);
 
   function openWidget() {
-    if (!window.Fintoc || !householdId || !userId) return;
+    if (!window.Fintoc) {
+      setMessage("El widget de Fintoc no está disponible. Recarga la página.");
+      return;
+    }
+    if (!householdId || !userId) {
+      setMessage("Error: sesión no inicializada. Recarga la página e intenta nuevamente.");
+      console.warn("[Fintoc] householdId or userId missing from store", { householdId, userId });
+      return;
+    }
     setMessage(null);
 
-    const webhookUrl = `${process.env.NEXT_PUBLIC_API_URL}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    const webhookUrl = `${apiUrl}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
+
+    console.log("[Fintoc] Opening widget with webhookUrl:", webhookUrl);
 
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
@@ -43,7 +54,7 @@ function ConnectBankSection() {
         setMessage("¡Cuenta conectada! El historial se importa en segundo plano.");
       },
       onExit: () => setMessage("Conexión cancelada."),
-      onEvent: (eventName) => {
+      onEvent: (eventName: string) => {
         if (eventName === "closed") setMessage("Conexión cancelada.");
       },
     });
