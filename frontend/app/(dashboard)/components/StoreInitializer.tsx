@@ -21,8 +21,10 @@ export function StoreInitializer() {
         if (user.household_id) {
           setHousehold(user.household_id);
         } else {
-          // User exists in DB but has no household — send to onboarding (starts at whatsapp)
-          router.push("/onboarding/verify-whatsapp");
+          // User exists in DB but has no household
+          if (!window.location.pathname.includes("/onboarding")) {
+            router.push("/onboarding/verify-whatsapp");
+          }
         }
       })
       .catch(() => {

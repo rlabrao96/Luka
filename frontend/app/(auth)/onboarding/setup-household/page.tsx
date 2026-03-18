@@ -6,15 +6,20 @@ import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/app/lib/api";
+import { useLukaStore } from "@/app/lib/store";
 
 export default function SetupHouseholdPage() {
   const router = useRouter();
+  const setHousehold = useLukaStore((s) => s.setHousehold);
   const [type, setType] = useState<"individual" | "couple" | null>(null);
   const [partnerEmail, setPartnerEmail] = useState("");
 
   const create = async () => {
     try {
       const household = await api.createHousehold("Mi Hogar", type!);
+      if (household.id) {
+        setHousehold(household.id);
+      }
 
       if (type === "couple" && partnerEmail && household.id) {
         await api.invitePartner(household.id, partnerEmail);

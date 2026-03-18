@@ -5,6 +5,8 @@ const STEPS = [
   { label: "Banco", href: "/onboarding/connect-bank" },
 ];
 
+import { StoreInitializer } from "@/app/(dashboard)/components/StoreInitializer";
+
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
   return (
     <div 
@@ -15,6 +17,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
         backgroundPosition: "center",
       }}
     >
+      <StoreInitializer />
       {/* Lighter overlay to keep the background HD but ensure contrast */}
       <div className="absolute inset-0 bg-[#0F172A]/50" />
 
