@@ -9,17 +9,20 @@ import { useLukaStore } from "@/app/lib/store";
 import { api } from "@/app/lib/api";
 
 function ConnectBankSection() {
-  // Read from store; if empty, fetch directly from /auth/me on mount
-  const storeHouseholdId = useLukaStore((s) => s.householdId);
-  const storeUserId = useLukaStore((s) => s.userId);
   const setUser = useLukaStore((s) => s.setUser);
   const setHousehold = useLukaStore((s) => s.setHousehold);
 
-  const [householdId, setHouseholdId] = useState<string | null>(storeHouseholdId);
-  const [userId, setUserId] = useState<string | null>(storeUserId);
+  // Fix hydration mismatch by only reading store in useEffect
+  const [householdId, setHouseholdId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [scriptReady, setScriptReady] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [loadingUser, setLoadingUser] = useState(false);
+
+  useEffect(() => {
+    setHouseholdId(useLukaStore.getState().householdId);
+    setUserId(useLukaStore.getState().userId);
+  }, []);
 
   // Patch Fintoc SDK v1 postMessage DataCloneError bug
   useEffect(() => {
