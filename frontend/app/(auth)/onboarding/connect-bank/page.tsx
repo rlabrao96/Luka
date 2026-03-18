@@ -7,22 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLukaStore } from "@/app/lib/store";
 
-declare global {
-  interface Window {
-    Fintoc?: {
-      create: (options: {
-        publicKey: string;
-        product: string;
-        country: string;
-        holderType?: string;
-        webhookUrl?: string;
-        onSuccess: () => void;
-        onExit: () => void;
-        onEvent?: (eventName: string, metadata?: unknown) => void;
-      }) => { open: () => void };
-    };
-  }
-}
 
 type Step = "connect" | "done";
 

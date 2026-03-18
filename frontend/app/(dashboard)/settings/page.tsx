@@ -6,33 +6,18 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/app/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useLukaStore } from "@/app/lib/store";
-import { api, FintocAccount, SelectedFintocAccount } from "@/app/lib/api";
-import { FintocAccountPicker } from "@/app/(dashboard)/components/FintocAccountPicker";
 
-declare global {
-  interface Window {
-    Fintoc?: {
-      create: (options: {
-        publicKey: string;
-        product: string;
-        country: string;
-        holderType?: string;
-        onSuccess: (linkToken: string) => void;
-        onExit: () => void;
-        onError: (err: Error) => void;
-      }) => { open: () => void };
-    };
-  }
-}
 
 function ConnectBankSection() {
-  const { householdId } = useLukaStore();
+  const { householdId, userId } = useLukaStore();
   const [scriptReady, setScriptReady] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fintoc SDK v1 bug: it calls postMessage() with the options object including
-    // our callback functions, which can't be structured-cloned. Patching the prototype
-    // intercepts all postMessage calls regardless of when the SDK captured the reference.
+    // Fintoc SDK v1 bug: internally calls postMessage() with options including callbacks,
+    // which throws DataCloneError (functions can't be structured-cloned).
+    // Patching Window.prototype intercepts all postMessage calls regardless of
+    // when the SDK captured the reference.
     const proto = Window.prototype;
     const orig = proto.postMessage;
     proto.postMessage = function (this: Window, msg: unknown, ...args: unknown[]) {
@@ -41,49 +26,28 @@ function ConnectBankSection() {
     };
     return () => { proto.postMessage = orig; };
   }, []);
-  const [showPicker, setShowPicker] = useState(false);
-  const [fintocAccounts, setFintocAccounts] = useState<FintocAccount[]>([]);
-  const [linkToken, setLinkToken] = useState("");
-  const [connecting, setConnecting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
   function openWidget() {
-    if (!window.Fintoc) return;
+    if (!window.Fintoc || !householdId || !userId) return;
     setMessage(null);
+
+    const webhookUrl = `${process.env.NEXT_PUBLIC_API_URL}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
+
     const widget = window.Fintoc.create({
       publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
       product: "movements",
       country: "cl",
       holderType: "individual",
-      onSuccess: async (token: string) => {
-        setLinkToken(token);
-        try {
-          const accounts = await api.getFintocAccounts(token);
-          setFintocAccounts(accounts);
-          setShowPicker(true);
-        } catch {
-          setMessage("Error al cargar las cuentas.");
-        }
+      webhookUrl,
+      onSuccess: () => {
+        setMessage("¡Cuenta conectada! El historial se importa en segundo plano.");
       },
       onExit: () => setMessage("Conexión cancelada."),
-      onError: () => setMessage("Error al conectar."),
+      onEvent: (eventName) => {
+        if (eventName === "closed") setMessage("Conexión cancelada.");
+      },
     });
     widget.open();
-  }
-
-  async function handleConfirm(selected: SelectedFintocAccount[]) {
-    if (!householdId) return;
-    setConnecting(true);
-    try {
-      await api.connectFintocAccounts({ link_token: linkToken, household_id: householdId, accounts: selected });
-      setShowPicker(false);
-      setFintocAccounts([]);
-      setMessage("¡Cuentas conectadas! El historial se importa en segundo plano.");
-    } catch {
-      setMessage("Error al guardar las cuentas.");
-    } finally {
-      setConnecting(false);
-    }
   }
 
   return (
@@ -92,29 +56,19 @@ function ConnectBankSection() {
       <Card className="shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base text-luka-dark">Cuentas bancarias</CardTitle>
-          {!showPicker && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={openWidget}
-              disabled={!scriptReady}
-              className="text-luka-primary border-luka-primary hover:bg-luka-light"
-            >
-              + Agregar cuenta
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={openWidget}
+            disabled={!scriptReady}
+            className="text-luka-primary border-luka-primary hover:bg-luka-light"
+          >
+            + Agregar cuenta
+          </Button>
         </CardHeader>
         <CardContent>
           {message && <p className="text-sm text-luka-muted mb-3">{message}</p>}
-          {showPicker && (
-            <FintocAccountPicker
-              key={fintocAccounts[0]?.id}
-              accounts={fintocAccounts}
-              onConfirm={handleConfirm}
-              loading={connecting}
-            />
-          )}
-          {!showPicker && !message && (
+          {!message && (
             <p className="text-sm text-luka-muted">
               Conecta tus cuentas para importar transacciones automáticamente.
             </p>
