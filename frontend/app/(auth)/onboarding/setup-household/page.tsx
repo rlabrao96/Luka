@@ -13,9 +13,11 @@ export default function SetupHouseholdPage() {
   const setHousehold = useLukaStore((s) => s.setHousehold);
   const [type, setType] = useState<"individual" | "couple" | null>(null);
   const [partnerEmail, setPartnerEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const create = async () => {
     try {
+      setIsSubmitting(true);
       const household = await api.createHousehold("Mi Hogar", type!);
       if (household.id) {
         setHousehold(household.id);
@@ -28,12 +30,13 @@ export default function SetupHouseholdPage() {
       router.push("/onboarding/connect-bank");
     } catch (e) {
       console.error("Failed to setup household:", e);
+      setIsSubmitting(false); // only reset on error because success redirects instantly
     }
   };
 
   return (
-    <Card>
-      <CardHeader><CardTitle>¿Cómo usarás Luka?</CardTitle></CardHeader>
+    <Card className="w-full shadow-sm">
+      <CardHeader><CardTitle className="text-luka-dark">¿Cómo usarás Luka?</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <Button variant={type === "individual" ? "default" : "outline"}
           className="w-full" onClick={() => setType("individual")}>
@@ -48,7 +51,13 @@ export default function SetupHouseholdPage() {
             onChange={e => setPartnerEmail(e.target.value)} />
         )}
         {type && (
-          <Button className="w-full bg-luka-primary" onClick={create}>Continuar →</Button>
+          <Button 
+            className="w-full bg-luka-primary text-white hover:bg-blue-700" 
+            onClick={create}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Creando..." : "Continuar →"}
+          </Button>
         )}
       </CardContent>
     </Card>
