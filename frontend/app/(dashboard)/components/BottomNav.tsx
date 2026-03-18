@@ -18,7 +18,7 @@ export function BottomNav() {
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur border-t border-slate-200 flex z-50 pb-safe sm:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur border-t border-slate-200 flex z-50 lg:hidden">
       {NAV.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
         return (

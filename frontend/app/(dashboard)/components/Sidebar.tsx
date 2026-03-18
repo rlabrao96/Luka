@@ -46,7 +46,7 @@ export function Sidebar() {
     .toUpperCase();
 
   return (
-    <aside className="flex flex-col w-64 shrink-0 h-full bg-white border-r border-slate-200/80 shadow-sm">
+    <aside className="hidden lg:flex flex-col w-64 shrink-0 h-full bg-white border-r border-slate-200/80 shadow-sm">
       {/* Logo */}
       <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-100">
         <div className="w-8 h-8 rounded-lg bg-luka-primary flex items-center justify-center shadow-sm">
