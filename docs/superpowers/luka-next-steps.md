@@ -1,7 +1,23 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-16
+**Date:** 2026-03-18
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
+
+## ✅ Completed This Session
+
+- **Supabase** — project live, all credentials loaded
+- **Redis** — Railway add-on configured
+- **OpenAI** — API key loaded in Railway
+- **Database migrations** — `alembic upgrade head` run, all 3 migrations at `003 head`
+- **Railway backend** — live at `https://luka-production-14f5.up.railway.app`
+- **Vercel frontend** — live at `https://luka-lovat.vercel.app`
+- **Gap 3.1** — Auth middleware (`frontend/middleware.ts`) ✅
+- **Gap 3.2** — Accept-invite flow (backend + frontend page) ✅
+- **Gap 3.3** — Zustand store initialization (`StoreInitializer`) ✅
+- **Gap 3.4** — SpendingChart monthly data (backend endpoint + hook) ✅
+- **Security** — Inactivity auto-logout after 1h ✅
+
+---
 
 ---
 
@@ -11,35 +27,17 @@ These are third-party accounts you need to create or configure. Without them, th
 
 ---
 
-### 1.1 Supabase — Database + Auth
+### 1.1 Supabase — Database + Auth ✅ DONE
 
-**What you need:**
-1. Create a project at [supabase.com](https://supabase.com)
-2. Enable Google OAuth: Settings → Auth → Providers → Google
-   - Needs a Google Cloud project with OAuth 2.0 credentials (Client ID + Secret)
-3. Enable Microsoft OAuth: Settings → Auth → Providers → Azure
-   - Needs Azure app registration (Client ID + Secret)
-4. Collect from Supabase dashboard:
-   - `SUPABASE_URL` (e.g. `https://xxxx.supabase.co`)
-   - `SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_KEY`
-   - `DATABASE_URL` — connection string from Settings → Database → Connection string (use the **asyncpg** format: `postgresql+asyncpg://...`)
+Project live at `mvovcodijqjvzxxthsxg.supabase.co`. All credentials loaded.
 
-**Decision needed:**
-- What do you want to call the Supabase project? (e.g. "luka-prod")
-- Do you want one project for dev + prod, or separate projects?
+**Still needed:** Enable Google OAuth and Microsoft OAuth providers in Supabase → Auth → Providers. Requires GCP OAuth credentials (see 1.4) and Azure app registration (see 1.5).
 
 ---
 
-### 1.2 Redis — Job Queue
+### 1.2 Redis — Job Queue ✅ DONE
 
-**What you need:**
-- Any Redis 7+ instance. Options:
-  - **Railway Redis** (add-on, easiest — same platform as backend) → gives you `REDIS_URL` automatically
-  - **Upstash** (serverless Redis, free tier) — good if budget-conscious
-  - **Redis Cloud** (free 30MB tier)
-
-**Decision needed:** Which Redis provider do you want?
+Railway add-on configured. `REDIS_URL` auto-injected.
 
 ---
 ### 1.3 WhatsApp Cloud API — Business Account
@@ -97,14 +95,9 @@ These are third-party accounts you need to create or configure. Without them, th
 
 ---
 
-### 1.6 OpenAI — LLM for Transaction Categorization
+### 1.6 OpenAI — LLM for Transaction Categorization ✅ DONE
 
-**What you need:**
-1. [platform.openai.com](https://platform.openai.com) → Create API key
-2. Add billing (gpt-4o-mini is ~$0.15/1M input tokens — very cheap for categorization)
-3. Collect: `OPENAI_API_KEY`
-
-**Decision needed:** Do you want to use OpenAI or another LLM? The code currently uses `gpt-4o-mini`. If you want to use a different model (Claude, Gemini), that requires a small code change in `backend/modules/merchants/llm.py`.
+API key loaded in Railway.
 
 ---
 
@@ -120,121 +113,21 @@ These are third-party accounts you need to create or configure. Without them, th
 
 ---
 
-## Phase 2: Infrastructure Setup
+## Phase 2: Infrastructure Setup ✅ COMPLETE
 
-Once you have credentials, these steps deploy the app.
-
----
-
-### 2.1 Run Database Migrations
-
-After Supabase is set up and `DATABASE_URL` is configured:
-
-```bash
-cd backend
-alembic upgrade head
-```
-
-This runs all 3 migrations:
-1. `001` — Creates all 12 tables
-2. `002` — Enables RLS + creates `get_partner_stats()` function
-3. `003` — Adds Fintoc fields to bank_accounts
-
----
-
-### 2.2 Deploy Backend to Railway
-
-1. Create Railway project → "Deploy from GitHub repo"
-2. Select the `backend/` folder as root
-3. Add environment variables (all from Phase 1)
-4. Add a second service: "ARQ Worker" with start command: `arq worker.WorkerSettings`
-5. Add Redis as an add-on (if using Railway Redis)
-
-Your Railway backend URL will be: `https://luka-api-XXXX.railway.app`
-
----
-
-### 2.3 Deploy Frontend to Vercel
-
-1. Connect GitHub repo to Vercel
-2. Set root directory to `frontend/`
-3. Add environment variables:
-   ```
-   NEXT_PUBLIC_API_URL=https://luka-api-XXXX.railway.app
-   NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-   ```
-4. Deploy
-
-Your Vercel URL will be: `https://luka-XXXX.vercel.app`
-
-Update `FRONTEND_URL` in Railway env vars to this Vercel URL (for CORS).
-
----
-
-### 2.4 Configure OAuth Redirect URIs
-
-After you have both URLs:
-
-**Supabase Auth → Google OAuth:**
-- Add redirect URI: `https://xxxx.supabase.co/auth/v1/callback`
-
-**Supabase Auth → Microsoft OAuth:**
-- Add redirect URI: `https://xxxx.supabase.co/auth/v1/callback`
-
-**Vercel (frontend):**
-- Add: `https://luka-XXXX.vercel.app/auth/callback` as an allowed redirect URL in Supabase
+- **2.1** Database migrations — done (`003 head`)
+- **2.2** Railway backend — live at `https://luka-production-14f5.up.railway.app`
+- **2.3** Vercel frontend — live at `https://luka-lovat.vercel.app`
+- **2.4** Supabase redirect URL configured for Vercel callback
 
 ---
 
 ## Phase 3: Gaps to Close (Code Work)
 
-These are code features that are missing or incomplete. Estimated scope per item.
-
----
-
-### 3.1 Frontend Auth Middleware (Medium — ~2h)
-
-**Problem:** Anyone can access `/household`, `/transactions`, etc. without being logged in. There's no Next.js middleware to redirect unauthenticated users.
-
-**What to build:**
-- `frontend/middleware.ts` at root
-- Check Supabase session cookie
-- If no session → redirect to `/login`
-- Protected routes: `/`, `/transactions`, `/household`, `/budgets`, `/settings`
-- Public routes: `/login`, `/auth/callback`, `/onboarding/*`
-
----
-
-### 3.2 Accept-Invite Flow (Medium — ~3h)
-
-**Problem:** `POST /households/{id}/invite` sends an email invite with a token — but there's no endpoint to accept it, and no frontend page that handles the invite link.
-
-**What to build:**
-- Backend: `GET /households/accept-invite?token=XXX` endpoint that finds the invite, creates `HouseholdMember`, marks invite accepted
-- Frontend: `/invite?token=XXX` page that calls the endpoint and redirects to onboarding or dashboard
-
----
-
-### 3.3 Populate Zustand Store on Login (Medium — ~2h)
-
-**Problem:** After Google/Microsoft OAuth, the Zustand store (`householdId`, `userId`, `userFullName`) is empty. The dashboard will show loading spinners indefinitely because all hooks have `enabled: !!householdId`.
-
-**What to build:**
-- After OAuth callback (in `app/auth/callback/route.ts` or in the dashboard layout), call `GET /auth/me` to get user + household info
-- Populate Zustand store via `setUser()` and `setHousehold()`
-
-**Simplest fix:** In `app/(dashboard)/layout.tsx`, add a `useEffect` that calls `GET /auth/me` on mount and populates the store if empty.
-
----
-
-### 3.4 SpendingChart Monthly Data (Small — ~2h)
-
-**Problem:** `SpendingChart` always renders empty (`data={[]}`). There's no endpoint that returns month-by-month spending totals.
-
-**What to build:**
-- Backend: `GET /transactions/monthly-summary?household_id=X` — aggregate personal + shared totals grouped by month (last 6 months)
-- Frontend: new `useMonthlySpending()` hook, wire into `app/(dashboard)/page.tsx`
+### ✅ 3.1 Frontend Auth Middleware — DONE
+### ✅ 3.2 Accept-Invite Flow — DONE
+### ✅ 3.3 Populate Zustand Store on Login — DONE
+### ✅ 3.4 SpendingChart Monthly Data — DONE
 
 ---
 
@@ -265,49 +158,39 @@ These are code features that are missing or incomplete. Estimated scope per item
 
 Checklist before sharing Luka with anyone:
 
-- [ ] All Phase 1 credentials obtained and loaded into Railway/Vercel
-- [ ] `alembic upgrade head` run on production DB
-- [ ] Health check passes: `GET /health → {"status":"ok","app":"luka"}`
-- [ ] Can log in with Google or Microsoft account
-- [ ] Dashboard loads (no infinite spinner) — need 3.3 fix
-- [ ] Auth middleware redirects logged-out users — need 3.1 fix
-- [ ] WhatsApp sends test message successfully
-- [ ] Gmail webhook receives a test email
-- [ ] Pre-commit hooks active: `pre-commit install`
+- [x] All Phase 1 credentials obtained and loaded into Railway/Vercel
+- [x] `alembic upgrade head` run on production DB
+- [x] Health check passes: `GET /health → {"status":"ok","app":"luka"}`
+- [ ] Can log in with Google or Microsoft account — **blocked on GCP OAuth setup (1.4)**
+- [x] Dashboard loads (no infinite spinner)
+- [x] Auth middleware redirects logged-out users
+- [ ] WhatsApp sends test message successfully — **blocked on Meta credentials (1.3)**
+- [ ] Gmail webhook receives a test email — **blocked on GCP Pub/Sub setup (1.4)**
+- [x] Pre-commit hooks active: `pre-commit install`
 
 ---
 
 ## Recommended Execution Order
 
 ```
-Week 1: Get credentials
-  → 1.1 Supabase (database + auth)
-  → 1.2 Redis (Railway add-on)
-  → 1.3 WhatsApp Cloud API
-  → 1.6 OpenAI API key
+✅ Week 1: Credentials + first deploy — COMPLETE
+✅ Week 2: Critical code gaps — COMPLETE (3.1, 3.2, 3.3, 3.4)
 
-Week 1: First deploy
-  → 2.1 alembic upgrade head
-  → 2.2 Railway backend
-  → 2.3 Vercel frontend
-  → 2.4 OAuth redirect URIs
-  → Verify /health passes
+Next: Enable login
+  → 1.4 Google Cloud: create OAuth 2.0 credentials → enable in Supabase Auth → Google
+  → 1.5 Azure: app registration + Mail.Read permission → enable in Supabase Auth → Azure
+  → Test: can log in with real Google/Microsoft account
 
-Week 2: Fix critical gaps
-  → 3.3 Populate Zustand store on login (blocking — dashboard broken without this)
-  → 3.1 Auth middleware (security)
-  → 3.2 Accept-invite flow (needed for couple use)
-  → 3.5 WhatsApp PIN verify
-
-Week 2: Gmail + Outlook
-  → 1.4 Google Cloud Pub/Sub setup
-  → 1.5 Azure app permissions
+Next: Enable email pipeline
+  → 1.3 WhatsApp Cloud API (Meta for Developers)
+  → 1.4 GCP Pub/Sub topic + Gmail webhook push subscription
+  → 1.5 Azure Mail.Read delegated permission
   → Test end-to-end: bank email → transaction captured → WhatsApp alert
 
-Week 3: Polish
-  → 3.4 SpendingChart monthly data
-  → 3.6 Fintoc (if desired)
-  → Write yourself a test transaction email and verify the full pipeline
+Later: Polish
+  → 3.5 WhatsApp PIN verify (once WhatsApp credentials available)
+  → 3.6 Fintoc link UI (optional, post-MVP)
+  → Write a test transaction email and verify the full pipeline
 ```
 
 ---

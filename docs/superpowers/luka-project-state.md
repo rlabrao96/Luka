@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-16
-**Status:** All 4 implementation plans complete. Backend + frontend fully implemented. Awaiting production credentials and deployment.
+**Date:** 2026-03-18
+**Status:** All 4 implementation plans complete + all critical gaps closed. App is LIVE in production (Railway + Vercel). Awaiting WhatsApp/Gmail/Outlook credentials to enable email capture pipeline.
 
 ---
 
@@ -68,17 +68,19 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   ├── globals.css             ← Tailwind + luka-* design tokens
 │   │   ├── auth/callback/route.ts  ← Supabase OAuth callback
 │   │   ├── lib/
-│   │   │   ├── api.ts              ← apiFetch<T> + all 6 API methods + TypeScript interfaces
+│   │   │   ├── api.ts              ← apiFetch<T> + all 8 API methods + TypeScript interfaces
 │   │   │   ├── store.ts            ← Zustand: householdId, userId, userFullName, reset()
 │   │   │   ├── hooks/
-│   │   │   │   ├── useTransactions.ts  ← useMyTransactions, useSharedTransactions
+│   │   │   │   ├── useTransactions.ts  ← useMyTransactions, useSharedTransactions, useMonthlySpending
 │   │   │   │   ├── useHousehold.ts     ← useHouseholdSummary, usePartnerStats
 │   │   │   │   └── useBudget.ts        ← useBudgetStatus, useSetBudget
 │   │   │   └── supabase/
 │   │   │       ├── client.ts       ← Supabase browser client
 │   │   │       └── server.ts       ← Supabase SSR client
+│   │   ├── middleware.ts           ← Protects all routes, redirects to /login if no session
 │   │   ├── (auth)/                 ← Route group (no URL prefix)
 │   │   │   ├── login/page.tsx      ← Google + Microsoft OAuth buttons
+│   │   │   ├── invite/[token]/page.tsx ← Accept household invite link
 │   │   │   └── onboarding/
 │   │   │       ├── setup-household/page.tsx
 │   │   │       ├── connect-email/page.tsx
@@ -97,7 +99,9 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │           ├── KpiCard.tsx         ← Metric card with trend coloring
 │   │           ├── SpendingChart.tsx   ← Recharts AreaChart (personal/shared)
 │   │           ├── CategoryDonut.tsx   ← Recharts PieChart donut
-│   │           └── RecentTransactions.tsx ← Transaction list with split badges
+│   │           ├── RecentTransactions.tsx ← Transaction list with split badges
+│   │           ├── StoreInitializer.tsx   ← Calls GET /auth/me on mount, populates Zustand
+│   │           └── InactivityGuard.tsx    ← Auto-logout after 1h inactivity
 │   ├── components/ui/              ← shadcn/ui: badge, button, card, input, tabs, table, separator, avatar
 │   └── lib/utils.ts                ← cn() Tailwind class merger
 │
@@ -171,6 +175,7 @@ GET  /households/{id}/partner-stats        → partner aggregate via SECURITY DE
 
 GET  /transactions/mine?limit=N            → current user's transactions
 GET  /transactions/shared?household_id=X   → shared household transactions
+GET  /transactions/monthly-summary?household_id=X → last 6 months aggregated (personal + shared)
 
 GET  /budgets/monthly/{id}?month=YYYY-MM   → budget status
 POST /budgets/monthly/{id}                 → set monthly budget
@@ -230,6 +235,8 @@ luka-danger   = #EF4444  (budget exceeded, sign-out button)
 8. **No ledger/debt table** — Contribution transparency via aggregate query on transactions. No debt tracking between partners.
 
 9. **Store reset on sign-out** — Zustand `reset()` called in `finally` block so stale householdId/userId never persists across sessions.
+
+10. **Inactivity auto-logout** — `InactivityGuard` tracks activity events and signs out after 1h idle. Uses `localStorage` timestamp so closing and reopening the browser after 1h also triggers sign-out on return.
 
 ---
 
@@ -302,26 +309,31 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 
 | Gap | Impact | Notes |
 |-----|--------|-------|
-| SpendingChart data | Low (UI only) | `data=[]` placeholder; needs month-by-month aggregation endpoint |
+| WhatsApp PIN verify | Low | Onboarding step exists in UI, backend logic not fully wired. Blocked on WhatsApp credentials. |
+| Email watch setup | Medium | Onboarding connects email — initial watch setup needs triggering once after first login. Blocked on GCP/Azure credentials. |
 | Fintoc OAuth link flow | Medium | FintocClient exists, cron job exists. Missing: UI flow for user to authorize Fintoc and store `fintoc_link_id` |
-| Vault integration | Medium | Supabase Vault for OAuth tokens (noted in design spec, not wired) |
-| Frontend auth middleware | Medium | No Next.js middleware yet to redirect unauthenticated users from dashboard routes |
-| Accept-invite flow | Medium | `POST /households/{id}/invite` sends invite — but the link recipient endpoint isn't implemented |
-| WhatsApp PIN verify | Low | Onboarding step exists in UI, backend logic not fully wired |
-| Email watch setup | Medium | Onboarding connects email — but `renew_mail_watches` renewal needs tested with real subscriptions |
-| Production deploy | Blocking | No Railway/Vercel env vars set — app not live yet |
+| Vault integration | Low | Supabase Vault for OAuth tokens (noted in design spec, not wired) — optional hardening |
+| Google/Microsoft OAuth login | Blocking for real users | GCP OAuth credentials not yet configured in Supabase |
 
 ---
 
 ## Deployment
 
-**Backend (Railway):**
-- Configured via `railway.toml`
+**Backend (Railway):** ✅ LIVE
+- URL: `https://luka-production-14f5.up.railway.app`
+- Configured via `backend/railway.toml`
 - Entry: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 - Worker: separate Railway service running `arq worker.WorkerSettings`
+- Redis: Railway add-on (auto-injects `REDIS_URL`)
+- `/health` returns `{"status":"ok","app":"luka"}`
 
-**Frontend (Vercel):**
+**Frontend (Vercel):** ✅ LIVE
+- URL: `https://luka-lovat.vercel.app`
 - Root: `frontend/`
 - Framework: Next.js (auto-detected)
-- Build: `npm run build`
-- Environment vars: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Environment vars set: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Supabase redirect URL configured: `https://luka-lovat.vercel.app/auth/callback`
+
+**Database (Supabase):** ✅ LIVE
+- All 3 migrations applied (`alembic upgrade head` — confirmed at `003 head`)
+- Project: `mvovcodijqjvzxxthsxg.supabase.co`
