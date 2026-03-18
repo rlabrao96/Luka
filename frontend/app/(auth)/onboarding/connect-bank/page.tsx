@@ -1,45 +1,155 @@
 "use client";
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
 
-const BANKS = ["Santander", "Banco de Chile", "BCI", "Scotiabank", "Itaú", "BICE", "Otro"];
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Script from "next/script";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FintocAccountPicker } from "@/app/(dashboard)/components/FintocAccountPicker";
+import { api, FintocAccount, SelectedFintocAccount } from "@/app/lib/api";
+import { useLukaStore } from "@/app/lib/store";
+
+declare global {
+  interface Window {
+    Fintoc?: {
+      create: (options: {
+        publicKey: string;
+        product: string;
+        country: string;
+        onSuccess: (linkToken: string) => void;
+        onExit: () => void;
+        onError: (err: Error) => void;
+      }) => { open: () => void };
+    };
+  }
+}
+
+type Step = "connect" | "pick" | "loading" | "done";
 
 export default function ConnectBankPage() {
   const router = useRouter();
-  const [bank, setBank] = useState("");
-  const [accountType, setAccountType] = useState<"personal" | "joint" | null>(null);
+  const { householdId } = useLukaStore();
+  const [step, setStep] = useState<Step>("connect");
+  const [fintocAccounts, setFintocAccounts] = useState<FintocAccount[]>([]);
+  const [linkToken, setLinkToken] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [scriptReady, setScriptReady] = useState(false);
 
-  const save = async () => {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/bank-accounts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bank_name: bank.toLowerCase(), account_type: accountType }),
+  function openFintocWidget() {
+    if (!window.Fintoc) {
+      setError("Widget no disponible. Recarga la página.");
+      return;
+    }
+    setError(null);
+    const widget = window.Fintoc.create({
+      publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
+      product: "movements",
+      country: "cl",
+      onSuccess: async (token: string) => {
+        setLinkToken(token);
+        try {
+          const accounts = await api.getFintocAccounts(token);
+          setFintocAccounts(accounts);
+          setStep("pick");
+        } catch {
+          setError("No se pudieron cargar las cuentas. Intenta de nuevo.");
+        }
+      },
+      onExit: () => setError("Conexión cancelada."),
+      onError: () => setError("Error al conectar. Intenta de nuevo."),
     });
-    router.push("/dashboard");
-  };
+    widget.open();
+  }
+
+  async function handleConfirm(selected: SelectedFintocAccount[]) {
+    if (!householdId) return;
+    setStep("loading");
+    try {
+      await api.connectFintocAccounts({
+        link_token: linkToken,
+        household_id: householdId,
+        accounts: selected,
+      });
+      setStep("done");
+      setTimeout(() => router.push("/onboarding/verify-whatsapp"), 1500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      setError(
+        msg.includes("409")
+          ? "Una de las cuentas ya está conectada."
+          : "Error al guardar las cuentas. Intenta de nuevo."
+      );
+      setStep("pick");
+    }
+  }
 
   return (
-    <Card>
-      <CardHeader><CardTitle>Agrega tu banco</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
-        <select className="w-full border rounded p-2 text-sm" value={bank} onChange={e => setBank(e.target.value)}>
-          <option value="">Selecciona tu banco</option>
-          {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
-        </select>
-        <Button variant={accountType === "personal" ? "default" : "outline"}
-          className="w-full" onClick={() => setAccountType("personal")}>
-          Cuenta personal
-        </Button>
-        <Button variant={accountType === "joint" ? "default" : "outline"}
-          className="w-full" onClick={() => setAccountType("joint")}>
-          Cuenta conjunta (con tarjetas adicionales)
-        </Button>
-        {bank && accountType && (
-          <Button className="w-full bg-luka-primary" onClick={save}>Ir al Dashboard →</Button>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      <Script src="https://js.fintoc.com/v1/" onReady={() => setScriptReady(true)} />
+      <div className="min-h-screen bg-luka-light flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-luka-dark">Conecta tu banco</CardTitle>
+            <CardDescription className="text-luka-muted">
+              Conecta tus cuentas bancarias y tarjetas. Importaremos los últimos 3 meses automáticamente.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {error && (
+              <p className="text-sm text-luka-danger bg-red-50 rounded-md px-3 py-2">{error}</p>
+            )}
+
+            {step === "connect" && (
+              <div className="space-y-4">
+                <div className="rounded-lg bg-blue-50 border border-blue-100 p-4">
+                  <p className="text-sm text-luka-dark font-medium mb-1">¿Cómo funciona?</p>
+                  <ul className="text-sm text-luka-muted space-y-1 list-disc list-inside">
+                    <li>Conecta de forma segura con tu banco</li>
+                    <li>Elige qué cuentas y tarjetas incluir</li>
+                    <li>Importamos 3 meses de historial automáticamente</li>
+                  </ul>
+                </div>
+                <Button
+                  onClick={openFintocWidget}
+                  disabled={!scriptReady}
+                  className="w-full bg-luka-primary text-white hover:bg-blue-700"
+                >
+                  {scriptReady ? "Conectar banco" : "Cargando..."}
+                </Button>
+                <button
+                  onClick={() => router.push("/onboarding/verify-whatsapp")}
+                  className="w-full text-sm text-luka-muted hover:text-luka-dark text-center"
+                >
+                  Saltar por ahora
+                </button>
+              </div>
+            )}
+
+            {step === "pick" && fintocAccounts.length > 0 && (
+              <FintocAccountPicker
+                key={fintocAccounts[0]?.id}
+                accounts={fintocAccounts}
+                onConfirm={handleConfirm}
+                loading={false}
+              />
+            )}
+
+            {step === "loading" && (
+              <div className="text-center py-8">
+                <p className="text-luka-dark font-medium">Guardando cuentas...</p>
+                <p className="text-sm text-luka-muted mt-1">El historial se importará en segundo plano.</p>
+              </div>
+            )}
+
+            {step === "done" && (
+              <div className="text-center py-8">
+                <p className="text-luka-dark font-medium">¡Cuentas conectadas!</p>
+                <p className="text-sm text-luka-muted mt-1">Importando historial... Redirigiendo.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }
