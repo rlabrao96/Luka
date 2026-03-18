@@ -7,6 +7,7 @@ from modules.email.router import router as email_router
 from modules.whatsapp.router import router as whatsapp_router
 from modules.transactions.router import router as transactions_router
 from modules.budgets.router import router as budgets_router
+from modules.bank_accounts.router import router as bank_accounts_router
 
 
 def create_app() -> FastAPI:
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(whatsapp_router)
     app.include_router(transactions_router)
     app.include_router(budgets_router)
+    app.include_router(bank_accounts_router)
 
     return app
 
