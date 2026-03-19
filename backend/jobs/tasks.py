@@ -108,7 +108,8 @@ async def send_invite_email(
     def _send():
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
             server.starttls()
-            server.login(settings.smtp_user, settings.smtp_password)
+            if settings.smtp_password:
+                server.login(settings.smtp_user, settings.smtp_password)
             server.send_message(msg)
 
     try:
