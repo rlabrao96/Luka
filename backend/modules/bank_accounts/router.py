@@ -38,6 +38,7 @@ async def list_bank_accounts(
             "bank_name": a.bank_name,
             "account_type": a.account_type,
             "account_kind": a.account_kind,
+            "account_number": a.account_number,
             "cardholder_name": a.cardholder_name,
             "user_id": str(a.user_id),
             "import_status": a.import_status,
@@ -66,6 +67,7 @@ class FintocAccountIn(BaseModel):
     label: str  # "personal" | "partner" | "joint"
     bank_name: str | None = None
     account_kind: str | None = None  # "checking_account" | "credit_card" | "savings_account"
+    account_number: str | None = None
 
 
 class ConnectFintocRequest(BaseModel):
@@ -103,6 +105,7 @@ async def connect_fintoc_accounts(
             bank_name=acct.bank_name or "Fintoc",
             account_type=acct.label,
             account_kind=acct.account_kind,
+            account_number=acct.account_number,
             fintoc_link_id=body.link_token,
             fintoc_account_id=acct.fintoc_account_id,
             import_status="pending",
@@ -168,7 +171,8 @@ async def fintoc_link_webhook(
             user_id=user_id,
             bank_name=bank_name,
             account_type="personal",
-            account_kind=acc.get("type"),  # e.g. "checking_account", "credit_card"
+            account_kind=acc.get("type"),
+            account_number=acc.get("number"),
             fintoc_link_id=link_token,
             fintoc_account_id=fintoc_account_id,
             import_status="pending",

@@ -68,6 +68,8 @@ function AccountRow({
   onDeleted: (id: string) => void;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showNumber, setShowNumber] = useState(false);
   const isOwn = account.user_id === currentUserId;
   const typeLabel = ACCOUNT_TYPE_LABEL[account.account_type] ?? account.account_type;
   const typeColor = ACCOUNT_TYPE_COLOR[account.account_type] ?? "bg-gray-100 text-gray-700";
@@ -77,15 +79,19 @@ function AccountRow({
   const importLabel = IMPORT_STATUS_LABEL[account.import_status] ?? account.import_status;
   const importColor = IMPORT_STATUS_COLOR[account.import_status] ?? "bg-gray-100 text-gray-700";
 
+  const last4 = account.account_number ? account.account_number.slice(-4) : null;
+  const maskedNumber = last4 ? `•••• ${last4}` : null;
+  const fullNumber = account.account_number ?? null;
+
   async function handleDelete() {
     if (!householdId) return;
-    if (!confirm(`¿Desconectar ${bankLabel(account.bank_name)}?`)) return;
     setDeleting(true);
     try {
       await api.deleteBankAccount(account.id, householdId);
       onDeleted(account.id);
     } finally {
       setDeleting(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -93,10 +99,28 @@ function AccountRow({
     <div className="flex items-center justify-between py-3 border-b last:border-0">
       <div className="space-y-0.5">
         <p className="text-sm font-medium text-luka-dark">{bankLabel(account.bank_name)}</p>
-        <p className="text-xs text-luka-muted">
-          {kindLabel ?? "Cuenta bancaria"}
-          {!isOwn && <span className="ml-1 text-purple-600">· Pareja</span>}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs text-luka-muted">
+            {kindLabel ?? "Cuenta bancaria"}
+            {!isOwn && <span className="ml-1 text-purple-600">· Pareja</span>}
+          </p>
+          {maskedNumber && (
+            <span className="flex items-center gap-1 text-xs text-luka-muted">
+              · {showNumber ? fullNumber : maskedNumber}
+              <button
+                onClick={() => setShowNumber((v) => !v)}
+                className="text-luka-muted hover:text-luka-dark"
+                title={showNumber ? "Ocultar" : "Mostrar"}
+              >
+                {showNumber ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                )}
+              </button>
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>
@@ -107,14 +131,31 @@ function AccountRow({
             {importLabel}
           </span>
         )}
-        {isOwn && (
+        {isOwn && !confirmDelete && (
           <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50 ml-1"
+            onClick={() => setConfirmDelete(true)}
+            className="text-xs text-red-400 hover:text-red-600 ml-1"
           >
-            {deleting ? "..." : "Desconectar"}
+            Desconectar
           </button>
+        )}
+        {isOwn && confirmDelete && (
+          <span className="flex items-center gap-1.5 ml-1">
+            <span className="text-xs text-luka-muted">¿Seguro?</span>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-xs text-red-500 font-medium hover:text-red-700 disabled:opacity-50"
+            >
+              {deleting ? "..." : "Sí"}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="text-xs text-luka-muted hover:text-luka-dark"
+            >
+              No
+            </button>
+          </span>
         )}
       </div>
     </div>

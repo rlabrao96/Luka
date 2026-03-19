@@ -105,7 +105,8 @@ export interface BankAccountRow {
   id: string;
   bank_name: string;
   account_type: "personal" | "partner" | "joint";
-  account_kind: string | null;  // "checking_account" | "credit_card" | "savings_account" | null
+  account_kind: string | null;
+  account_number: string | null;
   cardholder_name: string | null;
   user_id: string;
   import_status: "pending" | "importing" | "done" | "failed";
