@@ -21,17 +21,60 @@ class FintocClient:
 
     def _headers(self) -> dict:
         return {
-            "Authorization": settings.fintoc_api_key,
+            "Authorization": f"Bearer {settings.fintoc_api_key}",
         }
 
     async def fetch_transactions(
         self, account_id: str, since: date, until: date
     ) -> list[FintocTransaction]:
+        all_movements: list[dict] = []
+        page = 1
+        async with httpx.AsyncClient() as client:
+            while True:
+                resp = await client.get(
+                    f"{FINTOC_BASE}/accounts/{account_id}/movements",
+                    headers=self._headers(),
+                    params={
+                        "link_token": self._link_token,
+                        "since": since.isoformat(),
+                        "until": until.isoformat(),
+                        "per_page": 300,
+                        "page": page,
+                    },
+                )
+                if not resp.is_success:
+                    raise httpx.HTTPStatusError(
+                        f"{resp.status_code} {resp.text}",
+                        request=resp.request,
+                        response=resp,
+                    )
+                data = resp.json()
+                if not data:
+                    break
+                all_movements.extend(data)
+                if len(data) < 300:
+                    break
+                page += 1
+
+        return [
+            FintocTransaction(
+                id=mov["id"],
+                amount=abs(int(mov["amount"])),
+                description=(mov.get("description") or "").upper().strip(),
+                transaction_date=datetime.fromisoformat(mov["post_date"]),
+                account_id=account_id,
+            )
+            for mov in all_movements
+            if int(mov.get("amount", 0)) < 0  # only debits (negative = expense)
+        ]
+
+    async def fetch_accounts(self) -> list[dict]:
+        """Fetch all accounts associated with this link token."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"{FINTOC_BASE}/links/{self._link_token}/accounts/{account_id}/transactions",
+                f"{FINTOC_BASE}/accounts",
                 headers=self._headers(),
-                params={"since": since.isoformat(), "until": until.isoformat()},
+                params={"link_token": self._link_token},
             )
             if not resp.is_success:
                 raise httpx.HTTPStatusError(
@@ -39,26 +82,4 @@ class FintocClient:
                     request=resp.request,
                     response=resp,
                 )
-            data = resp.json()
-
-        return [
-            FintocTransaction(
-                id=txn["id"],
-                amount=abs(int(txn["amount"])),
-                description=(txn.get("description") or "").upper().strip(),
-                transaction_date=datetime.fromisoformat(txn["post_date"]),
-                account_id=account_id,
-            )
-            for txn in data
-            if txn.get("type") == "charge"  # only debits
-        ]
-
-    async def fetch_accounts(self) -> list[dict]:
-        """Fetch all accounts associated with this link token."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{FINTOC_BASE}/links/{self._link_token}/accounts",
-                headers=self._headers(),
-            )
-            resp.raise_for_status()
             return resp.json()
