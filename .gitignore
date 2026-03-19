@@ -25,3 +25,4 @@ node_modules/
 
 # Secrets baseline (detect-secrets)
 .secrets.baseline
+.claude/worktrees/

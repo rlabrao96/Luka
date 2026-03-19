@@ -52,6 +52,9 @@ class BankAccount(Base):
     email_sender_pattern: Mapped[str | None] = mapped_column(String, nullable=True)
     fintoc_link_id: Mapped[str | None] = mapped_column(String, nullable=True)
     fintoc_account_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    account_kind: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # 'checking_account' | 'credit_card' | etc
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     import_status: Mapped[str] = mapped_column(
         String, nullable=False, default="done", server_default="done"

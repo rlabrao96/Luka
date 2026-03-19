@@ -16,6 +16,37 @@ from modules.households.router import _require_membership
 router = APIRouter(prefix="/bank-accounts", tags=["bank-accounts"])
 
 
+@router.get("")
+async def list_bank_accounts(
+    household_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all connected bank accounts for a household."""
+    await _require_membership(household_id, current_user.id, db)
+
+    result = await db.execute(
+        select(BankAccount).where(
+            BankAccount.household_id == household_id,
+            BankAccount.is_active.is_(True),
+        )
+    )
+    accounts = result.scalars().all()
+    return [
+        {
+            "id": str(a.id),
+            "bank_name": a.bank_name,
+            "account_type": a.account_type,
+            "account_kind": a.account_kind,
+            "cardholder_name": a.cardholder_name,
+            "user_id": str(a.user_id),
+            "import_status": a.import_status,
+            "fintoc_account_id": a.fintoc_account_id,
+        }
+        for a in accounts
+    ]
+
+
 @router.get("/fintoc/accounts")
 async def get_fintoc_accounts(
     link_token: str,
@@ -33,6 +64,8 @@ async def get_fintoc_accounts(
 class FintocAccountIn(BaseModel):
     fintoc_account_id: str
     label: str  # "personal" | "partner" | "joint"
+    bank_name: str | None = None
+    account_kind: str | None = None  # "checking_account" | "credit_card" | "savings_account"
 
 
 class ConnectFintocRequest(BaseModel):
@@ -67,8 +100,9 @@ async def connect_fintoc_accounts(
         bank_account = BankAccount(
             household_id=body.household_id,
             user_id=current_user.id,
-            bank_name="fintoc",
+            bank_name=acct.bank_name or "Fintoc",
             account_type=acct.label,
+            account_kind=acct.account_kind,
             fintoc_link_id=body.link_token,
             fintoc_account_id=acct.fintoc_account_id,
             import_status="pending",
@@ -86,6 +120,8 @@ async def connect_fintoc_accounts(
                 "id": str(a.id),
                 "fintoc_account_id": a.fintoc_account_id,
                 "account_type": a.account_type,
+                "account_kind": a.account_kind,
+                "bank_name": a.bank_name,
             }
             for a in created
         ],
@@ -132,6 +168,7 @@ async def fintoc_link_webhook(
             user_id=user_id,
             bank_name=bank_name,
             account_type="personal",
+            account_kind=acc.get("type"),  # e.g. "checking_account", "credit_card"
             fintoc_link_id=link_token,
             fintoc_account_id=fintoc_account_id,
             import_status="pending",

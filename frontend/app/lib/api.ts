@@ -101,6 +101,17 @@ export interface ImportStatus {
   importing: boolean;
 }
 
+export interface BankAccountRow {
+  id: string;
+  bank_name: string;
+  account_type: "personal" | "partner" | "joint";
+  account_kind: string | null;  // "checking_account" | "credit_card" | "savings_account" | null
+  cardholder_name: string | null;
+  user_id: string;
+  import_status: "pending" | "importing" | "done" | "failed";
+  fintoc_account_id: string | null;
+}
+
 // ── API calls ──────────────────────────────────────────────
 
 export const api = {
@@ -161,4 +172,7 @@ export const api = {
 
   getImportStatus: (householdId: string) =>
     apiFetch<ImportStatus>(`/bank-accounts/import-status?household_id=${householdId}`),
+
+  getBankAccounts: (householdId: string) =>
+    apiFetch<BankAccountRow[]>(`/bank-accounts?household_id=${householdId}`),
 };

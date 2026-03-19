@@ -1,18 +1,102 @@
 "use client";
 import Script from "next/script";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/app/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useLukaStore } from "@/app/lib/store";
-import { api } from "@/app/lib/api";
+import { api, type BankAccountRow } from "@/app/lib/api";
+
+// ── Label helpers ──────────────────────────────────────────
+
+const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+  personal: "Personal",
+  partner: "Pareja",
+  joint: "Compartida",
+};
+
+const ACCOUNT_TYPE_COLOR: Record<string, string> = {
+  personal: "bg-blue-100 text-blue-700",
+  partner: "bg-purple-100 text-purple-700",
+  joint: "bg-emerald-100 text-emerald-700",
+};
+
+const ACCOUNT_KIND_LABEL: Record<string, string> = {
+  checking_account: "Cuenta Corriente",
+  credit_card: "Tarjeta de Crédito",
+  savings_account: "Cuenta de Ahorro",
+  vista: "Cuenta Vista",
+};
+
+const IMPORT_STATUS_LABEL: Record<string, string> = {
+  pending: "En cola",
+  importing: "Importando...",
+  done: "Listo",
+  failed: "Error",
+};
+
+const IMPORT_STATUS_COLOR: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-700",
+  importing: "bg-blue-100 text-blue-700",
+  done: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+};
+
+function bankLabel(bankName: string): string {
+  if (!bankName) return "Banco desconocido";
+  // capitalize each word, trim "fintoc" fallback
+  if (bankName.toLowerCase() === "fintoc") return "Banco (Fintoc)";
+  return bankName
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+// ── Account row ────────────────────────────────────────────
+
+function AccountRow({ account, currentUserId }: { account: BankAccountRow; currentUserId: string | null }) {
+  const isOwn = account.user_id === currentUserId;
+  const typeLabel = ACCOUNT_TYPE_LABEL[account.account_type] ?? account.account_type;
+  const typeColor = ACCOUNT_TYPE_COLOR[account.account_type] ?? "bg-gray-100 text-gray-700";
+  const kindLabel = account.account_kind
+    ? (ACCOUNT_KIND_LABEL[account.account_kind] ?? account.account_kind)
+    : null;
+  const importLabel = IMPORT_STATUS_LABEL[account.import_status] ?? account.import_status;
+  const importColor = IMPORT_STATUS_COLOR[account.import_status] ?? "bg-gray-100 text-gray-700";
+
+  return (
+    <div className="flex items-center justify-between py-3 border-b last:border-0">
+      <div className="space-y-0.5">
+        <p className="text-sm font-medium text-luka-dark">{bankLabel(account.bank_name)}</p>
+        <p className="text-xs text-luka-muted">
+          {kindLabel ?? "Cuenta bancaria"}
+          {!isOwn && (
+            <span className="ml-1 text-purple-600">· Pareja</span>
+          )}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>
+          {typeLabel}
+        </span>
+        {account.import_status !== "done" && (
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${importColor}`}>
+            {importLabel}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Connect bank section ───────────────────────────────────
 
 function ConnectBankSection() {
   const setUser = useLukaStore((s) => s.setUser);
   const setHousehold = useLukaStore((s) => s.setHousehold);
 
-  // Fix hydration mismatch by only reading store in useEffect
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -41,8 +125,6 @@ function ConnectBankSection() {
     };
   }, []);
 
-  // Fetch user info directly from API if store is empty
-  // (StoreInitializer may not have run yet, or the backend just (re)deployed)
   useEffect(() => {
     if (householdId && userId) return;
     setLoadingUser(true);
@@ -63,6 +145,13 @@ function ConnectBankSection() {
       .finally(() => setLoadingUser(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refetch accounts after successful connection
+  const { refetch } = useQuery({
+    queryKey: ["bank-accounts", householdId],
+    queryFn: () => api.getBankAccounts(householdId!),
+    enabled: false, // only triggered manually via refetch()
+  });
 
   function openWidget() {
     if (!window.Fintoc) {
@@ -86,6 +175,7 @@ function ConnectBankSection() {
       webhookUrl,
       onSuccess: () => {
         setMessage("¡Cuenta conectada! El historial se importa en segundo plano.");
+        refetch();
       },
       onExit: () => setMessage("Conexión cancelada."),
       onEvent: (eventName: string) => {
@@ -94,6 +184,13 @@ function ConnectBankSection() {
     });
     widget.open();
   }
+
+  const { data: accounts, isLoading: loadingAccounts } = useQuery({
+    queryKey: ["bank-accounts", householdId],
+    queryFn: () => api.getBankAccounts(householdId!),
+    enabled: !!householdId,
+    staleTime: 30_000,
+  });
 
   return (
     <>
@@ -113,16 +210,31 @@ function ConnectBankSection() {
         </CardHeader>
         <CardContent>
           {message && <p className="text-sm text-luka-muted mb-3">{message}</p>}
-          {!message && (
+
+          {loadingAccounts && (
+            <p className="text-sm text-luka-muted">Cargando cuentas...</p>
+          )}
+
+          {!loadingAccounts && accounts && accounts.length === 0 && (
             <p className="text-sm text-luka-muted">
               Conecta tus cuentas para importar transacciones automáticamente.
             </p>
+          )}
+
+          {!loadingAccounts && accounts && accounts.length > 0 && (
+            <div className="divide-y divide-gray-100">
+              {accounts.map((account) => (
+                <AccountRow key={account.id} account={account} currentUserId={userId} />
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
     </>
   );
 }
+
+// ── Page ───────────────────────────────────────────────────
 
 export default function SettingsPage() {
   const router = useRouter();
