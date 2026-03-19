@@ -24,5 +24,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     gcp_project_id: str = "luka-project"
 
+    # SMTP Settings
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+
 
 settings = Settings()

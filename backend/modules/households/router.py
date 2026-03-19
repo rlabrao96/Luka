@@ -58,7 +58,15 @@ async def invite_partner(
     if not member_result.scalar_one_or_none():
         raise HTTPException(403, "Only the household owner can invite members")
     invite = await service.create_invite(db, household, current_user, body.email)
-    # TODO Plan 2: enqueue invite email ARQ job
+    from jobs.queue import enqueue_job
+
+    await enqueue_job(
+        "send_invite_email",
+        email_to=body.email,
+        token=invite.token,
+        inviter_name=current_user.full_name,
+        household_name=household.name,
+    )
     return {"token": invite.token, "expires_at": invite.expires_at}
 
 

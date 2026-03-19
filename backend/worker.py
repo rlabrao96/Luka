@@ -9,6 +9,7 @@ from jobs.tasks import (
     purge_raw_emails,
     cleanup_processed_webhooks,
     run_fintoc_sync,
+    send_invite_email,
 )
 
 
@@ -21,7 +22,7 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_email, import_fintoc_history]
+    functions = [process_email, import_fintoc_history, send_invite_email]
     cron_jobs = [
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
         cron(purge_raw_emails, minute=0),  # every hour

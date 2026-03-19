@@ -8,8 +8,29 @@ export async function GET(request: Request) {
   if (code) {
     const supabase = await createClient();
     await supabase.auth.exchangeCodeForSession(code);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const res = await fetch(`${apiUrl}/auth/me`, {
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`
+          }
+        });
+        if (res.ok) {
+          const user = await res.json();
+          if (!user.household_id) {
+            return NextResponse.redirect(`${origin}/onboarding/setup-household`);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch user during callback", err);
+      }
+    }
   }
 
-  // Always go to dashboard — StoreInitializer will redirect to onboarding if needed
+  // Fallback or returning user
   return NextResponse.redirect(`${origin}/`);
 }

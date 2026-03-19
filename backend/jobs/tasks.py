@@ -12,8 +12,74 @@ from modules.households.models import BankAccount
 from modules.fintoc.client import FintocClient
 from sqlalchemy import select, and_, delete, update
 from datetime import datetime, timedelta, timezone
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import asyncio
 
 logger = logging.getLogger(__name__)
+
+
+async def send_invite_email(
+    ctx: dict,
+    email_to: str,
+    token: str,
+    inviter_name: str,
+    household_name: str,
+) -> None:
+    invite_url = f"{settings.frontend_url}/invite/{token}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; background-color: #EFF6FF; padding: 40px 0; margin: 0;">
+        <div style="max-width: 400px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+            <h1 style="color: #0F172A; margin-top: 0; font-size: 24px;">¡Estás invitado a Luka!</h1>
+            <p style="color: #64748B; font-size: 16px; line-height: 1.5;">
+                <strong>{inviter_name}</strong> te ha invitado a unirte a su cuenta de hogar <b>{household_name}</b> en Luka para llevar sus finanzas juntos.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="{invite_url}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                    Aceptar Invitación
+                </a>
+            </div>
+            <p style="color: #64748B; font-size: 14px; text-align: center;">
+                Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+                <a href="{invite_url}" style="color: #2563EB;">{invite_url}</a>
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"Invitación a unirte al hogar {household_name} en Luka"
+    msg["From"] = settings.smtp_user or "noreply@luka.app"
+    msg["To"] = email_to
+
+    msg.attach(
+        MIMEText(
+            "Has sido invitado a Luka. Revisa este correo en un cliente que soporte HTML.", "plain"
+        )
+    )
+    msg.attach(MIMEText(html_content, "html"))
+
+    if not settings.smtp_host or not settings.smtp_user:
+        logger.warning(f"SMTP not configured. Would have sent invite to {email_to}")
+        return
+
+    def _send():
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+            server.starttls()
+            server.login(settings.smtp_user, settings.smtp_password)
+            server.send_message(msg)
+
+    try:
+        await asyncio.to_thread(_send)
+        logger.info(f"Invite email sent successfully to {email_to}")
+    except Exception as e:
+        logger.error(f"Failed to send invite email to {email_to}: {e}")
+        raise e
 
 
 async def process_email(
