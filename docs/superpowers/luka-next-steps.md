@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-18
+**Date:** 2026-03-19
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -16,6 +16,11 @@ This document walks through every decision and credential that requires your inp
 - **Gap 3.3** — Zustand store initialization (`StoreInitializer`) ✅
 - **Gap 3.4** — SpendingChart monthly data (backend endpoint + hook) ✅
 - **Gap 3.6** — Fintoc bank connect UI flow (onboarding + settings) ✅
+- **Gap 3.7** — Connected accounts list in settings (with reveal toggle + disconnect button) ✅
+- **Bug fix** — Fintoc movements endpoint corrected (proper URL path with link token, correct auth format) ✅
+- **Bug fix** — Worker healthcheck removed from railway.toml (worker no longer fails to start) ✅
+- **Bug fix** — job_timeout increased to 300s for Fintoc history import ✅
+- **Feature** — Fintoc history import working end-to-end (confirmed in production: 200 transactions saved) ✅
 - **Security** — Inactivity auto-logout after 1h ✅
 - **Bug fix** — User auto-provisioning on first OAuth login (no more 401 "User not found") ✅
 - **Bug fix** — Token refresh before API calls (`getUser()` before `getSession()`) ✅
@@ -150,13 +155,9 @@ API key loaded in Railway.
 
 ---
 
-### 3.7 Connected Accounts List in Settings (Small — ~1h)
+### ✅ 3.7 Connected Accounts List in Settings — DONE
 
-**Problem:** `GET /bank-accounts` endpoint exists but the settings page doesn't render the list of connected bank accounts. Users can connect via the Fintoc widget but can't see what's already connected.
-
-**What to build:**
-- In `settings/page.tsx`, fetch `GET /bank-accounts` and list connected accounts (name, type, masked number)
-- Add to `api.ts` if the `getMyBankAccounts()` call doesn't exist yet
+Settings page shows connected bank accounts with type/kind tags, masked account number with reveal toggle, and a disconnect button.
 
 ---
 
@@ -184,6 +185,7 @@ Checklist before sharing Luka with anyone:
 ✅ Week 1: Credentials + first deploy — COMPLETE
 ✅ Week 2: Critical code gaps — COMPLETE (3.1, 3.2, 3.3, 3.4)
 ✅ Week 3: Fintoc UI + all critical bug fixes — COMPLETE (3.6, user provisioning, hydration, CORS)
+✅ Week 4: Fintoc history import working + settings connected accounts + Fintoc API bug fixes — COMPLETE
 
 Next: Enable login (blocking everything else)
   → 1.4 Google Cloud: create OAuth 2.0 credentials → enable in Supabase Auth → Google

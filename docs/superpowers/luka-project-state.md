@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-18
-**Status:** All 4 implementation plans complete + Fintoc bank connect flow fully implemented. App is LIVE in production (Railway + Vercel). Multiple critical bugs fixed (user auto-provisioning, token refresh, hydration, CORS, asyncpg). Awaiting WhatsApp/Gmail/Outlook credentials to enable email capture pipeline.
+**Date:** 2026-03-19
+**Status:** All 4 implementation plans complete + Fintoc bank connect flow fully implemented + Fintoc history import working end-to-end + connected accounts in settings. App is LIVE in production (Railway + Vercel). Multiple critical bugs fixed (user auto-provisioning, token refresh, hydration, CORS, asyncpg, Fintoc API routes). Awaiting WhatsApp/Gmail/Outlook credentials to enable email capture pipeline.
 
 ---
 
@@ -335,7 +335,6 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Email watch setup | Medium | Onboarding connects email — initial watch setup needs triggering once after first login. Blocked on GCP/Azure credentials. |
 | Vault integration | Low | Supabase Vault for OAuth tokens (noted in design spec, not wired) — optional hardening |
 | Google/Microsoft OAuth login | Blocking for real users | GCP OAuth credentials not yet configured in Supabase |
-| Connected accounts list in settings | Low | `GET /bank-accounts` endpoint exists; settings page doesn't yet render the list of connected accounts |
 
 ---
 
