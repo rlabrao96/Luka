@@ -3,7 +3,5 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "sh -c 'if [ \"$START_COMMAND\" = \"worker\" ]; then arq worker.WorkerSettings; else uvicorn main:app --host 0.0.0.0 --port $PORT; fi'"
-healthcheckPath = "/health"
-healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 releaseCommand = "alembic upgrade head"
