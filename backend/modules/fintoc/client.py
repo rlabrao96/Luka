@@ -22,7 +22,6 @@ class FintocClient:
     def _headers(self) -> dict:
         return {
             "Authorization": settings.fintoc_api_key,
-            "X-Link-Token": self._link_token,
         }
 
     async def fetch_transactions(
@@ -30,7 +29,7 @@ class FintocClient:
     ) -> list[FintocTransaction]:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"{FINTOC_BASE}/accounts/{account_id}/transactions",
+                f"{FINTOC_BASE}/links/{self._link_token}/accounts/{account_id}/transactions",
                 headers=self._headers(),
                 params={"since": since.isoformat(), "until": until.isoformat()},
             )
@@ -58,7 +57,7 @@ class FintocClient:
         """Fetch all accounts associated with this link token."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"{FINTOC_BASE}/accounts",
+                f"{FINTOC_BASE}/links/{self._link_token}/accounts",
                 headers=self._headers(),
             )
             resp.raise_for_status()
