@@ -34,7 +34,12 @@ class FintocClient:
                 headers=self._headers(),
                 params={"since": since.isoformat(), "until": until.isoformat()},
             )
-            resp.raise_for_status()
+            if not resp.is_success:
+                raise httpx.HTTPStatusError(
+                    f"{resp.status_code} {resp.text}",
+                    request=resp.request,
+                    response=resp,
+                )
             data = resp.json()
 
         return [
