@@ -175,4 +175,9 @@ export const api = {
 
   getBankAccounts: (householdId: string) =>
     apiFetch<BankAccountRow[]>(`/bank-accounts?household_id=${householdId}`),
+
+  deleteBankAccount: (accountId: string, householdId: string) =>
+    apiFetch<{ ok: boolean }>(`/bank-accounts/${accountId}?household_id=${householdId}`, {
+      method: "DELETE",
+    }),
 };

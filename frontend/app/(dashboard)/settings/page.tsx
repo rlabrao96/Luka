@@ -1,7 +1,7 @@
 "use client";
 import Script from "next/script";
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/app/lib/supabase/client";
@@ -56,7 +56,18 @@ function bankLabel(bankName: string): string {
 
 // ── Account row ────────────────────────────────────────────
 
-function AccountRow({ account, currentUserId }: { account: BankAccountRow; currentUserId: string | null }) {
+function AccountRow({
+  account,
+  currentUserId,
+  householdId,
+  onDeleted,
+}: {
+  account: BankAccountRow;
+  currentUserId: string | null;
+  householdId: string | null;
+  onDeleted: (id: string) => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
   const isOwn = account.user_id === currentUserId;
   const typeLabel = ACCOUNT_TYPE_LABEL[account.account_type] ?? account.account_type;
   const typeColor = ACCOUNT_TYPE_COLOR[account.account_type] ?? "bg-gray-100 text-gray-700";
@@ -66,15 +77,25 @@ function AccountRow({ account, currentUserId }: { account: BankAccountRow; curre
   const importLabel = IMPORT_STATUS_LABEL[account.import_status] ?? account.import_status;
   const importColor = IMPORT_STATUS_COLOR[account.import_status] ?? "bg-gray-100 text-gray-700";
 
+  async function handleDelete() {
+    if (!householdId) return;
+    if (!confirm(`¿Desconectar ${bankLabel(account.bank_name)}?`)) return;
+    setDeleting(true);
+    try {
+      await api.deleteBankAccount(account.id, householdId);
+      onDeleted(account.id);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="flex items-center justify-between py-3 border-b last:border-0">
       <div className="space-y-0.5">
         <p className="text-sm font-medium text-luka-dark">{bankLabel(account.bank_name)}</p>
         <p className="text-xs text-luka-muted">
           {kindLabel ?? "Cuenta bancaria"}
-          {!isOwn && (
-            <span className="ml-1 text-purple-600">· Pareja</span>
-          )}
+          {!isOwn && <span className="ml-1 text-purple-600">· Pareja</span>}
         </p>
       </div>
       <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -86,6 +107,15 @@ function AccountRow({ account, currentUserId }: { account: BankAccountRow; curre
             {importLabel}
           </span>
         )}
+        {isOwn && (
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50 ml-1"
+          >
+            {deleting ? "..." : "Desconectar"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -96,6 +126,7 @@ function AccountRow({ account, currentUserId }: { account: BankAccountRow; curre
 function ConnectBankSection() {
   const setUser = useLukaStore((s) => s.setUser);
   const setHousehold = useLukaStore((s) => s.setHousehold);
+  const queryClient = useQueryClient();
 
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -224,7 +255,18 @@ function ConnectBankSection() {
           {!loadingAccounts && accounts && accounts.length > 0 && (
             <div className="divide-y divide-gray-100">
               {accounts.map((account) => (
-                <AccountRow key={account.id} account={account} currentUserId={userId} />
+                <AccountRow
+                  key={account.id}
+                  account={account}
+                  currentUserId={userId}
+                  householdId={householdId}
+                  onDeleted={(id) =>
+                    queryClient.setQueryData<BankAccountRow[]>(
+                      ["bank-accounts", householdId],
+                      (prev) => prev?.filter((a) => a.id !== id) ?? []
+                    )
+                  }
+                />
               ))}
             </div>
           )}

@@ -182,6 +182,32 @@ async def fintoc_link_webhook(
     return {"ok": True, "created": created}
 
 
+@router.delete("/{account_id}")
+async def delete_bank_account(
+    account_id: uuid.UUID,
+    household_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete a bank account (set is_active=False). Only the account owner can delete."""
+    await _require_membership(household_id, current_user.id, db)
+
+    account = await db.scalar(
+        select(BankAccount).where(
+            BankAccount.id == account_id,
+            BankAccount.household_id == household_id,
+        )
+    )
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the account owner can disconnect it")
+
+    account.is_active = False
+    await db.commit()
+    return {"ok": True}
+
+
 @router.get("/import-status")
 async def get_import_status(
     household_id: uuid.UUID,
