@@ -1,13 +1,17 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+import { StoreInitializer } from "@/app/(dashboard)/components/StoreInitializer";
+
 const STEPS = [
-  { label: "Correo", href: "/onboarding/connect-email" },
-  { label: "WhatsApp", href: "/onboarding/verify-whatsapp" },
   { label: "Hogar", href: "/onboarding/setup-household" },
+  { label: "WhatsApp", href: "/onboarding/verify-whatsapp" },
   { label: "Banco", href: "/onboarding/connect-bank" },
 ];
 
-import { StoreInitializer } from "@/app/(dashboard)/components/StoreInitializer";
-
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
   return (
     <div 
       className="min-h-screen flex flex-col items-center justify-center p-4 relative"
@@ -28,16 +32,40 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
           <p className="text-white/80 text-sm">Configuración inicial de tu cuenta</p>
         </div>
 
-        <div className="flex justify-center gap-2 mb-8">
-          {STEPS.map((step, i) => (
-            <div key={step.label} className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-luka-primary text-white text-xs flex items-center justify-center font-bold shadow-md">
-                {i + 1}
+        <div className="flex justify-center items-center gap-2 mb-8">
+          {STEPS.map((step, i) => {
+            const isActive = pathname === step.href;
+            const currentIndex = STEPS.findIndex(s => s.href === pathname);
+            // Default to first step if match not found (e.g. wildcard)
+            const activeIndex = currentIndex === -1 ? 0 : currentIndex;
+            const isPast = activeIndex > i;
+
+            return (
+              <div key={step.label} className="flex items-center gap-2">
+                <div 
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md transition-all duration-300 ${
+                    isActive 
+                      ? "bg-white text-luka-primary ring-4 ring-white/40 scale-110" 
+                      : isPast
+                      ? "bg-luka-primary text-white"
+                      : "bg-white/20 text-white/50"
+                  }`}
+                >
+                  {i + 1}
+                </div>
+                <span className={`text-sm hidden sm:block font-medium drop-shadow-sm transition-colors duration-300 ${
+                  isActive ? "text-white font-bold" : isPast ? "text-white/90" : "text-white/50"
+                }`}>
+                  {step.label}
+                </span>
+                {i < STEPS.length - 1 && (
+                  <div className={`w-8 h-[2px] rounded-full transition-colors duration-300 ${
+                    isPast ? "bg-luka-primary" : "bg-white/20"
+                  }`} />
+                )}
               </div>
-              <span className="text-sm text-white/90 hidden sm:block font-medium drop-shadow-sm">{step.label}</span>
-              {i < STEPS.length - 1 && <div className="w-6 h-px bg-white/40" />}
-            </div>
-          ))}
+            );
+          })}
         </div>
         
         {children}
