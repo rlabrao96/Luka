@@ -5,33 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 
-import { api } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 
 export default function SetupHouseholdPage() {
   const router = useRouter();
-  const setHousehold = useLukaStore((s) => s.setHousehold);
-  const [type, setType] = useState<"individual" | "couple" | null>(null);
-  const [partnerEmail, setPartnerEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const setOnboardingDraft = useLukaStore((s) => s.setOnboardingDraft);
+  const draft = useLukaStore((s) => s.onboardingDraft);
 
-  const create = async () => {
-    try {
-      setIsSubmitting(true);
-      const household = await api.createHousehold("Mi Hogar", type!);
-      if (household.id) {
-        setHousehold(household.id);
-      }
+  const [type, setType] = useState<"individual" | "couple" | null>(draft?.type || null);
+  const [partnerEmail, setPartnerEmail] = useState(draft?.partnerEmail || "");
 
-      if (type === "couple" && partnerEmail && household.id) {
-        await api.invitePartner(household.id, partnerEmail);
-      }
-
-      router.push("/onboarding/connect-bank");
-    } catch (e) {
-      console.error("Failed to setup household:", e);
-      setIsSubmitting(false); // only reset on error because success redirects instantly
-    }
+  const nextStep = () => {
+    setOnboardingDraft({ type, partnerEmail });
+    router.push("/onboarding/verify-whatsapp");
   };
 
   return (
@@ -53,10 +39,9 @@ export default function SetupHouseholdPage() {
         {type && (
           <Button 
             className="w-full bg-luka-primary text-white hover:bg-blue-700" 
-            onClick={create}
-            disabled={isSubmitting}
+            onClick={nextStep}
           >
-            {isSubmitting ? "Creando..." : "Continuar →"}
+            Continuar →
           </Button>
         )}
       </CardContent>

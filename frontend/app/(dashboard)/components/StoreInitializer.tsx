@@ -10,8 +10,8 @@ export function StoreInitializer() {
   const attempted = useRef(false);
 
   useEffect(() => {
-    // Already initialized or already attempted — skip
-    if (userId || attempted.current) return;
+    // Already attempted — skip
+    if (attempted.current) return;
     attempted.current = true;
 
     api
@@ -23,7 +23,7 @@ export function StoreInitializer() {
         } else {
           // User exists in DB but has no household
           if (!window.location.pathname.includes("/onboarding")) {
-            router.push("/onboarding/verify-whatsapp");
+            router.push("/onboarding/setup-household");
           }
         }
       })

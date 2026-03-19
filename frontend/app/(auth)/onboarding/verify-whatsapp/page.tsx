@@ -4,12 +4,39 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
+import { api } from "@/app/lib/api";
+import { useLukaStore } from "@/app/lib/store";
 
 export default function VerifyWhatsAppPage() {
   const router = useRouter();
+  const { onboardingDraft, setHousehold } = useLukaStore();
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [pinSent, setPinSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const finalizeOnboarding = async () => {
+    try {
+      setIsSubmitting(true);
+      if (onboardingDraft?.type) {
+        const household = await api.createHousehold("Mi Hogar", onboardingDraft.type);
+        if (household.id) {
+          setHousehold(household.id);
+          if (onboardingDraft.type === "couple" && onboardingDraft.partnerEmail) {
+            try {
+              await api.invitePartner(household.id, onboardingDraft.partnerEmail);
+            } catch (inviteError) {
+              console.error("Partner invite failed, continuing...", inviteError);
+            }
+          }
+        }
+      }
+      router.push("/onboarding/connect-bank");
+    } catch (e) {
+      console.error("Failed to setup household:", e);
+      setIsSubmitting(false);
+    }
+  };
 
   const sendPin = async () => {
     // Mock the send for now until backend is implemented
@@ -18,7 +45,11 @@ export default function VerifyWhatsAppPage() {
 
   const verifyPin = async () => {
     // Mock successful verification
-    router.push("/onboarding/setup-household");
+    await finalizeOnboarding();
+  };
+
+  const skip = async () => {
+    await finalizeOnboarding();
   };
 
   return (
@@ -28,22 +59,25 @@ export default function VerifyWhatsAppPage() {
         <p className="text-luka-muted text-sm">
           Luka te enviará alertas de gastos por WhatsApp. Necesitamos verificar tu número.
         </p>
-        <Input placeholder="+56 9 1234 5678" value={phone} onChange={e => setPhone(e.target.value)} />
+        <Input placeholder="+56 9 1234 5678" value={phone} onChange={e => setPhone(e.target.value)} disabled={isSubmitting} />
         <div className="space-y-2">
           {!pinSent ? (
-            <Button className="w-full bg-luka-primary" onClick={sendPin}>Enviar PIN por WhatsApp</Button>
+            <Button className="w-full bg-luka-primary" onClick={sendPin} disabled={isSubmitting}>Enviar PIN por WhatsApp</Button>
           ) : (
             <>
-              <Input placeholder="Código de 6 dígitos" value={pin} onChange={e => setPin(e.target.value)} />
-              <Button className="w-full bg-luka-primary" onClick={verifyPin}>Verificar →</Button>
+              <Input placeholder="Código de 6 dígitos" value={pin} onChange={e => setPin(e.target.value)} disabled={isSubmitting} />
+              <Button className="w-full bg-luka-primary" onClick={verifyPin} disabled={isSubmitting}>
+                {isSubmitting ? "Finalizando..." : "Verificar →"}
+              </Button>
             </>
           )}
 
           <button
-            onClick={() => router.push("/onboarding/setup-household")}
-            className="w-full text-sm text-luka-muted hover:text-luka-dark text-center py-2"
+            onClick={skip}
+            disabled={isSubmitting}
+            className="w-full text-sm text-luka-muted hover:text-luka-dark text-center py-2 disabled:opacity-50"
           >
-            Saltar por ahora
+            {isSubmitting ? "Cargando..." : "Saltar por ahora"}
           </button>
         </div>
       </CardContent>
