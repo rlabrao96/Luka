@@ -27,33 +27,70 @@ async def send_invite_email(
     inviter_name: str,
     household_name: str,
 ) -> None:
-    invite_url = f"{settings.frontend_url}/invite/{token}"
+    # Ensure Vercel URL is used for testing if running locally
+    base_url = settings.frontend_url
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        base_url = "https://luka-lovat.vercel.app"
+
+    invite_url = f"{base_url}/invite/{token}"
+    bg_image_url = f"{base_url}/background.jpg"
 
     html_content = f"""
     <!DOCTYPE html>
-    <html>
-    <body style="font-family: Arial, sans-serif; background-color: #EFF6FF; padding: 40px 0; margin: 0;">
-        <div style="max-width: 400px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
-            <h1 style="color: #0F172A; margin-top: 0; font-size: 24px;">¡Estás invitado a Luka!</h1>
-            <p style="color: #64748B; font-size: 16px; line-height: 1.5;">
-                <strong>{inviter_name}</strong> te ha invitado a unirte a su cuenta de hogar <b>{household_name}</b> en Luka para llevar sus finanzas juntos.
-            </p>
-            <div style="text-align: center; margin: 32px 0;">
-                <a href="{invite_url}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                    Aceptar Invitación
-                </a>
-            </div>
-            <p style="color: #64748B; font-size: 14px; text-align: center;">
-                Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
-                <a href="{invite_url}" style="color: #2563EB;">{invite_url}</a>
-            </p>
-        </div>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f3f4f6; margin: 0; padding: 20px;">
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 500px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+            <tr>
+                <td style="padding: 0; height: 180px; position: relative;">
+                    <!-- Use max-width 100% to fill exactly the 500px width -->
+                    <img src="{bg_image_url}" alt="Luka Background" width="100%" style="display: block; width: 100%; height: 180px; object-fit: cover;" />
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 40px 30px; text-align: center;">
+                    <h1 style="color: #111827; margin-top: 0; font-size: 26px; font-weight: 800;">¡Hola! Tienes una invitación 🎉</h1>
+                    
+                    <p style="color: #4b5563; font-size: 16px; line-height: 1.6; text-align: left; margin-top: 24px;">
+                        <strong>{inviter_name}</strong> te ha invitado a unirte al hogar <b>"{household_name}"</b> en <strong>Luka</strong>.
+                    </p>
+                    
+                    <div style="background-color: #f9fafb; border-left: 4px solid #4f46e5; padding: 16px; margin: 24px 0; border-radius: 0 8px 8px 0; text-align: left;">
+                        <h3 style="color: #374151; font-size: 14px; margin-top: 0; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">¿Qué es Luka?</h3>
+                        <p style="color: #6b7280; font-size: 14px; margin: 0; line-height: 1.5;">
+                            Luka es la plataforma inteligente para gestionar las finanzas de tu hogar. 
+                            Con Luka podrán conectar sus cuentas bancarias, categorizar gastos automáticamente, 
+                            y dividirlos de forma justa directamente desde WhatsApp. ¡Dile adiós al Excel!
+                        </p>
+                    </div>
+
+                    <div style="margin: 40px 0 20px 0;">
+                        <a href="{invite_url}" style="background-color: #111827; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block;">
+                            Aceptar Invitación y Unirme
+                        </a>
+                    </div>
+                    
+                    <p style="color: #9ca3af; font-size: 13px; text-align: center; margin-top: 30px;">
+                        ¿El botón no responde? Copia este enlace en tu navegador:<br>
+                        <a href="{invite_url}" style="color: #4f46e5; text-decoration: underline;">{invite_url}</a>
+                    </p>
+                </td>
+            </tr>
+            <tr>
+                <td style="background-color: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="color: #9ca3af; font-size: 12px; margin: 0;">© 2026 Luka App. Todos los derechos reservados.</p>
+                </td>
+            </tr>
+        </table>
     </body>
     </html>
     """
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Invitación a unirte al hogar {household_name} en Luka"
+    msg["Subject"] = f"¡{inviter_name} te invitó a unirte a Luka!"
     msg["From"] = settings.smtp_user or "noreply@luka.app"
     msg["To"] = email_to
 
