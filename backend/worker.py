@@ -33,4 +33,4 @@ class WorkerSettings:
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 10
-    job_timeout = 60
+    job_timeout = 300  # 5 min — enough for 90-day Fintoc history import
