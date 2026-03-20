@@ -49,35 +49,80 @@ function bankLabel(bankName: string): string {
     .join(" ");
 }
 
-// ── Account row ────────────────────────────────────────────
+// ── Account card ───────────────────────────────────────────
 
-function AccountRow({
+function AccountCard({
   account,
   currentUserId,
   householdId,
   onDeleted,
+  onUpdated,
 }: {
   account: BankAccountRow;
   currentUserId: string | null;
   householdId: string | null;
   onDeleted: (id: string) => void;
+  onUpdated: (id: string, patch: { account_type?: string; is_active?: boolean }) => void;
 }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showNumber, setShowNumber] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editType, setEditType] = useState<"personal" | "partner" | "joint">(account.account_type);
+  const [saving, setSaving] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+
   const isOwn = account.user_id === currentUserId;
   const typeLabel = ACCOUNT_TYPE_LABEL[account.account_type] ?? account.account_type;
-  const typeColor = ACCOUNT_TYPE_COLOR[account.account_type] ?? "bg-gray-100 text-gray-700";
+  const typeColor = account.is_active
+    ? (ACCOUNT_TYPE_COLOR[account.account_type] ?? "bg-gray-100 text-gray-700")
+    : "bg-gray-100 text-gray-400";
   const kindLabel = account.account_kind
     ? (ACCOUNT_KIND_LABEL[account.account_kind] ?? account.account_kind)
     : null;
-  // First-time import badge: only when importing AND never synced before
   const isFirstImport = account.import_status === "importing" && !account.last_synced_at;
   const isFirstImportFailed = account.import_status === "failed" && !account.last_synced_at;
 
   const last4 = account.account_number ? account.account_number.slice(-4) : null;
   const maskedNumber = last4 ? `•••• ${last4}` : null;
   const fullNumber = account.account_number ?? null;
+
+  async function handleToggle() {
+    if (!householdId || toggling) return;
+    setToggling(true);
+    setInlineError(null);
+    const newActive = !account.is_active;
+    onUpdated(account.id, { is_active: newActive }); // optimistic
+    try {
+      await api.updateBankAccount(account.id, householdId, { is_active: newActive });
+    } catch (e: unknown) {
+      onUpdated(account.id, { is_active: account.is_active }); // revert
+      const msg =
+        e instanceof Error && e.message.includes("409")
+          ? "Espera a que termine la sincronización antes de desactivar."
+          : "No se pudo guardar. Intenta de nuevo.";
+      setInlineError(msg);
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  async function handleSaveType() {
+    if (!householdId) return;
+    setSaving(true);
+    setInlineError(null);
+    onUpdated(account.id, { account_type: editType }); // optimistic
+    try {
+      await api.updateBankAccount(account.id, householdId, { account_type: editType });
+      setEditing(false);
+    } catch {
+      onUpdated(account.id, { account_type: account.account_type }); // revert
+      setInlineError("No se pudo guardar. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function handleDelete() {
     if (!householdId) return;
@@ -92,39 +137,49 @@ function AccountRow({
   }
 
   return (
-    <div className="flex items-center justify-between py-3 border-b last:border-0">
-      <div className="space-y-0.5">
-        <p className="text-sm font-medium text-luka-dark">{bankLabel(account.bank_name)}</p>
-        <div className="flex items-center gap-1.5">
-          <p className="text-xs text-luka-muted">
-            {kindLabel ?? "Cuenta bancaria"}
-            {!isOwn && <span className="ml-1 text-purple-600">· Pareja</span>}
-          </p>
-          {maskedNumber && (
-            <span className="flex items-center gap-1 text-xs text-luka-muted">
-              · {showNumber ? fullNumber : maskedNumber}
-              <button
-                onClick={() => setShowNumber((v) => !v)}
-                className="text-luka-muted hover:text-luka-dark"
-                title={showNumber ? "Ocultar" : "Mostrar"}
-              >
-                {showNumber ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                )}
-              </button>
+    <div className={`rounded-xl border bg-white shadow-sm transition-opacity ${account.is_active ? "" : "opacity-60"}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-luka-dark text-sm">{bankLabel(account.bank_name)}</span>
+          {account.currency && (
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${account.is_active ? "bg-slate-100 text-slate-600" : "bg-gray-100 text-gray-400"}`}>
+              {account.currency}
             </span>
           )}
-          {account.last_synced_at && (
-            <span className="text-xs text-slate-400">· Última sync: {formatLastSync(account.last_synced_at)}</span>
+          {kindLabel && (
+            <span className="text-xs text-luka-muted">{kindLabel}</span>
+          )}
+          {!isOwn && (
+            <span className="text-xs text-purple-600 font-medium">· Pareja</span>
           )}
         </div>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap justify-end">
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>
           {typeLabel}
         </span>
+      </div>
+
+      {/* Body */}
+      <div className="px-4 pb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+        {maskedNumber && (
+          <span className="flex items-center gap-1 text-xs text-luka-muted">
+            {showNumber ? fullNumber : maskedNumber}
+            <button
+              onClick={() => setShowNumber((v) => !v)}
+              className="text-luka-muted hover:text-luka-dark"
+              title={showNumber ? "Ocultar" : "Mostrar"}
+            >
+              {showNumber ? (
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              )}
+            </button>
+          </span>
+        )}
+        {account.last_synced_at && (
+          <span className="text-xs text-slate-400">Última sync: {formatLastSync(account.last_synced_at)}</span>
+        )}
         {isFirstImport && (
           <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
@@ -136,33 +191,93 @@ function AccountRow({
             Error al sincronizar
           </span>
         )}
-        {isOwn && !confirmDelete && (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="text-xs text-red-400 hover:text-red-600 ml-1"
-          >
-            Desconectar
-          </button>
-        )}
-        {isOwn && confirmDelete && (
-          <span className="flex items-center gap-1.5 ml-1">
-            <span className="text-xs text-luka-muted">¿Seguro?</span>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="text-xs text-red-500 font-medium hover:text-red-700 disabled:opacity-50"
-            >
-              {deleting ? "..." : "Sí"}
-            </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="text-xs text-luka-muted hover:text-luka-dark"
-            >
-              No
-            </button>
-          </span>
-        )}
       </div>
+
+      {/* Footer — only for own accounts */}
+      {isOwn && (
+        <div className="flex items-center justify-between px-4 pb-3 pt-1 border-t border-gray-50 mt-1">
+          {/* Active toggle */}
+          <button
+            onClick={handleToggle}
+            disabled={toggling}
+            className={`flex items-center gap-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${account.is_active ? "text-luka-primary" : "text-luka-muted"}`}
+          >
+            <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${account.is_active ? "bg-luka-primary" : "bg-gray-300"}`}>
+              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${account.is_active ? "translate-x-4" : "translate-x-1"}`} />
+            </span>
+            {account.is_active ? "Activa" : "Inactiva"}
+          </button>
+
+          {/* Edit + Delete */}
+          <div className="flex items-center gap-3">
+            {!editing && (
+              <button
+                onClick={() => { setEditing(true); setEditType(account.account_type); setInlineError(null); }}
+                className="text-xs text-luka-muted hover:text-luka-dark"
+                title="Editar tipo de cuenta"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            )}
+            {!confirmDelete && (
+              <button onClick={() => setConfirmDelete(true)} className="text-xs text-red-400 hover:text-red-600">
+                Desconectar
+              </button>
+            )}
+            {confirmDelete && (
+              <span className="flex items-center gap-1.5">
+                <span className="text-xs text-luka-muted">¿Seguro?</span>
+                <button onClick={handleDelete} disabled={deleting} className="text-xs text-red-500 font-medium hover:text-red-700 disabled:opacity-50">
+                  {deleting ? "..." : "Sí"}
+                </button>
+                <button onClick={() => setConfirmDelete(false)} className="text-xs text-luka-muted hover:text-luka-dark">No</button>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit mode (inline expand) */}
+      {editing && (
+        <div className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-3">
+          <p className="text-xs text-luka-muted font-medium">Tipo de cuenta</p>
+          <div className="flex gap-2">
+            {(["personal", "partner", "joint"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setEditType(t)}
+                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                  editType === t
+                    ? "bg-luka-primary text-white border-luka-primary"
+                    : "bg-white text-luka-muted border-gray-200 hover:border-luka-primary"
+                }`}
+              >
+                {ACCOUNT_TYPE_LABEL[t]}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveType}
+              disabled={saving}
+              className="text-xs px-3 py-1 rounded-full bg-luka-primary text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? "Guardando..." : "Guardar"}
+            </button>
+            <button
+              onClick={() => { setEditing(false); setInlineError(null); }}
+              className="text-xs px-3 py-1 rounded-full border border-gray-200 text-luka-muted hover:border-luka-primary"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Inline error */}
+      {inlineError && (
+        <p className="px-4 pb-3 text-xs text-red-500">{inlineError}</p>
+      )}
     </div>
   );
 }
@@ -270,16 +385,16 @@ function ConnectBankSection() {
             <p className="text-sm text-luka-muted">Cargando cuentas...</p>
           )}
 
-          {!loadingAccounts && accounts && accounts.length === 0 && (
+          {!loadingAccounts && (!accounts || accounts.length === 0) && (
             <p className="text-sm text-luka-muted">
               Conecta tus cuentas para importar transacciones automáticamente.
             </p>
           )}
 
           {!loadingAccounts && accounts && accounts.length > 0 && (
-            <div className="divide-y divide-gray-100">
+            <div className="space-y-3">
               {accounts.map((account) => (
-                <AccountRow
+                <AccountCard
                   key={account.id}
                   account={account}
                   currentUserId={userId}
@@ -290,6 +405,15 @@ function ConnectBankSection() {
                       (prev) => prev?.filter((a) => a.id !== id) ?? []
                     );
                     queryClient.invalidateQueries({ queryKey: ["transactions"] });
+                  }}
+                  onUpdated={(id, patch) => {
+                    queryClient.setQueryData<BankAccountRow[]>(
+                      ["bank-accounts", householdId],
+                      (prev) =>
+                        prev?.map((a) =>
+                          a.id === id ? { ...a, ...patch } as BankAccountRow : a
+                        ) ?? []
+                    );
                   }}
                 />
               ))}
