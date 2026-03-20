@@ -66,8 +66,8 @@ class FintocClient:
                 transaction_date=datetime.fromisoformat(mov["post_date"]),
                 account_id=account_id,
                 counterparty_account_id=(
-                    mov.get("recipient_account", {}).get("id")
-                    or mov.get("sender_account", {}).get("id")
+                    (mov.get("recipient_account") or {}).get("id")
+                    or (mov.get("sender_account") or {}).get("id")
                 ),
             )
             for mov in all_movements

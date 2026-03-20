@@ -1,7 +1,7 @@
 import httpx
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, select, update
@@ -213,8 +213,8 @@ async def update_bank_account(
 @router.post("/webhooks/fintoc-link")
 async def fintoc_link_webhook(
     request: Request,
-    household_id: uuid.UUID,
-    user_id: uuid.UUID,
+    household_id: Optional[uuid.UUID] = None,
+    user_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Receive link.created webhook from Fintoc (sent via webhookUrl in widget config).
@@ -224,6 +224,9 @@ async def fintoc_link_webhook(
     body = await request.json()
 
     if body.get("type") != "link.created":
+        return {"ok": True}
+
+    if not household_id or not user_id:
         return {"ok": True}
 
     data = body.get("data", {})
