@@ -39,7 +39,7 @@ export default function LoginPage() {
       </div>
 
       {/* ── Left panel: form ── */}
-      <div className="flex flex-col justify-between lg:justify-center items-center w-full lg:w-1/2 px-4 pt-12 pb-10 lg:px-8 lg:py-12 relative z-20 min-h-screen lg:min-h-0 overflow-y-auto">
+      <div className="flex flex-col justify-start lg:justify-center items-center w-full lg:w-1/2 px-4 pt-16 pb-10 lg:px-8 lg:py-12 relative z-20 min-h-screen lg:min-h-0 overflow-y-auto">
         
         {/* ── Mobile Top Text ── */}
         <div className="w-full max-w-sm lg:hidden z-10 text-white antialiased mt-4 mb-8 px-4 sm:px-6 flex flex-col items-center text-center">
