@@ -26,27 +26,48 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex relative bg-slate-50 lg:bg-white overflow-hidden">
+      {/* ── Mobile background (hidden on desktop) ── */}
+      <div 
+        className="absolute inset-0 lg:hidden bg-cover bg-center"
+        style={{
+          backgroundImage: "url('/background.jpg')",
+        }}
+      >
+        {/* Subtle dark gradient overlay to make things readable and stylish */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/40 to-slate-900/70" />
+      </div>
+
+      {/* ── Mobile Top Text ── */}
+      <div className="absolute top-16 left-8 right-8 lg:hidden z-10 text-white antialiased">
+        <h2 className="text-3xl font-bold leading-tight mb-3 drop-shadow-lg">
+          Tus finanzas,<br />en un solo lugar.
+        </h2>
+        <p className="text-base text-slate-200/90 drop-shadow-md max-w-xs font-medium">
+          Captura tus gastos automáticamente y coordina con tu pareja — sin esfuerzo.
+        </p>
+      </div>
+
       {/* ── Left panel: form ── */}
-      <div className="flex flex-col justify-center items-center w-full lg:w-1/2 px-8 py-12 bg-white">
-        <div className="w-full max-w-sm">
+      <div className="flex flex-col justify-end lg:justify-center items-center w-full lg:w-1/2 px-4 pb-10 lg:px-8 lg:py-12 relative z-20 min-h-screen lg:min-h-0">
+        <div className="w-full max-w-sm bg-white lg:bg-transparent p-8 lg:p-0 rounded-[2.5rem] lg:rounded-none shadow-2xl lg:shadow-none border border-slate-100 lg:border-none">
           {/* Logo */}
-          <div className="mb-10">
-            <span className="text-3xl font-bold text-luka-primary tracking-tight">Luka</span>
-            <p className="text-sm text-luka-muted mt-1">Finanzas personales y en pareja</p>
+          <div className="mb-8 lg:mb-10 text-center lg:text-left">
+            <span className="text-[2.5rem] lg:text-3xl leading-none font-black lg:font-bold text-luka-primary tracking-tight">Luka</span>
+            <p className="text-sm text-slate-500 lg:text-luka-muted mt-2 lg:mt-1 font-medium lg:font-normal">Finanzas personales y en pareja</p>
           </div>
 
           {/* Heading */}
-          <h1 className="text-2xl font-bold text-luka-dark mb-2">Bienvenido</h1>
-          <p className="text-sm text-luka-muted mb-8">
+          <h1 className="text-2xl font-bold text-slate-900 lg:text-luka-dark mb-2 text-center lg:text-left">Bienvenido</h1>
+          <p className="text-sm text-slate-500 lg:text-luka-muted mb-8 text-center lg:text-left">
             Inicia sesión para acceder a tu dashboard financiero.
           </p>
 
           {/* Buttons */}
-          <div className="space-y-3">
+          <div className="space-y-4 lg:space-y-3">
             <Button
               onClick={signInWithGoogle}
-              className="w-full bg-luka-primary hover:bg-blue-700 text-white font-medium h-11 text-sm gap-2"
+              className="w-full bg-luka-primary hover:bg-blue-700 text-white font-medium h-12 lg:h-11 text-sm gap-2 rounded-xl lg:rounded-md transition-all duration-200 hover:shadow-md lg:hover:shadow-none"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#ffffff"/>
@@ -60,7 +81,7 @@ export default function LoginPage() {
             <Button
               onClick={signInWithMicrosoft}
               variant="outline"
-              className="w-full border-slate-200 text-luka-dark hover:bg-slate-50 font-medium h-11 text-sm gap-2"
+              className="w-full border-slate-200 text-slate-700 lg:text-luka-dark hover:text-slate-900 lg:hover:text-luka-dark hover:bg-slate-50 font-medium h-12 lg:h-11 text-sm gap-2 rounded-xl lg:rounded-md transition-all duration-200 hover:shadow-sm lg:hover:shadow-none"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
                 <path d="M11.4 2H2v9.4h9.4V2z" fill="#F25022"/>
@@ -72,13 +93,13 @@ export default function LoginPage() {
             </Button>
           </div>
 
-          <p className="text-xs text-luka-muted text-center mt-8">
+          <p className="text-xs text-slate-400 lg:text-luka-muted text-center mt-8 px-2">
             Al continuar, aceptas nuestros{" "}
-            <span className="text-luka-primary cursor-pointer hover:underline">
+            <span className="text-luka-primary font-medium lg:font-normal cursor-pointer hover:underline transition-all">
               Términos de uso
             </span>{" "}
             y{" "}
-            <span className="text-luka-primary cursor-pointer hover:underline">
+            <span className="text-luka-primary font-medium lg:font-normal cursor-pointer hover:underline transition-all">
               Política de privacidad
             </span>
             .
@@ -99,17 +120,17 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A]/90 via-[#0F172A]/40 to-transparent" />
 
         {/* Text content */}
-        <div className="relative z-10 p-12 text-white">
-          <h2 className="text-4xl font-bold leading-snug mb-3">
+        <div className="relative z-10 p-12 text-white xl:p-20">
+          <h2 className="text-4xl xl:text-5xl font-bold leading-snug mb-4">
             Tus finanzas,<br />en un solo lugar.
           </h2>
-          <p className="text-base text-slate-300 max-w-sm">
+          <p className="text-lg text-slate-300 max-w-md leading-relaxed">
             Captura tus gastos automáticamente, visualiza tus patrones y coordina con tu pareja — todo sin esfuerzo.
           </p>
-          <div className="flex gap-1.5 mt-6">
-            <span className="w-6 h-1 rounded-full bg-luka-primary" />
-            <span className="w-2 h-1 rounded-full bg-white/40" />
-            <span className="w-2 h-1 rounded-full bg-white/40" />
+          <div className="flex gap-2 mt-8">
+            <span className="w-8 h-1.5 rounded-full bg-luka-primary" />
+            <span className="w-2.5 h-1.5 rounded-full bg-white/30" />
+            <span className="w-2.5 h-1.5 rounded-full bg-white/30" />
           </div>
         </div>
       </div>
