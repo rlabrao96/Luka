@@ -1,72 +1,102 @@
 "use client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useBudgetStatus } from "@/app/lib/hooks/useBudget";
+import { useState } from "react";
+import { usePersonalBudget, useAllocation, useSaveAllocation } from "@/app/lib/hooks/useBudget";
+import PaceChart from "@/app/(dashboard)/components/PaceChart";
+import AllocationCard from "@/app/(dashboard)/components/AllocationCard";
+import WaterfallCards from "@/app/(dashboard)/components/WaterfallCards";
 
 function CLP(n: number) {
   return `$${Math.round(n).toLocaleString("es-CL")}`;
 }
 
+function getMonthParam(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
 export default function BudgetsPage() {
-  const { data: budget, isLoading } = useBudgetStatus();
+  const [selectedMonth, setSelectedMonth] = useState<Date>(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
+  const monthParam = getMonthParam(selectedMonth);
 
-  if (isLoading) return <p className="text-luka-muted">Cargando...</p>;
+  const { data: budget, isLoading: budgetLoading } = usePersonalBudget(monthParam);
+  const { data: allocation, isLoading: allocLoading } = useAllocation(monthParam);
+  const { mutate: saveAllocation, isPending: isSaving } = useSaveAllocation();
 
-  if (!budget || budget.budgeted === 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Presupuesto</h2>
-          <p className="text-sm text-luka-muted mt-0.5">Control de gastos de tu hogar</p>
-        </div>
-        <Card className="bg-white">
-          <CardContent className="py-10 text-center">
-            <p className="text-luka-muted text-sm">
-              No tienes una cuenta conjunta configurada aún.<br />
-              Agrega una desde Configuración.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  function prevMonth() {
+    setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
+  }
+  function nextMonth() {
+    const next = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1);
+    if (next <= new Date()) setSelectedMonth(next);
+  }
+  const isCurrentMonth =
+    selectedMonth.getFullYear() === new Date().getFullYear() &&
+    selectedMonth.getMonth() === new Date().getMonth();
+
+  if (budgetLoading || allocLoading) {
+    return <p className="text-gray-400">Cargando...</p>;
   }
 
-  const pct = budget.percent_used;
-  const barColor = pct > 90 ? "bg-luka-danger" : pct > 70 ? "bg-yellow-400" : "bg-luka-primary";
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Presupuesto</h2>
-        <p className="text-sm text-luka-muted mt-0.5">Control de gastos de tu hogar</p>
+        <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Presupuesto</h2>
+        <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
       </div>
-      <Card className="bg-white">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-luka-dark">
-            {new Date(`${budget.month}-01`).toLocaleDateString("es-CL", { month: "long", year: "numeric", timeZone: "UTC" })}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {/* Main progress */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm font-medium">
-              <span className="text-luka-muted">Depositado</span>
-              <span className="text-luka-dark">{CLP(budget.budgeted)}</span>
-            </div>
-            <div className="w-full bg-luka-light rounded-full h-3">
-              <div
-                className={`${barColor} h-3 rounded-full transition-all`}
-                style={{ width: `${Math.min(pct, 100)}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-xs text-luka-muted">
-              <span>Gastado: {CLP(budget.spent)} ({Math.round(pct)}%)</span>
-              <span className={budget.available < 0 ? "text-luka-danger font-semibold" : "text-luka-success font-semibold"}>
-                {budget.available >= 0 ? `Disponible: ${CLP(budget.available)}` : `Excedido: ${CLP(Math.abs(budget.available))}`}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
+      {/* Month selector */}
+      <div className="flex items-center gap-3 text-sm">
+        <button onClick={prevMonth} className="text-gray-400 hover:text-gray-800">
+          ‹
+        </button>
+        <span className="font-medium text-gray-800 capitalize">
+          {selectedMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+        </span>
+        <button
+          onClick={nextMonth}
+          disabled={isCurrentMonth}
+          className="text-gray-400 hover:text-gray-800 disabled:opacity-30"
+        >
+          ›
+        </button>
+      </div>
+
+      {/* Income header */}
+      <div className="text-sm text-gray-400">
+        {budget && budget.income > 0 ? (
+          <span>
+            Ingresos: <span className="text-gray-900 font-semibold">{CLP(budget.income)}</span>
+          </span>
+        ) : (
+          <span className="text-gray-400">Conecta tu banco para ver tus ingresos</span>
+        )}
+      </div>
+
+      {/* Pace chart */}
+      {budget?.pace && (
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+            Ritmo de gastos
+          </p>
+          <PaceChart pace={budget.pace} />
+        </div>
+      )}
+
+      {/* Allocation card */}
+      {allocation && budget && (
+        <AllocationCard
+          allocation={allocation}
+          income={budget.income}
+          month={monthParam}
+          onSave={saveAllocation}
+          isSaving={isSaving}
+        />
+      )}
+
+      {/* Waterfall cards */}
+      {budget && <WaterfallCards budget={budget} />}
     </div>
   );
 }
