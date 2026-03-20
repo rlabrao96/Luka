@@ -65,6 +65,12 @@ def upgrade() -> None:
         sa.Column("hogar_pct", sa.Numeric(5, 2), nullable=False),
         sa.Column("ahorro_pct", sa.Numeric(5, 2), nullable=False),
         sa.Column("personal_pct", sa.Numeric(5, 2), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["household_id"], ["households.id"], ondelete="CASCADE"),
         sa.UniqueConstraint("household_id", "month", name="uq_budget_allocation_household_month"),
         sa.CheckConstraint("hogar_pct + ahorro_pct + personal_pct = 100", name="ck_pct_sum"),
