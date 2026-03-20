@@ -1,7 +1,7 @@
 import httpx
 from core.config import settings
 
-_API_BASE = "https://graph.facebook.com/v19.0"
+_API_BASE = "https://graph.facebook.com/v22.0"
 _TIMEOUT = httpx.Timeout(15.0)
 
 
@@ -54,6 +54,8 @@ async def send_expense_alert(
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(_url(), headers=_headers(), json=payload)
         data = resp.json()
+        if resp.status_code != 200:
+            raise Exception(f"WhatsApp API Error: {data}")
     return data["messages"][0]["id"]
 
 
@@ -77,4 +79,6 @@ async def send_category_list(to: str, categories: list[str], context_msg: str = 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(_url(), headers=_headers(), json=payload)
         data = resp.json()
+        if resp.status_code != 200:
+            raise Exception(f"WhatsApp API Error: {data}")
     return data["messages"][0]["id"]

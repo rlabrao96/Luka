@@ -1,6 +1,8 @@
 "use client";
 import { createClient } from "@/app/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import Link from "next/link";
 
 export default function LoginPage() {
   const signInWithGoogle = async () => {
@@ -54,8 +56,17 @@ export default function LoginPage() {
         <div className="w-full max-w-sm bg-white lg:bg-transparent p-8 lg:p-0 rounded-[2.5rem] lg:rounded-none shadow-2xl lg:shadow-none border border-slate-100 lg:border-none">
           {/* Logo */}
           <div className="mb-8 lg:mb-10 text-center lg:text-left">
-            <span className="text-[2.5rem] lg:text-3xl leading-none font-black lg:font-bold text-luka-primary tracking-tight">Luka</span>
-            <p className="text-sm text-slate-500 lg:text-luka-muted mt-2 lg:mt-1 font-medium lg:font-normal">Finanzas personales y en pareja</p>
+            <div className="flex justify-center lg:justify-start">
+              <Image 
+                src="/logo.svg" 
+                alt="Luka Logo" 
+                width={120} 
+                height={40} 
+                className="h-12 w-auto lg:h-10"
+                priority
+              />
+            </div>
+            <p className="text-sm text-slate-500 lg:text-luka-muted mt-4 lg:mt-2 font-medium lg:font-normal">Finanzas personales y en pareja</p>
           </div>
 
           {/* Heading */}
@@ -96,13 +107,13 @@ export default function LoginPage() {
 
           <p className="text-xs text-slate-400 lg:text-luka-muted text-center mt-8 px-2">
             Al continuar, aceptas nuestros{" "}
-            <span className="text-luka-primary font-medium lg:font-normal cursor-pointer hover:underline transition-all">
+            <Link href="/terms" className="text-luka-primary font-medium lg:font-normal cursor-pointer hover:underline transition-all">
               Términos de uso
-            </span>{" "}
+            </Link>{" "}
             y{" "}
-            <span className="text-luka-primary font-medium lg:font-normal cursor-pointer hover:underline transition-all">
+            <Link href="/privacy" className="text-luka-primary font-medium lg:font-normal cursor-pointer hover:underline transition-all">
               Política de privacidad
-            </span>
+            </Link>
             .
           </p>
         </div>
