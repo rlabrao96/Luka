@@ -192,7 +192,7 @@ export function RecentTransactions({
                   isOutflow ? "text-luka-dark" : "text-luka-success"
                 )}
               >
-                {isOutflow ? "−" : "+"}{formatCLP(Math.abs(Number(txn.amount)))}
+                {isOutflow ? `(${formatCLP(Math.abs(Number(txn.amount)))})` : `+${formatCLP(Math.abs(Number(txn.amount)))}`}
               </span>
             </div>
           </div>
