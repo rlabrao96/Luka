@@ -14,7 +14,10 @@ export default function BudgetsPage() {
   if (!budget || budget.budgeted === 0) {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-luka-dark">Presupuesto</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Presupuesto</h2>
+          <p className="text-sm text-luka-muted mt-0.5">Control de gastos de tu hogar</p>
+        </div>
         <Card className="bg-white">
           <CardContent className="py-10 text-center">
             <p className="text-luka-muted text-sm">
@@ -32,7 +35,10 @@ export default function BudgetsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-luka-dark">Presupuesto — Cuenta Conjunta</h2>
+      <div>
+        <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Presupuesto</h2>
+        <p className="text-sm text-luka-muted mt-0.5">Control de gastos de tu hogar</p>
+      </div>
       <Card className="bg-white">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-luka-dark">

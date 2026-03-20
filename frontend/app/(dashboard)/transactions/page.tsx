@@ -145,7 +145,7 @@ export default function TransactionsPage() {
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Transacciones</h2>
-        <p className="text-xs text-slate-400 mt-0.5 uppercase tracking-widest font-medium">
+        <p className="text-sm text-luka-muted mt-0.5">
           Historial de movimientos
         </p>
       </div>

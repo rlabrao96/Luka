@@ -31,7 +31,10 @@ export default function HouseholdPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-luka-dark">Mi Hogar</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Mi Hogar</h2>
+          <p className="text-sm text-luka-muted mt-0.5">Contribuciones y resumen del grupo</p>
+        </div>
         <p className="text-sm text-luka-muted">Cargando...</p>
       </div>
     );
@@ -40,7 +43,10 @@ export default function HouseholdPage() {
   if (summary.length === 0) {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-luka-dark">Mi Hogar</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Mi Hogar</h2>
+          <p className="text-sm text-luka-muted mt-0.5">Contribuciones y resumen del grupo</p>
+        </div>
         <Card className="bg-white">
           <CardContent className="py-10 text-center">
             <p className="text-sm text-luka-muted">
@@ -58,7 +64,10 @@ export default function HouseholdPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-luka-dark">Mi Hogar</h2>
+      <div>
+        <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Mi Hogar</h2>
+        <p className="text-sm text-luka-muted mt-0.5">Contribuciones y resumen del grupo</p>
+      </div>
 
       {/* Monthly Contributions */}
       <Card className="bg-white">

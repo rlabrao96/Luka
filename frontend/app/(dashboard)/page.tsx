@@ -62,7 +62,7 @@ export default function DashboardPage() {
       {/* ── Header ── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-luka-dark">
+          <h1 className="text-2xl font-bold text-luka-dark tracking-tight">
             {greeting}, {firstName}
           </h1>
           <p className="text-sm text-luka-muted mt-0.5">Aquí está el resumen de este mes</p>
