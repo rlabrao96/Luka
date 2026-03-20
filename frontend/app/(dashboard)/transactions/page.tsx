@@ -58,8 +58,10 @@ function SummaryBar({ accounts, sharedTxns, periodLabel, userId }: SummaryBarPro
 
   const hasBalances = myAccounts.some((a) => a.balance_available !== null);
 
-  // Fall back to summing transactions if no Fintoc balance yet
-  const sharedFallback = sharedTxns.reduce((s, t) => s + Number(t.amount), 0);
+  // Fall back to summing expense transactions if no Fintoc balance yet
+  const sharedFallback = sharedTxns
+    .filter((t) => t.transaction_type === "expense")
+    .reduce((s, t) => s + Number(t.amount), 0);
 
   return (
     <div className="grid grid-cols-3 gap-3">
@@ -275,7 +277,23 @@ export default function TransactionsPage() {
     return result;
   };
 
-  const filteredMine = useMemo(() => { setPage(1); return applyFilters(myTxns); }, [myTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  // Map bank_account_id → account_type for client-side filtering
+  const accountTypeMap = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((a) => map.set(a.id, a.account_type));
+    return map;
+  }, [accounts]);
+
+  // Personal = only transactions from personal/partner accounts (not joint)
+  const personalTxns = useMemo(() => {
+    if (accountTypeMap.size === 0) return myTxns; // accounts not loaded yet, show all
+    return myTxns.filter((t) => {
+      const type = t.bank_account_id ? accountTypeMap.get(t.bank_account_id) : undefined;
+      return type !== "joint";
+    });
+  }, [myTxns, accountTypeMap]);
+
+  const filteredMine = useMemo(() => { setPage(1); return applyFilters(personalTxns); }, [personalTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
   const filteredShared = useMemo(() => { setPage(1); return applyFilters(sharedTxns); }, [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
   const filteredAll = useMemo(() => {
     const combined = [...myTxns, ...sharedTxns];
