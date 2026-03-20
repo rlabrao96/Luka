@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown } from "lucide-react";
+import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
@@ -78,6 +78,8 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedBank, setSelectedBank] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [onlyUncategorized, setOnlyUncategorized] = useState(false);
 
   const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions(200);
   const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions(200);
@@ -98,6 +100,15 @@ export default function TransactionsPage() {
     return Array.from(banks).sort();
   }, [myTxns, sharedTxns]);
 
+  // Build category options
+  const categoryOptions = useMemo(() => {
+    const cats = new Set<string>();
+    [...myTxns, ...sharedTxns].forEach((t) => {
+      if (t.category) cats.add(t.category);
+    });
+    return Array.from(cats).sort();
+  }, [myTxns, sharedTxns]);
+
   const applyFilters = (txns: Transaction[]) => {
     let result = txns;
     if (selectedMonth !== "all") {
@@ -105,6 +116,11 @@ export default function TransactionsPage() {
     }
     if (selectedBank !== "all") {
       result = result.filter((t) => t.bank_name === selectedBank);
+    }
+    if (onlyUncategorized) {
+      result = result.filter((t) => !t.category);
+    } else if (selectedCategory !== "all") {
+      result = result.filter((t) => t.category === selectedCategory);
     }
     if (search) {
       const q = search.toLowerCase();
@@ -118,8 +134,8 @@ export default function TransactionsPage() {
     return result;
   };
 
-  const filteredMine = useMemo(() => applyFilters(myTxns), [myTxns, selectedMonth, selectedBank, search]);
-  const filteredShared = useMemo(() => applyFilters(sharedTxns), [sharedTxns, selectedMonth, selectedBank, search]);
+  const filteredMine = useMemo(() => applyFilters(myTxns), [myTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  const filteredShared = useMemo(() => applyFilters(sharedTxns), [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
 
   const selectClass =
     "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
@@ -192,6 +208,42 @@ export default function TransactionsPage() {
             />
           </div>
         )}
+
+        {/* Category filter */}
+        {categoryOptions.length > 0 && !onlyUncategorized && (
+          <div className="relative">
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className={selectClass}
+            >
+              <option value="all">Todas las categorías</option>
+              {categoryOptions.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <ChevronDown
+              size={12}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+          </div>
+        )}
+
+        {/* Uncategorized toggle */}
+        <button
+          onClick={() => {
+            setOnlyUncategorized((v) => !v);
+            setSelectedCategory("all");
+          }}
+          className={`h-8 flex items-center gap-1.5 px-3 rounded-lg border text-[11px] font-medium transition-colors ${
+            onlyUncategorized
+              ? "bg-amber-50 border-amber-300 text-amber-700"
+              : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+          }`}
+        >
+          <Tag size={11} strokeWidth={2} />
+          Sin categoría
+        </button>
       </div>
 
       {/* Tabs */}

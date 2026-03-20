@@ -12,7 +12,7 @@ import { useLukaStore } from "@/app/lib/store";
 
 export default function DashboardPage() {
   const name = useLukaStore((s) => s.userFullName) ?? "tú";
-  const { data: myTxns    = [] } = useMyTransactions(10);
+  const { data: myTxns    = [] } = useMyTransactions(200);
   const { data: monthlySpending = [] } = useMonthlySpending();
   const { data: sharedTxns = [] } = useSharedTransactions(10);
   const { data: summary   = [] } = useHouseholdSummary();
@@ -32,15 +32,26 @@ export default function DashboardPage() {
   );
 
   const categoryData = useMemo(() => {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const map: Record<string, number> = {};
-    recentAll.forEach((t) => {
-      if (t.category) map[t.category] = (map[t.category] ?? 0) + t.amount;
-    });
-    return Object.entries(map)
+    myTxns
+      .filter((t) => {
+        const d = new Date(t.transaction_date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        return key === currentMonth && t.category;
+      })
+      .forEach((t) => {
+        map[t.category!] = (map[t.category!] ?? 0) + Number(t.amount);
+      });
+    const sorted = Object.entries(map)
       .map(([category, amount]) => ({ category, amount }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
-  }, [recentAll]);
+      .sort((a, b) => b.amount - a.amount);
+    if (sorted.length <= 5) return sorted;
+    const top5 = sorted.slice(0, 5);
+    const othersTotal = sorted.slice(5).reduce((s, e) => s + e.amount, 0);
+    return [...top5, { category: "Otros", amount: othersTotal }];
+  }, [myTxns]);
 
   const firstName = name.split(" ")[0];
   const hour = new Date().getHours();
