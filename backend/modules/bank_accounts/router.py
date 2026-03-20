@@ -25,13 +25,12 @@ async def list_bank_accounts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all connected bank accounts for a household."""
+    """List all connected bank accounts for a household (active and inactive)."""
     await require_membership(household_id, current_user.id, db)
 
     result = await db.execute(
         select(BankAccount).where(
             BankAccount.household_id == household_id,
-            BankAccount.is_active.is_(True),
         )
     )
     accounts = result.scalars().all()
@@ -56,6 +55,8 @@ async def list_bank_accounts(
             "account_kind": a.account_kind,
             "account_number": a.account_number,
             "cardholder_name": a.cardholder_name,
+            "currency": a.currency,
+            "is_active": a.is_active,
             "user_id": str(a.user_id),
             "import_status": a.import_status,
             "fintoc_account_id": a.fintoc_account_id,

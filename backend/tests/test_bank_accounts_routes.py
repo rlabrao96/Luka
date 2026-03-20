@@ -254,3 +254,78 @@ async def test_patch_bank_account_404_not_found(http_client, override_auth, over
         json={"is_active": False},
     )
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /bank-accounts — updated list
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_bank_accounts_includes_currency_and_is_active(
+    http_client, override_auth, override_db
+):
+    mock_member = MagicMock()
+
+    mock_account = MagicMock()
+    mock_account.id = uuid.uuid4()
+    mock_account.bank_name = "Banco de Chile"
+    mock_account.account_type = "personal"
+    mock_account.account_kind = "checking_account"
+    mock_account.account_number = "****1234"
+    mock_account.cardholder_name = None
+    mock_account.currency = "CLP"
+    mock_account.is_active = True
+    mock_account.user_id = uuid.uuid4()
+    mock_account.import_status = "done"
+    mock_account.fintoc_account_id = "acc_1"
+    mock_account.last_synced_at = None
+    mock_account.import_started_at = None
+
+    member_result = _make_execute_result(mock_member)
+
+    accounts_result = MagicMock()
+    accounts_result.scalars.return_value.all.return_value = [mock_account]
+
+    override_db.execute = AsyncMock(side_effect=[member_result, accounts_result])
+
+    response = await http_client.get(f"/bank-accounts?household_id={HOUSEHOLD_ID}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["currency"] == "CLP"
+    assert data[0]["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_bank_accounts_returns_inactive_accounts(
+    http_client, override_auth, override_db
+):
+    """Inactive accounts must be returned so the settings UI can render the toggle."""
+    mock_member = MagicMock()
+
+    mock_inactive = MagicMock()
+    mock_inactive.id = uuid.uuid4()
+    mock_inactive.bank_name = "Santander"
+    mock_inactive.account_type = "personal"
+    mock_inactive.account_kind = None
+    mock_inactive.account_number = None
+    mock_inactive.cardholder_name = None
+    mock_inactive.currency = "CLP"
+    mock_inactive.is_active = False
+    mock_inactive.user_id = uuid.uuid4()
+    mock_inactive.import_status = "done"
+    mock_inactive.fintoc_account_id = "acc_2"
+    mock_inactive.last_synced_at = None
+    mock_inactive.import_started_at = None
+
+    member_result = _make_execute_result(mock_member)
+    accounts_result = MagicMock()
+    accounts_result.scalars.return_value.all.return_value = [mock_inactive]
+    override_db.execute = AsyncMock(side_effect=[member_result, accounts_result])
+
+    response = await http_client.get(f"/bank-accounts?household_id={HOUSEHOLD_ID}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["is_active"] is False
