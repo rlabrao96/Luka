@@ -1,6 +1,6 @@
 # Luka — Project State Document
 **Date:** 2026-03-20
-**Status:** All 4 implementation plans complete + Fintoc bank connect flow fully implemented + Fintoc history import working end-to-end + connected accounts in settings. App is LIVE in production (Railway + Vercel). Multiple critical bugs fixed this session (Railway import error, Vercel TS build, CORS/500 from missing migration, stale transaction cache after delete). Transactions page has full pagination, category filter, and smart summary bar. Awaiting WhatsApp/Gmail/Outlook credentials to enable email capture pipeline.
+**Status:** All 12 implementation plans complete. Fintoc integration is live. **WhatsApp Cloud API integration fully verified in Live Mode** (sending polls/receiving webhooks). **Legal pages (Privacy, Terms, Data Deletion) implemented** for Meta compliance. **New minimalist branding/logo generated**. App is production-ready for first users. Transactions page has full pagination, category filter, and smart summary bar. **Budgeting waterfall fully implemented:** income/transfer/expense classifier, personal budget service, pace chart, allocation editor (50/20/30), household waterfall cards.
 
 ---
 
@@ -48,8 +48,11 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   │                             POST /webhooks/gmail, POST /webhooks/outlook
 │   │   ├── whatsapp/               ← WhatsApp Cloud API sender + session state + webhook handler
 │   │   │                             GET/POST /webhooks/whatsapp
-│   │   ├── budgets/                ← Budget service + GET/POST /budgets/monthly/{household_id}
-│   │   └── fintoc/                 ← FintocClient + reconcile_transactions()
+│   │   ├── budgets/                ← Budget service + personal_service + allocation_service
+│   │   │                             GET/POST /budgets/monthly/{household_id}
+│   │   │                             GET /budgets/personal/{household_id}
+│   │   │                             GET/POST /budgets/allocation/{household_id}
+│   │   └── fintoc/                 ← FintocClient + classifier + reconcile_transactions()
 │   ├── jobs/
 │   │   ├── queue.py                ← ARQ enqueue helpers
 │   │   └── tasks.py                ← 5 async tasks (see ARQ Jobs below)
@@ -65,7 +68,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │       ├── 003_fintoc_bank_account_fields.py ← fintoc_link_id, fintoc_account_id
 │   │       ├── 004_account_type_constraint.py    ← CHECK constraint on account_type
 │   │       └── 005_bank_account_import_status.py ← import_status column on bank_accounts
-│   └── tests/                      ← 17 test files (31 passing, 7 skipped/integration)
+│   └── tests/                      ← 20 test files (70 passing, 7 skipped/integration)
 │
 ├── frontend/
 │   ├── app/
@@ -80,7 +83,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   │   ├── hooks/
 │   │   │   │   ├── useTransactions.ts  ← useMyTransactions, useSharedTransactions, useMonthlySpending
 │   │   │   │   ├── useHousehold.ts     ← useHouseholdSummary, usePartnerStats
-│   │   │   │   └── useBudget.ts        ← useBudgetStatus, useSetBudget
+│   │   │   │   └── useBudget.ts        ← useBudgetStatus, useSetBudget, usePersonalBudget, useAllocation, useSaveAllocation
 │   │   │   └── supabase/
 │   │   │       ├── client.ts       ← Supabase browser client
 │   │   │       └── server.ts       ← Supabase SSR client
@@ -93,12 +96,17 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   │       ├── connect-email/page.tsx
 │   │   │       ├── connect-bank/page.tsx
 │   │   │       └── verify-whatsapp/page.tsx
+│   │   ├── (public)/              ← Public routes (no auth required)
+│   │   │   ├── layout.tsx         ← Base layout for legal docs
+│   │   │   ├── privacy/page.tsx   ← Privacy Policy (Chile Law 19.628)
+│   │   │   ├── terms/page.tsx     ← Terms of Service
+│   │   │   └── data-deletion/page.tsx ← Instructions for data removal
 │   │   └── (dashboard)/            ← Route group (no URL prefix)
 │   │       ├── layout.tsx          ← Sidebar (lg) + BottomNav (mobile) + <main>
 │   │       ├── page.tsx            ← /  — Home: KPIs + SpendingChart + CategoryDonut + RecentTransactions
 │   │       ├── transactions/page.tsx  ← /transactions — tabs (mine/shared) + search
 │   │       ├── household/page.tsx     ← /household — contribution bars + partner stats
-│   │       ├── budgets/page.tsx       ← /budgets — joint account progress bar
+│   │       ├── budgets/page.tsx       ← /budgets — pace chart, allocation editor, waterfall cards
 │   │       ├── settings/page.tsx      ← /settings — sign-out + privacy disclosure
 │   │       └── components/
 │   │           ├── Sidebar.tsx         ← Desktop nav (hidden on mobile)
@@ -107,6 +115,9 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │           ├── SpendingChart.tsx   ← Recharts AreaChart (personal/shared)
 │   │           ├── CategoryDonut.tsx   ← Recharts PieChart donut
 │   │           ├── RecentTransactions.tsx ← Transaction list with split badges
+│   │           ├── PaceChart.tsx              ← Recharts LineChart: actual spending vs pace line
+│   │           ├── AllocationCard.tsx         ← Dual sliders (Hogar/Ahorro), Personal read-only, suggestion pills
+│   │           ├── WaterfallCards.tsx         ← Household + Personal budget cards with progress bars
 │   │           ├── StoreInitializer.tsx       ← Calls GET /auth/me on mount, populates Zustand
 │   │           ├── InactivityGuard.tsx        ← Auto-logout after 1h inactivity
 │   │           └── ImportStatusBanner.tsx     ← Polls import-status, shows progress banner
@@ -154,7 +165,12 @@ merchant_category_selections — id, merchant_id, category, count, last_used_at
 transactions       — id, user_id, household_id, bank_account_id, merchant_id,
                      amount, currency, transaction_date, category,
                      status ('pending'|'reconciled'), source, fintoc_id,
+                     transaction_type ('expense'|'income'|'transfer'),
+                     transfer_to_account_id (FK bank_accounts, nullable),
                      raw_email_text (purged after 24h)
+
+household_budget_allocations — id, household_id, month (DATE UNIQUE per household),
+                     hogar_pct, ahorro_pct, personal_pct, created_at
 
 transaction_splits — id, transaction_id, split_type ('personal'|'partner'|'shared'),
                      category, decided_by_user_id, whatsapp_message_id, decided_at
@@ -189,6 +205,9 @@ GET  /transactions/monthly-summary?household_id=X → last 6 months aggregated (
 
 GET  /budgets/monthly/{id}?month=YYYY-MM   → budget status
 POST /budgets/monthly/{id}                 → set monthly budget
+GET  /budgets/personal/{id}?month=YYYY-MM-DD → income, pace chart, household + personal waterfall
+GET  /budgets/allocation/{id}?month=YYYY-MM-DD → current allocation + suggestions
+POST /budgets/allocation/{id}              → upsert allocation (hogar_pct, ahorro_pct, personal_pct)
 
 GET  /bank-accounts                         → list user's bank accounts
 GET  /bank-accounts/fintoc/accounts?link_token=X → list Fintoc accounts for a link
@@ -212,7 +231,8 @@ POST /webhooks/whatsapp                    → WhatsApp message receive
 | `renew_mail_watches` | Cron 3am daily | Renew Gmail (7d expiry) and Outlook (3d expiry) subscriptions |
 | `purge_raw_emails` | Cron hourly | Set `raw_email_text = NULL` on transactions >24h old |
 | `cleanup_processed_webhooks` | Cron 4am daily | Delete idempotency records >7 days |
-| `run_fintoc_sync` | Cron 2am nightly | Fetch settled Fintoc txns → reconcile vs pending by amount + date±3d + fuzzy merchant ≥70% |
+| `run_fintoc_sync` | Cron 2am nightly | Fetch settled Fintoc txns → classify (income/transfer/expense) → reconcile vs pending by amount + date±3d + fuzzy merchant ≥70% |
+| `import_fintoc_history` | On-demand (Fintoc link.created) | Bulk import historical movements with classifier; skips inbound transfer duplicates; only creates TransactionSplit for EXPENSE |
 
 ---
 
@@ -309,9 +329,13 @@ ENVIRONMENT=production
 backend/tests/          31 passing, 7 skipped (require live DB)
 
 test_auth.py            ← Auth middleware
+test_budget_allocation_service.py ← Allocation suggestions (default, historical, rounding)
+test_budget_personal_service.py   ← Personal ceiling, pace, breakdown (waterfall + allocation modes)
 test_budgets_api.py     ← Budget endpoints (1 skipped: live DB)
 test_email_parser.py    ← Regex parsing for Chilean bank emails
 test_email_webhooks.py  ← Gmail + Outlook webhook handlers
+test_fintoc_classifier.py ← INCOME/EXPENSE/TRANSFER/INBOUND_TRANSFER_SKIP classification (7 tests)
+test_fintoc_import.py   ← Fintoc sync job end-to-end
 test_fintoc_reconciler.py ← Reconciliation engine (exact, window, fuzzy, no-match)
 test_health.py          ← Health check
 test_household_privacy.py ← RLS policies (2 skipped: live DB)
@@ -331,7 +355,7 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 
 | Gap | Impact | Notes |
 |-----|--------|-------|
-| WhatsApp PIN verify | Low | Onboarding step exists in UI, backend logic not fully wired. Blocked on WhatsApp credentials. |
+| WhatsApp Integration | ✅ DONE | Cloud API verified in Live Mode. Webhook listener and sender functional. |
 | Email watch setup | Medium | Onboarding connects email — initial watch setup needs triggering once after first login. Blocked on GCP/Azure credentials. |
 | Vault integration | Low | Supabase Vault for OAuth tokens (noted in design spec, not wired) — optional hardening |
 | Google/Microsoft OAuth login | Blocking for real users | GCP OAuth credentials not yet configured in Supabase |
@@ -357,7 +381,9 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - Supabase redirect URL configured: `https://luka-lovat.vercel.app/auth/callback`
 
 **Database (Supabase):** ✅ LIVE
-- All 9 migrations applied (`alembic upgrade head` — confirmed at `009 head`)
+- All 11 migrations applied (`alembic upgrade head` — confirmed at `011 head`)
 - Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
+- Migration 010 adds bank account settings overhaul columns
+- Migration 011 adds `transaction_type`, `transfer_to_account_id`, `household_budget_allocations`
 - Project: `mvovcodijqjvzxxthsxg.supabase.co`
 - Note: migrations must be run manually via local `python3 -m alembic upgrade head` (Railway releaseCommand was unreliable)

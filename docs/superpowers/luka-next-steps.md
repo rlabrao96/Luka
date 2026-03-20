@@ -12,6 +12,9 @@ This document walks through every decision and credential that requires your inp
 - **Note:** run future migrations manually: `cd backend && python3 -m alembic upgrade head`
 - **Railway backend** — live at `https://luka-production-eb87.up.railway.app`
 - **Vercel frontend** — live at `https://luka-lovat.vercel.app`
+- **WhatsApp Cloud API** — **Verified in Live Mode**. Webhooks/Sender fully functional. ✅
+- **Legal Documentation** — Privacy Policy, Terms, and Data Deletion pages live (Meta compliant). ✅
+- **Branding** — New custom minimalist logo generated. ✅
 - **Gap 3.1** — Auth middleware (`frontend/middleware.ts`) ✅
 - **Gap 3.2** — Accept-invite flow (backend + frontend page) ✅
 - **Gap 3.3** — Zustand store initialization (`StoreInitializer`) ✅
@@ -42,6 +45,13 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — Stale transaction cache after bank account delete now invalidated ✅
 - **Bug fix** — python-dateutil missing from pyproject.toml ✅
 - **Maintenance** — 42 orphan transactions cleaned from production DB ✅
+- **Feature** — Fintoc classifier: INCOME / EXPENSE / TRANSFER / INBOUND_TRANSFER_SKIP detection ✅
+- **Feature** — Personal budget service: waterfall ceiling, pace chart, household + personal blocks ✅
+- **Feature** — Allocation service: 50/20/30 suggestions (historical + recommended), upsert ✅
+- **Feature** — Budget API: 3 new endpoints (personal, allocation GET/POST) ✅
+- **Feature** — Frontend: PaceChart (Recharts), AllocationCard (dual sliders), WaterfallCards ✅
+- **Feature** — Budgets page rewritten with month selector, income header, pace, allocation, waterfall ✅
+- **DB migration** — Migration 011: transaction_type, transfer_to_account_id, household_budget_allocations ✅
 
 ---
 
@@ -68,17 +78,7 @@ Railway add-on configured. `REDIS_URL` auto-injected.
 ---
 ### 1.3 WhatsApp Cloud API — Business Account
 
-**What you need:**
-1. [Meta for Developers](https://developers.facebook.com) → Create app → Business type
-2. Add "WhatsApp" product
-3. Create a WhatsApp Business Account (WABA)
-4. Add a phone number (can use a test number Meta provides, or your real number)
-5. Collect:
-   - `WHATSAPP_PHONE_NUMBER_ID`
-   - `WHATSAPP_ACCESS_TOKEN` (permanent token, not temporary)
-   - `WHATSAPP_APP_SECRET`
-6. Configure webhook URL (will be your Railway URL): `https://your-api.railway.app/webhooks/whatsapp`
-7. Subscribe to `messages` webhook field
+**Done.** All credentials loaded and verified end-to-end.
 
 **Decision needed:**
 - Do you have an existing Meta Business account?
@@ -141,7 +141,7 @@ API key loaded in Railway.
 
 ## Phase 2: Infrastructure Setup ✅ COMPLETE
 
-- **2.1** Database migrations — done (`003 head`)
+- **2.1** Database migrations — done (`011 head`)
 - **2.2** Railway backend — live at `https://luka-production-eb87.up.railway.app`
 - **2.3** Vercel frontend — live at `https://luka-lovat.vercel.app`
 - **2.4** Supabase redirect URL configured for Vercel callback
@@ -179,14 +179,15 @@ Settings page shows connected bank accounts with type/kind tags, masked account 
 Checklist before sharing Luka with anyone:
 
 - [x] All Phase 1 credentials obtained and loaded into Railway/Vercel
-- [x] `alembic upgrade head` run on production DB (at `009 head`)
+- [x] `alembic upgrade head` run on production DB (at `011 head`)
 - [x] Health check passes: `GET /health → {"status":"ok","app":"luka"}`
 - [ ] Can log in with Google or Microsoft account — **blocked on GCP OAuth setup (1.4)**
 - [x] Dashboard loads (no infinite spinner)
 - [x] Auth middleware redirects logged-out users
 - [x] User row auto-created on first login (no more 401 "User not found")
 - [ ] Fintoc widget opens and connects a real bank account end-to-end — **needs real Fintoc sandbox test**
-- [ ] WhatsApp sends test message successfully — **blocked on Meta credentials (1.3)**
+- [x] WhatsApp sends test message successfully (verified 2026-03-20)
+- [x] Legal pages live and accessible (verified 2026-03-20)
 - [ ] Gmail webhook receives a test email — **blocked on GCP Pub/Sub setup (1.4)**
 - [x] Pre-commit hooks active: `pre-commit install`
 
@@ -200,6 +201,7 @@ Checklist before sharing Luka with anyone:
 ✅ Week 3: Fintoc UI + all critical bug fixes — COMPLETE (3.6, user provisioning, hydration, CORS)
 ✅ Week 4: Fintoc history import working + settings connected accounts + Fintoc API bug fixes — COMPLETE
 ✅ Week 5 (2026-03-20): Transaction UX overhaul (pagination, filters, smart summary) + import status stale guard + production bug fixes — COMPLETE
+✅ Week 6 (2026-03-20): Budgeting waterfall — Fintoc classifier, personal budget service, pace chart, allocation editor, waterfall cards, budgets page rewrite, migration 011 — COMPLETE
 
 Next: Enable login (blocking everything else)
   → 1.4 Google Cloud: create OAuth 2.0 credentials → enable in Supabase Auth → Google
@@ -208,7 +210,6 @@ Next: Enable login (blocking everything else)
   → Test: Fintoc widget opens and connects real bank account
 
 Next: Enable email pipeline
-  → 1.3 WhatsApp Cloud API (Meta for Developers)
   → 1.4 GCP Pub/Sub topic + Gmail webhook push subscription
   → 1.5 Azure Mail.Read delegated permission
   → Test end-to-end: bank email → transaction captured → WhatsApp alert
