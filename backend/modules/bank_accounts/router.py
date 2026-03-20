@@ -2,7 +2,7 @@ import httpx
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -12,6 +12,7 @@ from modules.auth.models import User
 from modules.fintoc.client import FintocClient
 from modules.households.models import BankAccount
 from modules.households.router import _require_membership
+from modules.transactions.models import Transaction, TransactionSplit
 
 router = APIRouter(prefix="/bank-accounts", tags=["bank-accounts"])
 
@@ -193,7 +194,7 @@ async def delete_bank_account(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Soft-delete a bank account (set is_active=False). Only the account owner can delete."""
+    """Hard-delete a bank account and all its transactions/splits. Only the account owner can delete."""
     await _require_membership(household_id, current_user.id, db)
 
     account = await db.scalar(
@@ -207,7 +208,19 @@ async def delete_bank_account(
     if account.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the account owner can disconnect it")
 
-    account.is_active = False
+    # Delete splits → transactions → bank account (respect FK order)
+    txn_ids_result = await db.execute(
+        select(Transaction.id).where(Transaction.bank_account_id == account_id)
+    )
+    txn_ids = [row[0] for row in txn_ids_result.fetchall()]
+
+    if txn_ids:
+        await db.execute(
+            delete(TransactionSplit).where(TransactionSplit.transaction_id.in_(txn_ids))
+        )
+        await db.execute(delete(Transaction).where(Transaction.id.in_(txn_ids)))
+
+    await db.delete(account)
     await db.commit()
     return {"ok": True}
 
