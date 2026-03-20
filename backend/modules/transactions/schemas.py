@@ -16,6 +16,8 @@ class TransactionResponse(BaseModel):
     split_type: str | None = None
     bank_name: str | None = None
     bank_account_id: uuid.UUID | None = None
+    account_kind: str | None = None
+    transaction_type: str | None = None
 
     model_config = {"from_attributes": True}
 
