@@ -3,6 +3,17 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 HOUSEHOLD_ID = str(uuid.uuid4())
+ACCOUNT_ID = str(uuid.uuid4())
+
+
+def _make_bank_account(import_status="done", is_active=True, user_id=None):
+    acc = MagicMock()
+    acc.id = uuid.UUID(ACCOUNT_ID)
+    acc.import_status = import_status
+    acc.is_active = is_active
+    acc.user_id = user_id  # caller must pass mock_current_user.id for ownership tests; None = unknown other user
+    acc.account_type = "personal"
+    return acc
 
 
 @pytest.mark.asyncio
@@ -166,3 +177,80 @@ async def test_import_status_false_when_all_done(http_client, override_auth, ove
     response = await http_client.get(f"/bank-accounts/import-status?household_id={HOUSEHOLD_ID}")
     assert response.status_code == 200
     assert response.json() == {"importing": False}
+
+
+# ---------------------------------------------------------------------------
+# PATCH /bank-accounts/{account_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_patch_bank_account_updates_type(
+    http_client, override_auth, override_db, mock_current_user
+):
+    mock_member = MagicMock()
+    mock_account = _make_bank_account(user_id=mock_current_user.id)
+
+    member_result = _make_execute_result(mock_member)
+    override_db.execute = AsyncMock(return_value=member_result)
+    override_db.scalar = AsyncMock(return_value=mock_account)
+    override_db.commit = AsyncMock()
+
+    response = await http_client.patch(
+        f"/bank-accounts/{ACCOUNT_ID}?household_id={HOUSEHOLD_ID}",
+        json={"account_type": "joint"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["account_type"] == "joint"
+
+
+@pytest.mark.asyncio
+async def test_patch_bank_account_403_for_non_owner(
+    http_client, override_auth, override_db, mock_current_user
+):
+    mock_member = MagicMock()
+    # account owned by a different user
+    mock_account = _make_bank_account(user_id=uuid.uuid4())
+
+    member_result = _make_execute_result(mock_member)
+    override_db.execute = AsyncMock(return_value=member_result)
+    override_db.scalar = AsyncMock(return_value=mock_account)
+
+    response = await http_client.patch(
+        f"/bank-accounts/{ACCOUNT_ID}?household_id={HOUSEHOLD_ID}",
+        json={"account_type": "joint"},
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patch_bank_account_409_disable_while_importing(
+    http_client, override_auth, override_db, mock_current_user
+):
+    mock_member = MagicMock()
+    mock_account = _make_bank_account(import_status="importing", user_id=mock_current_user.id)
+
+    member_result = _make_execute_result(mock_member)
+    override_db.execute = AsyncMock(return_value=member_result)
+    override_db.scalar = AsyncMock(return_value=mock_account)
+
+    response = await http_client.patch(
+        f"/bank-accounts/{ACCOUNT_ID}?household_id={HOUSEHOLD_ID}",
+        json={"is_active": False},
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_patch_bank_account_404_not_found(http_client, override_auth, override_db):
+    mock_member = MagicMock()
+    member_result = _make_execute_result(mock_member)
+    override_db.execute = AsyncMock(return_value=member_result)
+    override_db.scalar = AsyncMock(return_value=None)  # account not found
+
+    response = await http_client.patch(
+        f"/bank-accounts/{ACCOUNT_ID}?household_id={HOUSEHOLD_ID}",
+        json={"is_active": False},
+    )
+    assert response.status_code == 404

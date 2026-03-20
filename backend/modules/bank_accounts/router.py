@@ -1,6 +1,7 @@
 import httpx
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, select
@@ -92,6 +93,11 @@ class ConnectFintocRequest(BaseModel):
     accounts: list[FintocAccountIn]
 
 
+class UpdateBankAccountBody(BaseModel):
+    account_type: Literal["personal", "partner", "joint"] | None = None
+    is_active: bool | None = None
+
+
 @router.post("/fintoc/connect")
 async def connect_fintoc_accounts(
     body: ConnectFintocRequest,
@@ -144,6 +150,48 @@ async def connect_fintoc_accounts(
             }
             for a in created
         ],
+    }
+
+
+@router.patch("/{account_id}")
+async def update_bank_account(
+    account_id: uuid.UUID,
+    household_id: uuid.UUID,
+    body: UpdateBankAccountBody,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update account_type and/or is_active. Only the account owner can edit."""
+    await require_membership(household_id, current_user.id, db)
+
+    account = await db.scalar(
+        select(BankAccount).where(
+            BankAccount.id == account_id,
+            BankAccount.household_id == household_id,
+        )
+    )
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the account owner can edit it")
+
+    # Guard: cannot disable while import is in progress
+    if body.is_active is False and account.import_status in ("pending", "importing"):
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot disable an account while its history import is in progress",
+        )
+
+    if body.account_type is not None:
+        account.account_type = body.account_type
+    if body.is_active is not None:
+        account.is_active = body.is_active
+
+    await db.commit()
+    return {
+        "id": str(account.id),
+        "account_type": account.account_type,
+        "is_active": account.is_active,
     }
 
 
