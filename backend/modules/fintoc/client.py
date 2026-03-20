@@ -10,10 +10,11 @@ _TIMEOUT = httpx.Timeout(30.0)
 @dataclass
 class FintocTransaction:
     id: str
-    amount: int
+    amount: int  # signed: negative = outflow, positive = inflow
     description: str
     transaction_date: datetime
     account_id: str
+    counterparty_account_id: str | None = None
 
 
 class FintocClient:
@@ -60,13 +61,16 @@ class FintocClient:
         return [
             FintocTransaction(
                 id=mov["id"],
-                amount=abs(int(mov["amount"])),
+                amount=int(mov["amount"]),  # signed — negative=outflow, positive=inflow
                 description=(mov.get("description") or "").upper().strip(),
                 transaction_date=datetime.fromisoformat(mov["post_date"]),
                 account_id=account_id,
+                counterparty_account_id=(
+                    mov.get("recipient_account", {}).get("id")
+                    or mov.get("sender_account", {}).get("id")
+                ),
             )
             for mov in all_movements
-            if int(mov.get("amount", 0)) < 0  # only debits (negative = expense)
         ]
 
     async def fetch_accounts(self) -> list[dict]:
