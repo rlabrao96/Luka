@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -185,8 +185,20 @@ async def update_bank_account(
             detail="Cannot disable an account while its history import is in progress",
         )
 
-    if body.account_type is not None:
+    if body.account_type is not None and body.account_type != account.account_type:
         account.account_type = body.account_type
+        # Backfill existing splits to match the new account type
+        new_split_type = "shared" if body.account_type == "joint" else body.account_type
+        txn_ids_result = await db.execute(
+            select(Transaction.id).where(Transaction.bank_account_id == account_id)
+        )
+        txn_ids = [row[0] for row in txn_ids_result.fetchall()]
+        if txn_ids:
+            await db.execute(
+                update(TransactionSplit)
+                .where(TransactionSplit.transaction_id.in_(txn_ids))
+                .values(split_type=new_split_type)
+            )
     if body.is_active is not None:
         account.is_active = body.is_active
 
