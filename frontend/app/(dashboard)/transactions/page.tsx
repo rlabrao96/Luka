@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
@@ -142,24 +142,49 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
 
       {/* Pagination controls */}
       {totalPages > 1 && (
-        <div className="px-5 py-3 border-t border-slate-50 flex items-center justify-between">
-          <button
-            onClick={() => onPage(page - 1)}
-            disabled={page === 1}
-            className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronLeft size={13} /> Anterior
-          </button>
-          <span className="text-[10px] text-slate-400">
-            Página {page} de {totalPages}
+        <div className="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between gap-4">
+          {/* Left: First + Prev */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onPage(1)}
+              disabled={page === 1}
+              title="Primera página"
+              className="flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronsLeft size={13} />
+            </button>
+            <button
+              onClick={() => onPage(page - 1)}
+              disabled={page === 1}
+              className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-slate-200 bg-white text-[11px] font-medium text-slate-600 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft size={12} /> Anterior
+            </button>
+          </div>
+
+          {/* Center: page indicator */}
+          <span className="text-[11px] font-medium text-slate-500">
+            Página <span className="text-luka-dark font-semibold">{page}</span> de {totalPages}
           </span>
-          <button
-            onClick={() => onPage(page + 1)}
-            disabled={page === totalPages}
-            className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            Siguiente <ChevronRight size={13} />
-          </button>
+
+          {/* Right: Next + Last */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onPage(page + 1)}
+              disabled={page === totalPages}
+              className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-slate-200 bg-white text-[11px] font-medium text-slate-600 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Siguiente <ChevronRight size={12} />
+            </button>
+            <button
+              onClick={() => onPage(totalPages)}
+              disabled={page === totalPages}
+              title="Última página"
+              className="flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronsRight size={13} />
+            </button>
+          </div>
         </div>
       )}
     </div>
