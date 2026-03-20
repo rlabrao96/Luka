@@ -23,9 +23,10 @@ function getMonthLabel(key: string) {
 
 interface SummaryBarProps {
   transactions: Transaction[];
+  periodLabel: string;
 }
 
-function SummaryBar({ transactions }: SummaryBarProps) {
+function SummaryBar({ transactions, periodLabel }: SummaryBarProps) {
   const total = transactions.reduce((s, t) => s + Number(t.amount), 0);
   const count = transactions.length;
   const avg = count > 0 ? total / count : 0;
@@ -34,21 +35,21 @@ function SummaryBar({ transactions }: SummaryBarProps) {
     <div className="grid grid-cols-3 gap-3">
       {[
         {
-          label: "Total egresos",
+          label: `Egresos · ${periodLabel}`,
           value: formatCLP(total),
           icon: TrendingDown,
           iconClass: "text-red-400",
           iconBg: "bg-red-50",
         },
         {
-          label: "Transacciones",
+          label: `Transacciones · ${periodLabel}`,
           value: String(count),
           icon: Hash,
           iconClass: "text-luka-primary",
           iconBg: "bg-blue-50",
         },
         {
-          label: "Promedio",
+          label: "Promedio por transacción",
           value: formatCLP(avg),
           icon: SlidersHorizontal,
           iconClass: "text-slate-400",
@@ -256,6 +257,20 @@ export default function TransactionsPage() {
   const filteredMine = useMemo(() => { setPage(1); return applyFilters(myTxns); }, [myTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
   const filteredShared = useMemo(() => { setPage(1); return applyFilters(sharedTxns); }, [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
 
+  // Summary period: current month when no month filter, otherwise the selected month
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const summaryMonthKey = selectedMonth === "all" ? currentMonthKey : selectedMonth;
+  const periodLabel = summaryMonthKey === currentMonthKey
+    ? "este mes"
+    : getMonthLabel(summaryMonthKey);
+  const summaryMine = selectedMonth === "all"
+    ? filteredMine.filter((t) => getMonthKey(t.transaction_date) === currentMonthKey)
+    : filteredMine;
+  const summaryShared = selectedMonth === "all"
+    ? filteredShared.filter((t) => getMonthKey(t.transaction_date) === currentMonthKey)
+    : filteredShared;
+
   const selectClass =
     "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
 
@@ -385,7 +400,7 @@ export default function TransactionsPage() {
         </TabsList>
 
         <TabsContent value="mine" className="mt-4 space-y-4">
-          <SummaryBar transactions={filteredMine} />
+          <SummaryBar transactions={summaryMine} periodLabel={periodLabel} />
           <TransactionTable
             transactions={filteredMine}
             loading={loadingMine}
@@ -398,7 +413,7 @@ export default function TransactionsPage() {
         </TabsContent>
 
         <TabsContent value="shared" className="mt-4 space-y-4">
-          <SummaryBar transactions={filteredShared} />
+          <SummaryBar transactions={summaryShared} periodLabel={periodLabel} />
           <TransactionTable
             transactions={filteredShared}
             loading={loadingShared}
