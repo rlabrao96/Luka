@@ -27,10 +27,7 @@ async def send_invite_email(
     inviter_name: str,
     household_name: str,
 ) -> None:
-    # Ensure Vercel URL is used for testing if running locally
     base_url = settings.frontend_url
-    if "localhost" in base_url or "127.0.0.1" in base_url:
-        base_url = "https://luka-lovat.vercel.app"
 
     invite_url = f"{base_url}/invite/{token}"
     bg_image_url = f"{base_url}/background.jpg"

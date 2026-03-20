@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from modules.email.base import ParsedEmail
 
 
@@ -67,7 +67,7 @@ def parse_bank_email(raw_text: str) -> ParsedEmail | None:
 
     date = _parse_date(raw_text)
     if date is None:
-        date = datetime.utcnow()
+        date = datetime.now(timezone.utc)
 
     return ParsedEmail(
         amount=amount,

@@ -1,5 +1,4 @@
 import uuid
-
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from core.config import settings
@@ -34,12 +33,10 @@ async def get_current_user(
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
+        import logging
 
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Supabase auth error: {str(e)}"
-        )
+        logging.getLogger(__name__).exception("Supabase auth error: %s", e)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(User).where(User.email == supabase_user.email))
