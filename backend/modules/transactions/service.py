@@ -11,7 +11,11 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
         select(Transaction, TransactionSplit, BankAccount.bank_name)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
-        .where(Transaction.user_id == user_id, Transaction.transaction_date >= since)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.transaction_date >= since,
+            BankAccount.is_active.is_(True),
+        )
         .order_by(Transaction.transaction_date.desc())
     )
     rows = result.all()
@@ -57,6 +61,7 @@ async def get_monthly_summary(
                 COALESCE(SUM(t.amount), 0) AS personal
             FROM transactions t
             JOIN transaction_splits ts ON ts.transaction_id = t.id
+            JOIN bank_accounts ba ON ba.id = t.bank_account_id AND ba.is_active = TRUE
             WHERE t.user_id = :user_id
               AND t.household_id = :household_id
               AND ts.split_type = 'personal'
@@ -68,6 +73,7 @@ async def get_monthly_summary(
                 COALESCE(SUM(t.amount), 0) AS compartido
             FROM transactions t
             JOIN transaction_splits ts ON ts.transaction_id = t.id
+            JOIN bank_accounts ba ON ba.id = t.bank_account_id AND ba.is_active = TRUE
             WHERE t.household_id = :household_id
               AND ts.split_type = 'shared'
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
@@ -105,6 +111,7 @@ async def get_shared_transactions(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
             Transaction.transaction_date >= since,
+            BankAccount.is_active.is_(True),
         )
         .order_by(Transaction.transaction_date.desc())
     )
