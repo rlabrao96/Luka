@@ -23,6 +23,7 @@ async def _call_llm(merchant: str) -> list[str]:
         ],
         temperature=0.2,
         max_tokens=100,
+        timeout=30,
     )
     raw = response.choices[0].message.content
     data = json.loads(raw)

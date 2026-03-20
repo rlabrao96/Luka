@@ -2,6 +2,7 @@ import httpx
 from core.config import settings
 
 _API_BASE = "https://graph.facebook.com/v19.0"
+_TIMEOUT = httpx.Timeout(15.0)
 
 
 def _headers() -> dict:
@@ -50,7 +51,7 @@ async def send_expense_alert(
             },
         },
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(_url(), headers=_headers(), json=payload)
         data = resp.json()
     return data["messages"][0]["id"]
@@ -73,7 +74,7 @@ async def send_category_list(to: str, categories: list[str], context_msg: str = 
             },
         },
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(_url(), headers=_headers(), json=payload)
         data = resp.json()
     return data["messages"][0]["id"]

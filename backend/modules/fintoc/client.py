@@ -4,6 +4,7 @@ import httpx
 from core.config import settings
 
 FINTOC_BASE = "https://api.fintoc.com/v1"
+_TIMEOUT = httpx.Timeout(30.0)
 
 
 @dataclass
@@ -29,7 +30,7 @@ class FintocClient:
     ) -> list[FintocTransaction]:
         all_movements: list[dict] = []
         page = 1
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             while True:
                 resp = await client.get(
                     f"{FINTOC_BASE}/accounts/{account_id}/movements",
@@ -70,7 +71,7 @@ class FintocClient:
 
     async def fetch_accounts(self) -> list[dict]:
         """Fetch all accounts associated with this link token."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(
                 f"{FINTOC_BASE}/accounts",
                 headers=self._headers(),

@@ -1,8 +1,9 @@
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from modules.email.base import EmailProvider, RawEmail
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+_TIMEOUT = httpx.Timeout(30.0)
 
 
 class OutlookProvider(EmailProvider):
@@ -15,7 +16,11 @@ class OutlookProvider(EmailProvider):
     async def setup_watch(self, user_id: str) -> dict:
         from core.config import settings
 
-        async with httpx.AsyncClient() as client:
+        # MS Graph allows max 3 days for mail subscriptions
+        expiry = (datetime.now(timezone.utc) + timedelta(days=2, hours=23)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(
                 f"{GRAPH_BASE}/subscriptions",
                 headers=self._headers(),
@@ -23,7 +28,7 @@ class OutlookProvider(EmailProvider):
                     "changeType": "created",
                     "notificationUrl": f"{settings.frontend_url.replace('3000', '8000')}/webhooks/outlook",
                     "resource": "me/messages",
-                    "expirationDateTime": "2026-03-13T18:00:00Z",
+                    "expirationDateTime": expiry,
                     "clientState": settings.outlook_client_state,
                 },
             )
@@ -33,7 +38,7 @@ class OutlookProvider(EmailProvider):
     async def fetch_new_emails(self, user_id: str, message_id: str = None) -> list[RawEmail]:
         if not message_id:
             return []
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(
                 f"{GRAPH_BASE}/me/messages/{message_id}",
                 headers=self._headers(),
