@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-19
-**Status:** All 4 implementation plans complete + Fintoc bank connect flow fully implemented + Fintoc history import working end-to-end + connected accounts in settings. App is LIVE in production (Railway + Vercel). Multiple critical bugs fixed (user auto-provisioning, token refresh, hydration, CORS, asyncpg, Fintoc API routes). Awaiting WhatsApp/Gmail/Outlook credentials to enable email capture pipeline.
+**Date:** 2026-03-20
+**Status:** All 4 implementation plans complete + Fintoc bank connect flow fully implemented + Fintoc history import working end-to-end + connected accounts in settings. App is LIVE in production (Railway + Vercel). Multiple critical bugs fixed this session (Railway import error, Vercel TS build, CORS/500 from missing migration, stale transaction cache after delete). Transactions page has full pagination, category filter, and smart summary bar. Awaiting WhatsApp/Gmail/Outlook credentials to enable email capture pipeline.
 
 ---
 
@@ -183,8 +183,8 @@ POST /households/{id}/invite               → invite partner by email
 GET  /households/{id}/summary              → member contributions (own data only)
 GET  /households/{id}/partner-stats        → partner aggregate via SECURITY DEFINER RPC
 
-GET  /transactions/mine?limit=N            → current user's transactions
-GET  /transactions/shared?household_id=X   → shared household transactions
+GET  /transactions/mine?since=YYYY-MM-DD   → current user's transactions (default: 6 months, no row cap)
+GET  /transactions/shared?household_id=X&since=YYYY-MM-DD → shared household transactions
 GET  /transactions/monthly-summary?household_id=X → last 6 months aggregated (personal + shared)
 
 GET  /budgets/monthly/{id}?month=YYYY-MM   → budget status
@@ -335,6 +335,7 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Email watch setup | Medium | Onboarding connects email — initial watch setup needs triggering once after first login. Blocked on GCP/Azure credentials. |
 | Vault integration | Low | Supabase Vault for OAuth tokens (noted in design spec, not wired) — optional hardening |
 | Google/Microsoft OAuth login | Blocking for real users | GCP OAuth credentials not yet configured in Supabase |
+| Alembic auto-run on Railway | Low | Railway releaseCommand was unreliable — future migrations must be run manually from local env via `python3 -m alembic upgrade head` |
 
 ---
 
@@ -356,5 +357,7 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - Supabase redirect URL configured: `https://luka-lovat.vercel.app/auth/callback`
 
 **Database (Supabase):** ✅ LIVE
-- All 5 migrations applied (`alembic upgrade head` — confirmed at `005 head`)
+- All 9 migrations applied (`alembic upgrade head` — confirmed at `009 head`)
+- Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
 - Project: `mvovcodijqjvzxxthsxg.supabase.co`
+- Note: migrations must be run manually via local `python3 -m alembic upgrade head` (Railway releaseCommand was unreliable)

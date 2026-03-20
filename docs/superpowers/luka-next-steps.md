@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-19
+**Date:** 2026-03-20
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -8,7 +8,8 @@ This document walks through every decision and credential that requires your inp
 - **Supabase** — project live, all credentials loaded
 - **Redis** — Railway add-on configured
 - **OpenAI** — API key loaded in Railway
-- **Database migrations** — all 5 migrations at `005 head` (004: account_type constraint, 005: import_status column)
+- **Database migrations** — all 9 migrations at `009 head` (008: performance indexes, 009: last_synced_at + import_started_at on bank_accounts)
+- **Note:** run future migrations manually: `cd backend && python3 -m alembic upgrade head`
 - **Railway backend** — live at `https://luka-production-eb87.up.railway.app`
 - **Vercel frontend** — live at `https://luka-lovat.vercel.app`
 - **Gap 3.1** — Auth middleware (`frontend/middleware.ts`) ✅
@@ -29,6 +30,18 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — asyncpg PgBouncer compatibility (`statement_cache_size=0`) ✅
 - **Bug fix** — Fintoc DataCloneError (`Window.prototype.postMessage` patch) ✅
 - **Infra fix** — Railway domain rotated to `luka-production-eb87` (stale domain routing fixed) ✅
+- **Feature** — Transactions: 6-month fetch with no row cap, full client-side filtering ✅
+- **Feature** — Transactions: pagination (10/30/100 per page, prev/next/first/last buttons) ✅
+- **Feature** — Transactions: category filter + uncategorized toggle ✅
+- **Feature** — Transactions: summary bar shows current-month by default, updates label on month filter ✅
+- **Feature** — Bank account hard delete cascades splits → transactions → account ✅
+- **Feature** — Import status: stale guard (15 min timeout), import_started_at + last_synced_at columns (migration 009) ✅
+- **Feature** — Settings: smart polling while first import active, stops when done ✅
+- **Bug fix** — Railway startup crash (wrong module for require_membership) ✅
+- **Bug fix** — Vercel TypeScript build errors (queryKeys type, hasActiveFirstImport type) ✅
+- **Bug fix** — Stale transaction cache after bank account delete now invalidated ✅
+- **Bug fix** — python-dateutil missing from pyproject.toml ✅
+- **Maintenance** — 42 orphan transactions cleaned from production DB ✅
 
 ---
 
@@ -166,7 +179,7 @@ Settings page shows connected bank accounts with type/kind tags, masked account 
 Checklist before sharing Luka with anyone:
 
 - [x] All Phase 1 credentials obtained and loaded into Railway/Vercel
-- [x] `alembic upgrade head` run on production DB (at `005 head`)
+- [x] `alembic upgrade head` run on production DB (at `009 head`)
 - [x] Health check passes: `GET /health → {"status":"ok","app":"luka"}`
 - [ ] Can log in with Google or Microsoft account — **blocked on GCP OAuth setup (1.4)**
 - [x] Dashboard loads (no infinite spinner)
@@ -186,6 +199,7 @@ Checklist before sharing Luka with anyone:
 ✅ Week 2: Critical code gaps — COMPLETE (3.1, 3.2, 3.3, 3.4)
 ✅ Week 3: Fintoc UI + all critical bug fixes — COMPLETE (3.6, user provisioning, hydration, CORS)
 ✅ Week 4: Fintoc history import working + settings connected accounts + Fintoc API bug fixes — COMPLETE
+✅ Week 5 (2026-03-20): Transaction UX overhaul (pagination, filters, smart summary) + import status stale guard + production bug fixes — COMPLETE
 
 Next: Enable login (blocking everything else)
   → 1.4 Google Cloud: create OAuth 2.0 credentials → enable in Supabase Auth → Google
