@@ -235,7 +235,7 @@ function ConnectBankSection() {
   });
 
   return (
-    <>
+    <div className="w-full">
       <Script src="https://js.fintoc.com/v1/" onReady={() => setScriptReady(true)} />
       <Card className="shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
@@ -283,7 +283,7 @@ function ConnectBankSection() {
           )}
         </CardContent>
       </Card>
-    </>
+    </div>
   );
 }
 

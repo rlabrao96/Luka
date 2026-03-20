@@ -141,7 +141,7 @@ export default function TransactionsPage() {
     "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Transacciones</h2>

@@ -13,7 +13,7 @@ export default function BudgetsPage() {
 
   if (!budget || budget.budgeted === 0) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <h2 className="text-2xl font-bold text-luka-dark">Presupuesto</h2>
         <Card className="bg-white">
           <CardContent className="py-10 text-center">
