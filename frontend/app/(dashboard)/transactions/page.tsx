@@ -22,38 +22,39 @@ function getMonthLabel(key: string) {
 }
 
 interface SummaryBarProps {
-  transactions: Transaction[];
+  personalTxns: Transaction[];
+  sharedTxns: Transaction[];
   periodLabel: string;
 }
 
-function SummaryBar({ transactions, periodLabel }: SummaryBarProps) {
-  const total = transactions.reduce((s, t) => s + Number(t.amount), 0);
-  const count = transactions.length;
-  const avg = count > 0 ? total / count : 0;
+function SummaryBar({ personalTxns, sharedTxns, periodLabel }: SummaryBarProps) {
+  const personalTotal = personalTxns.reduce((s, t) => s + Number(t.amount), 0);
+  const sharedTotal = sharedTxns.reduce((s, t) => s + Number(t.amount), 0);
+  const total = personalTotal + sharedTotal;
 
   return (
     <div className="grid grid-cols-3 gap-3">
       {[
         {
-          label: `Egresos · ${periodLabel}`,
+          label: `Total · ${periodLabel}`,
           value: formatCLP(total),
           icon: TrendingDown,
           iconClass: "text-red-400",
           iconBg: "bg-red-50",
         },
         {
-          label: `Transacciones · ${periodLabel}`,
-          value: String(count),
+          label: `Personal · ${periodLabel}`,
+          value: formatCLP(personalTotal),
           icon: Hash,
           iconClass: "text-luka-primary",
           iconBg: "bg-blue-50",
         },
         {
-          label: "Promedio por transacción",
-          value: formatCLP(avg),
+          label: `Compartida · ${periodLabel}`,
+          value: formatCLP(sharedTotal),
           icon: SlidersHorizontal,
-          iconClass: "text-slate-400",
-          iconBg: "bg-slate-50",
+          iconClass: "text-emerald-500",
+          iconBg: "bg-emerald-50",
         },
       ].map(({ label, value, icon: Icon, iconClass, iconBg }) => (
         <div
@@ -380,6 +381,9 @@ export default function TransactionsPage() {
         </button>
       </div>
 
+      {/* Summary bar — always visible, shows total + personal + compartida */}
+      <SummaryBar personalTxns={summaryMine} sharedTxns={summaryShared} periodLabel={periodLabel} />
+
       {/* Tabs */}
       <Tabs defaultValue="mine">
         <TabsList className="bg-white border border-slate-100 rounded-xl p-1 h-auto">
@@ -400,7 +404,6 @@ export default function TransactionsPage() {
         </TabsList>
 
         <TabsContent value="mine" className="mt-4 space-y-4">
-          <SummaryBar transactions={summaryMine} periodLabel={periodLabel} />
           <TransactionTable
             transactions={filteredMine}
             loading={loadingMine}
@@ -413,7 +416,6 @@ export default function TransactionsPage() {
         </TabsContent>
 
         <TabsContent value="shared" className="mt-4 space-y-4">
-          <SummaryBar transactions={summaryShared} periodLabel={periodLabel} />
           <TransactionTable
             transactions={filteredShared}
             loading={loadingShared}
