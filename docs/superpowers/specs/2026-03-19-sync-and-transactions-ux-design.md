@@ -14,7 +14,7 @@ Three related issues exist today:
 
 2. **Wrong filter totals** — Transactions fetched with `limit=200`. All month/bank/category filtering runs client-side on those 200 rows. Filtering by February returns only February rows within the first 200 fetched — not all February transactions.
 
-3. **Nightly sync too slow** — Fintoc refreshes every 4 hours. Current cron runs at 2am; data can be up to 22 hours stale.
+3. ~~Nightly sync too slow~~ — **Not a problem.** Real-time transactions are captured via Gmail/Outlook email push. The nightly Fintoc cron at 2am is for reconciliation only and stays as-is.
 
 ---
 
@@ -85,27 +85,16 @@ This is a **DB write**, not just a response override. Guarantees:
 - The cron no longer skips the account on the next cycle
 - All clients see the correct state regardless of cache
 
-### 3.3 `sync_fintoc_accounts` — new 4-hour cron
+### 3.3 `run_fintoc_sync` — nightly cron unchanged, logic improved
 
-Replaces `run_fintoc_sync` in the cron schedule.
+Nightly at 2am stays as-is. Two improvements to the existing function:
 
-**Call sites of `run_fintoc_sync` confirmed:** only the cron schedule in `worker.py`. No webhook handler or one-off enqueue references it. Safe to remove from cron and deprecate.
+1. Skip accounts with `import_status = "importing"` (avoid racing with a first-time import)
+2. On success per account: set `last_synced_at = now()`
+3. On failure per account: log to `failed_jobs`, `last_synced_at` unchanged — next night retries from same window
+4. Does **not** touch `import_status`
 
-Logic:
-
-1. Query all `bank_accounts` where `is_active = true` AND `fintoc_link_id IS NOT NULL` AND `import_status != "importing"` (skip accounts mid first-import)
-2. For each account: fetch movements since `last_synced_at` (or `now() - timedelta(days=7)` if NULL)
-3. Reconcile via `fintoc_id` idempotency (skip existing rows)
-4. **On success:** `last_synced_at = now()`
-5. **On failure:** log to `failed_jobs`, `last_synced_at` unchanged — next cycle retries from same window
-6. Does **not** touch `import_status`
-
-**Schedule:**
-```python
-cron(sync_fintoc_accounts, hour={0, 4, 8, 12, 16, 20}, minute=30)
-```
-
-`run_fintoc_sync` removed from `cron_jobs` in `worker.py`. Function kept in `tasks.py` for manual use only.
+No schedule change. No new cron job.
 
 ### 3.4 Transaction API — replace `limit` with `since`
 
