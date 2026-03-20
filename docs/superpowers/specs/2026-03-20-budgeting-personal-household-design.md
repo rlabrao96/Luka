@@ -1,6 +1,6 @@
 # Budgeting: Personal + Household Waterfall
 **Date:** 2026-03-20
-**Status:** Under review — iteration 4 (additions: allocation % + pace chart)
+**Status:** Approved — ready for implementation planning
 
 ---
 
@@ -172,7 +172,7 @@ GET /budgets/personal/{household_id}?month=YYYY-MM-DD
 | `household.spent` | SUM of `transaction_type = 'expense'` with `split_type = 'shared'` on joint account(s) for the month. For couple + no joint: SUM of shared-split expenses on personal accounts. |
 | `household.available` | `household.deposited − household.spent` if `deposited > 0`; `null` otherwise (no joint account = no ceiling to track against) |
 | `household.percent_used` | `round(spent / deposited * 100, 1)` if `deposited > 0`; `null` otherwise |
-| `personal.ceiling` | `income − user.deposited` (waterfall) or `income` (single). Unclamped — may be negative if transfers exceed income. |
+| `personal.ceiling` | **When allocation exists:** `income × personal_pct / 100`. **When no allocation set:** `income − user.deposited` (waterfall) or `income` (single). The allocation-based formula is authoritative when set — it unifies the pace chart and waterfall ceiling on the same page. Unclamped — may be negative if transfers exceed income when no allocation is set. |
 | `personal.ceiling_clamped` | `true` if `personal.ceiling < 0`; `false` otherwise |
 | `personal.breakdown.household` | SUM of `transaction_type = 'expense'` with `split_type = 'shared'` on requesting user's personal accounts |
 | `personal.breakdown.personal` | SUM of `transaction_type = 'expense'` with `split_type = 'personal'` on requesting user's personal accounts |
@@ -206,6 +206,7 @@ POST /budgets/allocation/{household_id}                    → save allocation f
     "historical": { "hogar_pct": 55.0, "ahorro_pct": 10.0, "personal_pct": 35.0 },
     "recommended": { "hogar_pct": 50.0, "ahorro_pct": 20.0, "personal_pct": 30.0, "label": "Regla 50/20/30" }
   }
+  // Note: "historical" is null when insufficient income data exists for the last 3 months
 }
 ```
 
@@ -213,7 +214,7 @@ POST /budgets/allocation/{household_id}                    → save allocation f
 
 **POST body:** `{ month, hogar_pct, ahorro_pct, personal_pct }` — upserts the allocation row; server validates sum = 100.
 
-**Historical suggestion logic:** look at last 3 months of `transaction_type = 'expense'` data; compute actual hogar/personal split; `ahorro` = unspent income fraction. Round to nearest 5% for clean numbers.
+**Historical suggestion logic:** look at last 3 months of `transaction_type = 'expense'` data; compute actual hogar/personal split. `ahorro_pct` = `round((1 - total_spent / total_income) × 100 / 5) × 5` (round to nearest 5%); requires `transaction_type = 'income'` rows from the same months. If any month has zero detected income, exclude that month from the average. If all 3 months have insufficient income data (Fintoc not connected or no income rows), `historical` is returned as `null` in the GET response and the suggestion pills only show the 50/20/30 option.
 
 ### Pace block (added to existing personal budget endpoint)
 
@@ -288,7 +289,7 @@ Shown when user hasn't set an allocation for this month, OR when they tap "Edita
 - Available/overrun below bars; green if positive, red if negative
 
 ### Solo mode
-Same layout — income header → pace chart → allocation card → single personal card. No household section.
+Same layout — income header → pace chart → allocation card → single personal card. No household section. The `pace` block is included in the API response for all modes (solo and waterfall) — `spendable_budget` uses the same formula regardless of mode.
 
 ### Graceful degradation
 - Fintoc not connected → income = 0; pace chart and bars show empty state with connect-bank prompt
