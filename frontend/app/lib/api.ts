@@ -286,6 +286,11 @@ export const api = {
       { method: "PATCH", body: JSON.stringify(payload) }
     ),
 
+  syncBalances: (householdId: string) =>
+    apiFetch<{ updated: number }>(`/bank-accounts/sync-balances?household_id=${householdId}`, {
+      method: "POST",
+    }),
+
   updateTransactionCategory: (transactionId: string, category: string | null) =>
     apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/category`, {
       method: "PATCH",

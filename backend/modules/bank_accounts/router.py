@@ -271,6 +271,44 @@ async def fintoc_link_webhook(
     return {"ok": True, "created": created}
 
 
+@router.post("/sync-balances")
+async def sync_balances(
+    household_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Refresh Fintoc balance_available / balance_current for all active accounts in the household."""
+    await require_membership(household_id, current_user.id, db)
+
+    result = await db.execute(
+        select(BankAccount).where(
+            BankAccount.household_id == household_id,
+            BankAccount.is_active.is_(True),
+            BankAccount.fintoc_link_id.isnot(None),
+            BankAccount.fintoc_account_id.isnot(None),
+        )
+    )
+    accounts = result.scalars().all()
+
+    updated = 0
+    for account in accounts:
+        try:
+            client = FintocClient(link_token=account.fintoc_link_id)
+            fintoc_accounts = await client.fetch_accounts()
+            for fa in fintoc_accounts:
+                if fa.get("id") == account.fintoc_account_id:
+                    bal = fa.get("balance") or {}
+                    account.balance_available = bal.get("available")
+                    account.balance_current = bal.get("current")
+                    updated += 1
+                    break
+        except Exception:
+            pass  # best-effort per account
+
+    await db.commit()
+    return {"updated": updated}
+
+
 @router.delete("/{account_id}")
 async def delete_bank_account(
     account_id: uuid.UUID,

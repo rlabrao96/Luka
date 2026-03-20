@@ -1,10 +1,10 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Landmark } from "lucide-react";
+import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Landmark, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 
@@ -38,9 +38,23 @@ interface SummaryBarProps {
   sharedTxns: Transaction[];
   periodLabel: string;
   userId: string | null;
+  householdId: string | null;
 }
 
-function SummaryBar({ accounts, sharedTxns, periodLabel, userId }: SummaryBarProps) {
+function SummaryBar({ accounts, sharedTxns, periodLabel, userId, householdId }: SummaryBarProps) {
+  const [syncing, setSyncing] = useState(false);
+  const queryClient = useQueryClient();
+
+  async function handleSync() {
+    if (!householdId || syncing) return;
+    setSyncing(true);
+    try {
+      await api.syncBalances(householdId);
+      await queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
+    } finally {
+      setSyncing(false);
+    }
+  }
   const myAccounts = accounts.filter((a) => a.is_active && a.user_id === userId);
 
   // Sum available balances by kind
@@ -64,6 +78,18 @@ function SummaryBar({ accounts, sharedTxns, periodLabel, userId }: SummaryBarPro
     .reduce((s, t) => s + Number(t.amount), 0);
 
   return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Saldos disponibles</span>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="flex items-center gap-1 text-[10px] font-medium text-slate-400 hover:text-luka-primary transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={10} className={syncing ? "animate-spin" : ""} />
+          {syncing ? "Actualizando..." : "Actualizar saldos"}
+        </button>
+      </div>
     <div className="grid grid-cols-3 gap-3">
       {[
         {
@@ -106,6 +132,7 @@ function SummaryBar({ accounts, sharedTxns, periodLabel, userId }: SummaryBarPro
           </div>
         </div>
       ))}
+    </div>
     </div>
   );
 }
@@ -388,6 +415,7 @@ export default function TransactionsPage() {
         sharedTxns={summaryShared}
         periodLabel={periodLabel}
         userId={userId}
+        householdId={householdId}
       />
 
       {/* Tabs */}
