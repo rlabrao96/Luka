@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   LayoutDashboard,
   CreditCard,
@@ -48,14 +49,15 @@ export function Sidebar() {
   return (
     <aside className="hidden lg:flex flex-col w-64 shrink-0 h-full bg-white border-r border-slate-200/80 shadow-sm">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-100">
-        <div className="w-8 h-8 rounded-lg bg-luka-primary flex items-center justify-center shadow-sm">
-          <TrendingUp size={16} className="text-white" />
-        </div>
-        <div>
-          <span className="text-base font-bold text-luka-dark tracking-tight">Luka</span>
-          <p className="text-[10px] text-luka-muted leading-none mt-0.5">Finanzas personales</p>
-        </div>
+      <div className="px-6 py-5 border-b border-slate-100">
+        <Image 
+          src="/logo-dashboard.svg" 
+          alt="Luka Logo" 
+          width={120} 
+          height={40} 
+          className="h-11 w-auto"
+          priority
+        />
       </div>
 
       {/* Navigation */}

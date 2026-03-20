@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { api } from "@/app/lib/api";
@@ -40,7 +41,16 @@ export default function InvitePage({
     <div className="min-h-screen flex items-center justify-center bg-luka-light">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold text-luka-primary">Luka</CardTitle>
+          <CardTitle className="flex justify-center">
+            <Image 
+              src="/logo.svg" 
+              alt="Luka Logo" 
+              width={150} 
+              height={50} 
+              className="h-16 w-auto"
+              priority
+            />
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center space-y-4 py-4">
           {status === "loading" && (
