@@ -3,7 +3,7 @@ import uuid
 import calendar
 from datetime import date, datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount, HouseholdBudgetAllocation, Household
 
@@ -232,21 +232,26 @@ async def get_personal_budget(
         breakdown_personal=breakdown_personal,
     )
 
-    # Pace
+    # Pace — pure SQL to avoid SQLAlchemy injecting ORM entity columns into SELECT
     if personal_account_ids:
+        account_id_strings = [str(aid) for aid in personal_account_ids]
         all_spending_result = await db.execute(
-            select(
-                func.date_part("day", Transaction.transaction_date).label("day"),
-                func.sum(Transaction.amount).label("total"),
-            )
-            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-            .where(
-                Transaction.bank_account_id.in_(personal_account_ids),
-                Transaction.transaction_type == "expense",
-                Transaction.transaction_date >= first_day,
-                Transaction.transaction_date < first_day_next,
-            )
-            .group_by(func.date_part("day", Transaction.transaction_date))
+            text("""
+                SELECT date_part('day', t.transaction_date) AS day,
+                       SUM(t.amount) AS total
+                FROM transactions t
+                JOIN transaction_splits ts ON ts.transaction_id = t.id
+                WHERE t.bank_account_id = ANY(:account_ids)
+                  AND t.transaction_type = 'expense'
+                  AND t.transaction_date >= :first_day
+                  AND t.transaction_date < :first_day_next
+                GROUP BY date_part('day', t.transaction_date)
+            """),
+            {
+                "account_ids": account_id_strings,
+                "first_day": first_day,
+                "first_day_next": first_day_next,
+            },
         )
         daily_raw = {int(row.day): float(row.total) for row in all_spending_result}
     else:
