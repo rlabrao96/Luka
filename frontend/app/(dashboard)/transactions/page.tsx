@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Landmark, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
@@ -320,8 +320,10 @@ export default function TransactionsPage() {
     });
   }, [myTxns, accountTypeMap]);
 
-  const filteredMine = useMemo(() => { setPage(1); return applyFilters(personalTxns); }, [personalTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
-  const filteredShared = useMemo(() => { setPage(1); return applyFilters(sharedTxns); }, [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  useEffect(() => { setPage(1); }, [selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+
+  const filteredMine = useMemo(() => applyFilters(personalTxns), [personalTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  const filteredShared = useMemo(() => applyFilters(sharedTxns), [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
   const filteredAll = useMemo(() => {
     const combined = [...myTxns, ...sharedTxns];
     // dedupe by id
