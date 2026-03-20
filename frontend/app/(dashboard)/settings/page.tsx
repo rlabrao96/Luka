@@ -213,10 +213,9 @@ function AccountCard({
             {!editing && (
               <button
                 onClick={() => { setEditing(true); setEditType(account.account_type); setInlineError(null); }}
-                className="text-xs text-luka-muted hover:text-luka-dark"
-                title="Editar tipo de cuenta"
+                className="text-xs text-luka-primary hover:text-blue-700 font-medium"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Editar tipo
               </button>
             )}
             {!confirmDelete && (
@@ -256,17 +255,17 @@ function AccountCard({
               </button>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
             <button
               onClick={handleSaveType}
               disabled={saving}
-              className="text-xs px-3 py-1 rounded-full bg-luka-primary text-white hover:bg-blue-700 disabled:opacity-50"
+              className="text-xs px-4 py-1.5 rounded-md bg-luka-primary text-white font-medium hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? "Guardando..." : "Guardar"}
             </button>
             <button
               onClick={() => { setEditing(false); setInlineError(null); }}
-              className="text-xs px-3 py-1 rounded-full border border-gray-200 text-luka-muted hover:border-luka-primary"
+              className="text-xs text-luka-muted hover:text-luka-dark"
             >
               Cancelar
             </button>
