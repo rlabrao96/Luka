@@ -48,7 +48,11 @@ export function FintocAccountPicker({ accounts, onConfirm, loading }: Props) {
   function handleConfirm() {
     const selected = accounts
       .filter((a) => selections[a.id]?.checked)
-      .map((a) => ({ fintoc_account_id: a.id, label: selections[a.id].label }));
+      .map((a) => ({
+        fintoc_account_id: a.id,
+        label: selections[a.id].label,
+        currency: a.currency,
+      }));
     onConfirm(selected);
   }
 

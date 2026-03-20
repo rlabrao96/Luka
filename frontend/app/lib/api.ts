@@ -86,6 +86,7 @@ export interface FintocAccount {
 export interface SelectedFintocAccount {
   fintoc_account_id: string;
   label: "personal" | "partner" | "joint";
+  currency?: string;
 }
 
 export interface ConnectFintocPayload {
@@ -99,6 +100,11 @@ export interface ConnectFintocResult {
   accounts: Array<{ id: string; fintoc_account_id: string; account_type: string }>;
 }
 
+export interface UpdateBankAccountPayload {
+  account_type?: "personal" | "partner" | "joint";
+  is_active?: boolean;
+}
+
 export interface ImportStatus {
   importing: boolean;
 }
@@ -110,6 +116,8 @@ export interface BankAccountRow {
   account_kind: string | null;
   account_number: string | null;
   cardholder_name: string | null;
+  currency: string | null;
+  is_active: boolean;
   user_id: string;
   import_status: "pending" | "importing" | "done" | "failed";
   fintoc_account_id: string | null;
@@ -184,6 +192,16 @@ export const api = {
     apiFetch<{ ok: boolean }>(`/bank-accounts/${accountId}?household_id=${householdId}`, {
       method: "DELETE",
     }),
+
+  updateBankAccount: (
+    accountId: string,
+    householdId: string,
+    payload: UpdateBankAccountPayload
+  ) =>
+    apiFetch<{ id: string; account_type: string; is_active: boolean }>(
+      `/bank-accounts/${accountId}?household_id=${householdId}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
+    ),
 
   updateTransactionCategory: (transactionId: string, category: string | null) =>
     apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/category`, {
