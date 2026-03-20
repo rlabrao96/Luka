@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 const COLORS = [
   "#2563EB", // blue — primary
@@ -21,32 +21,14 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const total = data.reduce((s, d) => s + Number(d.amount), 0);
-  
-  // Custom tooltip for clean professional overlay
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const { category, amount } = payload[0].payload;
-      const pct = total > 0 ? ((amount / total) * 100).toFixed(1) : "0.0";
-      return (
-        <div className="bg-white px-3 py-2 rounded-lg border border-slate-100 shadow-sm flex flex-col gap-1">
-          <p className="text-xs font-semibold text-slate-700">{category}</p>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-slate-900">{CLP(amount)}</span>
-            <span className="text-[10px] text-slate-400 font-medium">({pct}%)</span>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
+  const active = activeIndex !== null ? data[activeIndex] : null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       {/* Donut with fixed center total */}
       <div className="relative mt-2" style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: "transparent" }} />
             <Pie
               data={data}
               dataKey="amount"
@@ -80,6 +62,35 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
           <p className="text-sm font-bold text-slate-800 tabular-nums leading-tight">
             {CLP(total)}
           </p>
+        </div>
+      </div>
+
+      {/* Hover info panel — appears below donut */}
+      <div
+        className={`rounded-lg px-3 py-2 border transition-all duration-150 ${
+          active
+            ? "bg-white border-slate-100 shadow-sm opacity-100"
+            : "opacity-0 border-transparent pointer-events-none"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: active ? COLORS[activeIndex! % COLORS.length] : "transparent" }}
+            />
+            <span className="text-xs font-semibold text-slate-800 truncate">
+              {active ? active.category : "Placeholder"}
+            </span>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-xs font-bold text-slate-800 tabular-nums">
+              {CLP(active ? Number(active.amount) : 0)}
+            </p>
+            <p className="text-[10px] text-slate-400">
+              {active ? ((Number(active.amount) / total) * 100).toFixed(1) : "0.0"}% del total
+            </p>
+          </div>
         </div>
       </div>
 
