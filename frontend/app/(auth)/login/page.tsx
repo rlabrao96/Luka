@@ -42,11 +42,11 @@ export default function LoginPage() {
       <div className="flex flex-col justify-between lg:justify-center items-center w-full lg:w-1/2 px-4 pt-12 pb-10 lg:px-8 lg:py-12 relative z-20 min-h-screen lg:min-h-0 overflow-y-auto">
         
         {/* ── Mobile Top Text ── */}
-        <div className="w-full max-w-sm lg:hidden z-10 text-white antialiased mt-4 mb-8">
+        <div className="w-full max-w-sm lg:hidden z-10 text-white antialiased mt-4 mb-8 px-4 sm:px-6 flex flex-col items-center text-center">
           <h2 className="text-3xl font-bold leading-tight mb-3 drop-shadow-lg">
             Tus finanzas,<br />en un solo lugar.
           </h2>
-          <p className="text-base text-slate-200/90 drop-shadow-md max-w-xs font-medium">
+          <p className="text-base text-slate-200/90 drop-shadow-md font-medium">
             Captura tus gastos automáticamente y coordina con tu pareja — sin esfuerzo.
           </p>
         </div>
