@@ -114,26 +114,29 @@ async def get_personal_budget(
     )
     personal_account_ids = list(personal_account_ids_result.scalars().all())
 
-    income_result = await db.execute(
-        select(func.sum(Transaction.amount)).where(
-            Transaction.bank_account_id.in_(personal_account_ids),
-            Transaction.transaction_type == "income",
-            Transaction.transaction_date >= first_day,
-            Transaction.transaction_date < first_day_next,
+    if personal_account_ids:
+        income_result = await db.execute(
+            select(func.sum(Transaction.amount)).where(
+                Transaction.bank_account_id.in_(personal_account_ids),
+                Transaction.transaction_type == "income",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+            )
         )
-    )
-    income = float(income_result.scalar() or 0)
+        income = float(income_result.scalar() or 0)
 
-    # User's own deposits to joint (for ceiling when no allocation)
-    user_deposited_result = await db.execute(
-        select(func.sum(Transaction.amount)).where(
-            Transaction.bank_account_id.in_(personal_account_ids),
-            Transaction.transaction_type == "transfer",
-            Transaction.transaction_date >= first_day,
-            Transaction.transaction_date < first_day_next,
+        user_deposited_result = await db.execute(
+            select(func.sum(Transaction.amount)).where(
+                Transaction.bank_account_id.in_(personal_account_ids),
+                Transaction.transaction_type == "transfer",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+            )
         )
-    )
-    user_deposited = float(user_deposited_result.scalar() or 0)
+        user_deposited = float(user_deposited_result.scalar() or 0)
+    else:
+        income = 0.0
+        user_deposited = 0.0
 
     # Household block (waterfall only)
     household_block = None
@@ -148,15 +151,18 @@ async def get_personal_budget(
         )
         all_personal_ids = list(all_member_accounts_result.scalars().all())
 
-        total_deposited_result = await db.execute(
-            select(func.sum(Transaction.amount)).where(
-                Transaction.bank_account_id.in_(all_personal_ids),
-                Transaction.transaction_type == "transfer",
-                Transaction.transaction_date >= first_day,
-                Transaction.transaction_date < first_day_next,
+        if all_personal_ids:
+            total_deposited_result = await db.execute(
+                select(func.sum(Transaction.amount)).where(
+                    Transaction.bank_account_id.in_(all_personal_ids),
+                    Transaction.transaction_type == "transfer",
+                    Transaction.transaction_date >= first_day,
+                    Transaction.transaction_date < first_day_next,
+                )
             )
-        )
-        total_deposited = float(total_deposited_result.scalar() or 0)
+            total_deposited = float(total_deposited_result.scalar() or 0)
+        else:
+            total_deposited = 0.0
 
         # Household spending (shared splits on any account in household)
         household_spent_result = await db.execute(
@@ -188,31 +194,35 @@ async def get_personal_budget(
             }
 
     # Personal spending breakdown
-    personal_shared_result = await db.execute(
-        select(func.sum(Transaction.amount))
-        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-        .where(
-            Transaction.bank_account_id.in_(personal_account_ids),
-            Transaction.transaction_type == "expense",
-            TransactionSplit.split_type == "shared",
-            Transaction.transaction_date >= first_day,
-            Transaction.transaction_date < first_day_next,
+    if personal_account_ids:
+        personal_shared_result = await db.execute(
+            select(func.sum(Transaction.amount))
+            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
+                Transaction.bank_account_id.in_(personal_account_ids),
+                Transaction.transaction_type == "expense",
+                TransactionSplit.split_type == "shared",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+            )
         )
-    )
-    breakdown_household = float(personal_shared_result.scalar() or 0)
+        breakdown_household = float(personal_shared_result.scalar() or 0)
 
-    personal_only_result = await db.execute(
-        select(func.sum(Transaction.amount))
-        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-        .where(
-            Transaction.bank_account_id.in_(personal_account_ids),
-            Transaction.transaction_type == "expense",
-            TransactionSplit.split_type == "personal",
-            Transaction.transaction_date >= first_day,
-            Transaction.transaction_date < first_day_next,
+        personal_only_result = await db.execute(
+            select(func.sum(Transaction.amount))
+            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
+                Transaction.bank_account_id.in_(personal_account_ids),
+                Transaction.transaction_type == "expense",
+                TransactionSplit.split_type == "personal",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+            )
         )
-    )
-    breakdown_personal = float(personal_only_result.scalar() or 0)
+        breakdown_personal = float(personal_only_result.scalar() or 0)
+    else:
+        breakdown_household = 0.0
+        breakdown_personal = 0.0
 
     ceiling = compute_personal_ceiling(income, user_deposited, personal_pct, alloc_exists, mode)
     personal_block = build_personal_block(
@@ -223,21 +233,24 @@ async def get_personal_budget(
     )
 
     # Pace
-    all_spending_result = await db.execute(
-        select(
-            func.date_part("day", Transaction.transaction_date).label("day"),
-            func.sum(Transaction.amount).label("total"),
+    if personal_account_ids:
+        all_spending_result = await db.execute(
+            select(
+                func.date_part("day", Transaction.transaction_date).label("day"),
+                func.sum(Transaction.amount).label("total"),
+            )
+            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
+                Transaction.bank_account_id.in_(personal_account_ids),
+                Transaction.transaction_type == "expense",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+            )
+            .group_by(func.date_part("day", Transaction.transaction_date))
         )
-        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-        .where(
-            Transaction.bank_account_id.in_(personal_account_ids),
-            Transaction.transaction_type == "expense",
-            Transaction.transaction_date >= first_day,
-            Transaction.transaction_date < first_day_next,
-        )
-        .group_by(func.date_part("day", Transaction.transaction_date))
-    )
-    daily_raw = {int(row.day): float(row.total) for row in all_spending_result}
+        daily_raw = {int(row.day): float(row.total) for row in all_spending_result}
+    else:
+        daily_raw = {}
 
     # Build cumulative
     cumulative: dict[int, float] = {}
