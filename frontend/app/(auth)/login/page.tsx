@@ -60,13 +60,13 @@ export default function LoginPage() {
               <Image 
                 src="/logo.svg" 
                 alt="Luka Logo" 
-                width={200} 
-                height={60} 
-                className="h-20 w-auto lg:h-16"
+                width={400} 
+                height={400} 
+                className="h-72 w-auto lg:h-64"
                 priority
               />
             </div>
-            <p className="text-sm text-slate-500 lg:text-luka-muted mt-6 lg:mt-3 font-medium lg:font-normal">Finanzas personales y en pareja</p>
+            <p className="text-sm text-slate-500 lg:text-luka-muted mt-8 lg:mt-4 font-medium lg:font-normal">Finanzas personales y en pareja</p>
           </div>
 
           {/* Heading */}
