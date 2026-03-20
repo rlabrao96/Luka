@@ -56,6 +56,7 @@ class BankAccount(Base):
         String, nullable=True
     )  # 'checking_account' | 'credit_card' | etc
     account_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     import_status: Mapped[str] = mapped_column(
         String, nullable=False, default="done", server_default="done"
