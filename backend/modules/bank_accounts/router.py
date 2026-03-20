@@ -61,6 +61,8 @@ async def list_bank_accounts(
             "import_status": a.import_status,
             "fintoc_account_id": a.fintoc_account_id,
             "last_synced_at": a.last_synced_at.isoformat() if a.last_synced_at else None,
+            "balance_available": a.balance_available,
+            "balance_current": a.balance_current,
         }
         for a in accounts
     ]

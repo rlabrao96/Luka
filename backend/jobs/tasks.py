@@ -374,6 +374,19 @@ async def run_fintoc_sync(ctx: dict) -> None:
                     transaction_types={t.id: "expense" for t in expense_txns},
                 )
                 account.last_synced_at = datetime.now(timezone.utc)
+
+                # Refresh balance
+                try:
+                    fintoc_accounts = await client.fetch_accounts()
+                    for fa in fintoc_accounts:
+                        if fa.get("id") == account.fintoc_account_id:
+                            bal = fa.get("balance") or {}
+                            account.balance_available = bal.get("available")
+                            account.balance_current = bal.get("current")
+                            break
+                except Exception as bal_err:
+                    logger.warning("run_fintoc_sync: balance fetch failed: %s", bal_err)
+
                 await db.commit()
             except Exception as e:
                 await _record_failed_job(
@@ -498,6 +511,19 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
 
             account.import_status = "done"
             account.last_synced_at = datetime.now(timezone.utc)
+
+            # Refresh balance from Fintoc
+            try:
+                fintoc_accounts = await client.fetch_accounts()
+                for fa in fintoc_accounts:
+                    if fa.get("id") == account.fintoc_account_id:
+                        bal = fa.get("balance") or {}
+                        account.balance_available = bal.get("available")
+                        account.balance_current = bal.get("current")
+                        break
+            except Exception as bal_err:
+                logger.warning("import_fintoc_history: balance fetch failed: %s", bal_err)
+
             await db.commit()
 
         except Exception as e:

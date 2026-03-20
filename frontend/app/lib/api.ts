@@ -45,6 +45,8 @@ export interface Transaction {
   split_type: string | null;
   bank_name: string | null;
   bank_account_id: string | null;
+  account_kind: string | null;
+  transaction_type: string | null;
 }
 
 export interface HouseholdSummaryRow {
@@ -201,6 +203,8 @@ export interface BankAccountRow {
   import_status: "pending" | "importing" | "done" | "failed";
   fintoc_account_id: string | null;
   last_synced_at: string | null;
+  balance_available: number | null;
+  balance_current: number | null;
 }
 
 // ── API calls ──────────────────────────────────────────────

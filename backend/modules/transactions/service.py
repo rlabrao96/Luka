@@ -8,7 +8,7 @@ from modules.households.models import BankAccount
 
 async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date) -> list[dict]:
     result = await db.execute(
-        select(Transaction, TransactionSplit, BankAccount.bank_name)
+        select(Transaction, TransactionSplit, BankAccount.bank_name, BankAccount.account_kind)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .join(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .where(
@@ -24,8 +24,9 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
             **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
             "split_type": split.split_type if split else None,
             "bank_name": bank_name,
+            "account_kind": account_kind,
         }
-        for txn, split, bank_name in rows
+        for txn, split, bank_name, account_kind in rows
     ]
 
 

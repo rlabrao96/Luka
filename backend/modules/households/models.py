@@ -65,6 +65,8 @@ class BankAccount(Base):
     import_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    balance_available: Mapped[int | None] = mapped_column(nullable=True)
+    balance_current: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

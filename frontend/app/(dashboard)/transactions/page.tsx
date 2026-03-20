@@ -1,10 +1,12 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Landmark } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
-import { Transaction } from "@/app/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { useLukaStore } from "@/app/lib/store";
+import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 
 function formatCLP(n: number) {
   return `$${Math.round(n).toLocaleString("es-CL")}`;
@@ -21,42 +23,72 @@ function getMonthLabel(key: string) {
   return d.toLocaleDateString("es-CL", { month: "long", year: "numeric" });
 }
 
-interface SummaryBarProps {
-  personalTxns: Transaction[];
-  sharedTxns: Transaction[];
-  periodLabel: string;
+const CHECKING_KINDS = new Set(["checking_account", "savings_account", "sight_account"]);
+const CREDIT_KINDS = new Set(["credit_card", "line_of_credit"]);
+
+function isChecking(kind: string | null) {
+  return kind ? CHECKING_KINDS.has(kind) : false;
+}
+function isCredit(kind: string | null) {
+  return kind ? CREDIT_KINDS.has(kind) : false;
 }
 
-function SummaryBar({ personalTxns, sharedTxns, periodLabel }: SummaryBarProps) {
-  const personalTotal = personalTxns.reduce((s, t) => s + Number(t.amount), 0);
-  const sharedTotal = sharedTxns.reduce((s, t) => s + Number(t.amount), 0);
-  const total = personalTotal + sharedTotal;
+interface SummaryBarProps {
+  accounts: BankAccountRow[];
+  sharedTxns: Transaction[];
+  periodLabel: string;
+  userId: string | null;
+}
+
+function SummaryBar({ accounts, sharedTxns, periodLabel, userId }: SummaryBarProps) {
+  const myAccounts = accounts.filter((a) => a.is_active && a.user_id === userId);
+
+  // Sum available balances by kind
+  const checkingBalance = myAccounts
+    .filter((a) => a.account_type !== "joint" && isChecking(a.account_kind))
+    .reduce((s, a) => s + (a.balance_available ?? 0), 0);
+
+  const creditBalance = myAccounts
+    .filter((a) => a.account_type !== "joint" && isCredit(a.account_kind))
+    .reduce((s, a) => s + (a.balance_available ?? 0), 0);
+
+  const sharedBalance = accounts
+    .filter((a) => a.is_active && (a.account_type === "joint" || a.account_type === "partner"))
+    .reduce((s, a) => s + (a.balance_available ?? 0), 0);
+
+  const hasBalances = myAccounts.some((a) => a.balance_available !== null);
+
+  // Fall back to summing transactions if no Fintoc balance yet
+  const sharedFallback = sharedTxns.reduce((s, t) => s + Number(t.amount), 0);
 
   return (
     <div className="grid grid-cols-3 gap-3">
       {[
         {
-          label: `Total · ${periodLabel}`,
-          value: formatCLP(total),
-          icon: TrendingDown,
-          iconClass: "text-red-400",
-          iconBg: "bg-red-50",
-        },
-        {
-          label: `Personal · ${periodLabel}`,
-          value: formatCLP(personalTotal),
-          icon: Hash,
+          label: `Cuenta corriente`,
+          sublabel: periodLabel,
+          value: hasBalances ? formatCLP(checkingBalance) : "—",
+          icon: Landmark,
           iconClass: "text-luka-primary",
           iconBg: "bg-blue-50",
         },
         {
-          label: `Compartida · ${periodLabel}`,
-          value: formatCLP(sharedTotal),
+          label: `Tarjeta de crédito`,
+          sublabel: periodLabel,
+          value: hasBalances ? formatCLP(creditBalance) : "—",
+          icon: CreditCard,
+          iconClass: "text-purple-500",
+          iconBg: "bg-purple-50",
+        },
+        {
+          label: `Cuenta compartida`,
+          sublabel: periodLabel,
+          value: hasBalances ? formatCLP(sharedBalance) : formatCLP(sharedFallback),
           icon: SlidersHorizontal,
           iconClass: "text-emerald-500",
           iconBg: "bg-emerald-50",
         },
-      ].map(({ label, value, icon: Icon, iconClass, iconBg }) => (
+      ].map(({ label, sublabel, value, icon: Icon, iconClass, iconBg }) => (
         <div
           key={label}
           className="bg-white rounded-xl border border-slate-100 p-4 flex items-center gap-3"
@@ -65,7 +97,7 @@ function SummaryBar({ personalTxns, sharedTxns, periodLabel }: SummaryBarProps) 
             <Icon size={15} className={iconClass} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 leading-tight">
               {label}
             </p>
             <p className="text-base font-bold text-luka-dark tabular-nums truncate">{value}</p>
@@ -101,13 +133,11 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
-      {/* Table header */}
       <div className="px-5 py-3.5 border-b border-slate-50 flex items-center justify-between gap-3">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
           Movimientos
         </p>
         <div className="flex items-center gap-3">
-          {/* Page size selector */}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-slate-400">Ver</span>
             {([10, 30, 100] as const).map((s) => (
@@ -124,14 +154,12 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
               </button>
             ))}
           </div>
-          {/* Result count */}
           <p className="text-[10px] text-slate-400">
             {transactions.length === 0 ? "0 resultados" : `Mostrando ${from}–${to} de ${transactions.length}`}
           </p>
         </div>
       </div>
 
-      {/* Rows */}
       <div className="px-5 py-1">
         {loading ? (
           <div className="py-12 flex items-center justify-center">
@@ -142,10 +170,8 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
         )}
       </div>
 
-      {/* Pagination controls */}
       {totalPages > 1 && (
         <div className="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between gap-4">
-          {/* Left: First + Prev */}
           <div className="flex items-center gap-1">
             <button
               onClick={() => onPage(1)}
@@ -163,13 +189,9 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
               <ChevronLeft size={12} /> Anterior
             </button>
           </div>
-
-          {/* Center: page indicator */}
           <span className="text-[11px] font-medium text-slate-500">
             Página <span className="text-luka-dark font-semibold">{page}</span> de {totalPages}
           </span>
-
-          {/* Right: Next + Last */}
           <div className="flex items-center gap-1">
             <button
               onClick={() => onPage(page + 1)}
@@ -202,42 +224,40 @@ export default function TransactionsPage() {
   const [pageSize, setPageSize] = useState<10 | 30 | 100>(30);
   const [page, setPage] = useState(1);
 
+  const householdId = useLukaStore((s) => s.householdId);
+  const userId = useLukaStore((s) => s.userId);
+
   const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions();
   const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions();
+  const { data: accounts = [] } = useQuery<BankAccountRow[]>({
+    queryKey: ["bank-accounts", householdId],
+    queryFn: () => api.getBankAccounts(householdId!),
+    enabled: !!householdId,
+    staleTime: 60 * 1000,
+  });
 
-  // Build month options from all transactions
   const monthOptions = useMemo(() => {
     const keys = new Set<string>();
     [...myTxns, ...sharedTxns].forEach((t) => keys.add(getMonthKey(t.transaction_date)));
     return Array.from(keys).sort().reverse();
   }, [myTxns, sharedTxns]);
 
-  // Build bank options
   const bankOptions = useMemo(() => {
     const banks = new Set<string>();
-    [...myTxns, ...sharedTxns].forEach((t) => {
-      if (t.bank_name) banks.add(t.bank_name);
-    });
+    [...myTxns, ...sharedTxns].forEach((t) => { if (t.bank_name) banks.add(t.bank_name); });
     return Array.from(banks).sort();
   }, [myTxns, sharedTxns]);
 
-  // Build category options
   const categoryOptions = useMemo(() => {
     const cats = new Set<string>();
-    [...myTxns, ...sharedTxns].forEach((t) => {
-      if (t.category) cats.add(t.category);
-    });
+    [...myTxns, ...sharedTxns].forEach((t) => { if (t.category) cats.add(t.category); });
     return Array.from(cats).sort();
   }, [myTxns, sharedTxns]);
 
   const applyFilters = (txns: Transaction[]) => {
     let result = txns;
-    if (selectedMonth !== "all") {
-      result = result.filter((t) => getMonthKey(t.transaction_date) === selectedMonth);
-    }
-    if (selectedBank !== "all") {
-      result = result.filter((t) => t.bank_name === selectedBank);
-    }
+    if (selectedMonth !== "all") result = result.filter((t) => getMonthKey(t.transaction_date) === selectedMonth);
+    if (selectedBank !== "all") result = result.filter((t) => t.bank_name === selectedBank);
     if (onlyUncategorized) {
       result = result.filter((t) => !t.category);
     } else if (selectedCategory !== "all") {
@@ -257,19 +277,21 @@ export default function TransactionsPage() {
 
   const filteredMine = useMemo(() => { setPage(1); return applyFilters(myTxns); }, [myTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
   const filteredShared = useMemo(() => { setPage(1); return applyFilters(sharedTxns); }, [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  const filteredAll = useMemo(() => {
+    const combined = [...myTxns, ...sharedTxns];
+    // dedupe by id
+    const seen = new Set<string>();
+    const unique = combined.filter((t) => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
+    return applyFilters(unique).sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
+  }, [myTxns, sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
 
-  // Summary period: current month when no month filter, otherwise the selected month
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const summaryMonthKey = selectedMonth === "all" ? currentMonthKey : selectedMonth;
-  const periodLabel = summaryMonthKey === currentMonthKey
+  const periodLabel = selectedMonth === "all"
     ? "este mes"
-    : getMonthLabel(summaryMonthKey);
-  const summaryMine = selectedMonth === "all"
-    ? filteredMine.filter((t) => getMonthKey(t.transaction_date) === currentMonthKey)
-    : filteredMine;
+    : getMonthLabel(selectedMonth);
   const summaryShared = selectedMonth === "all"
-    ? filteredShared.filter((t) => getMonthKey(t.transaction_date) === currentMonthKey)
+    ? sharedTxns.filter((t) => getMonthKey(t.transaction_date) === currentMonthKey)
     : filteredShared;
 
   const selectClass =
@@ -277,17 +299,13 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Transacciones</h2>
-        <p className="text-sm text-luka-muted mt-0.5">
-          Historial de movimientos
-        </p>
+        <p className="text-sm text-luka-muted mt-0.5">Historial de movimientos</p>
       </div>
 
-      {/* Filters row */}
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Search */}
         <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -299,77 +317,42 @@ export default function TransactionsPage() {
           />
         </div>
 
-        {/* Month filter */}
         <div className="relative">
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className={selectClass}
-          >
+          <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className={selectClass}>
             <option value="all">Todos los meses</option>
             {monthOptions.map((m) => (
-              <option key={m} value={m}>
-                {getMonthLabel(m)}
-              </option>
+              <option key={m} value={m}>{getMonthLabel(m)}</option>
             ))}
           </select>
-          <ChevronDown
-            size={12}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-          />
+          <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
 
-        {/* Bank filter */}
         {bankOptions.length > 0 && (
           <div className="relative">
-            <select
-              value={selectedBank}
-              onChange={(e) => setSelectedBank(e.target.value)}
-              className={selectClass}
-            >
+            <select value={selectedBank} onChange={(e) => setSelectedBank(e.target.value)} className={selectClass}>
               <option value="all">Todos los bancos</option>
               {bankOptions.map((b) => (
                 <option key={b} value={b}>
-                  {b
-                    .split(" ")
-                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-                    .join(" ")}
+                  {b.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")}
                 </option>
               ))}
             </select>
-            <ChevronDown
-              size={12}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-            />
+            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
         )}
 
-        {/* Category filter */}
         {categoryOptions.length > 0 && !onlyUncategorized && (
           <div className="relative">
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className={selectClass}
-            >
+            <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className={selectClass}>
               <option value="all">Todas las categorías</option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <ChevronDown
-              size={12}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-            />
+            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
         )}
 
-        {/* Uncategorized toggle */}
         <button
-          onClick={() => {
-            setOnlyUncategorized((v) => !v);
-            setSelectedCategory("all");
-          }}
+          onClick={() => { setOnlyUncategorized((v) => !v); setSelectedCategory("all"); }}
           className={`h-8 flex items-center gap-1.5 px-3 rounded-lg border text-[11px] font-medium transition-colors ${
             onlyUncategorized
               ? "bg-amber-50 border-amber-300 text-amber-700"
@@ -381,27 +364,44 @@ export default function TransactionsPage() {
         </button>
       </div>
 
-      {/* Summary bar — always visible, shows total + personal + compartida */}
-      <SummaryBar personalTxns={summaryMine} sharedTxns={summaryShared} periodLabel={periodLabel} />
+      {/* Summary cards — Fintoc balances */}
+      <SummaryBar
+        accounts={accounts}
+        sharedTxns={summaryShared}
+        periodLabel={periodLabel}
+        userId={userId}
+      />
 
       {/* Tabs */}
-      <Tabs defaultValue="mine">
+      <Tabs defaultValue="all">
         <TabsList className="bg-white border border-slate-100 rounded-xl p-1 h-auto">
-          <TabsTrigger
-            value="mine"
-            className="rounded-lg text-xs font-medium px-4 py-1.5 data-[state=active]:bg-luka-primary data-[state=active]:text-white data-[state=active]:shadow-sm"
-          >
-            Personales
-            <span className="ml-1.5 text-[10px] opacity-70">({filteredMine.length})</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="shared"
-            className="rounded-lg text-xs font-medium px-4 py-1.5 data-[state=active]:bg-luka-primary data-[state=active]:text-white data-[state=active]:shadow-sm"
-          >
-            Compartidas
-            <span className="ml-1.5 text-[10px] opacity-70">({filteredShared.length})</span>
-          </TabsTrigger>
+          {[
+            { value: "all", label: "Todos", count: filteredAll.length },
+            { value: "mine", label: "Personales", count: filteredMine.length },
+            { value: "shared", label: "Compartidas", count: filteredShared.length },
+          ].map(({ value, label, count }) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="rounded-lg text-xs font-medium px-4 py-1.5 data-[state=active]:bg-luka-primary data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              {label}
+              <span className="ml-1.5 text-[10px] opacity-70">({count})</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
+
+        <TabsContent value="all" className="mt-4 space-y-4">
+          <TransactionTable
+            transactions={filteredAll}
+            loading={loadingMine || loadingShared}
+            page={page}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={(s) => { setPageSize(s); setPage(1); }}
+            queryKeys={[["transactions", "mine", getSince()], ["transactions", "shared", householdId, getSince()]]}
+          />
+        </TabsContent>
 
         <TabsContent value="mine" className="mt-4 space-y-4">
           <TransactionTable
@@ -423,7 +423,7 @@ export default function TransactionsPage() {
             pageSize={pageSize}
             onPage={setPage}
             onPageSize={(s) => { setPageSize(s); setPage(1); }}
-            queryKeys={[["transactions", "shared", null, getSince()]]}
+            queryKeys={[["transactions", "shared", householdId, getSince()]]}
           />
         </TabsContent>
       </Tabs>
