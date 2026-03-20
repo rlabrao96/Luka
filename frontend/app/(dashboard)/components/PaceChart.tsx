@@ -67,7 +67,7 @@ export default function PaceChart({ pace }: Props) {
           />
           <YAxis hide />
           <Tooltip
-            formatter={(val: number) => formatCLP(val)}
+            formatter={(val) => (typeof val === "number" ? formatCLP(val) : String(val))}
             labelFormatter={(d) => `Día ${d}`}
             contentStyle={{ fontSize: 12, borderRadius: 8 }}
           />
