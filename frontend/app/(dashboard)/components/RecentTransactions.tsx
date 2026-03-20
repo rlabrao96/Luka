@@ -1,11 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TrendingDown, TrendingUp, ChevronDown } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Transaction, api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 
-const CATEGORIES = [
+const EXPENSE_CATEGORIES = [
   "Alimentación",
   "Supermercado",
   "Transporte",
@@ -20,6 +20,15 @@ const CATEGORIES = [
   "Viajes",
   "Servicios",
   "Otros",
+];
+
+const INCOME_CATEGORIES = [
+  "Sueldo",
+  "Freelance",
+  "Inversiones",
+  "Arriendo",
+  "Bono",
+  "Otros ingresos",
 ];
 
 const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
@@ -56,15 +65,24 @@ interface CategoryCellProps {
 function CategoryCell({ txn, queryKeys }: CategoryCellProps) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [localCategory, setLocalCategory] = useState(txn.category);
   const queryClient = useQueryClient();
+
+  // Sync if parent passes updated txn (e.g. after refetch)
+  useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
+
+  const isIncome = txn.transaction_type === "income";
+  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   async function handleSelect(cat: string | null) {
     setOpen(false);
     setSaving(true);
+    setLocalCategory(cat); // optimistic update
     try {
       await api.updateTransactionCategory(txn.id, cat);
-      // Invalidate all provided query keys so the list re-fetches with new category
       queryKeys.forEach((key) => queryClient.invalidateQueries({ queryKey: key }));
+    } catch {
+      setLocalCategory(txn.category); // revert on error
     } finally {
       setSaving(false);
     }
@@ -77,13 +95,13 @@ function CategoryCell({ txn, queryKeys }: CategoryCellProps) {
         disabled={saving}
         className={cn(
           "flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors",
-          txn.category
+          localCategory
             ? "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
             : "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100",
           saving && "opacity-50 cursor-wait"
         )}
       >
-        <span>{saving ? "..." : (txn.category ?? "Sin categoría")}</span>
+        <span>{saving ? "..." : (localCategory ?? "Sin categoría")}</span>
         <ChevronDown size={10} />
       </button>
       {open && (
@@ -97,13 +115,13 @@ function CategoryCell({ txn, queryKeys }: CategoryCellProps) {
               Sin categoría
             </button>
             <div className="border-t border-slate-100 my-1" />
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => handleSelect(cat)}
                 className={cn(
                   "w-full text-left px-3 py-1.5 text-[11px] hover:bg-blue-50 hover:text-luka-primary transition-colors",
-                  txn.category === cat ? "text-luka-primary font-semibold bg-blue-50" : "text-slate-700"
+                  localCategory === cat ? "text-luka-primary font-semibold bg-blue-50" : "text-slate-700"
                 )}
               >
                 {cat}
