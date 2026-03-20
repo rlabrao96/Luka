@@ -64,11 +64,12 @@ function AccountCard({
   onDeleted: (id: string) => void;
   onUpdated: (id: string, patch: { account_type?: string; is_active?: boolean }) => void;
 }) {
+  const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showNumber, setShowNumber] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editType, setEditType] = useState<"personal" | "partner" | "joint">(account.account_type);
+  const [editType, setEditType] = useState<"personal" | "partner" | "joint">(account.account_type as "personal" | "partner" | "joint");
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
@@ -116,6 +117,7 @@ function AccountCard({
     try {
       await api.updateBankAccount(account.id, householdId, { account_type: editType });
       setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
     } catch {
       onUpdated(account.id, { account_type: account.account_type }); // revert
       setInlineError("No se pudo guardar. Intenta de nuevo.");
