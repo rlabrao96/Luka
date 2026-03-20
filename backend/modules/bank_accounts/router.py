@@ -1,5 +1,6 @@
 import httpx
 import uuid
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, select
@@ -33,6 +34,19 @@ async def list_bank_accounts(
         )
     )
     accounts = result.scalars().all()
+
+    # Stale guard: if import has been "importing" for >15 min, write "failed" to DB
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+    for a in accounts:
+        if (
+            a.import_status == "importing"
+            and a.import_started_at
+            and a.import_started_at < stale_cutoff
+        ):
+            a.import_status = "failed"
+    if any(a.import_status == "failed" for a in accounts):
+        await db.commit()
+
     return [
         {
             "id": str(a.id),
@@ -44,6 +58,7 @@ async def list_bank_accounts(
             "user_id": str(a.user_id),
             "import_status": a.import_status,
             "fintoc_account_id": a.fintoc_account_id,
+            "last_synced_at": a.last_synced_at.isoformat() if a.last_synced_at else None,
         }
         for a in accounts
     ]

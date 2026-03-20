@@ -113,6 +113,7 @@ export interface BankAccountRow {
   user_id: string;
   import_status: "pending" | "importing" | "done" | "failed";
   fintoc_account_id: string | null;
+  last_synced_at: string | null;
 }
 
 // ── API calls ──────────────────────────────────────────────
@@ -120,11 +121,11 @@ export interface BankAccountRow {
 export const api = {
   getMe: () => apiFetch<UserMe>("/auth/me"),
 
-  getMyTransactions: (limit = 50) =>
-    apiFetch<Transaction[]>(`/transactions/mine?limit=${limit}`),
+  getMyTransactions: (since: string) =>
+    apiFetch<Transaction[]>(`/transactions/mine?since=${since}`),
 
-  getSharedTransactions: (householdId: string, limit = 50) =>
-    apiFetch<Transaction[]>(`/transactions/shared?household_id=${householdId}&limit=${limit}`),
+  getSharedTransactions: (householdId: string, since: string) =>
+    apiFetch<Transaction[]>(`/transactions/shared?household_id=${householdId}&since=${since}`),
 
   getHouseholdSummary: (householdId: string) =>
     apiFetch<HouseholdSummaryRow[]>(`/households/${householdId}/summary`),

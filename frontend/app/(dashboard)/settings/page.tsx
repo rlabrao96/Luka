@@ -30,19 +30,14 @@ const ACCOUNT_KIND_LABEL: Record<string, string> = {
   vista: "Cuenta Vista",
 };
 
-const IMPORT_STATUS_LABEL: Record<string, string> = {
-  pending: "En cola",
-  importing: "Importando...",
-  done: "Listo",
-  failed: "Error",
-};
-
-const IMPORT_STATUS_COLOR: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-700",
-  importing: "bg-blue-100 text-blue-700",
-  done: "bg-green-100 text-green-700",
-  failed: "bg-red-100 text-red-700",
-};
+function formatLastSync(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (diff < 2) return "hace un momento";
+  if (diff < 60) return `hace ${diff} min`;
+  const hours = Math.floor(diff / 60);
+  if (hours < 24) return `hace ${hours}h`;
+  return `hace ${Math.floor(hours / 24)}d`;
+}
 
 function bankLabel(bankName: string): string {
   if (!bankName) return "Banco desconocido";
@@ -76,8 +71,9 @@ function AccountRow({
   const kindLabel = account.account_kind
     ? (ACCOUNT_KIND_LABEL[account.account_kind] ?? account.account_kind)
     : null;
-  const importLabel = IMPORT_STATUS_LABEL[account.import_status] ?? account.import_status;
-  const importColor = IMPORT_STATUS_COLOR[account.import_status] ?? "bg-gray-100 text-gray-700";
+  // First-time import badge: only when importing AND never synced before
+  const isFirstImport = account.import_status === "importing" && !account.last_synced_at;
+  const isFirstImportFailed = account.import_status === "failed" && !account.last_synced_at;
 
   const last4 = account.account_number ? account.account_number.slice(-4) : null;
   const maskedNumber = last4 ? `•••• ${last4}` : null;
@@ -120,15 +116,24 @@ function AccountRow({
               </button>
             </span>
           )}
+          {account.last_synced_at && (
+            <span className="text-xs text-slate-400">· Última sync: {formatLastSync(account.last_synced_at)}</span>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>
           {typeLabel}
         </span>
-        {account.import_status !== "done" && (
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${importColor}`}>
-            {importLabel}
+        {isFirstImport && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
+            Sincronizando...
+          </span>
+        )}
+        {isFirstImportFailed && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+            Error al sincronizar
           </span>
         )}
         {isOwn && !confirmDelete && (
@@ -189,12 +194,6 @@ function ConnectBankSection() {
     };
   }, []);
 
-  // Refetch accounts after successful connection
-  const { refetch } = useQuery({
-    queryKey: ["bank-accounts", householdId],
-    queryFn: () => api.getBankAccounts(householdId!),
-    enabled: false, // only triggered manually via refetch()
-  });
 
   function openWidget() {
     if (!window.Fintoc) {
@@ -218,7 +217,7 @@ function ConnectBankSection() {
       webhookUrl,
       onSuccess: () => {
         setMessage("¡Cuenta conectada! El historial se importa en segundo plano.");
-        refetch();
+        queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
       },
       onExit: () => setMessage("Conexión cancelada."),
       onEvent: (eventName: string) => {
@@ -228,10 +227,24 @@ function ConnectBankSection() {
     widget.open();
   }
 
+  const [pollStart] = useState(() => Date.now());
+
+  // Any account doing its first-ever import?
+  const hasActiveFirstImport = (accounts: typeof data) =>
+    !!accounts?.some((a) => a.import_status === "importing" && !a.last_synced_at);
+
   const { data: accounts, isLoading: loadingAccounts } = useQuery({
     queryKey: ["bank-accounts", householdId],
     queryFn: () => api.getBankAccounts(householdId!),
     enabled: !!householdId,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const elapsed = Date.now() - pollStart;
+      if (elapsed > 10 * 60 * 1000) return false;        // hard stop at 10 min
+      if (hasActiveFirstImport(data)) return 5_000;       // poll every 5s while importing
+      return false;                                        // no active import — stop
+    },
   });
 
   return (

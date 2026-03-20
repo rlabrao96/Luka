@@ -60,6 +60,10 @@ class BankAccount(Base):
     import_status: Mapped[str] = mapped_column(
         String, nullable=False, default="done", server_default="done"
     )  # 'pending'|'importing'|'done'|'failed'
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    import_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

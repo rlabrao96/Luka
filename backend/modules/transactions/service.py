@@ -1,18 +1,18 @@
 import uuid
+from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount
 
 
-async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, limit: int = 50) -> list[dict]:
+async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date) -> list[dict]:
     result = await db.execute(
         select(Transaction, TransactionSplit, BankAccount.bank_name)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
-        .where(Transaction.user_id == user_id)
+        .where(Transaction.user_id == user_id, Transaction.transaction_date >= since)
         .order_by(Transaction.transaction_date.desc())
-        .limit(limit)
     )
     rows = result.all()
     return [
@@ -95,7 +95,7 @@ async def get_monthly_summary(
 
 
 async def get_shared_transactions(
-    db: AsyncSession, household_id: uuid.UUID, limit: int = 50
+    db: AsyncSession, household_id: uuid.UUID, since: date
 ) -> list[dict]:
     result = await db.execute(
         select(Transaction, TransactionSplit, BankAccount.bank_name)
@@ -104,9 +104,9 @@ async def get_shared_transactions(
         .where(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
+            Transaction.transaction_date >= since,
         )
         .order_by(Transaction.transaction_date.desc())
-        .limit(limit)
     )
     rows = result.all()
     return [

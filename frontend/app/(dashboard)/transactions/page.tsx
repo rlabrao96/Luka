@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag } from "lucide-react";
+import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
@@ -74,15 +74,109 @@ function SummaryBar({ transactions }: SummaryBarProps) {
   );
 }
 
+function getSince(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 6);
+  return d.toISOString().split("T")[0];
+}
+
+interface TransactionTableProps {
+  transactions: Transaction[];
+  loading: boolean;
+  page: number;
+  pageSize: 10 | 30 | 100;
+  onPage: (p: number) => void;
+  onPageSize: (s: 10 | 30 | 100) => void;
+  queryKeys: unknown[][];
+}
+
+function TransactionTable({ transactions, loading, page, pageSize, onPage, onPageSize, queryKeys }: TransactionTableProps) {
+  const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
+  const start = (page - 1) * pageSize;
+  const paginated = transactions.slice(start, start + pageSize);
+  const from = transactions.length === 0 ? 0 : start + 1;
+  const to = Math.min(start + pageSize, transactions.length);
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
+      {/* Table header */}
+      <div className="px-5 py-3.5 border-b border-slate-50 flex items-center justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+          Movimientos
+        </p>
+        <div className="flex items-center gap-3">
+          {/* Page size selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-slate-400">Ver</span>
+            {([10, 30, 100] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => onPageSize(s)}
+                className={`text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors ${
+                  pageSize === s
+                    ? "bg-luka-primary text-white"
+                    : "text-slate-500 hover:text-luka-primary"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          {/* Result count */}
+          <p className="text-[10px] text-slate-400">
+            {transactions.length === 0 ? "0 resultados" : `Mostrando ${from}–${to} de ${transactions.length}`}
+          </p>
+        </div>
+      </div>
+
+      {/* Rows */}
+      <div className="px-5 py-1">
+        {loading ? (
+          <div className="py-12 flex items-center justify-center">
+            <div className="w-5 h-5 border-2 border-luka-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <RecentTransactions transactions={paginated} queryKeys={queryKeys} />
+        )}
+      </div>
+
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="px-5 py-3 border-t border-slate-50 flex items-center justify-between">
+          <button
+            onClick={() => onPage(page - 1)}
+            disabled={page === 1}
+            className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft size={13} /> Anterior
+          </button>
+          <span className="text-[10px] text-slate-400">
+            Página {page} de {totalPages}
+          </span>
+          <button
+            onClick={() => onPage(page + 1)}
+            disabled={page === totalPages}
+            className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            Siguiente <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedBank, setSelectedBank] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [onlyUncategorized, setOnlyUncategorized] = useState(false);
+  const [pageSize, setPageSize] = useState<10 | 30 | 100>(30);
+  const [page, setPage] = useState(1);
 
-  const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions(200);
-  const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions(200);
+  const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions();
+  const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions();
 
   // Build month options from all transactions
   const monthOptions = useMemo(() => {
@@ -134,8 +228,8 @@ export default function TransactionsPage() {
     return result;
   };
 
-  const filteredMine = useMemo(() => applyFilters(myTxns), [myTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
-  const filteredShared = useMemo(() => applyFilters(sharedTxns), [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  const filteredMine = useMemo(() => { setPage(1); return applyFilters(myTxns); }, [myTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  const filteredShared = useMemo(() => { setPage(1); return applyFilters(sharedTxns); }, [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
 
   const selectClass =
     "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
@@ -267,54 +361,28 @@ export default function TransactionsPage() {
 
         <TabsContent value="mine" className="mt-4 space-y-4">
           <SummaryBar transactions={filteredMine} />
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
-            <div className="px-5 py-3.5 border-b border-slate-50 flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                Movimientos
-              </p>
-              <p className="text-[10px] text-slate-400">
-                {filteredMine.length} resultado{filteredMine.length !== 1 ? "s" : ""}
-              </p>
-            </div>
-            <div className="px-5 py-1">
-              {loadingMine ? (
-                <div className="py-12 flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-luka-primary border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : (
-                <RecentTransactions
-                  transactions={filteredMine}
-                  queryKeys={[["transactions", "mine", 200]]}
-                />
-              )}
-            </div>
-          </div>
+          <TransactionTable
+            transactions={filteredMine}
+            loading={loadingMine}
+            page={page}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={(s) => { setPageSize(s); setPage(1); }}
+            queryKeys={[["transactions", "mine", getSince()]]}
+          />
         </TabsContent>
 
         <TabsContent value="shared" className="mt-4 space-y-4">
           <SummaryBar transactions={filteredShared} />
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
-            <div className="px-5 py-3.5 border-b border-slate-50 flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                Movimientos
-              </p>
-              <p className="text-[10px] text-slate-400">
-                {filteredShared.length} resultado{filteredShared.length !== 1 ? "s" : ""}
-              </p>
-            </div>
-            <div className="px-5 py-1">
-              {loadingShared ? (
-                <div className="py-12 flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-luka-primary border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : (
-                <RecentTransactions
-                  transactions={filteredShared}
-                  queryKeys={[["transactions", "shared", null, 200]]}
-                />
-              )}
-            </div>
-          </div>
+          <TransactionTable
+            transactions={filteredShared}
+            loading={loadingShared}
+            page={page}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={(s) => { setPageSize(s); setPage(1); }}
+            queryKeys={[["transactions", "shared", null, getSince()]]}
+          />
         </TabsContent>
       </Tabs>
     </div>

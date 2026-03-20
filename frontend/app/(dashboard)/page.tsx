@@ -12,9 +12,9 @@ import { useLukaStore } from "@/app/lib/store";
 
 export default function DashboardPage() {
   const name = useLukaStore((s) => s.userFullName) ?? "tú";
-  const { data: myTxns    = [] } = useMyTransactions(200);
+  const { data: myTxns    = [] } = useMyTransactions();
   const { data: monthlySpending = [] } = useMonthlySpending();
-  const { data: sharedTxns = [] } = useSharedTransactions(10);
+  const { data: sharedTxns = [] } = useSharedTransactions();
   const { data: summary   = [] } = useHouseholdSummary();
   const { data: budget }          = useBudgetStatus();
 

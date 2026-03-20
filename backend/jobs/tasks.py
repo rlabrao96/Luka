@@ -293,22 +293,34 @@ async def run_fintoc_sync(ctx: dict) -> None:
     from sqlalchemy import select
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(BankAccount).where(BankAccount.is_active))
+        result = await db.execute(
+            select(BankAccount).where(
+                BankAccount.is_active,
+                BankAccount.import_status != "importing",  # skip mid-import accounts
+            )
+        )
         accounts = result.scalars().all()
 
         for account in accounts:
             if not account.fintoc_link_id or not account.fintoc_account_id:
                 continue
             try:
+                since = (
+                    account.last_synced_at.date()
+                    if account.last_synced_at
+                    else date.today() - timedelta(days=7)
+                )
                 client = FintocClient(link_token=account.fintoc_link_id)
                 transactions = await client.fetch_transactions(
                     account_id=account.fintoc_account_id,
-                    since=date.today() - timedelta(days=7),
+                    since=since,
                     until=date.today(),
                 )
                 await reconcile_transactions(
                     transactions, db, user_id=account.user_id, household_id=account.household_id
                 )
+                account.last_synced_at = datetime.now(timezone.utc)
+                await db.commit()
             except Exception as e:
                 await _record_failed_job(
                     "run_fintoc_sync", {"account_id": str(account.id)}, str(e), db
@@ -335,6 +347,7 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
             return
 
         account.import_status = "importing"
+        account.import_started_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(account)
 
@@ -399,6 +412,7 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
             )
 
             account.import_status = "done"
+            account.last_synced_at = datetime.now(timezone.utc)
             await db.commit()
 
         except Exception as e:
@@ -412,6 +426,7 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
                 failed_account = await fresh_db.get(BankAccount, bank_account_id)
                 if failed_account:
                     failed_account.import_status = "failed"
+                    # last_synced_at intentionally NOT set on failure
                     await fresh_db.commit()
                 await _record_failed_job(
                     "import_fintoc_history",

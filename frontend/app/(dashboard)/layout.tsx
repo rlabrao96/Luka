@@ -2,7 +2,6 @@ import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
 import { StoreInitializer } from "./components/StoreInitializer";
 import { InactivityGuard } from "./components/InactivityGuard";
-import { ImportStatusBannerClient } from "./components/ImportStatusBannerClient";
 import { createClient } from "@/app/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -47,7 +46,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Sidebar />
       {/* Main scrolling area */}
       <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
-        <ImportStatusBannerClient />
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {children}
         </div>
