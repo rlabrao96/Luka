@@ -1,12 +1,17 @@
 # Budgeting: Personal + Household Waterfall
 **Date:** 2026-03-20
-**Status:** Approved — ready for implementation planning
+**Status:** Under review — iteration 4 (additions: allocation % + pace chart)
 
 ---
 
 ## Overview
 
 Replace the current single-bar household budget page with a **waterfall budget view** that models how money actually flows: income arrives in personal accounts, household gets funded first (via transfer or shared spending), and what remains is the personal budget ceiling.
+
+The page has three layers:
+1. **Waterfall summary** — income → household → personal ceiling with progress bars
+2. **Percentage allocation** — user sets Hogar / Ahorro / Personal caps as % of income; app suggests defaults from history and 50/20/30 literature
+3. **Pace chart** — cumulative spending vs linear budget pace through the month, color-coded green/red
 
 The page adapts to three household configurations:
 - **Solo (individual household)** → single collapsed budget (income - personal spending = available)
@@ -36,6 +41,26 @@ ALTER TABLE transactions
 **`transfer_to_account_id`:** only populated when `transaction_type = 'transfer'`; points to the destination `bank_accounts.id`.
 
 No changes to `household_budgets`. It remains available for users who want to set an optional household target amount.
+
+### New table: `household_budget_allocations`
+
+```sql
+CREATE TABLE household_budget_allocations (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  household_id  UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  month         DATE NOT NULL,
+  hogar_pct     NUMERIC(5,2) NOT NULL,   -- e.g. 50.00
+  ahorro_pct    NUMERIC(5,2) NOT NULL,   -- e.g. 20.00
+  personal_pct  NUMERIC(5,2) NOT NULL,   -- e.g. 30.00 (must equal 100 - hogar - ahorro)
+  UNIQUE (household_id, month),
+  CONSTRAINT pct_sum CHECK (hogar_pct + ahorro_pct + personal_pct = 100)
+);
+```
+
+**Design notes:**
+- Absolute cap amounts are **never stored** — derived at render time as `income × pct / 100`. They auto-adjust as income changes each month.
+- `personal_pct` is user-controlled but always equals `100 - hogar_pct - ahorro_pct`; the CHECK constraint enforces this.
+- If no allocation row exists for a month, the app falls back to suggested defaults (see Allocation Suggestion Logic below).
 
 ---
 
@@ -160,6 +185,62 @@ GET /budgets/personal/{household_id}?month=YYYY-MM-DD
 - `household.type == 'individual'` → `mode = 'single'`; `household` block omitted
 - `household.type == 'couple'` → `mode = 'waterfall'`; `household` block always included
 
+### Allocation endpoints
+
+```
+GET  /budgets/allocation/{household_id}?month=YYYY-MM-DD   → current allocation + suggestions
+POST /budgets/allocation/{household_id}                    → save allocation for a month
+```
+
+**GET response:**
+```json
+{
+  "month": "2026-03-01",
+  "allocation": {
+    "hogar_pct": 50.0,
+    "ahorro_pct": 20.0,
+    "personal_pct": 30.0,
+    "is_default": false
+  },
+  "suggestions": {
+    "historical": { "hogar_pct": 55.0, "ahorro_pct": 10.0, "personal_pct": 35.0 },
+    "recommended": { "hogar_pct": 50.0, "ahorro_pct": 20.0, "personal_pct": 30.0, "label": "Regla 50/20/30" }
+  }
+}
+```
+
+`is_default: true` when no row exists for this month — the allocation block shows the 50/20/30 fallback.
+
+**POST body:** `{ month, hogar_pct, ahorro_pct, personal_pct }` — upserts the allocation row; server validates sum = 100.
+
+**Historical suggestion logic:** look at last 3 months of `transaction_type = 'expense'` data; compute actual hogar/personal split; `ahorro` = unspent income fraction. Round to nearest 5% for clean numbers.
+
+### Pace block (added to existing personal budget endpoint)
+
+`GET /budgets/personal/{household_id}?month=YYYY-MM-DD` gains a `pace` field:
+
+```json
+"pace": {
+  "spendable_budget": 2000000,
+  "daily_points": [
+    { "day": 1, "cumulative_spent": 45000 },
+    { "day": 2, "cumulative_spent": 90000 }
+  ],
+  "today_day": 12,
+  "days_in_month": 31,
+  "pace_at_today": 774193,
+  "actual_at_today": 600000,
+  "delta": -174193,
+  "on_track": true
+}
+```
+
+- `spendable_budget` = `income × (1 - ahorro_pct / 100)`
+- `pace_at_today` = `spendable_budget × today_day / days_in_month` (linear interpolation)
+- `daily_points` contains one entry per day from day 1 to `today_day`; days with no spending carry forward the previous day's cumulative total
+- `delta` = `actual_at_today - pace_at_today`; negative = under budget (good)
+- For past months: `today_day = days_in_month` (full month shown)
+
 ### Existing endpoints
 
 `GET /POST /budgets/monthly/{household_id}` stays unchanged for users who want to set an optional household budget target.
@@ -171,30 +252,48 @@ GET /budgets/personal/{household_id}?month=YYYY-MM-DD
 ### Month selector
 Displayed at top of page, defaults to current month. Same pattern as the transactions page.
 
-### Waterfall mode layout (couple)
+### Page layout (top to bottom)
 
 **1. Income header**
 Simple stat row: `"Ingresos: $2.500.000"`. If Fintoc not connected → soft grey message: `"Conecta tu banco para ver tus ingresos"`.
 
-**2. Household card ("Hogar")**
-- **Couple + joint account:** progress bar showing `deposited` vs `spent`; color logic: green < 70%, yellow 70–90%, red > 90% of deposited. Shows available below bar.
-- **Couple + no joint account:** no progress bar (no deposit ceiling). Shows total shared spending as a plain stat: `"Gastos compartidos: $620.000"`. `household.available` and `percent_used` are `null` — no bar rendered.
+**2. Pace chart**
+Recharts `AreaChart` or `LineChart` spanning full card width.
+- X-axis: days 1 → last day of month (tick every 5 days)
+- Y-axis: CLP amounts (abbreviated: `$1.2M`)
+- **Dashed grey line:** linear budget pace (0 → `spendable_budget`)
+- **Solid colored line:** actual cumulative spending up to today; color transitions from `luka-success` (green) when below pace to `luka-danger` (red) when above; uses gradient/segment coloring
+- **Callout** at today's dot: `"$174K bajo el ritmo"` (green) or `"$80K sobre el ritmo"` (red)
+- For current month: future portion of dashed line shown as faded/dotted
+- For past months: full month shown, no "today" callout
 
-**3. Personal card ("Personal")**
-- Label: ceiling amount (`"Techo: $1.700.000"`). If `ceiling_clamped = true`, show `"Techo: $0 (transferencias superan ingresos)"` in danger color.
-- Two stacked mini progress bars (only when `ceiling > 0`):
-  - **"Hogar"** bar (sky-blue `luka-sky`) — `breakdown.household` as % of ceiling
-  - **"Personal"** bar (blue `luka-primary`) — `breakdown.personal` as % of ceiling
-- Available/overrun amount below bars: green if positive, red if negative (`ceiling_clamped = true`)
+**3. Allocation card ("Tu presupuesto")**
+Shown when user hasn't set an allocation for this month, OR when they tap "Editar":
+- First time: shows two suggestion pills ("Según tu historial" / "Regla 50/20/30") — tapping one pre-fills the sliders
+- Three sliders: Hogar (%), Ahorro (%), Personal (auto-fills remainder, read-only)
+- Live preview of absolute amounts as user drags: `"Hogar: $1.250.000"`
+- Save button; on save → upserts allocation, reloads budget data
 
-### Solo mode layout
-- Income header (same)
-- Single card with one progress bar (personal spending vs income)
-- No household section, no tags
+**4. Waterfall summary cards**
+
+*Household card ("Hogar"):*
+- **Couple + joint account:** progress bar `deposited` vs `spent × hogar_pct cap`; color logic: green < 70%, yellow 70–90%, red > 90%. Available shown below.
+- **Couple + no joint account:** plain stat `"Gastos compartidos: $620.000"`. No bar.
+
+*Personal card ("Personal"):*
+- Label: `"Techo: $1.700.000"`. If `ceiling_clamped`, show in danger color.
+- Two stacked mini bars (only when `ceiling > 0`):
+  - **"Hogar"** bar (`luka-sky`) — `breakdown.household` as % of ceiling
+  - **"Personal"** bar (`luka-primary`) — `breakdown.personal` as % of ceiling
+- Available/overrun below bars; green if positive, red if negative
+
+### Solo mode
+Same layout — income header → pace chart → allocation card → single personal card. No household section.
 
 ### Graceful degradation
-- Fintoc not connected → income = 0, ceiling = 0; card shows connect-bank prompt instead of bars
-- No transactions this month → bars show empty state, not errors
+- Fintoc not connected → income = 0; pace chart and bars show empty state with connect-bank prompt
+- No allocation set → falls back to 50/20/30 defaults; allocation card shown prominently with suggestion pills
+- No transactions this month → pace chart shows flat line at 0; bars empty, not errors
 
 ---
 
@@ -211,6 +310,8 @@ Simple stat row: `"Ingresos: $2.500.000"`. If Fintoc not connected → soft grey
 ## Out of Scope
 
 - Setting a personal income target manually (Fintoc-detected only for MVP)
-- Budget targets for personal spending (ceiling is derived, not user-set)
-- Historical income chart (future)
-- Notifications when personal budget is exceeded (future)
+- Per-category budget caps beyond the three buckets (Hogar / Ahorro / Personal)
+- Projected future spending line on pace chart (future)
+- WhatsApp alert when pace is exceeded (future)
+- Historical income chart across multiple months (future)
+- Savings account auto-detection (ahorro % is a planning target, not verified against a savings account balance)
