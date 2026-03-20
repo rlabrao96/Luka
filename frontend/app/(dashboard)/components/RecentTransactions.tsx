@@ -141,7 +141,7 @@ export function RecentTransactions({
   return (
     <div className="divide-y divide-slate-50">
       {transactions.map((txn) => {
-        const isOutflow = Number(txn.amount) >= 0;
+        const isOutflow = txn.transaction_type !== "income";
         const split = SPLIT_STYLES[txn.split_type ?? "personal"] ?? SPLIT_STYLES.personal;
 
         return (
