@@ -75,6 +75,85 @@ export interface BudgetStatus {
   percent_used: number;
 }
 
+// Pace chart
+export interface PacePoint {
+  day: number;
+  cumulative_spent: number;
+}
+
+export interface PaceBlock {
+  spendable_budget: number;
+  daily_points: PacePoint[];
+  today_day: number;
+  days_in_month: number;
+  pace_at_today: number;
+  actual_at_today: number;
+  delta: number;
+  on_track: boolean;
+}
+
+// Waterfall budget
+export interface PersonalBreakdown {
+  household: number;
+  personal: number;
+}
+
+export interface PersonalBlock {
+  ceiling: number;
+  ceiling_clamped: boolean;
+  spent: number;
+  breakdown: PersonalBreakdown;
+  available: number;
+  percent_used: number | null;
+}
+
+export interface HouseholdBlock {
+  deposited: number | null;
+  spent: number;
+  available: number | null;
+  percent_used: number | null;
+}
+
+export interface PersonalBudgetResponse {
+  mode: "single" | "waterfall";
+  month: string;
+  income: number;
+  personal: PersonalBlock;
+  pace: PaceBlock;
+  household?: HouseholdBlock;
+}
+
+// Allocation
+export interface AllocationBlock {
+  hogar_pct: number;
+  ahorro_pct: number;
+  personal_pct: number;
+  is_default: boolean;
+}
+
+export interface AllocationSuggestion {
+  hogar_pct: number;
+  ahorro_pct: number;
+  personal_pct: number;
+  label?: string;
+}
+
+export interface AllocationResponse {
+  month: string;
+  allocation: AllocationBlock;
+  suggestions: {
+    historical: AllocationSuggestion | null;
+    recommended: AllocationSuggestion;
+  };
+}
+
+export interface SetAllocationPayload {
+  month: string; // YYYY-MM-DD
+  hogar_pct: number;
+  ahorro_pct: number;
+  personal_pct: number;
+}
+
 export interface FintocAccount {
   id: string;       // fintoc_account_id
   name: string;     // e.g. "Cuenta Corriente"
@@ -207,5 +286,21 @@ export const api = {
     apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/category`, {
       method: "PATCH",
       body: JSON.stringify({ category }),
+    }),
+
+  getPersonalBudget: (householdId: string, month?: string) =>
+    apiFetch<PersonalBudgetResponse>(
+      `/budgets/personal/${householdId}${month ? `?month=${month}` : ""}`
+    ),
+
+  getAllocation: (householdId: string, month?: string) =>
+    apiFetch<AllocationResponse>(
+      `/budgets/allocation/${householdId}${month ? `?month=${month}` : ""}`
+    ),
+
+  setAllocation: (householdId: string, payload: SetAllocationPayload) =>
+    apiFetch<AllocationBlock>(`/budgets/allocation/${householdId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
 };

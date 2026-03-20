@@ -24,6 +24,10 @@ class Transaction(Base):
     source: Mapped[str] = mapped_column(String, nullable=False)  # gmail|outlook|fintoc|manual
     status: Mapped[str] = mapped_column(String, default="pending")
     fintoc_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    transaction_type: Mapped[str] = mapped_column(String(10), nullable=False, default="expense")
+    transfer_to_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("bank_accounts.id", ondelete="SET NULL"), nullable=True
+    )
     raw_email_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

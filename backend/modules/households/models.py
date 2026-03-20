@@ -88,3 +88,20 @@ class HouseholdBudget(Base):
     budgeted: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     source: Mapped[str] = mapped_column(String, default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HouseholdBudgetAllocation(Base):
+    __tablename__ = "household_budget_allocations"
+    __table_args__ = (
+        UniqueConstraint("household_id", "month", name="uq_budget_allocation_household_month"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("households.id", ondelete="CASCADE"), nullable=False
+    )
+    month: Mapped[date] = mapped_column(Date, nullable=False)
+    hogar_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    ahorro_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    personal_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

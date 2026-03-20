@@ -286,8 +286,10 @@ async def cleanup_processed_webhooks(ctx: dict) -> None:
 
 async def run_fintoc_sync(ctx: dict) -> None:
     """Nightly job: fetch settled Fintoc transactions and reconcile with pending."""
+    import uuid
     from datetime import date, timedelta
     from modules.fintoc.client import FintocClient
+    from modules.fintoc.classifier import classify_movement, MovementClassification
     from modules.fintoc.reconciler import reconcile_transactions
     from modules.households.models import BankAccount
     from sqlalchemy import select
@@ -311,13 +313,65 @@ async def run_fintoc_sync(ctx: dict) -> None:
                     else date.today() - timedelta(days=7)
                 )
                 client = FintocClient(link_token=account.fintoc_link_id)
-                transactions = await client.fetch_transactions(
+                all_movements = await client.fetch_transactions(
                     account_id=account.fintoc_account_id,
                     since=since,
                     until=date.today(),
                 )
+
+                # Build sibling fintoc account IDs for transfer detection
+                sibling_result = await db.execute(
+                    select(BankAccount.fintoc_account_id, BankAccount.id).where(
+                        BankAccount.household_id == account.household_id,
+                        BankAccount.fintoc_account_id.isnot(None),
+                    )
+                )
+                fintoc_id_to_db_id: dict[str, uuid.UUID] = {
+                    row.fintoc_account_id: row.id for row in sibling_result
+                }
+                household_fintoc_ids = list(fintoc_id_to_db_id.keys())
+
+                expense_txns = []
+                for txn in all_movements:
+                    cls_result = classify_movement(
+                        txn, household_fintoc_ids, all_movements=all_movements
+                    )
+                    if cls_result.classification == MovementClassification.INBOUND_TRANSFER_SKIP:
+                        continue
+                    elif cls_result.classification == MovementClassification.EXPENSE:
+                        expense_txns.append(txn)
+                    else:
+                        existing = await db.scalar(
+                            select(Transaction).where(Transaction.fintoc_id == txn.id)
+                        )
+                        if not existing:
+                            transfer_to = (
+                                fintoc_id_to_db_id.get(cls_result.matched_fintoc_account_id)
+                                if cls_result.matched_fintoc_account_id
+                                else None
+                            )
+                            new_txn = Transaction(
+                                user_id=account.user_id,
+                                household_id=account.household_id,
+                                bank_account_id=account.id,
+                                raw_merchant_name=txn.description,
+                                amount=abs(txn.amount),
+                                currency="CLP",
+                                transaction_date=txn.transaction_date,
+                                source="fintoc",
+                                status="settled",
+                                fintoc_id=txn.id,
+                                transaction_type=cls_result.classification.value,
+                                transfer_to_account_id=transfer_to,
+                            )
+                            db.add(new_txn)
+
                 await reconcile_transactions(
-                    transactions, db, user_id=account.user_id, household_id=account.household_id
+                    expense_txns,
+                    db,
+                    user_id=account.user_id,
+                    household_id=account.household_id,
+                    transaction_types={t.id: "expense" for t in expense_txns},
                 )
                 account.last_synced_at = datetime.now(timezone.utc)
                 await db.commit()
@@ -333,7 +387,9 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
     Triggered when a user connects a bank account via Fintoc Link.
     Idempotent: skips any transaction whose fintoc_id already exists in the DB.
     """
+    import uuid
     from datetime import date
+    from modules.fintoc.classifier import classify_movement, MovementClassification
 
     split_map = {
         "personal": "personal",
@@ -362,6 +418,18 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
             imported = 0
             skipped = 0
 
+            # Build sibling fintoc account IDs for transfer detection
+            sibling_result = await db.execute(
+                select(BankAccount.fintoc_account_id, BankAccount.id).where(
+                    BankAccount.household_id == account.household_id,
+                    BankAccount.fintoc_account_id.isnot(None),
+                )
+            )
+            fintoc_id_to_db_id: dict[str, uuid.UUID] = {
+                row.fintoc_account_id: row.id for row in sibling_result
+            }
+            household_fintoc_ids = list(fintoc_id_to_db_id.keys())
+
             for ftxn in fintoc_txns:
                 existing = await db.scalar(
                     select(Transaction).where(Transaction.fintoc_id == ftxn.id)
@@ -370,29 +438,46 @@ async def import_fintoc_history(ctx: dict, bank_account_id: str) -> None:
                     skipped += 1
                     continue
 
+                cls_result = classify_movement(
+                    ftxn, household_fintoc_ids, all_movements=fintoc_txns
+                )
+                if cls_result.classification == MovementClassification.INBOUND_TRANSFER_SKIP:
+                    skipped += 1
+                    continue
+
                 try:
+                    transfer_to = (
+                        fintoc_id_to_db_id.get(cls_result.matched_fintoc_account_id)
+                        if cls_result.matched_fintoc_account_id
+                        else None
+                    )
                     txn = Transaction(
                         user_id=account.user_id,
                         household_id=account.household_id,
                         bank_account_id=account.id,
                         raw_merchant_name=ftxn.description,
-                        amount=ftxn.amount,
+                        amount=abs(ftxn.amount),
                         currency="CLP",
                         transaction_date=ftxn.transaction_date,
                         source="fintoc",
                         status="settled",
                         fintoc_id=ftxn.id,
+                        transaction_type=cls_result.classification.value,  # explicit — do NOT rely on DEFAULT
+                        transfer_to_account_id=transfer_to,
                     )
                     db.add(txn)
                     await db.flush()
 
-                    split = TransactionSplit(
-                        transaction_id=txn.id,
-                        split_type=split_map.get(account.account_type, "personal"),
-                        decided_by_user_id=account.user_id,
-                        decided_at=datetime.now(timezone.utc),
-                    )
-                    db.add(split)
+                    # Only create TransactionSplit for expense transactions
+                    if cls_result.classification == MovementClassification.EXPENSE:
+                        split = TransactionSplit(
+                            transaction_id=txn.id,
+                            split_type=split_map.get(account.account_type, "personal"),
+                            decided_by_user_id=account.user_id,
+                            decided_at=datetime.now(timezone.utc),
+                        )
+                        db.add(split)
+
                     await db.commit()
                     imported += 1
                 except Exception as loop_err:

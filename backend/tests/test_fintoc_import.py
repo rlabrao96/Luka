@@ -5,7 +5,7 @@ from modules.fintoc.client import FintocTransaction
 from modules.transactions.models import TransactionSplit
 
 
-def make_fintoc_txn(id: str, amount: int = 10000, description: str = "LIDER") -> FintocTransaction:
+def make_fintoc_txn(id: str, amount: int = -10000, description: str = "LIDER") -> FintocTransaction:
     return FintocTransaction(
         id=id,
         amount=amount,

@@ -29,8 +29,8 @@ def find_match(
     fintoc_normalized = normalize_merchant(fintoc_txn.description)
 
     for pending in pending_transactions:
-        # 1. Amount must match exactly
-        if int(pending["amount"]) != fintoc_txn.amount:
+        # 1. Amount must match exactly (fintoc amounts are signed; pending are positive)
+        if int(pending["amount"]) != abs(fintoc_txn.amount):
             continue
 
         # 2. Date within ±3 days
@@ -60,6 +60,7 @@ async def reconcile_transactions(
     db,
     user_id,
     household_id,
+    transaction_types: dict[str, str] | None = None,
 ) -> dict:
     """
     Run reconciliation for a list of Fintoc settled transactions.
@@ -101,15 +102,17 @@ async def reconcile_transactions(
             pending = [p for p in pending if str(p["id"]) != match.transaction_id]
         else:
             # Insert as new settled transaction from Fintoc
+            txn_type = (transaction_types or {}).get(ftc_txn.id, "expense")
             new_txn = Transaction(
                 user_id=user_id,
                 household_id=household_id,
                 raw_merchant_name=ftc_txn.description,
-                amount=ftc_txn.amount,
+                amount=abs(ftc_txn.amount),
                 transaction_date=ftc_txn.transaction_date,
                 source="fintoc",
                 status="settled",
                 fintoc_id=ftc_txn.id,
+                transaction_type=txn_type,
             )
             db.add(new_txn)
             unmatched += 1
