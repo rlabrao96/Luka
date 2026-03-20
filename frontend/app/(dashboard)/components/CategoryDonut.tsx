@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 const COLORS = [
   "#2563EB", // blue — primary
@@ -21,22 +21,40 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const total = data.reduce((s, d) => s + Number(d.amount), 0);
-  const active = activeIndex !== null ? data[activeIndex] : null;
+  
+  // Custom tooltip for clean professional overlay
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const { category, amount } = payload[0].payload;
+      const pct = total > 0 ? ((amount / total) * 100).toFixed(1) : "0.0";
+      return (
+        <div className="bg-white px-3 py-2 rounded-lg border border-slate-100 shadow-sm flex flex-col gap-1">
+          <p className="text-xs font-semibold text-slate-700">{category}</p>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-slate-900">{CLP(amount)}</span>
+            <span className="text-[10px] text-slate-400 font-medium">({pct}%)</span>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* Donut with center total */}
-      <div className="relative" style={{ height: 190 }}>
+    <div className="flex flex-col gap-4">
+      {/* Donut with fixed center total */}
+      <div className="relative mt-2" style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: "transparent" }} />
             <Pie
               data={data}
               dataKey="amount"
               nameKey="category"
               cx="50%"
               cy="50%"
-              innerRadius={58}
-              outerRadius={82}
+              innerRadius={60}
+              outerRadius={85}
               paddingAngle={2}
               strokeWidth={0}
               onMouseEnter={(_, index) => setActiveIndex(index)}
@@ -47,79 +65,42 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
                   key={i}
                   fill={COLORS[i % COLORS.length]}
                   opacity={activeIndex === null || activeIndex === i ? 1 : 0.35}
-                  style={{ cursor: "pointer", transition: "opacity 0.15s" }}
+                  style={{ cursor: "pointer", transition: "opacity 0.2s ease" }}
                 />
               ))}
             </Pie>
           </PieChart>
         </ResponsiveContainer>
 
-        {/* Center label */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
-            {active ? active.category : "Total"}
+        {/* Center label — permanently shows total */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-1">
+          <p className="text-[9.5px] font-semibold uppercase tracking-widest text-slate-400 mb-0.5">
+            Total
           </p>
-          <p className="text-sm font-bold text-luka-dark tabular-nums leading-tight">
-            {CLP(active ? Number(active.amount) : total)}
+          <p className="text-sm font-bold text-slate-800 tabular-nums leading-tight">
+            {CLP(total)}
           </p>
-          {active && (
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              {((Number(active.amount) / total) * 100).toFixed(1)}%
-            </p>
-          )}
         </div>
       </div>
 
-      {/* Hover info panel — appears below donut */}
-      <div
-        className={`rounded-lg px-3 py-2 border transition-all duration-150 ${
-          active
-            ? "bg-white border-slate-100 shadow-sm opacity-100"
-            : "opacity-0 border-transparent"
-        }`}
-        style={{ minHeight: 40 }}
-      >
-        {active && (
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <div
-                className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: COLORS[activeIndex! % COLORS.length] }}
-              />
-              <span className="text-xs font-semibold text-luka-dark truncate">
-                {active.category}
-              </span>
-            </div>
-            <div className="text-right shrink-0">
-              <p className="text-xs font-bold text-luka-dark tabular-nums">
-                {CLP(Number(active.amount))}
-              </p>
-              <p className="text-[10px] text-slate-400">
-                {((Number(active.amount) / total) * 100).toFixed(1)}% del total
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Custom legend */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1.5 justify-center pt-1">
+      <div className="flex flex-wrap gap-x-3 gap-y-2 justify-center pb-2">
         {data.map((entry, i) => (
           <div
             key={entry.category}
-            className="flex items-center gap-1 cursor-pointer"
+            className="flex items-center gap-1.5 cursor-pointer pb-1"
             onMouseEnter={() => setActiveIndex(i)}
             onMouseLeave={() => setActiveIndex(null)}
           >
             <div
-              className="w-2 h-2 rounded-full shrink-0"
+              className="w-2.5 h-2.5 rounded-full shrink-0 transition-opacity"
               style={{
                 backgroundColor: COLORS[i % COLORS.length],
                 opacity: activeIndex === null || activeIndex === i ? 1 : 0.35,
               }}
             />
             <span
-              className="text-[10px] text-slate-600 transition-colors"
+              className="text-[11px] font-medium text-slate-600 transition-opacity"
               style={{ opacity: activeIndex === null || activeIndex === i ? 1 : 0.45 }}
             >
               {entry.category}
