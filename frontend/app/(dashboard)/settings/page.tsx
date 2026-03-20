@@ -230,7 +230,7 @@ function ConnectBankSection() {
   const [pollStart] = useState(() => Date.now());
 
   // Any account doing its first-ever import?
-  const hasActiveFirstImport = (accounts: typeof data) =>
+  const hasActiveFirstImport = (accounts: BankAccountRow[] | undefined) =>
     !!accounts?.some((a) => a.import_status === "importing" && !a.last_synced_at);
 
   const { data: accounts, isLoading: loadingAccounts } = useQuery({

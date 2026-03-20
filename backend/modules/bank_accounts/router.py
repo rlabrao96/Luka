@@ -12,7 +12,7 @@ from jobs.queue import enqueue_job
 from modules.auth.models import User
 from modules.fintoc.client import FintocClient
 from modules.households.models import BankAccount
-from modules.households.router import _require_membership
+from modules.households.auth import require_membership
 from modules.transactions.models import Transaction, TransactionSplit
 
 router = APIRouter(prefix="/bank-accounts", tags=["bank-accounts"])
@@ -25,7 +25,7 @@ async def list_bank_accounts(
     db: AsyncSession = Depends(get_db),
 ):
     """List all connected bank accounts for a household."""
-    await _require_membership(household_id, current_user.id, db)
+    await require_membership(household_id, current_user.id, db)
 
     result = await db.execute(
         select(BankAccount).where(
@@ -99,7 +99,7 @@ async def connect_fintoc_accounts(
     db: AsyncSession = Depends(get_db),
 ):
     """Store Fintoc-connected accounts and enqueue 90-day history import per account."""
-    await _require_membership(body.household_id, current_user.id, db)
+    await require_membership(body.household_id, current_user.id, db)
 
     # Check for duplicates before creating anything
     for acct in body.accounts:
@@ -210,7 +210,7 @@ async def delete_bank_account(
     db: AsyncSession = Depends(get_db),
 ):
     """Hard-delete a bank account and all its transactions/splits. Only the account owner can delete."""
-    await _require_membership(household_id, current_user.id, db)
+    await require_membership(household_id, current_user.id, db)
 
     account = await db.scalar(
         select(BankAccount).where(
@@ -247,7 +247,7 @@ async def get_import_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Poll whether any account in this household is still importing history."""
-    await _require_membership(household_id, current_user.id, db)
+    await require_membership(household_id, current_user.id, db)
 
     result = await db.execute(
         select(BankAccount).where(
