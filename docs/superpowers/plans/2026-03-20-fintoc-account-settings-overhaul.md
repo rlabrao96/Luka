@@ -123,7 +123,7 @@ def _make_bank_account(import_status="done", is_active=True, user_id=None):
     acc.id = uuid.UUID(ACCOUNT_ID)
     acc.import_status = import_status
     acc.is_active = is_active
-    acc.user_id = uuid.UUID(HOUSEHOLD_ID) if user_id is None else user_id
+    acc.user_id = user_id  # always pass mock_current_user.id for ownership tests; None = unknown other user
     acc.account_type = "personal"
     return acc
 
@@ -525,37 +525,26 @@ git commit -m "feat(bank-accounts): store currency from Fintoc at connect time (
 - Modify: `backend/modules/transactions/service.py`
 - Modify: `backend/tests/test_transactions_api.py`
 
-- [ ] **Step 1: Write a failing test for inactive account exclusion**
+- [ ] **Step 1: Write a test confirming the route forwards service results correctly**
 
 Add to `backend/tests/test_transactions_api.py`:
 
 ```python
 @pytest.mark.asyncio
-async def test_my_transactions_excludes_inactive_accounts(app, mock_user):
-    """Transactions from inactive bank accounts must not appear in results."""
-    from core.security import get_current_user
-    from modules.transactions import service
+async def test_my_transactions_returns_only_active_account_results(app, mock_user):
+    """Route correctly returns whatever the service layer provides (filtered at DB level).
 
-    inactive_txn = {
-        "id": str(uuid.uuid4()),
-        "raw_merchant_name": "Inactive Bank Txn",
-        "amount": 5000,
-        "currency": "CLP",
-        "transaction_date": "2026-03-01",
-        "category": None,
-        "source": "fintoc",
-        "status": "done",
-        "split_type": None,
-        "bank_name": "Inactive Bank",
-        "bank_account_id": str(uuid.uuid4()),
-    }
+    NOTE: This test patches the service so it cannot verify the is_active SQL filter directly.
+    The WHERE clause correctness is verified by reading service.py steps 2–4 below and
+    by manual integration testing against the real DB.
+    """
+    from core.security import get_current_user
 
     app.dependency_overrides[get_current_user] = lambda: mock_user
     try:
-        # service returns empty list — inactive account transactions are filtered at DB level
         with patch(
             "modules.transactions.service.get_my_transactions",
-            new=AsyncMock(return_value=[]),
+            new=AsyncMock(return_value=[]),  # simulates: all transactions filtered out
         ):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
                 response = await c.get(
@@ -565,11 +554,10 @@ async def test_my_transactions_excludes_inactive_accounts(app, mock_user):
         app.dependency_overrides.pop(get_current_user, None)
 
     assert response.status_code == 200
-    # The service mock returned empty list — integration test confirms the filter at DB level
     assert response.json() == []
 ```
 
-Note: The unit test confirms the route works with filtered results. The `is_active` filter lives in `service.py` and is tested via integration tests or by reading the query. The key thing to verify is that the WHERE clause is present in the service.
+**Coverage note:** The `BankAccount.is_active.is_(True)` filter in Steps 2–4 lives in the SQLAlchemy query inside `service.py`. It cannot be meaningfully unit-tested without a real DB. Verify it manually after deployment: disable a bank account via the settings toggle, then confirm its transactions no longer appear on the transactions page and the spending chart.
 
 - [ ] **Step 2: Update `get_my_transactions` in `service.py`**
 
@@ -584,7 +572,7 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
         .where(
             Transaction.user_id == user_id,
             Transaction.transaction_date >= since,
-            BankAccount.is_active == True,
+            BankAccount.is_active.is_(True),
         )
         .order_by(Transaction.transaction_date.desc())
     )
@@ -615,7 +603,7 @@ async def get_shared_transactions(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
             Transaction.transaction_date >= since,
-            BankAccount.is_active == True,
+            BankAccount.is_active.is_(True),
         )
         .order_by(Transaction.transaction_date.desc())
     )
