@@ -284,12 +284,13 @@ function ConnectBankSection() {
                   account={account}
                   currentUserId={userId}
                   householdId={householdId}
-                  onDeleted={(id) =>
+                  onDeleted={(id) => {
                     queryClient.setQueryData<BankAccountRow[]>(
                       ["bank-accounts", householdId],
                       (prev) => prev?.filter((a) => a.id !== id) ?? []
-                    )
-                  }
+                    );
+                    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+                  }}
                 />
               ))}
             </div>
