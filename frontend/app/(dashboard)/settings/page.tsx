@@ -165,20 +165,12 @@ function AccountRow({
 // ── Connect bank section ───────────────────────────────────
 
 function ConnectBankSection() {
-  const setUser = useLukaStore((s) => s.setUser);
-  const setHousehold = useLukaStore((s) => s.setHousehold);
+  const householdId = useLukaStore((s) => s.householdId);
+  const userId = useLukaStore((s) => s.userId);
   const queryClient = useQueryClient();
 
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [scriptReady, setScriptReady] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [loadingUser, setLoadingUser] = useState(false);
-
-  useEffect(() => {
-    setHouseholdId(useLukaStore.getState().householdId);
-    setUserId(useLukaStore.getState().userId);
-  }, []);
 
   // Patch Fintoc SDK v1 postMessage DataCloneError bug
   useEffect(() => {
@@ -195,27 +187,6 @@ function ConnectBankSection() {
     return () => {
       proto.postMessage = orig;
     };
-  }, []);
-
-  useEffect(() => {
-    if (householdId && userId) return;
-    setLoadingUser(true);
-    api
-      .getMe()
-      .then((user) => {
-        const uid = String(user.id);
-        setUserId(uid);
-        setUser(uid, user.full_name);
-        if (user.household_id) {
-          setHouseholdId(user.household_id);
-          setHousehold(user.household_id);
-        }
-      })
-      .catch(() => {
-        setMessage("No se pudo verificar tu sesión. Recarga la página.");
-      })
-      .finally(() => setLoadingUser(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Refetch accounts after successful connection
@@ -261,7 +232,6 @@ function ConnectBankSection() {
     queryKey: ["bank-accounts", householdId],
     queryFn: () => api.getBankAccounts(householdId!),
     enabled: !!householdId,
-    staleTime: 30_000,
   });
 
   return (
@@ -274,10 +244,10 @@ function ConnectBankSection() {
             size="sm"
             variant="outline"
             onClick={openWidget}
-            disabled={!scriptReady || loadingUser}
+            disabled={!scriptReady || !householdId}
             className="text-luka-primary border-luka-primary hover:bg-luka-light"
           >
-            {loadingUser ? "Cargando..." : "+ Agregar cuenta"}
+            + Agregar cuenta
           </Button>
         </CardHeader>
         <CardContent>

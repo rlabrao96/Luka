@@ -11,6 +11,7 @@ export function InactivityGuard() {
   const router = useRouter();
   const reset = useLukaStore((s) => s.reset);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastWriteRef = useRef(0);
 
   useEffect(() => {
     const supabase = createClient();
@@ -24,7 +25,12 @@ export function InactivityGuard() {
     };
 
     const resetTimer = () => {
-      localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+      // Throttle localStorage writes to once per second — mousemove fires 100+ times/sec
+      const now = Date.now();
+      if (now - lastWriteRef.current > 1000) {
+        lastWriteRef.current = now;
+        localStorage.setItem(LAST_ACTIVE_KEY, String(now));
+      }
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(signOut, TIMEOUT_MS);
     };

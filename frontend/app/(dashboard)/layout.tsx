@@ -8,30 +8,40 @@ import { redirect } from "next/navigation";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
+  // getUser() validates against Supabase server — prevents expired-cookie false positives
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+
+  if (!authUser) {
+    redirect("/login");
+  }
+
+  // Fetch user profile once here (SSR) — pass to StoreInitializer so client
+  // queries can fire immediately without a client-side getMe() waterfall.
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
   const { data: { session } } = await supabase.auth.getSession();
 
-  // SSR enforce household setup to completely prevent visual flash
-  if (session) {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-    try {
-      const res = await fetch(`${apiUrl}/auth/me`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        cache: 'no-store'
-      });
-      if (res.ok) {
-        const user = await res.json();
-        if (!user.household_id) {
-          redirect("/onboarding/verify-whatsapp");
-        }
-      }
-    } catch (e) {
-      // Silent catch; fallback to client-side StoreInitializer if network fails
-    }
+  let userData: { id: string; full_name: string; household_id: string | null } | null = null;
+  try {
+    const res = await fetch(`${apiUrl}/auth/me`, {
+      headers: { Authorization: `Bearer ${session?.access_token}` },
+      cache: "no-store",
+    });
+    if (res.ok) userData = await res.json();
+  } catch {
+    // Network error — client-side StoreInitializer will handle it
+  }
+
+  if (userData && !userData.household_id) {
+    redirect("/onboarding/setup-household");
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-luka-surface">
-      <StoreInitializer />
+      <StoreInitializer
+        userId={userData?.id ?? null}
+        householdId={userData?.household_id ?? null}
+        userFullName={userData?.full_name ?? null}
+      />
       <InactivityGuard />
       {/* Sidebar — desktop only */}
       <Sidebar />

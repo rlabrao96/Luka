@@ -2,38 +2,34 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useLukaStore } from "@/app/lib/store";
-import { api } from "@/app/lib/api";
 
-export function StoreInitializer() {
-  const { userId, setUser, setHousehold } = useLukaStore();
+interface Props {
+  userId?: string | null;
+  householdId?: string | null;
+  userFullName?: string | null;
+}
+
+export function StoreInitializer({ userId, householdId, userFullName }: Props) {
+  const { setUser, setHousehold } = useLukaStore();
   const router = useRouter();
-  const attempted = useRef(false);
+  const initialized = useRef(false);
 
   useEffect(() => {
-    // Already attempted — skip
-    if (attempted.current) return;
-    attempted.current = true;
+    if (initialized.current) return;
+    initialized.current = true;
 
-    api
-      .getMe()
-      .then((user) => {
-        setUser(String(user.id), user.full_name);
-        if (user.household_id) {
-          setHousehold(user.household_id);
-        } else {
-          // User exists in DB but has no household
-          if (!window.location.pathname.includes("/onboarding")) {
-            router.push("/onboarding/setup-household");
-          }
-        }
-      })
-      .catch(() => {
-        // Backend unavailable (e.g. 401 / network error) — stay on page.
-        // The dashboard will render with empty data; the user can try again.
-        // Only redirect if backend explicitly tells us the user is not registered
-        // (that case is handled above via the .then() branch).
-      });
-  }, [userId, setUser, setHousehold, router]);
+    if (userId) {
+      setUser(userId, userFullName ?? "");
+    }
+    if (householdId) {
+      setHousehold(householdId);
+    } else if (userId) {
+      // Authenticated but no household — send to onboarding
+      if (!window.location.pathname.includes("/onboarding")) {
+        router.push("/onboarding/setup-household");
+      }
+    }
+  }, [userId, householdId, userFullName, setUser, setHousehold, router]);
 
   return null;
 }

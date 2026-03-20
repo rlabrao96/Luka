@@ -4,8 +4,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function getAuthHeader(): Promise<Record<string, string>> {
   const supabase = createClient();
-  // getUser() validates against Supabase server and refreshes the token if expired
-  await supabase.auth.getUser();
+  // getSession() reads from local storage — token is kept fresh by Supabase's
+  // auto-refresh timer and by middleware's getUser() call on every navigation.
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return {};
   return { Authorization: `Bearer ${session.access_token}` };
