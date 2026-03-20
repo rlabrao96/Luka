@@ -14,5 +14,11 @@ class TransactionResponse(BaseModel):
     source: str
     status: str
     split_type: str | None = None
+    bank_name: str | None = None
+    bank_account_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CategoryUpdateRequest(BaseModel):
+    category: str | None

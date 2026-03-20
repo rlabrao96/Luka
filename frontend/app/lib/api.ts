@@ -43,6 +43,8 @@ export interface Transaction {
   source: string;
   status: string;
   split_type: string | null;
+  bank_name: string | null;
+  bank_account_id: string | null;
 }
 
 export interface HouseholdSummaryRow {
@@ -180,5 +182,11 @@ export const api = {
   deleteBankAccount: (accountId: string, householdId: string) =>
     apiFetch<{ ok: boolean }>(`/bank-accounts/${accountId}?household_id=${householdId}`, {
       method: "DELETE",
+    }),
+
+  updateTransactionCategory: (transactionId: string, category: string | null) =>
+    apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/category`, {
+      method: "PATCH",
+      body: JSON.stringify({ category }),
     }),
 };

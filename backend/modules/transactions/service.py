@@ -2,12 +2,14 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from modules.transactions.models import Transaction, TransactionSplit
+from modules.households.models import BankAccount
 
 
 async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, limit: int = 50) -> list[dict]:
     result = await db.execute(
-        select(Transaction, TransactionSplit)
+        select(Transaction, TransactionSplit, BankAccount.bank_name)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .where(Transaction.user_id == user_id)
         .order_by(Transaction.transaction_date.desc())
         .limit(limit)
@@ -17,8 +19,9 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, limit: int =
         {
             **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
             "split_type": split.split_type if split else None,
+            "bank_name": bank_name,
         }
-        for txn, split in rows
+        for txn, split, bank_name in rows
     ]
 
 
@@ -95,8 +98,9 @@ async def get_shared_transactions(
     db: AsyncSession, household_id: uuid.UUID, limit: int = 50
 ) -> list[dict]:
     result = await db.execute(
-        select(Transaction, TransactionSplit)
+        select(Transaction, TransactionSplit, BankAccount.bank_name)
         .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .where(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
@@ -109,6 +113,25 @@ async def get_shared_transactions(
         {
             **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
             "split_type": split.split_type,
+            "bank_name": bank_name,
         }
-        for txn, split in rows
+        for txn, split, bank_name in rows
     ]
+
+
+async def update_category(
+    db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID, category: str | None
+) -> bool:
+    """Update transaction category. Returns False if transaction not found or not owned by user."""
+    result = await db.execute(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.user_id == user_id,
+        )
+    )
+    txn = result.scalar_one_or_none()
+    if not txn:
+        return False
+    txn.category = category
+    await db.commit()
+    return True

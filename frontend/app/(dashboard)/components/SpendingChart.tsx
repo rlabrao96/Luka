@@ -1,5 +1,6 @@
 "use client";
 import { useId } from "react";
+import { TrendingUp } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid
@@ -19,8 +20,8 @@ export function SpendingChart({ data }: SpendingChartProps) {
   if (data.length === 0) {
     return (
       <div className="h-[200px] flex flex-col items-center justify-center gap-2">
-        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-          <span className="text-xl">📈</span>
+        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+          <TrendingUp size={18} className="text-slate-400" />
         </div>
         <p className="text-xs text-slate-400">Sin datos de tendencia aún</p>
       </div>

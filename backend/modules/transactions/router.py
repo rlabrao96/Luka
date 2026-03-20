@@ -1,13 +1,12 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import get_current_user
 from modules.auth.models import User
-from modules.households.models import HouseholdMember
+from modules.households.auth import require_membership
 from modules.transactions import service
-from modules.transactions.schemas import TransactionResponse
+from modules.transactions.schemas import TransactionResponse, CategoryUpdateRequest
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -27,15 +26,7 @@ async def monthly_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Verify current user is a member of this household
-    result = await db.execute(
-        select(HouseholdMember).where(
-            HouseholdMember.household_id == household_id,
-            HouseholdMember.user_id == current_user.id,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=403, detail="Not a member of this household")
+    await require_membership(household_id, current_user.id, db)
     return await service.get_monthly_summary(db, household_id, current_user.id)
 
 
@@ -46,13 +37,18 @@ async def shared_transactions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Verify current user is a member of this household
-    result = await db.execute(
-        select(HouseholdMember).where(
-            HouseholdMember.household_id == household_id,
-            HouseholdMember.user_id == current_user.id,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=403, detail="Not a member of this household")
+    await require_membership(household_id, current_user.id, db)
     return await service.get_shared_transactions(db, household_id, limit=limit)
+
+
+@router.patch("/{transaction_id}/category")
+async def update_category(
+    transaction_id: uuid.UUID,
+    body: CategoryUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    found = await service.update_category(db, transaction_id, current_user.id, body.category)
+    if not found:
+        raise HTTPException(404, "Transaction not found")
+    return {"ok": True}

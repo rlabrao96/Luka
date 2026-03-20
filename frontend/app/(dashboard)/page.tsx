@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { CreditCard, Users, Wallet } from "lucide-react";
+import { CreditCard, Users, Wallet, TrendingUp, BarChart3 } from "lucide-react";
 import { KpiCard } from "./components/KpiCard";
 import { SpendingChart } from "./components/SpendingChart";
 import { CategoryDonut } from "./components/CategoryDonut";
@@ -52,7 +52,7 @@ export default function DashboardPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-luka-dark">
-            {greeting}, {firstName} 👋
+            {greeting}, {firstName}
           </h1>
           <p className="text-sm text-luka-muted mt-0.5">Aquí está el resumen de este mes</p>
         </div>
@@ -122,8 +122,8 @@ export default function DashboardPage() {
             ? <CategoryDonut data={categoryData} />
             : (
               <div className="h-[200px] flex flex-col items-center justify-center gap-2">
-                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-                  <span className="text-xl">📊</span>
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+                  <BarChart3 size={18} className="text-slate-400" />
                 </div>
                 <p className="text-xs text-luka-muted">Sin datos aún</p>
               </div>
@@ -140,7 +140,7 @@ export default function DashboardPage() {
             <p className="text-xs text-luka-muted mt-0.5">Movimientos recientes</p>
           </div>
         </div>
-        <RecentTransactions transactions={recentAll} />
+        <RecentTransactions transactions={recentAll} compact={true} />
       </div>
     </div>
   );
