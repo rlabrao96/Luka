@@ -26,7 +26,7 @@ interface SummaryBarProps {
 }
 
 function SummaryBar({ transactions }: SummaryBarProps) {
-  const total = transactions.reduce((s, t) => s + t.amount, 0);
+  const total = transactions.reduce((s, t) => s + Number(t.amount), 0);
   const count = transactions.length;
   const avg = count > 0 ? total / count : 0;
 

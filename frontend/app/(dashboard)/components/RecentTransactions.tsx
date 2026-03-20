@@ -141,7 +141,7 @@ export function RecentTransactions({
   return (
     <div className="divide-y divide-slate-50">
       {transactions.map((txn) => {
-        const isOutflow = txn.amount >= 0;
+        const isOutflow = Number(txn.amount) >= 0;
         const split = SPLIT_STYLES[txn.split_type ?? "personal"] ?? SPLIT_STYLES.personal;
 
         return (
@@ -192,7 +192,7 @@ export function RecentTransactions({
                   isOutflow ? "text-luka-dark" : "text-luka-success"
                 )}
               >
-                {isOutflow ? "−" : "+"}{formatCLP(Math.abs(txn.amount))}
+                {isOutflow ? "−" : "+"}{formatCLP(Math.abs(Number(txn.amount)))}
               </span>
             </div>
           </div>
