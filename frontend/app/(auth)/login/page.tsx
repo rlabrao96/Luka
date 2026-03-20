@@ -38,18 +38,19 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/40 to-slate-900/70" />
       </div>
 
-      {/* ── Mobile Top Text ── */}
-      <div className="absolute top-16 left-8 right-8 lg:hidden z-10 text-white antialiased">
-        <h2 className="text-3xl font-bold leading-tight mb-3 drop-shadow-lg">
-          Tus finanzas,<br />en un solo lugar.
-        </h2>
-        <p className="text-base text-slate-200/90 drop-shadow-md max-w-xs font-medium">
-          Captura tus gastos automáticamente y coordina con tu pareja — sin esfuerzo.
-        </p>
-      </div>
-
       {/* ── Left panel: form ── */}
-      <div className="flex flex-col justify-end lg:justify-center items-center w-full lg:w-1/2 px-4 pb-10 lg:px-8 lg:py-12 relative z-20 min-h-screen lg:min-h-0">
+      <div className="flex flex-col justify-between lg:justify-center items-center w-full lg:w-1/2 px-4 pt-12 pb-10 lg:px-8 lg:py-12 relative z-20 min-h-screen lg:min-h-0 overflow-y-auto">
+        
+        {/* ── Mobile Top Text ── */}
+        <div className="w-full max-w-sm lg:hidden z-10 text-white antialiased mt-4 mb-8">
+          <h2 className="text-3xl font-bold leading-tight mb-3 drop-shadow-lg">
+            Tus finanzas,<br />en un solo lugar.
+          </h2>
+          <p className="text-base text-slate-200/90 drop-shadow-md max-w-xs font-medium">
+            Captura tus gastos automáticamente y coordina con tu pareja — sin esfuerzo.
+          </p>
+        </div>
+
         <div className="w-full max-w-sm bg-white lg:bg-transparent p-8 lg:p-0 rounded-[2.5rem] lg:rounded-none shadow-2xl lg:shadow-none border border-slate-100 lg:border-none">
           {/* Logo */}
           <div className="mb-8 lg:mb-10 text-center lg:text-left">
