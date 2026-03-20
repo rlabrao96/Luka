@@ -2,6 +2,7 @@ import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
 import { StoreInitializer } from "./components/StoreInitializer";
 import { InactivityGuard } from "./components/InactivityGuard";
+import { BudgetPrefetcher } from "./components/BudgetPrefetcher";
 import { createClient } from "@/app/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -42,6 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         userFullName={userData?.full_name ?? null}
       />
       <InactivityGuard />
+      <BudgetPrefetcher />
       {/* Sidebar — desktop only */}
       <Sidebar />
       {/* Main scrolling area */}
