@@ -305,7 +305,10 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-luka-dark">Configuración</h2>
+      <div>
+        <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Configuración</h2>
+        <p className="text-sm text-luka-muted mt-0.5">Gestiona tu cuenta, hogar y conexiones bancarias</p>
+      </div>
 
       <ConnectBankSection />
 
