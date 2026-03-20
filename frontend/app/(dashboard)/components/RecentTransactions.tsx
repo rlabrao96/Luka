@@ -28,6 +28,8 @@ const INCOME_CATEGORIES = [
   "Inversiones",
   "Arriendo",
   "Bono",
+  "Transferencia de terceros",
+  "Deuda pendiente",
   "Otros ingresos",
 ];
 
