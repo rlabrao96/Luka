@@ -87,7 +87,7 @@ interface TransactionTableProps {
   pageSize: 10 | 30 | 100;
   onPage: (p: number) => void;
   onPageSize: (s: 10 | 30 | 100) => void;
-  queryKeys: unknown[][];
+  queryKeys: (string | number | null)[][];
 }
 
 function TransactionTable({ transactions, loading, page, pageSize, onPage, onPageSize, queryKeys }: TransactionTableProps) {
