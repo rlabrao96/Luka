@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse
 from core.config import settings
 from core.database import AsyncSessionLocal
 from jobs.queue import enqueue_job
+from modules.transactions.idempotency import is_already_processed
 
 router = APIRouter(tags=["webhooks"])
 
@@ -37,20 +38,9 @@ async def gmail_webhook(request: Request):
     message_id = message.get("messageId", "")
 
     if message_id:
-        try:
-            from modules.transactions.models import ProcessedWebhook
-            from sqlalchemy import select
-
-            async with AsyncSessionLocal() as db:
-                existing = await db.execute(
-                    select(ProcessedWebhook).where(ProcessedWebhook.message_id == message_id)
-                )
-                if existing.scalar_one_or_none():
-                    return {"status": "duplicate"}
-                db.add(ProcessedWebhook(message_id=message_id))
-                await db.commit()
-        except Exception:
-            pass  # DB unavailable — still ACK the webhook
+        async with AsyncSessionLocal() as db:
+            if await is_already_processed(db, message_id):
+                return {"status": "duplicate"}
 
     data = json.loads(base64.b64decode(message.get("data", "e30=")).decode())
     history_id = data.get("historyId", "")
@@ -78,20 +68,9 @@ async def outlook_webhook(request: Request, validationToken: str = None):
         message_id = notification.get("resourceData", {}).get("id", "")
         subscription_id = notification.get("subscriptionId", "")
         if message_id:
-            try:
-                from modules.transactions.models import ProcessedWebhook
-                from sqlalchemy import select
-
-                async with AsyncSessionLocal() as db:
-                    existing = await db.execute(
-                        select(ProcessedWebhook).where(ProcessedWebhook.message_id == message_id)
-                    )
-                    if existing.scalar_one_or_none():
-                        continue
-                    db.add(ProcessedWebhook(message_id=message_id))
-                    await db.commit()
-            except Exception:
-                pass  # DB unavailable — still ACK the webhook
+            async with AsyncSessionLocal() as db:
+                if await is_already_processed(db, message_id):
+                    continue
 
         await enqueue_job(
             "process_email",

@@ -8,24 +8,11 @@ from modules.auth.models import User
 from modules.households import service
 from modules.households.models import Household, HouseholdMember
 from modules.households.schemas import CreateHouseholdRequest, HouseholdResponse, InviteRequest
+from modules.households.auth import require_membership
 
 # Two routers: one under /households, one at root for the invite accept link
 router = APIRouter(prefix="/households", tags=["households"])
 invite_router = APIRouter(tags=["households"])  # no prefix — produces /invite/{token}
-
-
-async def _require_membership(
-    household_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
-) -> None:
-    """Raise 403 if user is not a member of the household."""
-    result = await db.execute(
-        select(HouseholdMember).where(
-            HouseholdMember.household_id == household_id,
-            HouseholdMember.user_id == user_id,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=403, detail="Not a member of this household")
 
 
 @router.post("", response_model=HouseholdResponse)
@@ -90,7 +77,7 @@ async def household_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _require_membership(household_id, current_user.id, db)
+    await require_membership(household_id, current_user.id, db)
     return await service.get_contribution_summary(db, household_id)
 
 
@@ -100,5 +87,5 @@ async def partner_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _require_membership(household_id, current_user.id, db)
+    await require_membership(household_id, current_user.id, db)
     return await service.get_partner_stats(db, household_id, current_user.id)
