@@ -1,6 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
+
+# Import all models so SQLAlchemy metadata is complete for FK resolution
+import modules.auth.models  # noqa: F401
+import modules.households.models  # noqa: F401
+import modules.transactions.models  # noqa: F401
+import modules.merchants.models  # noqa: F401
+
 from modules.auth.router import router as auth_router
 from modules.households.router import router as households_router, invite_router
 from modules.email.router import router as email_router
