@@ -39,7 +39,7 @@ export default function DashboardPage() {
       .filter((t) => {
         const d = new Date(t.transaction_date);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        return key === currentMonth && t.category;
+        return key === currentMonth && t.category && t.transaction_type !== "income";
       })
       .forEach((t) => {
         map[t.category!] = (map[t.category!] ?? 0) + Number(t.amount);

@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-20
-**Status:** All 12 implementation plans complete. Fintoc integration is live. **WhatsApp Cloud API integration fully verified in Live Mode** (sending polls/receiving webhooks). **Legal pages (Privacy, Terms, Data Deletion) implemented** for Meta compliance. **New minimalist branding/logo generated**. App is production-ready for first users. Transactions page has full pagination, category filter, and smart summary bar. **Budgeting waterfall fully implemented:** income/transfer/expense classifier, personal budget service, pace chart, allocation editor (50/20/30), household waterfall cards.
+**Date:** 2026-03-20 (session 2)
+**Status:** All 12 implementation plans complete. Fintoc integration is live. **WhatsApp Cloud API integration fully verified in Live Mode**. **Legal pages live**. **Budgeting waterfall fully implemented**. **Transactions page fully polished:** balance cards with Fintoc sync button, Todos/Personales/Compartidas tabs with correct counts, income/expense direction via transaction_type, parenthetical outflow format, per-type category lists, instant optimistic category updates, budget prefetching. **Dashboard pie chart shows expenses only** (income categories excluded). Multiple production bugs fixed (SQLAlchemy FK metadata, GROUP BY, React #301/#418, schema missing fields).
 
 ---
 

@@ -52,6 +52,20 @@ This document walks through every decision and credential that requires your inp
 - **Feature** — Frontend: PaceChart (Recharts), AllocationCard (dual sliders), WaterfallCards ✅
 - **Feature** — Budgets page rewritten with month selector, income header, pace, allocation, waterfall ✅
 - **DB migration** — Migration 011: transaction_type, transfer_to_account_id, household_budget_allocations ✅
+- **DB migration** — Migration 012: balance_available, balance_current columns on bank_accounts ✅
+- **Feature** — `POST /bank-accounts/sync-balances` endpoint: fetches Fintoc balances and updates DB ✅
+- **Feature** — "Actualizar saldos" button in settings triggers balance sync ✅
+- **Feature** — Transactions page: Todos/Personales/Compartidas tabs with correct counts (account_type filtering) ✅
+- **Feature** — Transactions: income/expense direction via transaction_type (not amount sign) ✅
+- **Feature** — Transactions: parenthetical outflow format `($amount)`, green `+$amount` for income ✅
+- **Feature** — Transactions: per-type category lists (income: Sueldo/Freelance/etc, expense: Alimentación/etc) ✅
+- **Feature** — Transactions: instant optimistic category updates with revert-on-error ✅
+- **Feature** — BudgetPrefetcher: fires prefetchQuery on any dashboard page so budget tab loads from cache ✅
+- **Bug fix** — SQLAlchemy FK metadata: merchants model was never imported → NoReferencedTableError on commit ✅
+- **Bug fix** — Budget GROUP BY: `func.sum(Transaction.amount)` caused ORM entity injection; rewrote as pure text() SQL ✅
+- **Bug fix** — React error #301: `setPage(1)` called inside useMemo (setState during render); moved to useEffect ✅
+- **Bug fix** — transaction_type and account_kind missing from Pydantic TransactionResponse schema (FastAPI strips undeclared fields) ✅
+- **Bug fix** — Dashboard pie chart mixed income with expenses; now filters to expenses only ✅
 
 ---
 
