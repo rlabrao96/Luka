@@ -39,18 +39,25 @@ export default function DashboardPage() {
       .filter((t) => {
         const d = new Date(t.transaction_date);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        return key === currentMonth && t.category && t.transaction_type !== "income";
+        return key === currentMonth && t.transaction_type !== "income";
       })
       .forEach((t) => {
-        map[t.category!] = (map[t.category!] ?? 0) + Number(t.amount);
+        const cat = t.category ?? "Otros";
+        map[cat] = (map[cat] ?? 0) + Number(t.amount);
       });
     const sorted = Object.entries(map)
       .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount);
     if (sorted.length <= 5) return sorted;
     const top5 = sorted.slice(0, 5);
-    const othersTotal = sorted.slice(5).reduce((s, e) => s + e.amount, 0);
-    return [...top5, { category: "Otros", amount: othersTotal }];
+    const overflowTotal = sorted.slice(5).reduce((s, e) => s + e.amount, 0);
+    if (overflowTotal === 0) return top5;
+    // Merge overflow into existing "Otros" bucket if already in top 5
+    const othersIdx = top5.findIndex((e) => e.category === "Otros");
+    if (othersIdx >= 0) {
+      return top5.map((e, i) => i === othersIdx ? { ...e, amount: e.amount + overflowTotal } : e);
+    }
+    return [...top5, { category: "Otros", amount: overflowTotal }];
   }, [myTxns]);
 
   const firstName = name.split(" ")[0];
