@@ -1,6 +1,6 @@
 # Luka — Project State Document
 **Date:** 2026-03-20 (session 2)
-**Status:** All 12 implementation plans complete. Fintoc integration is live. **WhatsApp Cloud API integration fully verified in Live Mode**. **Legal pages live**. **Budgeting waterfall fully implemented**. **Transactions page fully polished:** balance cards with Fintoc sync button, Todos/Personales/Compartidas tabs with correct counts, income/expense direction via transaction_type, parenthetical outflow format, per-type category lists, instant optimistic category updates, budget prefetching. **Dashboard pie chart shows expenses only** (income categories excluded). Multiple production bugs fixed (SQLAlchemy FK metadata, GROUP BY, React #301/#418, schema missing fields).
+**Status:** All 12 implementation plans complete. Fintoc integration is live. **WhatsApp Cloud API integration fully verified in Live Mode**. **Legal pages live**. **Budgeting waterfall fully implemented**. **Transactions page fully polished:** balance cards with Fintoc sync button, Todos/Personales/Compartidas tabs with correct counts, income/expense direction via transaction_type, parenthetical outflow format, per-type category lists, instant optimistic category updates, budget prefetching. **Dashboard pie chart shows expenses only, always populated** (income excluded; uncategorized → "Otros" so chart never shows empty state). Multiple production bugs fixed (SQLAlchemy FK metadata, GROUP BY, React #301/#418, schema missing fields).
 
 ---
 

@@ -66,6 +66,7 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — React error #301: `setPage(1)` called inside useMemo (setState during render); moved to useEffect ✅
 - **Bug fix** — transaction_type and account_kind missing from Pydantic TransactionResponse schema (FastAPI strips undeclared fields) ✅
 - **Bug fix** — Dashboard pie chart mixed income with expenses; now filters to expenses only ✅
+- **Bug fix** — Dashboard pie chart hid uncategorized transactions; now shows them as "Otros" so chart is always populated ✅
 
 ---
 
