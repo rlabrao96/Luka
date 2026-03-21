@@ -61,10 +61,9 @@ function formatDate(iso: string) {
 
 interface CategoryCellProps {
   txn: Transaction;
-  queryKeys: (string | number | null)[][];
 }
 
-function CategoryCell({ txn, queryKeys }: CategoryCellProps) {
+function CategoryCell({ txn }: CategoryCellProps) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [localCategory, setLocalCategory] = useState(txn.category);
@@ -82,7 +81,8 @@ function CategoryCell({ txn, queryKeys }: CategoryCellProps) {
     setLocalCategory(cat); // optimistic update
     try {
       await api.updateTransactionCategory(txn.id, cat);
-      queryKeys.forEach((key) => queryClient.invalidateQueries({ queryKey: key }));
+      // Invalidate by prefix — avoids key-mismatch issues with getSince() date strings
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
     } catch {
       setLocalCategory(txn.category); // revert on error
     } finally {
@@ -138,13 +138,11 @@ function CategoryCell({ txn, queryKeys }: CategoryCellProps) {
 
 interface RecentTransactionsProps {
   transactions: Transaction[];
-  queryKeys?: (string | number | null)[][];
   compact?: boolean;
 }
 
 export function RecentTransactions({
   transactions,
-  queryKeys = [["transactions", "mine"], ["transactions", "shared"]],
   compact = false,
 }: RecentTransactionsProps) {
   if (!transactions.length) {
@@ -197,7 +195,7 @@ export function RecentTransactions({
 
             {/* Category + split + amount */}
             <div className={cn("flex items-center gap-2.5 shrink-0", compact && "gap-2")}>
-              {!compact && <CategoryCell txn={txn} queryKeys={queryKeys} />}
+              {!compact && <CategoryCell txn={txn} />}
               <span
                 className={cn(
                   "text-[10px] font-semibold px-2 py-0.5 rounded-full border",

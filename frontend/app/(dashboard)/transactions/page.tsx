@@ -137,12 +137,6 @@ function SummaryBar({ accounts, sharedTxns, periodLabel, userId, householdId }: 
   );
 }
 
-function getSince(): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - 6);
-  return d.toISOString().split("T")[0];
-}
-
 interface TransactionTableProps {
   transactions: Transaction[];
   loading: boolean;
@@ -150,10 +144,9 @@ interface TransactionTableProps {
   pageSize: 10 | 30 | 100;
   onPage: (p: number) => void;
   onPageSize: (s: 10 | 30 | 100) => void;
-  queryKeys: (string | number | null)[][];
 }
 
-function TransactionTable({ transactions, loading, page, pageSize, onPage, onPageSize, queryKeys }: TransactionTableProps) {
+function TransactionTable({ transactions, loading, page, pageSize, onPage, onPageSize }: TransactionTableProps) {
   const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
   const start = (page - 1) * pageSize;
   const paginated = transactions.slice(start, start + pageSize);
@@ -195,7 +188,7 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
             <div className="w-5 h-5 border-2 border-luka-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <RecentTransactions transactions={paginated} queryKeys={queryKeys} />
+          <RecentTransactions transactions={paginated} />
         )}
       </div>
 
@@ -447,7 +440,6 @@ export default function TransactionsPage() {
             pageSize={pageSize}
             onPage={setPage}
             onPageSize={(s) => { setPageSize(s); setPage(1); }}
-            queryKeys={[["transactions", "mine", getSince()], ["transactions", "shared", householdId, getSince()]]}
           />
         </TabsContent>
 
@@ -459,7 +451,6 @@ export default function TransactionsPage() {
             pageSize={pageSize}
             onPage={setPage}
             onPageSize={(s) => { setPageSize(s); setPage(1); }}
-            queryKeys={[["transactions", "mine", getSince()]]}
           />
         </TabsContent>
 
@@ -471,7 +462,6 @@ export default function TransactionsPage() {
             pageSize={pageSize}
             onPage={setPage}
             onPageSize={(s) => { setPageSize(s); setPage(1); }}
-            queryKeys={[["transactions", "shared", householdId, getSince()]]}
           />
         </TabsContent>
       </Tabs>
