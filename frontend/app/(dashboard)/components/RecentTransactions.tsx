@@ -36,12 +36,6 @@ const INCOME_CATEGORIES = [
   "Otros ingresos",
 ];
 
-const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
-  personal: { label: "Personal", className: "bg-blue-50 text-blue-600 border-blue-100" },
-  partner: { label: "Personal", className: "bg-blue-50 text-blue-600 border-blue-100" },
-  shared: { label: "Hogar", className: "bg-emerald-50 text-emerald-600 border-emerald-100" },
-};
-
 function toTitleCase(str: string) {
   return str
     .toLowerCase()
@@ -296,7 +290,7 @@ export function RecentTransactions({
                             <button
                               onClick={() => setCategorySheet(txn)}
                               className={cn(
-                                "text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80",
+                                "text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 w-[90px] text-center truncate",
                                 txn.category
                                   ? "bg-slate-100 text-slate-600"
                                   : "bg-amber-50 text-amber-600"
