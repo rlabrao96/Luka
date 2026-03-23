@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
-import { Search, SlidersHorizontal, TrendingDown, Hash, ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Landmark, RefreshCw } from "lucide-react";
+import { ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Landmark, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { FilterPanel } from "../components/FilterPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
@@ -90,7 +91,7 @@ function SummaryBar({ accounts, sharedTxns, periodLabel, userId, householdId }: 
           {syncing ? "Actualizando..." : "Actualizar saldos"}
         </button>
       </div>
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
       {[
         {
           label: `Cuenta corriente`,
@@ -199,7 +200,7 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
               onClick={() => onPage(1)}
               disabled={page === 1}
               title="Primera página"
-              className="flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronsLeft size={13} />
             </button>
@@ -226,7 +227,7 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
               onClick={() => onPage(totalPages)}
               disabled={page === totalPages}
               title="Última página"
-              className="flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronsRight size={13} />
             </button>
@@ -345,18 +346,24 @@ export default function TransactionsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px] max-w-xs">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar comercio, banco o categoría..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-8 pl-8 pr-3 rounded-lg border border-slate-200 bg-white text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-luka-primary"
-          />
-        </div>
-
+      <FilterPanel
+        activeCount={[
+          selectedMonth !== "all" ? 1 : 0,
+          selectedBank !== "all" ? 1 : 0,
+          selectedCategory !== "all" ? 1 : 0,
+          onlyUncategorized ? 1 : 0,
+        ].reduce((a, b) => a + b, 0)}
+        onClear={() => {
+          setSelectedMonth("all");
+          setSelectedBank("all");
+          setSelectedCategory("all");
+          setOnlyUncategorized(false);
+          setSearch("");
+        }}
+        searchValue={search}
+        onSearchChange={setSearch}
+      >
+        {/* Month dropdown */}
         <div className="relative">
           <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className={selectClass}>
             <option value="all">Todos los meses</option>
@@ -367,6 +374,7 @@ export default function TransactionsPage() {
           <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
 
+        {/* Bank dropdown */}
         {bankOptions.length > 0 && (
           <div className="relative">
             <select value={selectedBank} onChange={(e) => setSelectedBank(e.target.value)} className={selectClass}>
@@ -381,6 +389,7 @@ export default function TransactionsPage() {
           </div>
         )}
 
+        {/* Category dropdown */}
         {categoryOptions.length > 0 && !onlyUncategorized && (
           <div className="relative">
             <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className={selectClass}>
@@ -391,6 +400,7 @@ export default function TransactionsPage() {
           </div>
         )}
 
+        {/* Uncategorized toggle */}
         <button
           onClick={() => { setOnlyUncategorized((v) => !v); setSelectedCategory("all"); }}
           className={`h-8 flex items-center gap-1.5 px-3 rounded-lg border text-[11px] font-medium transition-colors ${
@@ -402,7 +412,7 @@ export default function TransactionsPage() {
           <Tag size={11} strokeWidth={2} />
           Sin categoría
         </button>
-      </div>
+      </FilterPanel>
 
       {/* Summary cards — Fintoc balances */}
       <SummaryBar
@@ -414,8 +424,8 @@ export default function TransactionsPage() {
       />
 
       {/* Tabs */}
-      <Tabs defaultValue="all">
-        <TabsList className="bg-white border border-slate-100 rounded-xl p-1 h-auto">
+      <Tabs defaultValue="all" onValueChange={() => setPage(1)}>
+        <TabsList variant="line" className="border-b border-slate-200">
           {[
             { value: "all", label: "Todos", count: filteredAll.length },
             { value: "mine", label: "Personales", count: filteredMine.length },
@@ -424,7 +434,7 @@ export default function TransactionsPage() {
             <TabsTrigger
               key={value}
               value={value}
-              className="rounded-lg text-xs font-medium px-4 py-1.5 data-[state=active]:bg-luka-primary data-[state=active]:text-white data-[state=active]:shadow-sm"
+              className="text-xs font-medium px-4 py-1.5"
             >
               {label}
               <span className="ml-1.5 text-[10px] opacity-70">({count})</span>
