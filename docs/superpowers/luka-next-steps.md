@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-20
+**Date:** 2026-03-23
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -67,6 +67,26 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — transaction_type and account_kind missing from Pydantic TransactionResponse schema (FastAPI strips undeclared fields) ✅
 - **Bug fix** — Dashboard pie chart mixed income with expenses; now filters to expenses only ✅
 - **Bug fix** — Dashboard pie chart hid uncategorized transactions; now shows them as "Otros" so chart is always populated ✅
+- **Performance** — Eliminated triple auth call chain: middleware getUser()→getSession(), layout getUser() removed, backend sync Supabase SDK → local PyJWT+JWKS ✅
+- **Performance** — All 8 dashboard queries prefetched in StoreInitializer (was 2), BudgetPrefetcher removed ✅
+- **Performance** — Dynamic Recharts imports (~200KB deferred), Next.js optimizePackageImports ✅
+- **Performance** — Redis user profile cache (5-min TTL) in get_current_user ✅
+- **Performance** — Shared DB session via Depends(get_db) in get_current_user (was opening its own session) ✅
+- **Performance** — Connection pool tuning: pool_size=5, max_overflow=10, pool_recycle=3600 ✅
+- **Architecture** — CORS origins from config (settings.cors_origins env var) ✅
+- **Architecture** — CacheHeaderMiddleware: private, max-age=30 on GET endpoints ✅
+- **Architecture** — useImportStatus rewritten to use React Query refetchInterval ✅
+- **Architecture** — InactivityGuard: added visibilitychange listener ✅
+- **Cleanup** — Removed 2.9GB abandoned worktrees (.worktrees/) ✅
+- **Cleanup** — Moved Design ideas/ → docs/design-mockups/, Features Ideas/ deleted, railway.worker.md → docs/ ✅
+- **Cleanup** — Updated .gitignore: .superpowers, .cursor-plugin/, .claude-plugin/, .ruff_cache/ ✅
+- **Docs** — New product documentation: architecture.md, api-reference.md, deployment.md, development.md, roadmap.md ✅
+- **Docs** — Root README.md rewritten with tech stack, quick start, project structure ✅
+- **Docs** — frontend/README.md replaced (was default Next.js boilerplate) ✅
+- **Bug fix** — JWT auth: PyJWT+JWKS for ES256 (Supabase migrated to ECC P-256), fallback chain ES256→HS256→SDK ✅
+- **Bug fix** — Transaction dates shifted by timezone (UTC midnight → Chile UTC-3 = previous day); now parses date-only ✅
+- **Dependency** — Added PyJWT[crypto] to pyproject.toml ✅
+- **Config** — Added supabase_jwt_secret and cors_origins to Settings ✅
 
 ---
 
@@ -156,7 +176,7 @@ API key loaded in Railway.
 
 ## Phase 2: Infrastructure Setup ✅ COMPLETE
 
-- **2.1** Database migrations — done (`011 head`)
+- **2.1** Database migrations — done (`012 head`)
 - **2.2** Railway backend — live at `https://luka-production-eb87.up.railway.app`
 - **2.3** Vercel frontend — live at `https://luka-lovat.vercel.app`
 - **2.4** Supabase redirect URL configured for Vercel callback
@@ -222,16 +242,19 @@ Next: Enable login (blocking everything else)
   → 1.4 Google Cloud: create OAuth 2.0 credentials → enable in Supabase Auth → Google
   → 1.5 Azure: app registration + Mail.Read permission → enable in Supabase Auth → Azure
   → Test: can log in with real Google/Microsoft account
-  → Test: Fintoc widget opens and connects real bank account
 
 Next: Enable email pipeline
   → 1.4 GCP Pub/Sub topic + Gmail webhook push subscription
   → 1.5 Azure Mail.Read delegated permission
   → Test end-to-end: bank email → transaction captured → WhatsApp alert
 
+Next: P0 Features (see docs/roadmap.md)
+  → Transaction search & filtering (2-3 days)
+  → Category budget alerts via WhatsApp (1-2 days)
+  → Recurring transaction detection (2-3 days)
+
 Polish (optional, can do anytime):
   → 3.5 WhatsApp PIN verify (once WhatsApp credentials available)
-  → 3.7 Connected accounts list in settings (~1h)
   → Write a test transaction email and verify the full pipeline
 ```
 

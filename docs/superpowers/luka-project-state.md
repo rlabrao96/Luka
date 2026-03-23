@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-20 (session 2)
-**Status:** All 12 implementation plans complete. Fintoc integration is live. **WhatsApp Cloud API integration fully verified in Live Mode**. **Legal pages live**. **Budgeting waterfall fully implemented**. **Transactions page fully polished:** balance cards with Fintoc sync button, Todos/Personales/Compartidas tabs with correct counts, income/expense direction via transaction_type, parenthetical outflow format, per-type category lists, instant optimistic category updates, budget prefetching. **Dashboard pie chart shows expenses only, always populated** (income excluded; uncategorized → "Otros" so chart never shows empty state). Multiple production bugs fixed (SQLAlchemy FK metadata, GROUP BY, React #301/#418, schema missing fields).
+**Date:** 2026-03-23 (session 3)
+**Status:** Full project audit complete. **Performance overhaul:** eliminated triple auth call chain (3 Supabase API calls → 0 per navigation), local JWT validation via PyJWT+JWKS (ES256/RS256/HS256), Redis user profile cache, all 8 dashboard queries prefetched on login, dynamic Recharts imports (~200KB deferred), Next.js optimizePackageImports. **Architecture fixes:** CORS from config, cache headers middleware, shared DB session in get_current_user, React Query polling for import status, InactivityGuard visibilitychange. **Cleanup:** removed 2.9GB abandoned worktrees, reorganized docs. **New documentation:** architecture, API reference, deployment guide, development guide, feature roadmap. **Bug fixes:** timezone date display (UTC→Chile offset), JWT ES256 support for Supabase ECC P-256 keys.
 
 ---
 
@@ -35,7 +35,8 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   ├── core/
 │   │   ├── config.py               ← Pydantic Settings (all env vars)
 │   │   ├── database.py             ← async engine + AsyncSessionLocal
-│   │   └── security.py            ← Supabase JWT validation, get_current_user()
+│   │   ├── security.py            ← PyJWT JWKS validation (ES256/RS256/HS256), get_current_user()
+│   │   └── cache.py               ← Redis cache helpers (get/set/delete with TTL)
 │   ├── modules/
 │   │   ├── auth/                   ← User model + GET /auth/me
 │   │   ├── households/             ← Household, Member, Invite, BankAccount, Budget models
