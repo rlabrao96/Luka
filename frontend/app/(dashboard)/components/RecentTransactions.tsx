@@ -4,6 +4,9 @@ import { TrendingDown, TrendingUp, ChevronDown } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Transaction, api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
+import { TransactionCard } from "./TransactionCard";
+import { CategoryBottomSheet } from "./CategoryBottomSheet";
+import { SplitTypeEditor } from "./SplitTypeEditor";
 
 const EXPENSE_CATEGORIES = [
   "Alimentación",
@@ -62,6 +65,58 @@ function formatDate(iso: string) {
     year: "numeric",
   });
 }
+
+/* ─── useIsMobile hook ─── */
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 1023px)");
+    setIsMobile(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+  return isMobile;
+}
+
+/* ─── Date grouping utilities ─── */
+
+function getDateKey(iso: string): string {
+  return iso.split("T")[0];
+}
+
+function formatDateHeader(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (date.getTime() === today.getTime()) {
+    return `Hoy, ${date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}`;
+  }
+  if (date.getTime() === yesterday.getTime()) {
+    return `Ayer, ${date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}`;
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" });
+  }
+  return date.toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function groupByDate(txns: Transaction[]): Map<string, Transaction[]> {
+  const groups = new Map<string, Transaction[]>();
+  for (const txn of txns) {
+    const key = getDateKey(txn.transaction_date);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(txn);
+  }
+  return groups;
+}
+
+/* ─── CategoryCell (desktop inline dropdown) ─── */
 
 interface CategoryCellProps {
   txn: Transaction;
@@ -139,6 +194,8 @@ function CategoryCell({ txn }: CategoryCellProps) {
   );
 }
 
+/* ─── RecentTransactions ─── */
+
 interface RecentTransactionsProps {
   transactions: Transaction[];
   compact?: boolean;
@@ -148,6 +205,10 @@ export function RecentTransactions({
   transactions,
   compact = false,
 }: RecentTransactionsProps) {
+  const isMobile = useIsMobile();
+  const [categorySheet, setCategorySheet] = useState<Transaction | null>(null);
+  const queryClient = useQueryClient();
+
   if (!transactions.length) {
     return (
       <div className="py-12 flex flex-col items-center gap-3">
@@ -159,72 +220,166 @@ export function RecentTransactions({
     );
   }
 
+  async function handleCategorySelect(txn: Transaction, category: string | null) {
+    const patchCache = (old: Transaction[] | undefined) =>
+      old?.map((t) => (t.id === txn.id ? { ...t, category } : t));
+    queryClient.setQueriesData<Transaction[]>({ queryKey: ["transactions"] }, patchCache);
+
+    try {
+      await api.updateTransactionCategory(txn.id, category);
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    } catch {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    }
+  }
+
+  const dateGroups = groupByDate(transactions);
+
   return (
-    <div className="divide-y divide-slate-50">
-      {transactions.map((txn) => {
-        const isOutflow = txn.transaction_type !== "income";
-        const split = SPLIT_STYLES[txn.split_type ?? "personal"] ?? SPLIT_STYLES.personal;
+    <div className="space-y-1">
+      {Array.from(dateGroups.entries()).map(([dateKey, txns]) => (
+        <div key={dateKey}>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest pt-3 pb-1.5">
+            {formatDateHeader(dateKey)}
+          </p>
+          <div className="space-y-1.5">
+            {txns.map((txn) => {
+              /* Compact mode: simple card, no editing */
+              if (compact) {
+                return <TransactionCard key={txn.id} txn={txn} compact />;
+              }
 
-        return (
-          <div
-            key={txn.id}
-            className="flex items-center gap-4 py-3.5 group hover:bg-slate-50/50 -mx-1 px-1 rounded-lg transition-colors"
-          >
-            {/* Direction indicator */}
-            <div
-              className={cn(
-                "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-                isOutflow ? "bg-red-50" : "bg-emerald-50"
-              )}
-            >
-              {isOutflow ? (
-                <TrendingDown size={15} className="text-red-400" strokeWidth={2} />
-              ) : (
-                <TrendingUp size={15} className="text-emerald-500" strokeWidth={2} />
-              )}
-            </div>
+              /* Mobile non-compact: card layout with bottom sheet for category, SplitTypeEditor for split */
+              if (isMobile) {
+                const isOutflow = txn.transaction_type !== "income";
+                return (
+                  <div
+                    key={txn.id}
+                    className="bg-white rounded-xl p-3.5 border border-slate-100 shadow-[var(--shadow-card)]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center shrink-0"
+                        style={{
+                          background: isOutflow
+                            ? "linear-gradient(135deg, #fef2f2, #fecaca)"
+                            : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
+                        }}
+                      >
+                        {isOutflow ? (
+                          <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
+                        ) : (
+                          <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-baseline gap-2">
+                          <p className="text-sm font-semibold text-luka-dark truncate">
+                            {toTitleCase(txn.raw_merchant_name)}
+                          </p>
+                          <span
+                            className={cn(
+                              "text-[15px] font-bold tabular-nums shrink-0",
+                              isOutflow ? "text-luka-dark" : "text-luka-success"
+                            )}
+                          >
+                            {isOutflow
+                              ? formatCLP(Math.abs(Number(txn.amount)))
+                              : `+${formatCLP(Math.abs(Number(txn.amount)))}`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center mt-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] text-slate-400 shrink-0">
+                              {txn.bank_name ? toTitleCase(txn.bank_name) : "\u2014"}
+                            </span>
+                            <button
+                              onClick={() => setCategorySheet(txn)}
+                              className={cn(
+                                "text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80",
+                                txn.category
+                                  ? "bg-slate-100 text-slate-600"
+                                  : "bg-amber-50 text-amber-600"
+                              )}
+                            >
+                              {txn.category ?? "Sin categor\u00eda"}
+                            </button>
+                          </div>
+                          <SplitTypeEditor txn={txn} isMobile={true} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
 
-            {/* Merchant + bank */}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-luka-dark truncate leading-tight">
-                {toTitleCase(txn.raw_merchant_name)}
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {txn.bank_name ? toTitleCase(txn.bank_name) : "—"}
-                {" · "}
-                {formatDate(txn.transaction_date)}
-              </p>
-            </div>
-
-            {/* Category + split + amount */}
-            <div className={cn("flex items-center shrink-0", compact && "gap-2")}>
-              {!compact && (
-                <div className="w-28">
-                  <CategoryCell txn={txn} />
-                </div>
-              )}
-              <div className="w-24 flex justify-center">
-                <span
-                  className={cn(
-                    "text-[10px] font-semibold px-2 py-0.5 rounded-full border",
-                    split.className
-                  )}
+              /* Desktop non-compact: card layout with inline CategoryCell and SplitTypeEditor */
+              const isOutflow = txn.transaction_type !== "income";
+              return (
+                <div
+                  key={txn.id}
+                  className="bg-white rounded-xl p-3.5 border border-slate-100 shadow-[var(--shadow-card)] flex items-center gap-3"
                 >
-                  {split.label}
-                </span>
-              </div>
-              <span
-                className={cn(
-                  "text-sm font-bold tabular-nums w-28 text-right",
-                  isOutflow ? "text-luka-dark" : "text-luka-success"
-                )}
-              >
-                {isOutflow ? `(${formatCLP(Math.abs(Number(txn.amount)))})` : `+${formatCLP(Math.abs(Number(txn.amount)))}`}
-              </span>
-            </div>
+                  <div
+                    className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center shrink-0"
+                    style={{
+                      background: isOutflow
+                        ? "linear-gradient(135deg, #fef2f2, #fecaca)"
+                        : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
+                    }}
+                  >
+                    {isOutflow ? (
+                      <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
+                    ) : (
+                      <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline gap-2">
+                      <p className="text-sm font-semibold text-luka-dark truncate">
+                        {toTitleCase(txn.raw_merchant_name)}
+                      </p>
+                      <span
+                        className={cn(
+                          "text-[15px] font-bold tabular-nums shrink-0",
+                          isOutflow ? "text-luka-dark" : "text-luka-success"
+                        )}
+                      >
+                        {isOutflow
+                          ? formatCLP(Math.abs(Number(txn.amount)))
+                          : `+${formatCLP(Math.abs(Number(txn.amount)))}`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center mt-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] text-slate-400 shrink-0">
+                          {txn.bank_name ? toTitleCase(txn.bank_name) : "\u2014"}
+                        </span>
+                        <CategoryCell txn={txn} />
+                      </div>
+                      <SplitTypeEditor txn={txn} isMobile={false} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
+        </div>
+      ))}
+
+      {/* Mobile category bottom sheet */}
+      {categorySheet && (
+        <CategoryBottomSheet
+          open={!!categorySheet}
+          onClose={() => setCategorySheet(null)}
+          currentCategory={categorySheet.category}
+          isIncome={categorySheet.transaction_type === "income"}
+          onSelect={(cat) => {
+            handleCategorySelect(categorySheet, cat);
+            setCategorySheet(null);
+          }}
+        />
+      )}
     </div>
   );
 }
