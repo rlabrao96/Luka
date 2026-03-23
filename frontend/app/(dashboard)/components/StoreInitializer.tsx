@@ -68,16 +68,24 @@ export function StoreInitializer({ userId, householdId, userFullName }: Props) {
         queryFn: () => api.getBudgetStatus(householdId),
         staleTime,
       });
-      queryClient.prefetchQuery({
-        queryKey: ["personalBudget", householdId, month],
-        queryFn: () => api.getPersonalBudget(householdId, month),
-        staleTime,
+      // Prefetch budget data for current month + 2 previous months
+      const budgetMonths = [0, -1, -2].map((offset) => {
+        const d = new Date();
+        d.setMonth(d.getMonth() + offset);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
       });
-      queryClient.prefetchQuery({
-        queryKey: ["allocation", householdId, month],
-        queryFn: () => api.getAllocation(householdId, month),
-        staleTime,
-      });
+      for (const m of budgetMonths) {
+        queryClient.prefetchQuery({
+          queryKey: ["personalBudget", householdId, m],
+          queryFn: () => api.getPersonalBudget(householdId, m),
+          staleTime,
+        });
+        queryClient.prefetchQuery({
+          queryKey: ["allocation", householdId, m],
+          queryFn: () => api.getAllocation(householdId, m),
+          staleTime,
+        });
+      }
       queryClient.prefetchQuery({
         queryKey: ["bank-accounts", householdId],
         queryFn: () => api.getBankAccounts(householdId),
