@@ -78,6 +78,11 @@ export function StoreInitializer({ userId, householdId, userFullName }: Props) {
         queryFn: () => api.getAllocation(householdId, month),
         staleTime,
       });
+      queryClient.prefetchQuery({
+        queryKey: ["bank-accounts", householdId],
+        queryFn: () => api.getBankAccounts(householdId),
+        staleTime: 60 * 1000,
+      });
     } else if (userId) {
       if (!window.location.pathname.includes("/onboarding")) {
         router.push("/onboarding/setup-household");
