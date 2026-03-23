@@ -36,7 +36,7 @@ Luka's frontend is functional but generic. Most users access it on mobile where 
 **New behavior:**
 - **Mobile (<lg):** Stack vertically. Each card is a full-width row: icon + label + full amount. Bank name as trailing text.
 - **Desktop (lg+):** Keep current 3-column grid, no changes needed.
-- Sync button moves into the shared account card row.
+- Sync button stays as a standalone row above the cards (it refreshes all accounts, not just shared).
 
 ### Filters
 
