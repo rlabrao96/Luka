@@ -8,11 +8,16 @@ class UserResponse(BaseModel):
     full_name: str
     email_provider: str
     whatsapp_verified: bool
+    phone_whatsapp: str | None = None
     household_id: uuid.UUID | None = None
-
     model_config = {"from_attributes": True}
 
 
 class WhatsAppVerifyRequest(BaseModel):
-    phone: str  # e.g. "+56912345678"
-    pin: str  # 6-digit pin
+    phone: str
+    pin: str
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str | None = None
+    phone_whatsapp: str | None = None
