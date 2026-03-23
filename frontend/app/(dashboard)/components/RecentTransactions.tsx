@@ -69,7 +69,6 @@ interface CategoryCellProps {
 
 function CategoryCell({ txn }: CategoryCellProps) {
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [localCategory, setLocalCategory] = useState(txn.category);
   const queryClient = useQueryClient();
 
@@ -81,16 +80,18 @@ function CategoryCell({ txn }: CategoryCellProps) {
 
   async function handleSelect(cat: string | null) {
     setOpen(false);
-    setSaving(true);
-    setLocalCategory(cat); // optimistic update
+    setLocalCategory(cat); // instant UI update
+
+    // Optimistically patch cached transaction lists so the whole page reflects the change
+    const patchCache = (old: Transaction[] | undefined) =>
+      old?.map((t) => (t.id === txn.id ? { ...t, category: cat } : t));
+    queryClient.setQueriesData<Transaction[]>({ queryKey: ["transactions"] }, patchCache);
+
     try {
       await api.updateTransactionCategory(txn.id, cat);
-      // Invalidate by prefix — avoids key-mismatch issues with getSince() date strings
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
     } catch {
       setLocalCategory(txn.category); // revert on error
-    } finally {
-      setSaving(false);
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
     }
   }
 
@@ -98,16 +99,14 @@ function CategoryCell({ txn }: CategoryCellProps) {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        disabled={saving}
         className={cn(
           "flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors",
           localCategory
             ? "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-            : "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100",
-          saving && "opacity-50 cursor-wait"
+            : "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100"
         )}
       >
-        <span>{saving ? "..." : (localCategory ?? "Sin categoría")}</span>
+        <span>{localCategory ?? "Sin categoría"}</span>
         <ChevronDown size={10} />
       </button>
       {open && (
