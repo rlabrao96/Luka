@@ -25,7 +25,7 @@ export function KpiCard({
   return (
     <div
       className={cn(
-        "bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-3",
+        "bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4 flex flex-col gap-3",
         className
       )}
     >
