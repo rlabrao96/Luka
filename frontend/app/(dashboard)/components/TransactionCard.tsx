@@ -5,8 +5,8 @@ import type { Transaction } from "@/app/lib/api";
 
 const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
   personal: { label: "Personal", className: "bg-blue-50 text-blue-600" },
-  partner: { label: "Pareja", className: "bg-purple-50 text-purple-600" },
-  shared: { label: "Compartido", className: "bg-emerald-50 text-emerald-600" },
+  partner: { label: "Personal", className: "bg-blue-50 text-blue-600" },
+  shared: { label: "Hogar", className: "bg-emerald-50 text-emerald-600" },
 };
 
 function toTitleCase(str: string) {
@@ -81,21 +81,21 @@ export function TransactionCard({
                 {txn.bank_name ? toTitleCase(txn.bank_name) : "—"}
               </span>
               {compact ? (
-                <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
+                <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded w-[90px] text-center truncate", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
                   {category ?? "Sin categoría"}
                 </span>
               ) : (
-                <button onClick={() => onCategoryTap?.(txn)} className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
+                <button onClick={() => onCategoryTap?.(txn)} className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded w-[90px] text-center truncate cursor-pointer hover:opacity-80", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
                   {category ?? "Sin categoría"}
                 </button>
               )}
             </div>
             {compact ? (
-              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0", split.className)}>
+              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 w-[60px] text-center", split.className)}>
                 {split.label}
               </span>
             ) : (
-              <button onClick={() => onSplitTap?.(txn)} className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 cursor-pointer hover:opacity-80", split.className)}>
+              <button onClick={() => onSplitTap?.(txn)} className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 w-[60px] text-center cursor-pointer hover:opacity-80", split.className)}>
                 {split.label}
               </button>
             )}

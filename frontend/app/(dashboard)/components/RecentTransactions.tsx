@@ -38,8 +38,8 @@ const INCOME_CATEGORIES = [
 
 const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
   personal: { label: "Personal", className: "bg-blue-50 text-blue-600 border-blue-100" },
-  partner: { label: "Pareja", className: "bg-purple-50 text-purple-600 border-purple-100" },
-  shared: { label: "Compartido", className: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+  partner: { label: "Personal", className: "bg-blue-50 text-blue-600 border-blue-100" },
+  shared: { label: "Hogar", className: "bg-emerald-50 text-emerald-600 border-emerald-100" },
 };
 
 function toTitleCase(str: string) {
