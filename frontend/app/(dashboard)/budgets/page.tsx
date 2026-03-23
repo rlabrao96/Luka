@@ -1,9 +1,14 @@
 "use client";
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { usePersonalBudget, useAllocation, useSaveAllocation } from "@/app/lib/hooks/useBudget";
-import PaceChart from "@/app/(dashboard)/components/PaceChart";
 import AllocationCard from "@/app/(dashboard)/components/AllocationCard";
 import WaterfallCards from "@/app/(dashboard)/components/WaterfallCards";
+
+const PaceChart = dynamic(
+  () => import("@/app/(dashboard)/components/PaceChart"),
+  { ssr: false, loading: () => <div className="h-[250px] animate-pulse bg-slate-100 rounded-xl" /> },
+);
 
 function CLP(n: number) {
   return `$${Math.round(n).toLocaleString("es-CL")}`;

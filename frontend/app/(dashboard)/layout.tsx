@@ -2,14 +2,15 @@ import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
 import { StoreInitializer } from "./components/StoreInitializer";
 import { InactivityGuard } from "./components/InactivityGuard";
-import { BudgetPrefetcher } from "./components/BudgetPrefetcher";
 import { createClient } from "@/app/lib/supabase/server";
 import { redirect } from "next/navigation";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  // getUser() validates against Supabase server — prevents expired-cookie false positives
-  const { data: { user: authUser } } = await supabase.auth.getUser();
+  // Use getSession() (reads cookie locally, ~0ms) instead of getUser() (external API, ~50-100ms).
+  // Backend validates the JWT on /auth/me — no need to double-validate here.
+  const { data: { session } } = await supabase.auth.getSession();
+  const authUser = session?.user ?? null;
 
   if (!authUser) {
     redirect("/login");
@@ -18,13 +19,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Fetch user profile once here (SSR) — pass to StoreInitializer so client
   // queries can fire immediately without a client-side getMe() waterfall.
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-  const { data: { session } } = await supabase.auth.getSession();
 
   let userData: { id: string; full_name: string; household_id: string | null } | null = null;
   try {
     const res = await fetch(`${apiUrl}/auth/me`, {
       headers: { Authorization: `Bearer ${session?.access_token}` },
-      cache: "no-store",
+      next: { revalidate: 60 },
     });
     if (res.ok) userData = await res.json();
   } catch {
@@ -43,7 +43,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         userFullName={userData?.full_name ?? null}
       />
       <InactivityGuard />
-      <BudgetPrefetcher />
       {/* Sidebar — desktop only */}
       <Sidebar />
       {/* Main scrolling area */}

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
-from core.database import AsyncSessionLocal
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.database import get_db
 from core.security import get_current_user
 from modules.auth.models import User
 from modules.auth.schemas import UserResponse
@@ -10,13 +12,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(HouseholdMember.household_id).where(HouseholdMember.user_id == current_user.id)
-        )
-        row = result.first()
-        household_id = row[0] if row else None
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(HouseholdMember.household_id).where(HouseholdMember.user_id == current_user.id)
+    )
+    row = result.first()
+    household_id = row[0] if row else None
 
     return UserResponse(
         id=current_user.id,

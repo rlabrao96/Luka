@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_key: str = ""
+    supabase_jwt_secret: str = ""  # Supabase Dashboard > Settings > API > JWT Secret
     redis_url: str = "redis://localhost:6379"
     pubsub_audience: str = ""
     outlook_client_state: str = "dev-secret"
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
     fintoc_api_key: str = ""
     openai_api_key: str = ""
     frontend_url: str = "http://localhost:3000"
+    cors_origins: str = ""  # Comma-separated additional CORS origins
     environment: str = "development"
     gcp_project_id: str = "luka-project"
 

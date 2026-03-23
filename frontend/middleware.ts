@@ -22,12 +22,15 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // Use getSession() instead of getUser() — reads JWT from cookie locally
+  // (nearly free) rather than making an external Supabase API call (~50-100ms).
+  // Real auth validation happens server-side in the backend's get_current_user().
   let user = null;
   try {
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
+    const { data: { session } } = await supabase.auth.getSession();
+    user = session?.user ?? null;
   } catch {
-    // If Supabase is unreachable, fail open and let the page handle auth
+    // If cookie parsing fails, fail open and let the page handle auth
   }
 
   const { pathname } = request.nextUrl;

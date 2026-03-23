@@ -1,10 +1,19 @@
 "use client";
 import { useMemo } from "react";
-import { CreditCard, Users, Wallet, TrendingUp, BarChart3 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { CreditCard, Users, Wallet, BarChart3 } from "lucide-react";
 import { KpiCard } from "./components/KpiCard";
-import { SpendingChart } from "./components/SpendingChart";
-import { CategoryDonut } from "./components/CategoryDonut";
 import { RecentTransactions } from "./components/RecentTransactions";
+
+// Lazy-load chart components (~200KB Recharts bundle) — not needed for initial paint
+const SpendingChart = dynamic(
+  () => import("./components/SpendingChart").then((m) => ({ default: m.SpendingChart })),
+  { ssr: false, loading: () => <div className="h-[200px] animate-pulse bg-slate-100 rounded-xl" /> },
+);
+const CategoryDonut = dynamic(
+  () => import("./components/CategoryDonut").then((m) => ({ default: m.CategoryDonut })),
+  { ssr: false, loading: () => <div className="h-[200px] animate-pulse bg-slate-100 rounded-xl" /> },
+);
 import { useMyTransactions, useSharedTransactions, useMonthlySpending } from "@/app/lib/hooks/useTransactions";
 import { useHouseholdSummary } from "@/app/lib/hooks/useHousehold";
 import { useBudgetStatus } from "@/app/lib/hooks/useBudget";
