@@ -155,14 +155,14 @@ function CategoryCell({ txn }: CategoryCellProps) {
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors",
+          "flex items-center justify-between gap-1 text-[11px] font-medium px-2 py-1 rounded-md border transition-colors w-[110px]",
           localCategory
             ? "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
             : "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100"
         )}
       >
-        <span>{localCategory ?? "Sin categoría"}</span>
-        <ChevronDown size={10} />
+        <span className="truncate">{localCategory ?? "Sin categoría"}</span>
+        <ChevronDown size={10} className="shrink-0" />
       </button>
       {open && (
         <>

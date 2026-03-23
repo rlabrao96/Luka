@@ -50,7 +50,7 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
           onClick={() => setOpen(true)}
           disabled={saving}
           className={cn(
-            "text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 cursor-pointer hover:opacity-80",
+            "text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 cursor-pointer hover:opacity-80 w-[60px] text-center",
             current.className,
             saving && "opacity-50"
           )}
@@ -85,13 +85,13 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
         onClick={() => setOpen((v) => !v)}
         disabled={saving}
         className={cn(
-          "flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80",
+          "flex items-center justify-between gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 w-[70px]",
           current.className,
           saving && "opacity-50"
         )}
       >
-        {current.label}
-        <ChevronDown size={8} />
+        <span className="truncate">{current.label}</span>
+        <ChevronDown size={8} className="shrink-0" />
       </button>
       {open && (
         <>
