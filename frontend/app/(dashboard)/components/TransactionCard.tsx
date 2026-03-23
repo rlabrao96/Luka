@@ -80,31 +80,25 @@ export function TransactionCard({
               <span className="text-[10px] text-slate-400 shrink-0">
                 {txn.bank_name ? toTitleCase(txn.bank_name) : "—"}
               </span>
-              <button
-                onClick={compact ? undefined : () => onCategoryTap?.(txn)}
-                disabled={compact}
-                className={cn(
-                  "text-[10px] font-medium px-1.5 py-0.5 rounded",
-                  category
-                    ? "bg-slate-100 text-slate-600"
-                    : "bg-amber-50 text-amber-600",
-                  !compact && "cursor-pointer hover:opacity-80"
-                )}
-              >
-                {category ?? "Sin categoría"}
-              </button>
-            </div>
-            <button
-              onClick={compact ? undefined : () => onSplitTap?.(txn)}
-              disabled={compact}
-              className={cn(
-                "text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0",
-                split.className,
-                !compact && "cursor-pointer hover:opacity-80"
+              {compact ? (
+                <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
+                  {category ?? "Sin categoría"}
+                </span>
+              ) : (
+                <button onClick={() => onCategoryTap?.(txn)} className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
+                  {category ?? "Sin categoría"}
+                </button>
               )}
-            >
-              {split.label}
-            </button>
+            </div>
+            {compact ? (
+              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0", split.className)}>
+                {split.label}
+              </span>
+            ) : (
+              <button onClick={() => onSplitTap?.(txn)} className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 cursor-pointer hover:opacity-80", split.className)}>
+                {split.label}
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -129,7 +129,7 @@ export default function DashboardPage() {
       {/* ── Charts ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Spending trend */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-sm font-semibold text-luka-dark">Tendencia de gastos</h2>
@@ -140,7 +140,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Category donut */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
           <div className="mb-4">
             <h2 className="text-sm font-semibold text-luka-dark">Por categoría</h2>
             <p className="text-xs text-luka-muted mt-0.5">Este mes</p>

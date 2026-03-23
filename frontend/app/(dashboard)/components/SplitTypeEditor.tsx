@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { ChevronDown } from "lucide-react";
@@ -22,6 +22,10 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
   const [saving, setSaving] = useState(false);
   const [localSplit, setLocalSplit] = useState(txn.split_type ?? "personal");
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setLocalSplit(txn.split_type ?? "personal");
+  }, [txn.split_type]);
 
   const current = SPLIT_OPTIONS.find((o) => o.value === localSplit) ?? SPLIT_OPTIONS[0];
 
