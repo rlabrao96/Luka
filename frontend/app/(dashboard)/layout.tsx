@@ -46,7 +46,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Sidebar — desktop only */}
       <Sidebar />
       {/* Main scrolling area */}
-      <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
+      <main className="flex-1 overflow-y-auto pb-24 lg:pb-0">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {children}
         </div>

@@ -5,11 +5,11 @@ import { LayoutDashboard, CreditCard, Users, Wallet, Settings } from "lucide-rea
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/",             label: "Inicio",       icon: LayoutDashboard },
-  { href: "/transactions", label: "Gastos",        icon: CreditCard      },
-  { href: "/household",    label: "Hogar",          icon: Users           },
-  { href: "/budgets",      label: "Presupuesto",   icon: Wallet          },
-  { href: "/settings",     label: "Config",         icon: Settings        },
+  { href: "/",             label: "Inicio",      icon: LayoutDashboard },
+  { href: "/transactions", label: "Gastos",       icon: CreditCard      },
+  { href: "/household",    label: "Hogar",         icon: Users           },
+  { href: "/budgets",      label: "Presupuesto",  icon: Wallet          },
+  { href: "/settings",     label: "Config",        icon: Settings        },
 ];
 
 export function BottomNav() {
@@ -18,7 +18,21 @@ export function BottomNav() {
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur border-t border-slate-200 flex z-50 lg:hidden">
+    <nav
+      className={cn(
+        "fixed left-3 right-3 z-50 lg:hidden",
+        /* Lift above the home indicator: 8px base + iOS safe area */
+        "bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))]",
+        /* Floating card style */
+        "bg-white/95 backdrop-blur-lg",
+        "rounded-2xl",
+        "shadow-[0_2px_24px_rgba(0,0,0,0.10)]",
+        "border border-slate-100",
+        /* Layout */
+        "flex items-center",
+        "px-1 py-1"
+      )}
+    >
       {NAV.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
         return (
@@ -26,8 +40,11 @@ export function BottomNav() {
             key={href}
             href={href}
             className={cn(
-              "flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-[10px] font-medium transition-colors",
-              active ? "text-luka-primary" : "text-slate-400"
+              "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl transition-all duration-200",
+              "text-[10px] font-medium",
+              active
+                ? "text-luka-primary bg-luka-primary-light/60"
+                : "text-slate-400 active:bg-slate-50"
             )}
           >
             <Icon size={20} strokeWidth={active ? 2.2 : 1.7} />
