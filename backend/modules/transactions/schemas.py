@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from pydantic import BaseModel
 
 
@@ -24,3 +25,7 @@ class TransactionResponse(BaseModel):
 
 class CategoryUpdateRequest(BaseModel):
     category: str | None
+
+
+class SplitTypeUpdateRequest(BaseModel):
+    split_type: Literal["personal", "shared", "partner"]

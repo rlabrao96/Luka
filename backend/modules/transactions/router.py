@@ -8,7 +8,11 @@ from core.security import get_current_user
 from modules.auth.models import User
 from modules.households.auth import require_membership
 from modules.transactions import service
-from modules.transactions.schemas import TransactionResponse, CategoryUpdateRequest
+from modules.transactions.schemas import (
+    TransactionResponse,
+    CategoryUpdateRequest,
+    SplitTypeUpdateRequest,
+)
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -55,6 +59,19 @@ async def update_category(
     current_user: User = Depends(get_current_user),
 ):
     found = await service.update_category(db, transaction_id, current_user.id, body.category)
+    if not found:
+        raise HTTPException(404, "Transaction not found")
+    return {"ok": True}
+
+
+@router.patch("/{transaction_id}/split-type")
+async def update_split_type(
+    transaction_id: uuid.UUID,
+    body: SplitTypeUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    found = await service.update_split_type(db, transaction_id, current_user.id, body.split_type)
     if not found:
         raise HTTPException(404, "Transaction not found")
     return {"ok": True}

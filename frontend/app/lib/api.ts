@@ -297,6 +297,12 @@ export const api = {
       body: JSON.stringify({ category }),
     }),
 
+  updateTransactionSplitType: (transactionId: string, splitType: string) =>
+    apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/split-type`, {
+      method: "PATCH",
+      body: JSON.stringify({ split_type: splitType }),
+    }),
+
   getPersonalBudget: (householdId: string, month?: string) =>
     apiFetch<PersonalBudgetResponse>(
       `/budgets/personal/${householdId}${month ? `?month=${month}` : ""}`

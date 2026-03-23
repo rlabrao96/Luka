@@ -143,3 +143,21 @@ async def update_category(
     txn.category = category
     await db.commit()
     return True
+
+
+async def update_split_type(
+    db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID, split_type: str
+) -> bool:
+    """Update transaction split type. Returns False if not found or not owned."""
+    result = await db.execute(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.user_id == user_id,
+        )
+    )
+    txn = result.scalar_one_or_none()
+    if not txn:
+        return False
+    txn.split_type = split_type
+    await db.commit()
+    return True
