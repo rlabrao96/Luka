@@ -28,16 +28,38 @@ async def get_current_user(
     token = credentials.credentials
 
     # Decode JWT locally — no network call, ~0ms
+    # Accept both HS256 and RS256 (Supabase uses HS256 by default)
     try:
         payload = jwt.decode(
             token,
             settings.supabase_jwt_secret,
-            algorithms=["HS256"],
+            algorithms=["HS256", "RS256"],
             audience="authenticated",
         )
     except JWTError as e:
         logger.warning("JWT validation failed: %s", e)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+        # Fallback: if local JWT validation fails (e.g. missing/wrong secret),
+        # use the Supabase SDK to validate against the server.
+        try:
+            from supabase import create_client
+
+            sb = create_client(settings.supabase_url, settings.supabase_anon_key)
+            user_response = sb.auth.get_user(token)
+            su = user_response.user
+            if not su:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+            payload = {
+                "email": su.email,
+                "sub": su.id,
+                "user_metadata": su.user_metadata or {},
+                "app_metadata": su.app_metadata or {},
+            }
+        except HTTPException:
+            raise
+        except Exception as e2:
+            logger.exception("Supabase fallback auth also failed: %s", e2)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     email = payload.get("email")
     sub = payload.get("sub")
