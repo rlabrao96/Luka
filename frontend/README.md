@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Luka Frontend
 
-## Getting Started
+Next.js 14 (App Router) dashboard for Luka personal finance.
 
-First, run the development server:
+## Tech Stack
+
+- **Next.js 14** — App Router, SSR for auth, client components for interactivity
+- **Tailwind CSS 4** — Custom design tokens (`luka-primary`, `luka-light`, etc.)
+- **shadcn/ui** — Button, Card, Tabs, Table, Badge, Avatar, Input, Separator
+- **Recharts** — SpendingChart, CategoryDonut, PaceChart
+- **TanStack Query** — Server state with 5-min staleTime
+- **Zustand** — Client state (userId, householdId), persisted to localStorage
+- **Supabase JS** — Auth (Google + Microsoft OAuth)
+
+## Local Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local   # Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_API_URL
+npm install
+npm run dev                         # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Pages
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Route | Description |
+|-------|-------------|
+| `/` | Dashboard home — KPIs, spending chart, category donut, recent transactions |
+| `/transactions` | Full transaction list with Todos/Personales/Compartidas tabs |
+| `/budgets` | Month selector, income, pace chart, allocation editor, waterfall cards |
+| `/household` | Partner contribution stats and pie chart |
+| `/settings` | Connected bank accounts, sign-out |
+| `/login` | Google + Microsoft OAuth buttons |
+| `/onboarding/*` | Setup household, connect bank, verify WhatsApp |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deployment
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployed on Vercel. Environment variables configured in Vercel project settings.

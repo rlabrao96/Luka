@@ -26,3 +26,13 @@ node_modules/
 # Secrets baseline (detect-secrets)
 .secrets.baseline
 .claude/worktrees/
+
+# IDE plugins
+.cursor-plugin/
+.claude-plugin/
+
+# Superpowers framework (git submodule, managed separately)
+.superpowers
+
+# Ruff cache
+.ruff_cache/
