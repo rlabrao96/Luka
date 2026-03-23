@@ -25,6 +25,15 @@
   /* Keep luka-light for backwards compat */
   --color-luka-light:          #DBEAFE;
 
+  /* Direction icon gradients (used as inline styles, documented here for reference) */
+  /* Expense: linear-gradient(135deg, #fef2f2, #fecaca) */
+  /* Income:  linear-gradient(135deg, #ecfdf5, #d1fae5) */
+
+  /* Card shadow scale */
+  --shadow-card:     0 1px 3px rgba(0,0,0,0.03);
+  --shadow-card-hover: 0 2px 8px rgba(0,0,0,0.06);
+  --shadow-elevated: 0 -4px 24px rgba(0,0,0,0.12);
+
   --font-sans: var(--font-dm-sans);
   --font-mono: var(--font-geist-mono);
 
@@ -113,4 +122,13 @@
   html {
     @apply font-sans;
   }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slide-up 300ms ease-out;
 }
