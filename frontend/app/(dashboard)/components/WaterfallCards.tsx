@@ -33,7 +33,7 @@ export default function WaterfallCards({ budget }: Props) {
     <div className="space-y-3">
       {/* Household card — waterfall mode only */}
       {mode === "waterfall" && household && (
-        <Card className="bg-white">
+        <Card className="bg-white rounded-xl shadow-[var(--shadow-card)]">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-gray-800">Hogar</CardTitle>
           </CardHeader>
@@ -56,8 +56,8 @@ export default function WaterfallCards({ budget }: Props) {
                   <span
                     className={
                       household.available !== null && household.available >= 0
-                        ? "text-emerald-600 font-semibold"
-                        : "text-red-500 font-semibold"
+                        ? "text-emerald-600 text-lg font-bold"
+                        : "text-red-500 text-lg font-bold"
                     }
                   >
                     {household.available !== null
@@ -79,7 +79,7 @@ export default function WaterfallCards({ budget }: Props) {
       )}
 
       {/* Personal card */}
-      <Card className="bg-white">
+      <Card className="bg-white rounded-xl shadow-[var(--shadow-card)]">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-gray-800">Personal</CardTitle>
         </CardHeader>
@@ -127,7 +127,7 @@ export default function WaterfallCards({ budget }: Props) {
           )}
 
           <div
-            className={`text-xs font-semibold text-right ${
+            className={`text-lg font-bold text-right ${
               personal.available >= 0 ? "text-emerald-600" : "text-red-500"
             }`}
           >

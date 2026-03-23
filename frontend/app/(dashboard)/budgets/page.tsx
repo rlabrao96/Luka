@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import dynamic from "next/dynamic";
 import { usePersonalBudget, useAllocation, useSaveAllocation } from "@/app/lib/hooks/useBudget";
 import AllocationCard from "@/app/(dashboard)/components/AllocationCard";
@@ -52,36 +53,40 @@ export default function BudgetsPage() {
       </div>
 
       {/* Month selector */}
-      <div className="flex items-center gap-3 text-sm">
-        <button onClick={prevMonth} className="text-gray-400 hover:text-gray-800">
-          ‹
+      <div className="flex items-center gap-3">
+        <button
+          onClick={prevMonth}
+          className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:border-luka-primary transition-colors shadow-[var(--shadow-card)]"
+        >
+          <ChevronLeft size={16} className="text-slate-600" />
         </button>
-        <span className="font-medium text-gray-800 capitalize">
+        <span className="text-sm font-semibold text-luka-dark capitalize min-w-[140px] text-center">
           {selectedMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
         </span>
         <button
           onClick={nextMonth}
           disabled={isCurrentMonth}
-          className="text-gray-400 hover:text-gray-800 disabled:opacity-30"
+          className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:border-luka-primary disabled:opacity-30 transition-colors shadow-[var(--shadow-card)]"
         >
-          ›
+          <ChevronRight size={16} className="text-slate-600" />
         </button>
       </div>
 
-      {/* Income header */}
-      <div className="text-sm text-gray-400">
-        {budget && budget.income > 0 ? (
-          <span>
-            Ingresos: <span className="text-gray-900 font-semibold">{CLP(budget.income)}</span>
-          </span>
-        ) : (
-          <span className="text-gray-400">Conecta tu banco para ver tus ingresos</span>
-        )}
-      </div>
+      {/* Income card */}
+      {budget && budget.income > 0 ? (
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
+          <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">Ingresos del mes</p>
+          <p className="text-[22px] font-bold text-luka-dark mt-1 tabular-nums">{CLP(budget.income)}</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
+          <p className="text-sm text-slate-400">Conecta tu banco para ver tus ingresos</p>
+        </div>
+      )}
 
       {/* Pace chart */}
       {budget?.pace && (
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
             Ritmo de gastos
           </p>

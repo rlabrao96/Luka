@@ -34,7 +34,7 @@ export default function AllocationCard({ allocation, income, month, onSave, isSa
 
   if (!isEditing) {
     return (
-      <Card className="bg-white">
+      <Card className="bg-white shadow-[var(--shadow-card)]">
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-semibold text-gray-800">Tu presupuesto</CardTitle>
           <button
@@ -62,7 +62,7 @@ export default function AllocationCard({ allocation, income, month, onSave, isSa
   }
 
   return (
-    <Card className="bg-white">
+    <Card className="bg-white shadow-[var(--shadow-card)]">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold text-gray-800">Tu presupuesto</CardTitle>
       </CardHeader>
@@ -100,7 +100,7 @@ export default function AllocationCard({ allocation, income, month, onSave, isSa
             step={5}
             value={hogar}
             onChange={(e) => setHogar(Number(e.target.value))}
-            className="w-full accent-sky-500"
+            className="luka-slider w-full"
           />
         </div>
 
@@ -119,7 +119,7 @@ export default function AllocationCard({ allocation, income, month, onSave, isSa
             step={5}
             value={ahorro}
             onChange={(e) => setAhorro(Number(e.target.value))}
-            className="w-full accent-blue-600"
+            className="luka-slider w-full"
           />
         </div>
 

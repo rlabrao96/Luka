@@ -132,3 +132,31 @@
 .animate-slide-up {
   animation: slide-up 300ms ease-out;
 }
+
+input[type="range"].luka-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  outline: none;
+}
+input[type="range"].luka-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  background: #2563eb;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 3px solid white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+input[type="range"].luka-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  background: #2563eb;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 3px solid white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
