@@ -197,16 +197,22 @@ export function RecentTransactions({
             </div>
 
             {/* Category + split + amount */}
-            <div className={cn("flex items-center gap-2.5 shrink-0", compact && "gap-2")}>
-              {!compact && <CategoryCell txn={txn} />}
-              <span
-                className={cn(
-                  "text-[10px] font-semibold px-2 py-0.5 rounded-full border",
-                  split.className
-                )}
-              >
-                {split.label}
-              </span>
+            <div className={cn("flex items-center shrink-0", compact && "gap-2")}>
+              {!compact && (
+                <div className="w-28">
+                  <CategoryCell txn={txn} />
+                </div>
+              )}
+              <div className="w-24 flex justify-center">
+                <span
+                  className={cn(
+                    "text-[10px] font-semibold px-2 py-0.5 rounded-full border",
+                    split.className
+                  )}
+                >
+                  {split.label}
+                </span>
+              </div>
               <span
                 className={cn(
                   "text-sm font-bold tabular-nums w-28 text-right",
