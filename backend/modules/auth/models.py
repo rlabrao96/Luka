@@ -12,7 +12,7 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     full_name: Mapped[str] = mapped_column(String, nullable=False)
-    # phone_whatsapp stored in Supabase Vault — not a DB column
+    phone_whatsapp: Mapped[str | None] = mapped_column(String, nullable=True)
     whatsapp_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     email_provider: Mapped[str] = mapped_column(String, default="gmail")
     mail_watch_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
