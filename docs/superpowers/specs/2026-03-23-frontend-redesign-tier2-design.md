@@ -94,6 +94,10 @@ Complete redesign. Single scrollable page with card sections (white bg, rounded-
 - Red "Eliminar cuenta" button, disabled until input matches
 - Calls `DELETE /auth/me` with header `X-Confirm-Delete: ELIMINAR`
 
+### Sign Out
+
+Intentionally excluded from Settings. Sign out is already available in the Sidebar (desktop) and BottomNav (mobile). No duplication needed.
+
 ### Mobile Considerations
 
 - All sections stack vertically, full-width cards
@@ -104,6 +108,10 @@ Complete redesign. Single scrollable page with card sections (white bg, rounded-
 - Form inputs full-width on mobile
 
 ## Settings Page — Backend
+
+### Migration: Add phone_whatsapp to users table
+
+Add `phone_whatsapp` (text, nullable) column to the existing `users` table. This moves the WhatsApp number from Supabase Vault into the users table for simpler querying. The `PATCH /auth/me` endpoint updates this column directly. The `GET /auth/me` response (`UserResponse` schema) must be extended to include `phone_whatsapp`.
 
 ### New Tables
 
@@ -135,9 +143,9 @@ RLS: users can only read/write their own rows.
 
 **Profile:**
 - `PATCH /auth/me` — Update name and/or WhatsApp number
-  - Body: `{ "full_name"?: string, "whatsapp_number"?: string }`
+  - Body: `{ "full_name"?: string, "phone_whatsapp"?: string }`
   - Auth: JWT required, updates own user row only
-  - Returns: updated user object
+  - Returns: updated user object (UserResponse schema extended to include `phone_whatsapp`)
 
 **Notifications:**
 - `GET /notifications/preferences` — Returns current preferences
@@ -148,11 +156,14 @@ RLS: users can only read/write their own rows.
 - `PATCH /notifications/preferences` — Update preferences
   - Body: `{ "whatsapp_enabled": boolean }`
   - Auth: JWT required
+  - Upserts if no row exists (handles race condition where PATCH arrives before first GET)
   - Returns: updated preferences object
 
 **Categories:**
 - `GET /categories/preferences` — Returns user's category list
   - If no preferences exist, returns all categories with default order and hidden=false
+  - Canonical category list is defined as a backend constant (matching the existing EXPENSE_CATEGORIES + INCOME_CATEGORIES lists from the frontend). Both expense and income categories are included.
+  - `user_category_preferences.category` is validated against this canonical list at the API layer (no DB enum constraint, to allow future additions without migrations)
   - Auth: JWT required
   - Returns: `{ "categories": [{ "category": string, "sort_order": int, "hidden": bool }] }`
 
@@ -165,17 +176,18 @@ RLS: users can only read/write their own rows.
 **Delete Account:**
 - `DELETE /auth/me` — Permanently delete user account
   - Requires header: `X-Confirm-Delete: ELIMINAR`
-  - Cascading delete order: transaction_splits → transactions → bank_accounts → household_members → notification_preferences → user_category_preferences → user record
-  - If user is last member of household: delete household, household_budgets
-  - Deletes Supabase auth user via admin API (`supabase.auth.admin.deleteUser()`)
+  - Application-level cascading delete within a single database transaction (no DB-level CASCADE constraints exist). Delete order: transaction_splits → transactions → bank_accounts → household_members → notification_preferences → user_category_preferences → user record
+  - If user is last member of household: also delete household, household_budgets
+  - After DB deletes: remove Supabase auth user via admin API (`supabase.auth.admin.deleteUser()`)
   - Auth: JWT required
   - Returns: 204 No Content
 
 ### Migrations
 
-Two Alembic migrations:
-1. **Create notification_preferences table** — table + RLS policies
-2. **Create user_category_preferences table** — table + unique constraint + RLS policies
+Three Alembic migrations:
+1. **Add phone_whatsapp to users table** — add nullable text column
+2. **Create notification_preferences table** — table + RLS policies
+3. **Create user_category_preferences table** — table + unique constraint + RLS policies
 
 ## Out of Scope
 
@@ -184,6 +196,13 @@ Two Alembic migrations:
 - Custom categories (create new)
 - Chart library upgrade
 - Any changes to transaction/dashboard/budgets pages (completed in Tier 1)
+
+## UI States
+
+- **Loading:** Skeleton placeholders for Perfil, Notificaciones, and Categorías sections while fetching
+- **Error:** Inline error message below the affected section if a fetch/save fails, with retry button
+- **Notification toggle:** Optimistic UI — toggle immediately, revert on API failure
+- **Category save:** Debounced (500ms) after reorder/hide changes — avoids per-drag API calls on slow connections
 
 ## Technical Notes
 
