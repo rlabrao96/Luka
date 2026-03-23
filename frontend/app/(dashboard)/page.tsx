@@ -46,8 +46,8 @@ export default function DashboardPage() {
     const map: Record<string, number> = {};
     myTxns
       .filter((t) => {
-        const d = new Date(t.transaction_date);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        // Use date string directly to avoid timezone shift (UTC midnight → previous day in Chile)
+        const key = t.transaction_date.split("T")[0].slice(0, 7);
         return key === currentMonth && t.transaction_type !== "income";
       })
       .forEach((t) => {

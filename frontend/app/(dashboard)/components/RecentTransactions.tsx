@@ -52,7 +52,11 @@ function formatCLP(amount: number) {
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("es-CL", {
+  // Parse as date-only (YYYY-MM-DD) to avoid timezone shift.
+  // "2026-03-20T00:00:00+00:00" in UTC would display as Mar 19 in Chile (UTC-3).
+  const dateOnly = iso.split("T")[0];
+  const [y, m, d] = dateOnly.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-CL", {
     day: "2-digit",
     month: "short",
     year: "numeric",

@@ -13,8 +13,8 @@ function formatCLP(n: number) {
 }
 
 function getMonthKey(iso: string) {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  // Parse date string directly to avoid timezone shift
+  return iso.split("T")[0].slice(0, 7);
 }
 
 function getMonthLabel(key: string) {
