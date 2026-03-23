@@ -1,41 +1,14 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/app/lib/api";
 
-const POLL_INTERVAL_MS = 5000;
-const IDLE_POLL_INTERVAL_MS = 60_000;
-
 export function useImportStatus(householdId: string | null) {
-  const [importing, setImporting] = useState(false);
+  const { data } = useQuery({
+    queryKey: ["import-status", householdId],
+    queryFn: () => api.getImportStatus(householdId!),
+    enabled: !!householdId,
+    // Poll every 5s while importing, 60s when idle
+    refetchInterval: (query) => (query.state.data?.importing ? 5000 : 60_000),
+  });
 
-  useEffect(() => {
-    if (!householdId) return;
-
-    let active = true;
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    async function poll() {
-      try {
-        const { importing: isImporting } = await api.getImportStatus(householdId!);
-        if (!active) return;
-        setImporting(isImporting);
-        if (isImporting) {
-          timeoutId = setTimeout(poll, POLL_INTERVAL_MS);  // 5s while importing
-        } else {
-          timeoutId = setTimeout(poll, IDLE_POLL_INTERVAL_MS);  // 60s when idle, to catch future imports
-        }
-      } catch {
-        if (active) {
-          timeoutId = setTimeout(poll, POLL_INTERVAL_MS);
-        }
-      }
-    }
-
-    poll();
-    return () => {
-      active = false;
-      clearTimeout(timeoutId);
-    };
-  }, [householdId]);
-
-  return { importing };
+  return { importing: data?.importing ?? false };
 }

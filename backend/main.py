@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from core.config import settings
 
 # Import all models so SQLAlchemy metadata is complete for FK resolution
@@ -9,24 +11,39 @@ import modules.transactions.models  # noqa: F401
 import modules.merchants.models  # noqa: F401
 
 from modules.auth.router import router as auth_router
-from modules.households.router import router as households_router, invite_router
-from modules.email.router import router as email_router
-from modules.whatsapp.router import router as whatsapp_router
-from modules.transactions.router import router as transactions_router
-from modules.budgets.router import router as budgets_router
 from modules.bank_accounts.router import router as bank_accounts_router
+from modules.budgets.router import router as budgets_router
+from modules.email.router import router as email_router
+from modules.households.router import router as households_router, invite_router
+from modules.transactions.router import router as transactions_router
+from modules.whatsapp.router import router as whatsapp_router
+
+# Paths that benefit from short private caching (browser-only, per-user data)
+_CACHEABLE_PREFIXES = ("/auth/me", "/transactions/", "/budgets/", "/households/")
+
+
+class CacheHeaderMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        if request.method == "GET" and any(
+            request.url.path.startswith(p) for p in _CACHEABLE_PREFIXES
+        ):
+            response.headers.setdefault("Cache-Control", "private, max-age=30")
+        return response
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Luka API", version="0.1.0")
 
+    # Build CORS origins from config (no hardcoded URLs)
+    origins = {settings.frontend_url, "http://localhost:3000"}
+    if settings.cors_origins:
+        origins.update(o.strip() for o in settings.cors_origins.split(",") if o.strip())
+
+    app.add_middleware(CacheHeaderMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            settings.frontend_url,
-            "http://localhost:3000",
-            "https://luka-lovat.vercel.app",
-        ],
+        allow_origins=list(origins),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -51,9 +51,23 @@ export function InactivityGuard() {
     const events = ["mousemove", "keydown", "click", "touchstart", "scroll"];
     events.forEach((e) => window.addEventListener(e, resetTimer, { passive: true }));
 
+    // Check on tab re-focus — catches long-idle users returning from another tab
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        const last = Number(localStorage.getItem(LAST_ACTIVE_KEY) ?? Date.now());
+        if (Date.now() - last > TIMEOUT_MS) {
+          signOut();
+        } else {
+          resetTimer();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       events.forEach((e) => window.removeEventListener(e, resetTimer));
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [router, reset]);
 
