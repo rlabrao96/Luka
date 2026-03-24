@@ -225,7 +225,10 @@ async def process_email(
 
                 phone = user.phone_whatsapp
                 if phone:
-                    received = raw_email.received_at.strftime("%H:%M %d/%m/%Y")
+                    from zoneinfo import ZoneInfo
+
+                    chile_tz = ZoneInfo("America/Santiago")
+                    received = raw_email.received_at.astimezone(chile_tz).strftime("%H:%M %d/%m/%Y")
                     msg = (
                         f"📧 Nuevo email recibido:\n"
                         f"*De:* {raw_email.sender}\n"
