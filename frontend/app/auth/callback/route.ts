@@ -1,5 +1,4 @@
 import { createClient } from "@/app/lib/supabase/server";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -8,25 +7,38 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    await supabase.auth.exchangeCodeForSession(code);
+    const { data } = await supabase.auth.exchangeCodeForSession(code);
+    const session = data?.session;
 
-    // Check for post-login redirect (e.g. invite flow)
-    const cookieStore = await cookies();
-    const postLoginRedirect = cookieStore.get("luka-post-login-redirect")?.value;
-    if (postLoginRedirect) {
-      cookieStore.delete("luka-post-login-redirect");
-      return NextResponse.redirect(`${origin}${postLoginRedirect}`);
-    }
-
-    const { data: { session } } = await supabase.auth.getSession();
     if (session) {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+      // Store Google provider tokens for Gmail API access
+      if (session.provider_token) {
+        try {
+          await fetch(`${apiUrl}/auth/store-provider-tokens`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              provider_token: session.provider_token,
+              provider_refresh_token: session.provider_refresh_token ?? null,
+            }),
+          });
+        } catch (err) {
+          console.error("Failed to store provider tokens", err);
+        }
+      }
+
+      // Check if user needs onboarding
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
         const res = await fetch(`${apiUrl}/auth/me`, {
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`
-          }
+            Authorization: `Bearer ${session.access_token}`,
+          },
         });
         if (res.ok) {
           const user = await res.json();
