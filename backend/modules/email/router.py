@@ -12,15 +12,21 @@ router = APIRouter(tags=["webhooks"])
 
 
 def verify_google_oidc_token(token: str) -> bool:
+    import logging
+
+    logger = logging.getLogger(__name__)
     try:
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
 
-        id_token.verify_oauth2_token(
+        logger.info(f"OIDC verify: audience={settings.pubsub_audience}")
+        claims = id_token.verify_oauth2_token(
             token, google_requests.Request(), audience=settings.pubsub_audience
         )
+        logger.info(f"OIDC verify: SUCCESS, claims.aud={claims.get('aud')}")
         return True
-    except Exception:
+    except Exception as e:
+        logger.error(f"OIDC verify FAILED: {e}")
         return False
 
 
