@@ -19,9 +19,9 @@ Request: `{ phone: str }`
 
 Behavior:
 - Requires Supabase JWT auth
-- Validates phone format (must start with `+`)
+- Validates phone format: `re.fullmatch(r'\+\d{7,15}', phone)` (E.164: 7-15 digits after `+`). Returns `422 {"detail": "Número inválido"}` on bad format
 - Generates random 6-digit PIN (`random.randint(100000, 999999)`)
-- Stores in Redis: key `whatsapp_pin:{phone}` → JSON `{"pin": "123456", "user_id": "<uuid>"}` with 300s TTL
+- Stores in Redis: key `whatsapp_pin:{phone}` → JSON `{"pin": "123456", "user_id": "<uuid>", "attempts": 0}` with 300s TTL
 - Sends WhatsApp text message via existing `httpx` pattern from `sender.py`
 - Message text: `"🔐 Tu código de verificación Luka es: 123456\n\nNo compartas este código con nadie. Expira en 5 minutos."`
 - Returns `200 {"status": "ok"}`
@@ -37,7 +37,7 @@ Behavior:
 - Requires Supabase JWT auth
 - Looks up `whatsapp_pin:{phone}` in Redis
 - If key not found (expired or never sent): returns `400 {"detail": "PIN incorrecto o expirado"}`
-- If PIN doesn't match: returns `400 {"detail": "PIN incorrecto o expirado"}` (same message — don't reveal which failed)
+- If PIN doesn't match: increments `attempts` counter in Redis. If `attempts >= 5`, deletes the key (lockout). Returns `400 {"detail": "PIN incorrecto o expirado"}` (same message — don't reveal which check failed)
 - If `user_id` doesn't match current user: returns `400 {"detail": "PIN incorrecto o expirado"}` (security — prevent cross-user verification)
 - On match:
   - Re-fetches user from DB session
@@ -50,13 +50,11 @@ Behavior:
 
 ### 1.3 Pydantic Schemas
 
+Add `SendWhatsAppPinRequest` to `schemas.py`. Reuse the existing `WhatsAppVerifyRequest` (already has `phone` and `pin` fields) for the verify endpoint — rename import if needed but don't duplicate.
+
 ```python
 class SendWhatsAppPinRequest(BaseModel):
     phone: str
-
-class VerifyWhatsAppPinRequest(BaseModel):
-    phone: str
-    pin: str
 ```
 
 ---
@@ -85,14 +83,18 @@ async def send_verification_pin(to: str, pin: str) -> None:
 Replace mocked functions in `frontend/app/(auth)/onboarding/verify-whatsapp/page.tsx`:
 
 ### `sendPin()`
+- Disable button + show loading state while request is in-flight
 - Call `POST /auth/send-whatsapp-pin` with `{phone}`
-- On success: `setPinSent(true)`
-- On error: show error message to user
+- On success: `setPinSent(true)`, start 60s resend cooldown timer
+- On error: show error message via `error` state variable
 
 ### `verifyPin()`
 - Call `POST /auth/verify-whatsapp-pin` with `{phone, pin}`
 - On success: proceed to `finalizeOnboarding()`
-- On 400: show `"PIN incorrecto o expirado"` error message
+- On 400: show error detail from response via `error` state variable
+
+### Error state
+Add `const [error, setError] = useState<string | null>(null)` and render it below the form fields.
 
 ### API client
 Add two methods to `frontend/app/lib/api.ts`:
@@ -105,7 +107,8 @@ Add two methods to `frontend/app/lib/api.ts`:
 
 | File | Change |
 |------|--------|
-| `backend/modules/auth/schemas.py` | Add `SendWhatsAppPinRequest`, `VerifyWhatsAppPinRequest` |
+| `backend/modules/auth/schemas.py` | Add `SendWhatsAppPinRequest` (reuse existing `WhatsAppVerifyRequest` for verify) |
+| `backend/modules/auth/router.py` | Remove `phone_whatsapp` from `UpdateProfileRequest` handling (now owned by verify flow) |
 | `backend/modules/auth/router.py` | Add `POST /auth/send-whatsapp-pin`, `POST /auth/verify-whatsapp-pin` |
 | `backend/modules/whatsapp/sender.py` | Add `send_verification_pin()` function |
 | `frontend/app/(auth)/onboarding/verify-whatsapp/page.tsx` | Wire real API calls, add error state |
@@ -124,3 +127,4 @@ Add two methods to `frontend/app/lib/api.ts`:
 | `test_verify_pin_wrong_pin` | Returns 400 with error message |
 | `test_verify_pin_expired` | Returns 400 when Redis key missing |
 | `test_verify_pin_wrong_user` | Returns 400 when user_id doesn't match |
+| `test_verify_pin_lockout_after_5_attempts` | Deletes Redis key after 5 wrong PINs, subsequent attempts return 400 |
