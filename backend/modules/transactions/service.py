@@ -1,7 +1,7 @@
 import uuid
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount
 
@@ -160,3 +160,74 @@ async def update_split_type(
     txn.split_type = split_type
     await db.commit()
     return True
+
+
+async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict:
+    """
+    Return pending transactions grouped into 3 buckets:
+    - awaiting_reconciliation: email txns, pending, no sync has run since creation
+    - needs_classification: Fintoc txns, settled, no category
+    - unmatched_email: email txns, pending, at least 1 sync ran since creation
+    """
+    # All pending email transactions
+    email_pending_result = await db.execute(
+        select(Transaction, TransactionSplit)
+        .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.source.in_(["gmail", "outlook"]),
+            Transaction.status == "pending",
+        )
+        .order_by(Transaction.transaction_date.desc())
+    )
+    email_pending_rows = email_pending_result.all()
+
+    # Fintoc transactions needing classification
+    needs_class_result = await db.execute(
+        select(Transaction, TransactionSplit)
+        .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.source == "fintoc",
+            Transaction.status == "settled",
+            Transaction.category.is_(None),
+        )
+        .order_by(Transaction.transaction_date.desc())
+    )
+    needs_class_rows = needs_class_result.all()
+
+    # Get max_synced_at value
+    synced_result = await db.execute(
+        select(func.max(BankAccount.last_synced_at)).where(
+            BankAccount.user_id == user_id, BankAccount.is_active.is_(True)
+        )
+    )
+    max_synced_at = synced_result.scalar_one_or_none()
+
+    # Split email pending into awaiting vs unmatched
+    awaiting = []
+    unmatched = []
+    for txn, split in email_pending_rows:
+        row = _txn_to_dict(txn, split)
+        if max_synced_at is None or max_synced_at < txn.created_at:
+            awaiting.append(row)
+        else:
+            unmatched.append(row)
+
+    needs_classification = [_txn_to_dict(txn, split) for txn, split in needs_class_rows]
+
+    return {
+        "awaiting_reconciliation": awaiting,
+        "needs_classification": needs_classification,
+        "unmatched_email": unmatched,
+    }
+
+
+def _txn_to_dict(txn: Transaction, split: TransactionSplit | None) -> dict:
+    """Convert Transaction + optional Split to response dict."""
+    return {
+        **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
+        "split_type": split.split_type if split else None,
+        "bank_name": None,
+        "account_kind": None,
+    }
