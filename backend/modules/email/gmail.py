@@ -51,23 +51,53 @@ class GmailProvider(EmailProvider):
         if not history_id:
             return []
 
-        history = await asyncio.to_thread(
-            service.users()
-            .history()
-            .list(userId="me", startHistoryId=history_id, historyTypes=["messageAdded"])
-            .execute
-        )
-
         emails = []
-        for record in history.get("history", []):
-            for msg_ref in record.get("messagesAdded", []):
-                msg = await asyncio.to_thread(
+        seen_ids = set()
+
+        # Try History API first
+        try:
+            history = await asyncio.to_thread(
+                service.users()
+                .history()
+                .list(userId="me", startHistoryId=history_id, historyTypes=["messageAdded"])
+                .execute
+            )
+            for record in history.get("history", []):
+                for msg_ref in record.get("messagesAdded", []):
+                    msg_id = msg_ref["message"]["id"]
+                    if msg_id in seen_ids:
+                        continue
+                    seen_ids.add(msg_id)
+                    msg = await asyncio.to_thread(
+                        service.users()
+                        .messages()
+                        .get(userId="me", id=msg_id, format="full")
+                        .execute
+                    )
+                    emails.append(self._parse_gmail_message(msg))
+        except Exception as e:
+            print(f"[GMAIL] History API failed: {e}", flush=True)
+
+        # Fallback: if History API returned nothing, fetch latest INBOX message
+        if not emails:
+            try:
+                result = await asyncio.to_thread(
                     service.users()
                     .messages()
-                    .get(userId="me", id=msg_ref["message"]["id"], format="full")
+                    .list(userId="me", labelIds=["INBOX"], maxResults=1)
                     .execute
                 )
-                emails.append(self._parse_gmail_message(msg))
+                for msg_ref in result.get("messages", []):
+                    msg = await asyncio.to_thread(
+                        service.users()
+                        .messages()
+                        .get(userId="me", id=msg_ref["id"], format="full")
+                        .execute
+                    )
+                    emails.append(self._parse_gmail_message(msg))
+            except Exception as e:
+                print(f"[GMAIL] Fallback fetch failed: {e}", flush=True)
+
         return emails
 
     def _parse_gmail_message(self, msg: dict) -> RawEmail:
