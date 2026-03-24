@@ -220,6 +220,16 @@ async def process_email(
         # --- TEMP: send WhatsApp notification for every new email ---
         for raw_email in emails:
             try:
+                # Deduplicate: skip if we already notified for this message_id
+                dedup_key = f"email_notified:{raw_email.message_id}"
+                if await redis_client.get(dedup_key):
+                    print(
+                        f"[PROCESS_EMAIL] TEMP: skipping duplicate {raw_email.message_id}",
+                        flush=True,
+                    )
+                    continue
+                await redis_client.set(dedup_key, "1", ex=3600)  # 1h TTL
+
                 import httpx
                 from core.config import settings as _s
 
