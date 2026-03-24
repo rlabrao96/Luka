@@ -1,10 +1,14 @@
 import json
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from redis.asyncio import Redis
 from modules.merchants.models import Merchant, MerchantCategorySelection
 from modules.merchants.normalizer import normalize_merchant
 from modules.merchants.llm import categorize_with_llm
+
+logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 86400  # 24 hours
 
@@ -43,14 +47,25 @@ async def lookup_merchant(
     else:
         # L3: LLM fallback — create merchant row
         categories = await categorize_with_llm(normalized)
-        merchant = Merchant(
-            raw_name=raw_name,
-            normalized_name=normalized,
-            llm_suggested_categories=categories,
-        )
-        db.add(merchant)
-        await db.commit()
-        await db.refresh(merchant)
+        try:
+            merchant = Merchant(
+                raw_name=raw_name,
+                normalized_name=normalized,
+                llm_suggested_categories=categories,
+            )
+            db.add(merchant)
+            await db.commit()
+            await db.refresh(merchant)
+        except IntegrityError:
+            # Race condition: another request already created this merchant
+            await db.rollback()
+            result = await db.execute(
+                select(Merchant).where(Merchant.normalized_name == normalized)
+            )
+            merchant = result.scalar_one_or_none()
+            if merchant and merchant.llm_suggested_categories:
+                categories = merchant.llm_suggested_categories[:1]
+            logger.info("lookup_merchant: concurrent insert for %s, using existing row", raw_name)
 
     # Populate Redis cache
     await redis.setex(cache_key, _CACHE_TTL, json.dumps(categories))
