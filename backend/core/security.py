@@ -8,7 +8,7 @@ from jwt import PyJWKClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache import cache_get, cache_set
+from core.cache import cache_delete, cache_get, cache_set
 from core.config import settings
 from core.database import get_db
 from modules.auth.models import User
@@ -105,13 +105,17 @@ async def get_current_user(
     cache_key = f"user:{email}"
     cached = await cache_get(cache_key)
     if cached:
-        return User(
-            id=uuid.UUID(cached["id"]),
-            email=cached["email"],
-            full_name=cached["full_name"],
-            email_provider=cached["email_provider"],
-            whatsapp_verified=cached.get("whatsapp_verified", False),
-        )
+        # Invalidate cache if user ID changed (e.g., account deleted and re-created)
+        if cached["id"] != sub:
+            await cache_delete(cache_key)
+        else:
+            return User(
+                id=uuid.UUID(cached["id"]),
+                email=cached["email"],
+                full_name=cached["full_name"],
+                email_provider=cached["email_provider"],
+                whatsapp_verified=cached.get("whatsapp_verified", False),
+            )
 
     # Cache miss — look up in DB (shared session, same as route handler)
     result = await db.execute(select(User).where(User.email == email))
