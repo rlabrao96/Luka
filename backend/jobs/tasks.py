@@ -189,10 +189,17 @@ async def process_email(
             user, access_token=access_token, refresh_token=refresh_token
         )
         try:
+            logger.info(
+                "process_email: fetching emails for %s, history_id=%s", user.email, history_id
+            )
             emails = await provider_instance.fetch_new_emails(
                 str(user.id), history_id=history_id, message_id=message_id
             )
+            logger.info("process_email: fetched %d emails for %s", len(emails), user.email)
+            for e in emails:
+                logger.info("process_email: email from=%s subject=%s", e.sender, e.subject)
         except Exception as e:
+            logger.error("process_email: fetch_new_emails failed: %s", e)
             if "RefreshError" in type(e).__name__ or "invalid_grant" in str(e).lower():
                 logger.warning(
                     "process_email: Google token revoked for %s, clearing tokens", user.email
