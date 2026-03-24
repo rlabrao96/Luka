@@ -55,7 +55,9 @@ async def update_profile(
 ):
     # Re-fetch from DB session (current_user may be cached/detached)
     result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one()
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
 
     if body.full_name is not None:
         user.full_name = body.full_name
@@ -110,7 +112,9 @@ async def store_provider_tokens(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one()
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
 
     user.google_access_token_enc = encrypt_token(body.provider_token)
     if body.provider_refresh_token is not None:
@@ -129,7 +133,9 @@ async def setup_email_watch(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one()
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
 
     if not user.google_access_token_enc:
         raise HTTPException(
@@ -215,7 +221,9 @@ async def verify_whatsapp_pin(
 
     # Success — save phone and mark verified
     result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one()
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
     user.phone_whatsapp = body.phone
     user.whatsapp_verified = True
     await db.commit()

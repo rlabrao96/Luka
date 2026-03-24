@@ -27,7 +27,7 @@ def setup_pin_app(app, mock_user_for_pin):
 
     mock_db = AsyncMock()
     mock_result = MagicMock()
-    mock_result.scalar_one = MagicMock(return_value=mock_user_for_pin)
+    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_for_pin)
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_db.commit = AsyncMock()
     mock_db.refresh = AsyncMock()

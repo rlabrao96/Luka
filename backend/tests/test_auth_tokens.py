@@ -28,7 +28,7 @@ async def test_store_provider_tokens(app, mock_user_with_tokens):
 
     mock_db = AsyncMock()
     mock_result = MagicMock()
-    mock_result.scalar_one = MagicMock(return_value=mock_user_with_tokens)
+    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_with_tokens)
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_db.commit = AsyncMock()
     mock_db.refresh = AsyncMock()
@@ -70,7 +70,7 @@ async def test_store_provider_tokens_preserves_existing_refresh(app, mock_user_w
 
     mock_db = AsyncMock()
     mock_result = MagicMock()
-    mock_result.scalar_one = MagicMock(return_value=mock_user_with_tokens)
+    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_with_tokens)
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_db.commit = AsyncMock()
     mock_db.refresh = AsyncMock()
@@ -107,7 +107,7 @@ async def test_setup_email_watch(app, mock_user_with_tokens):
 
     mock_db = AsyncMock()
     mock_result = MagicMock()
-    mock_result.scalar_one = MagicMock(return_value=mock_user_with_tokens)
+    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_with_tokens)
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_db.commit = AsyncMock()
     mock_db.refresh = AsyncMock()
@@ -151,7 +151,7 @@ async def test_setup_email_watch_requires_tokens(app, mock_user_with_tokens):
 
     mock_db = AsyncMock()
     mock_result = MagicMock()
-    mock_result.scalar_one = MagicMock(return_value=mock_user_with_tokens)
+    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_with_tokens)
     mock_db.execute = AsyncMock(return_value=mock_result)
 
     async def _mock_db():
