@@ -114,6 +114,19 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — scalar_one_or_none in auth router for stale cached users ✅
 - **Bug fix** — Redis user cache invalidation when JWT sub doesn't match cached ID ✅
 - **Bug fix** — Force Google refresh token on every login (access_type=offline, prompt=consent) ✅
+- **Feature** — Email pre-filter: 27 Spanish financial keywords, bank-agnostic ✅
+- **Feature** — Parser: HTML stripping + Banco de Chile compra/comprobante formats ✅
+- **Feature** — Gemini 2.5 Flash-Lite replaces OpenAI gpt-4o-mini for merchant categorization ✅
+- **Feature** — Merchant service: 1 category for known merchants, 3 for new ✅
+- **Feature** — Full WhatsApp transaction flow: split → category → ✅ confirmation ✅
+- **Feature** — Email-only users: bank account not required for email pipeline ✅
+- **Feature** — Per-email transaction dedup via Redis (24h TTL) ✅
+- **Bug fix** — Merchant duplicate race condition (IntegrityError → rollback + re-query) ✅
+- **Bug fix** — WhatsApp session phone normalization (+prefix mismatch) ✅
+- **Bug fix** — All split types now ask for category (Mío/Pareja were skipping) ✅
+- **Bug fix** — WhatsApp webhook error logging (was silent except:pass) ✅
+- **Bug fix** — Removed TEMP debug WhatsApp notifications ✅
+- **Docs** — Banco de Chile email templates in docs/email-templates/ ✅
 
 ---
 

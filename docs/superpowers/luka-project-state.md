@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-24 (session 5)
-**Status:** **Email pipeline fully wired and live.** Gmail Pub/Sub → webhook → ARQ worker → email fetch → WhatsApp notification end-to-end working in production. **WhatsApp PIN verification** working (send/verify via Redis with brute-force protection). **Google OAuth token flow** complete: tokens captured at login, Fernet-encrypted, stored in DB, auto-refreshed by Gmail SDK. **GCP Pub/Sub OIDC auth** configured with service account. Fallback email fetch when History API returns empty. Chile timezone on notifications.
+**Date:** 2026-03-24 (session 6)
+**Status:** **Full email-to-WhatsApp transaction pipeline live.** Email → pre-filter (keyword) → HTML-strip parser → Gemini 2.5 Flash-Lite categorization → WhatsApp split question → category picker → ✅ confirmation. Bank account optional (email-only users supported). Per-email dedup via Redis. Phone number normalization for WhatsApp sessions. Merchant race condition handling. All tested end-to-end in production.
 
 ---
 
@@ -337,7 +337,8 @@ WHATSAPP_ACCESS_TOKEN=...
 FINTOC_API_KEY=...
 
 # LLM
-OPENAI_API_KEY=...
+GEMINI_API_KEY=...   # Google AI Studio (Gemini 2.5 Flash-Lite)
+OPENAI_API_KEY=...   # Legacy — no longer used, kept for cleanup
 
 # App
 FRONTEND_URL=https://your-app.vercel.app
@@ -386,6 +387,15 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Email watch setup | ✅ DONE | Gmail Pub/Sub watch live, OIDC auth working, fallback fetch when History API empty |
 | WhatsApp PIN verification | ✅ DONE | Send/verify PIN via Redis (5-min TTL), brute-force protection (5 attempts) |
 | Email pipeline end-to-end | ✅ DONE | Gmail → Pub/Sub → webhook → ARQ worker → fetch email → WhatsApp notification |
+| Email pre-filter | ✅ DONE | 27 Spanish financial keywords, bank-agnostic, runs before parser |
+| Email parser HTML support | ✅ DONE | Strips HTML before regex, handles Banco de Chile compra/comprobante/transferencia formats |
+| Gemini LLM classification | ✅ DONE | Gemini 2.5 Flash-Lite (replaced OpenAI gpt-4o-mini). 3 categories for new merchants, 1 for known. Lazy client init, code-fence stripping |
+| WhatsApp transaction flow | ✅ DONE | Split question → category picker → ✅ confirmation. All split types ask for category. Phone normalization fixed. |
+| Email-only users | ✅ DONE | Bank account not required — household resolved from HouseholdMember |
+| Transaction dedup | ✅ DONE | Per-email Redis key `txn_processed:{message_id}` (24h TTL) |
+| Merchant race condition | ✅ DONE | IntegrityError on duplicate insert → rollback + re-query existing row |
+| Multi-bank parser | ❌ TODO | Only Banco de Chile compra/comprobante formats handled. Santander, BCI, Falabella, Estado need email samples |
+| Transaction dedup (cross-sender) | ❌ TODO | BChile sends compra + comprobante pairs for same purchase — need amount+merchant+time dedup |
 | Email domain for Resend | Low | Currently sends from onboarding@resend.dev — custom domain needed for production emails |
 | Alembic auto-run on Railway | Low | Run manually: `cd backend && python3 -m alembic upgrade head` |
 
