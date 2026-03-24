@@ -256,7 +256,7 @@ export const api = {
     }),
 
   invitePartner: (householdId: string, email: string) =>
-    apiFetch<{ id: string; email: string; household_id: string }>(
+    apiFetch<{ token: string; expires_at: string }>(
       `/households/${householdId}/invite`,
       { method: "POST", body: JSON.stringify({ email }) }
     ),

@@ -21,8 +21,7 @@ export function HogarSection() {
   const inviteMutation = useMutation({
     mutationFn: () => api.invitePartner(householdId!, inviteEmail),
     onSuccess: (data) => {
-      const token = (data as { token: string }).token;
-      setInviteLink(`${window.location.origin}/invite/${token}`);
+      setInviteLink(`${window.location.origin}/invite/${data.token}`);
       setInviteEmail("");
     },
   });
