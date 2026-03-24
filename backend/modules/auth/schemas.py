@@ -21,3 +21,8 @@ class WhatsAppVerifyRequest(BaseModel):
 class UpdateProfileRequest(BaseModel):
     full_name: str | None = None
     phone_whatsapp: str | None = None
+
+
+class StoreProviderTokensRequest(BaseModel):
+    provider_token: str
+    provider_refresh_token: str | None = None

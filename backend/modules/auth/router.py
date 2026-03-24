@@ -1,11 +1,16 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.cache import cache_delete
 from core.database import get_db
+from core.encryption import decrypt_token, encrypt_token
 from core.security import get_current_user
 from modules.auth.models import User
-from modules.auth.schemas import UpdateProfileRequest, UserResponse
+from modules.auth.schemas import StoreProviderTokensRequest, UpdateProfileRequest, UserResponse
+from modules.email.factory import get_email_provider
 from modules.households.models import HouseholdMember
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -89,3 +94,64 @@ async def delete_account(
     supabase_admin = create_client(settings.supabase_url, settings.supabase_service_key)
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, supabase_admin.auth.admin.delete_user, str(current_user.id))
+
+
+@router.post("/store-provider-tokens")
+async def store_provider_tokens(
+    body: StoreProviderTokensRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+
+    user.google_access_token_enc = encrypt_token(body.provider_token)
+    if body.provider_refresh_token is not None:
+        user.google_refresh_token_enc = encrypt_token(body.provider_refresh_token)
+
+    await db.commit()
+    await db.refresh(user)
+    await cache_delete(f"user:{user.email}")
+
+    return {"status": "ok"}
+
+
+@router.post("/setup-email-watch")
+async def setup_email_watch(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+
+    if not user.google_access_token_enc:
+        raise HTTPException(
+            status_code=400, detail="No Google tokens stored. Please re-authenticate."
+        )
+
+    access_token = decrypt_token(user.google_access_token_enc)
+    refresh_token = (
+        decrypt_token(user.google_refresh_token_enc) if user.google_refresh_token_enc else ""
+    )
+
+    provider = get_email_provider(user, access_token=access_token, refresh_token=refresh_token)
+    watch_result = await provider.setup_watch(str(user.id))
+
+    user.mail_watch_subscription_id = watch_result.get("subscription_id")
+    expiry_ms = watch_result.get("expiry")
+    if expiry_ms:
+        user.mail_watch_expiry = datetime.fromtimestamp(int(expiry_ms) / 1000, tz=timezone.utc)
+
+    # Persist refreshed token if changed
+    new_token = provider.get_current_token()
+    if new_token and new_token != access_token:
+        user.google_access_token_enc = encrypt_token(new_token)
+
+    await db.commit()
+    await db.refresh(user)
+    await cache_delete(f"user:{user.email}")
+
+    return {
+        "status": "ok",
+        "expiry": str(user.mail_watch_expiry) if user.mail_watch_expiry else None,
+    }
