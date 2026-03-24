@@ -9,7 +9,8 @@ export function HogarSection() {
   const householdId = useLukaStore((s) => s.householdId);
   const userId = useLukaStore((s) => s.userId);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteSent, setInviteSent] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { data: summary } = useQuery({
     queryKey: ["household-summary", householdId],
@@ -19,8 +20,9 @@ export function HogarSection() {
 
   const inviteMutation = useMutation({
     mutationFn: () => api.invitePartner(householdId!, inviteEmail),
-    onSuccess: () => {
-      setInviteSent(true);
+    onSuccess: (data) => {
+      const token = (data as { token: string }).token;
+      setInviteLink(`${window.location.origin}/invite/${token}`);
       setInviteEmail("");
     },
   });
@@ -29,6 +31,13 @@ export function HogarSection() {
   const isCoupleHousehold = members.length > 1;
   const me = members.find((m) => m.user_id === userId);
   const partner = members.find((m) => m.user_id !== userId);
+
+  async function handleCopy() {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.03)] p-5">
@@ -46,7 +55,7 @@ export function HogarSection() {
         {/* Current user */}
         {me && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-500">Tú</span>
+            <span className="text-sm text-slate-500">Tu</span>
             <div className="text-right">
               <p className="text-sm font-medium text-slate-700">{me.full_name}</p>
               <p className="text-xs text-slate-400">{me.email}</p>
@@ -67,7 +76,7 @@ export function HogarSection() {
         )}
 
         {/* Invite partner (if no partner yet) */}
-        {!isCoupleHousehold && !inviteSent && (
+        {!isCoupleHousehold && !inviteLink && (
           <div className="pt-2 border-t border-slate-50 space-y-2">
             <p className="text-xs text-slate-400">Invita a tu pareja para compartir gastos</p>
             <div className="flex gap-2">
@@ -83,20 +92,37 @@ export function HogarSection() {
                 disabled={!inviteEmail || inviteMutation.isPending}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl disabled:opacity-40 hover:bg-blue-700 transition-colors whitespace-nowrap"
               >
-                {inviteMutation.isPending ? "Enviando..." : "Invitar"}
+                {inviteMutation.isPending ? "Generando..." : "Invitar"}
               </button>
             </div>
             {inviteMutation.isError && (
-              <p className="text-xs text-red-500">Error al enviar. Intenta de nuevo.</p>
+              <p className="text-xs text-red-500">Error al generar invitación. Intenta de nuevo.</p>
             )}
           </div>
         )}
 
-        {/* Invite sent confirmation */}
-        {inviteSent && (
-          <div className="pt-2 border-t border-slate-50">
+        {/* Invite link to copy/share */}
+        {inviteLink && (
+          <div className="pt-2 border-t border-slate-50 space-y-2">
             <p className="text-xs text-emerald-600 font-medium">
-              Invitación enviada. Tu pareja recibirá un email para unirse.
+              Invitación creada. Comparte este enlace con tu pareja:
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={inviteLink}
+                readOnly
+                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 truncate"
+              />
+              <button
+                onClick={handleCopy}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors whitespace-nowrap"
+              >
+                {copied ? "Copiado" : "Copiar"}
+              </button>
+            </div>
+            <p className="text-xs text-slate-400">
+              El enlace expira en 7 días. Tu pareja debe iniciar sesión para aceptar.
             </p>
           </div>
         )}
