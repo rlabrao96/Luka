@@ -225,10 +225,12 @@ async def process_email(
 
                 phone = user.phone_whatsapp
                 if phone:
+                    received = raw_email.received_at.strftime("%H:%M %d/%m/%Y")
                     msg = (
                         f"📧 Nuevo email recibido:\n"
                         f"*De:* {raw_email.sender}\n"
-                        f"*Asunto:* {raw_email.subject}"
+                        f"*Asunto:* {raw_email.subject}\n"
+                        f"*Recibido:* {received}"
                     )
                     async with httpx.AsyncClient(timeout=15.0) as client:
                         await client.post(

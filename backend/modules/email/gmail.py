@@ -107,12 +107,19 @@ class GmailProvider(EmailProvider):
             body = base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode(
                 "utf-8", errors="ignore"
             )
+        # Use Gmail's internalDate (ms since epoch) for accurate received time
+        internal_date_ms = msg.get("internalDate")
+        if internal_date_ms:
+            received_at = datetime.fromtimestamp(int(internal_date_ms) / 1000, tz=timezone.utc)
+        else:
+            received_at = datetime.now(timezone.utc)
+
         return RawEmail(
             message_id=msg["id"],
             subject=headers.get("Subject", ""),
             sender=headers.get("From", ""),
             body=body,
-            received_at=datetime.now(timezone.utc),
+            received_at=received_at,
         )
 
     async def renew_watch(self, user_id: str) -> dict:
