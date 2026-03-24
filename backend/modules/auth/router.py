@@ -1,17 +1,26 @@
+import random
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache import cache_delete
+from core.cache import cache_delete, cache_get, cache_set
 from core.database import get_db
 from core.encryption import decrypt_token, encrypt_token
 from core.security import get_current_user
 from modules.auth.models import User
-from modules.auth.schemas import StoreProviderTokensRequest, UpdateProfileRequest, UserResponse
+from modules.auth.schemas import (
+    SendWhatsAppPinRequest,
+    StoreProviderTokensRequest,
+    UpdateProfileRequest,
+    UserResponse,
+    WhatsAppVerifyRequest,
+)
 from modules.email.factory import get_email_provider
 from modules.households.models import HouseholdMember
+from modules.whatsapp.sender import send_verification_pin
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -50,8 +59,6 @@ async def update_profile(
 
     if body.full_name is not None:
         user.full_name = body.full_name
-    if body.phone_whatsapp is not None:
-        user.phone_whatsapp = body.phone_whatsapp or None  # empty string → NULL
     await db.commit()
     await db.refresh(user)
 
@@ -155,3 +162,65 @@ async def setup_email_watch(
         "status": "ok",
         "expiry": str(user.mail_watch_expiry) if user.mail_watch_expiry else None,
     }
+
+
+@router.post("/send-whatsapp-pin")
+async def send_whatsapp_pin(
+    body: SendWhatsAppPinRequest,
+    current_user: User = Depends(get_current_user),
+):
+    if not re.fullmatch(r"\+\d{7,15}", body.phone):
+        raise HTTPException(status_code=422, detail="Número inválido")
+
+    pin = str(random.randint(100000, 999999))
+    await cache_set(
+        f"whatsapp_pin:{body.phone}",
+        {"pin": pin, "user_id": str(current_user.id), "attempts": 0},
+        ttl_seconds=300,
+    )
+
+    try:
+        await send_verification_pin(body.phone, pin)
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo enviar el PIN. Intenta de nuevo.",
+        )
+
+    return {"status": "ok"}
+
+
+@router.post("/verify-whatsapp-pin")
+async def verify_whatsapp_pin(
+    body: WhatsAppVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    key = f"whatsapp_pin:{body.phone}"
+    data = await cache_get(key)
+
+    if not data:
+        raise HTTPException(status_code=400, detail="PIN incorrecto o expirado")
+
+    if data["user_id"] != str(current_user.id):
+        raise HTTPException(status_code=400, detail="PIN incorrecto o expirado")
+
+    if data["pin"] != body.pin:
+        data["attempts"] = data.get("attempts", 0) + 1
+        if data["attempts"] >= 5:
+            await cache_delete(key)
+        else:
+            await cache_set(key, data, ttl_seconds=300)
+        raise HTTPException(status_code=400, detail="PIN incorrecto o expirado")
+
+    # Success — save phone and mark verified
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+    user.phone_whatsapp = body.phone
+    user.whatsapp_verified = True
+    await db.commit()
+    await db.refresh(user)
+    await cache_delete(f"user:{user.email}")
+    await cache_delete(key)
+
+    return {"status": "ok"}
