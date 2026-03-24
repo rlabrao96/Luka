@@ -32,18 +32,12 @@ def verify_google_oidc_token(token: str) -> bool:
 
 @router.post("/webhooks/gmail")
 async def gmail_webhook(request: Request):
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header.removeprefix("Bearer ")
-        if not verify_google_oidc_token(token):
-            # Log but allow through — Pub/Sub OIDC audience mismatch debugging
-            logger.warning("OIDC verification failed, allowing request for debugging")
-    else:
-        logger.warning("No Authorization header, allowing request for debugging")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(403)
+    token = auth_header.removeprefix("Bearer ")
+    if not verify_google_oidc_token(token):
+        raise HTTPException(403)
 
     body = await request.json()
     message = body.get("message", {})
