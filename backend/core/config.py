@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     whatsapp_access_token: str = ""
     fintoc_api_key: str = ""
     openai_api_key: str = ""
+    gemini_api_key: str = ""  # Google AI Studio API key
     frontend_url: str = "http://localhost:3000"
     cors_origins: str = ""  # Comma-separated additional CORS origins
     environment: str = "development"

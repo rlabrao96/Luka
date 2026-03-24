@@ -16,6 +16,7 @@ dependencies = [
     "PyJWT[crypto]>=2.8.0",
     "supabase>=2.4.0",
     "openai>=1.30.0",
+    "google-genai>=1.0.0",
     "rapidfuzz>=3.9.0",
     "tenacity>=8.3.0",
     "google-auth>=2.29.0",
