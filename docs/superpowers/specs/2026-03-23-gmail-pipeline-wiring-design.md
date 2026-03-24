@@ -28,23 +28,31 @@ The email scraping pipeline (email webhook → ARQ job → parse → merchant lo
 from cryptography.fernet import Fernet
 from core.config import settings
 
+# Singleton Fernet instance — avoids re-creating on every call
+_fernet: Fernet | None = None
+
+def _get_fernet() -> Fernet:
+    global _fernet
+    if _fernet is None:
+        _fernet = Fernet(settings.token_encryption_key.encode())
+    return _fernet
+
 def encrypt_token(plaintext: str) -> str:
-    f = Fernet(settings.token_encryption_key.encode())
-    return f.encrypt(plaintext.encode()).decode()
+    return _get_fernet().encrypt(plaintext.encode()).decode()
 
 def decrypt_token(ciphertext: str) -> str:
-    f = Fernet(settings.token_encryption_key.encode())
-    return f.decrypt(ciphertext.encode()).decode()
+    return _get_fernet().decrypt(ciphertext.encode()).decode()
 ```
 
 ### 1.2 Config — `core/config.py`
 
-Add three new settings:
+Add four new settings:
 
 ```python
 token_encryption_key: str = ""    # Fernet key (generate with Fernet.generate_key())
 google_client_id: str = ""        # GCP OAuth client ID
 google_client_secret: str = ""    # GCP OAuth client secret
+gmail_pubsub_topic: str = "luka-gmail-notifications"  # Pub/Sub topic name (must match GCP Console)
 ```
 
 ### 1.3 User Model — `modules/auth/models.py`
@@ -66,27 +74,46 @@ Add `google_access_token_enc` and `google_refresh_token_enc` (both `Text, nullab
 
 ### 2.1 Frontend — `frontend/app/auth/callback/route.ts`
 
-After `exchangeCodeForSession`, the Supabase session object contains `provider_token` and `provider_refresh_token`. Send these to the backend:
+**Critical:** Use the return value from `exchangeCodeForSession` directly — not a subsequent `getSession()` call. Supabase only exposes `provider_token` and `provider_refresh_token` on the initial exchange response; they may not persist in the stored session.
 
 ```typescript
-const { data: { session } } = await supabase.auth.getSession();
+const { data } = await supabase.auth.exchangeCodeForSession(code);
+const session = data?.session;
+
 if (session?.provider_token) {
-  await fetch(`${apiUrl}/auth/store-provider-tokens`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({
-      provider_token: session.provider_token,
-      provider_refresh_token: session.provider_refresh_token ?? null,
-    }),
-  });
+  try {
+    await fetch(`${apiUrl}/auth/store-provider-tokens`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        provider_token: session.provider_token,
+        provider_refresh_token: session.provider_refresh_token ?? null,
+      }),
+    });
+  } catch (err) {
+    console.error("Failed to store provider tokens", err);
+    // Non-blocking: user can still log in. Settings page will show
+    // "Gmail not connected" and they can re-authenticate to fix.
+  }
 }
 ```
 
+**Error handling:** If token storage fails, the user still logs in successfully. The settings page should show a "Gmail connected" status indicator (checking if `google_access_token_enc` is set on the user). If not connected, the user can re-trigger OAuth to retry.
+
 ### 2.2 Backend — `POST /auth/store-provider-tokens`
 
+Request schema:
+
+```python
+class StoreProviderTokensRequest(BaseModel):
+    provider_token: str
+    provider_refresh_token: str | None = None
+```
+
+Behavior:
 - Requires Supabase JWT auth
 - Encrypts `provider_token` with Fernet → stores as `google_access_token_enc`
 - Encrypts `provider_refresh_token` with Fernet → stores as `google_refresh_token_enc`
@@ -120,7 +147,16 @@ if not phone:
 
 ### 3.2 `renew_mail_watches` job — `jobs/tasks.py`
 
-Same pattern — decrypt tokens from user row before calling `get_email_provider()`.
+Same decrypt pattern as `process_email`:
+
+```python
+from core.encryption import decrypt_token
+
+access_token = decrypt_token(user.google_access_token_enc) if user.google_access_token_enc else ""
+refresh_token = decrypt_token(user.google_refresh_token_enc) if user.google_refresh_token_enc else ""
+provider = get_email_provider(user, access_token=access_token, refresh_token=refresh_token)
+await provider.renew_watch(str(user.id))
+```
 
 ### 3.3 `GmailProvider._build_service()` — `modules/email/gmail.py`
 
@@ -138,6 +174,24 @@ creds = Credentials(
 )
 ```
 
+**Topic name from config:** Update `setup_watch()` to use `settings.gmail_pubsub_topic` instead of the hardcoded `luka-gmail` string:
+
+```python
+"topicName": f"projects/{settings.gcp_project_id}/topics/{settings.gmail_pubsub_topic}",
+```
+
+**Sync API in async context:** The Google API client (`googleapiclient`) is synchronous and blocks the event loop. Wrap all `.execute()` calls in `asyncio.to_thread()`:
+
+```python
+import asyncio
+
+result = await asyncio.to_thread(
+    service.users().watch(userId="me", body={...}).execute
+)
+```
+
+This applies to `setup_watch()`, `fetch_new_emails()`, and `renew_watch()`.
+
 ### 3.4 Persist Refreshed Tokens
 
 After `GmailProvider` makes an API call, the Google SDK may have refreshed the access token in-memory. We need to persist it:
@@ -145,6 +199,11 @@ After `GmailProvider` makes an API call, the Google SDK may have refreshed the a
 - Add a method to `GmailProvider`: `get_current_token() → str` that returns `creds.token`
 - After `fetch_new_emails()` and `setup_watch()` calls in `process_email` and `renew_mail_watches`, check if the token changed and update the DB if so
 - This keeps the stored token fresh, avoiding unnecessary refresh round-trips
+
+**Handling revoked tokens:** If the user revokes Google access or the refresh token becomes invalid, the Google SDK raises `google.auth.exceptions.RefreshError`. When caught:
+1. Null out `google_access_token_enc` and `google_refresh_token_enc` on the user row
+2. Log a warning
+3. The settings page "Gmail connected" status will show disconnected, prompting re-authentication
 
 ---
 
@@ -258,7 +317,23 @@ The `google-api-python-client`, `google-auth`, and `google-auth-oauthlib` packag
 
 ---
 
-## 8. Files Changed
+## 8. Testing
+
+Update existing and add new tests:
+
+| Test file | What to test |
+|-----------|-------------|
+| `test_encryption.py` (new) | encrypt/decrypt round-trip, invalid key handling |
+| `test_email_webhooks.py` (update) | Verify `store-provider-tokens` endpoint: stores encrypted tokens, skips null refresh token, requires auth |
+| `test_email_webhooks.py` (update) | Verify `setup-email-watch` endpoint: calls setup_watch with mocked Gmail API, stores historyId and expiry |
+| `test_email_parser.py` (no change) | Existing regex parsing tests still pass |
+| `test_whatsapp_sender.py` (no change) | Existing sender tests still pass |
+
+All Gmail API calls in tests should be mocked (no live API calls in CI).
+
+---
+
+## 9. Files Changed
 
 | File | Change |
 |------|--------|
@@ -274,7 +349,7 @@ The `google-api-python-client`, `google-auth`, and `google-auth-oauthlib` packag
 
 ---
 
-## 9. End-to-End Flow (After Implementation)
+## 10. End-to-End Flow (After Implementation)
 
 ```
 User logs in with Google → Supabase OAuth → consent screen includes gmail.readonly
