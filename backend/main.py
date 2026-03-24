@@ -9,6 +9,7 @@ import modules.auth.models  # noqa: F401
 import modules.households.models  # noqa: F401
 import modules.transactions.models  # noqa: F401
 import modules.merchants.models  # noqa: F401
+import modules.settings.models  # noqa: F401
 
 from modules.auth.router import router as auth_router
 from modules.bank_accounts.router import router as bank_accounts_router
@@ -17,6 +18,7 @@ from modules.email.router import router as email_router
 from modules.households.router import router as households_router, invite_router
 from modules.transactions.router import router as transactions_router
 from modules.whatsapp.router import router as whatsapp_router
+from modules.settings.router import router as settings_router
 
 # Paths that benefit from short private caching (browser-only, per-user data)
 _CACHEABLE_PREFIXES = ("/auth/me", "/transactions/", "/budgets/", "/households/")
@@ -61,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(transactions_router)
     app.include_router(budgets_router)
     app.include_router(bank_accounts_router)
+    app.include_router(settings_router)
 
     return app
 
