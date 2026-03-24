@@ -36,3 +36,6 @@ node_modules/
 
 # Ruff cache
 .ruff_cache/
+
+# Git worktrees
+.worktrees/
