@@ -209,6 +209,40 @@ async def process_email(
             user.google_access_token_enc = encrypt_token(new_token)
             await db.commit()
 
+        # --- TEMP: send WhatsApp notification for every new email ---
+        for raw_email in emails:
+            try:
+                import httpx
+                from core.config import settings as _s
+
+                phone = user.phone_whatsapp
+                if phone:
+                    msg = (
+                        f"📧 Nuevo email recibido:\n"
+                        f"*De:* {raw_email.sender}\n"
+                        f"*Asunto:* {raw_email.subject}"
+                    )
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        await client.post(
+                            f"https://graph.facebook.com/v22.0/{_s.whatsapp_phone_number_id}/messages",
+                            headers={
+                                "Authorization": f"Bearer {_s.whatsapp_access_token}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "messaging_product": "whatsapp",
+                                "to": phone,
+                                "type": "text",
+                                "text": {"body": msg},
+                            },
+                        )
+                    logger.info(
+                        "TEMP: sent WhatsApp notification for email from %s", raw_email.sender
+                    )
+            except Exception as e:
+                logger.warning("TEMP: failed to send WhatsApp notification: %s", e)
+        # --- END TEMP ---
+
         for raw_email in emails:
             try:
                 # Check bank account email_sender_pattern
