@@ -1,5 +1,7 @@
+import asyncio
 import base64
 from datetime import datetime, timezone
+
 from modules.email.base import EmailProvider, RawEmail
 
 
@@ -7,53 +9,63 @@ class GmailProvider(EmailProvider):
     def __init__(self, access_token: str, refresh_token: str):
         self._access_token = access_token
         self._refresh_token = refresh_token
+        self._creds = None
 
     def _build_service(self):
-        from googleapiclient.discovery import build
         from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
 
-        creds = Credentials(
+        from core.config import settings
+
+        self._creds = Credentials(
             token=self._access_token,
             refresh_token=self._refresh_token,
             token_uri="https://oauth2.googleapis.com/token",
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
         )
-        return build("gmail", "v1", credentials=creds, cache_discovery=False)
+        return build("gmail", "v1", credentials=self._creds, cache_discovery=False)
+
+    def get_current_token(self) -> str | None:
+        """Return the current access token (may have been refreshed by the SDK)."""
+        return self._creds.token if self._creds else None
 
     async def setup_watch(self, user_id: str) -> dict:
         from core.config import settings
 
         service = self._build_service()
-        result = (
-            service.users()
-            .watch(
-                userId="me",
-                body={
-                    "topicName": f"projects/{settings.gcp_project_id}/topics/luka-gmail",
-                    "labelIds": ["INBOX"],
-                },
-            )
-            .execute()
-        )
-        return {"subscription_id": result.get("historyId"), "expiry": result.get("expiration")}
+        body = {
+            "topicName": f"projects/{settings.gcp_project_id}/topics/{settings.gmail_pubsub_topic}",
+            "labelIds": ["INBOX"],
+        }
+        result = await asyncio.to_thread(service.users().watch(userId="me", body=body).execute)
+        return {
+            "subscription_id": result.get("historyId"),
+            "expiry": result.get("expiration"),
+        }
 
-    async def fetch_new_emails(self, user_id: str, history_id: str = None) -> list[RawEmail]:
+    async def fetch_new_emails(
+        self, user_id: str, history_id: str = None, **kwargs
+    ) -> list[RawEmail]:
         service = self._build_service()
         if not history_id:
             return []
-        history = (
+
+        history = await asyncio.to_thread(
             service.users()
             .history()
             .list(userId="me", startHistoryId=history_id, historyTypes=["messageAdded"])
-            .execute()
+            .execute
         )
+
         emails = []
         for record in history.get("history", []):
             for msg_ref in record.get("messagesAdded", []):
-                msg = (
+                msg = await asyncio.to_thread(
                     service.users()
                     .messages()
                     .get(userId="me", id=msg_ref["message"]["id"], format="full")
-                    .execute()
+                    .execute
                 )
                 emails.append(self._parse_gmail_message(msg))
         return emails
@@ -73,5 +85,6 @@ class GmailProvider(EmailProvider):
             received_at=datetime.now(timezone.utc),
         )
 
-    async def renew_watch(self, user_id: str) -> None:
-        await self.setup_watch(user_id)
+    async def renew_watch(self, user_id: str) -> dict:
+        """Renew watch — returns same dict as setup_watch (subscription_id, expiry)."""
+        return await self.setup_watch(user_id)
