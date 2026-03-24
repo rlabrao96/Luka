@@ -189,17 +189,18 @@ async def process_email(
             user, access_token=access_token, refresh_token=refresh_token
         )
         try:
-            logger.info(
-                "process_email: fetching emails for %s, history_id=%s", user.email, history_id
+            print(
+                f"[PROCESS_EMAIL] fetching emails for {user.email}, history_id={history_id}",
+                flush=True,
             )
             emails = await provider_instance.fetch_new_emails(
                 str(user.id), history_id=history_id, message_id=message_id
             )
-            logger.info("process_email: fetched %d emails for %s", len(emails), user.email)
+            print(f"[PROCESS_EMAIL] fetched {len(emails)} emails for {user.email}", flush=True)
             for e in emails:
-                logger.info("process_email: email from=%s subject=%s", e.sender, e.subject)
+                print(f"[PROCESS_EMAIL] email from={e.sender} subject={e.subject}", flush=True)
         except Exception as e:
-            logger.error("process_email: fetch_new_emails failed: %s", e)
+            print(f"[PROCESS_EMAIL] fetch_new_emails FAILED: {e}", flush=True)
             if "RefreshError" in type(e).__name__ or "invalid_grant" in str(e).lower():
                 logger.warning(
                     "process_email: Google token revoked for %s, clearing tokens", user.email
@@ -243,10 +244,12 @@ async def process_email(
                                 "text": {"body": msg},
                             },
                         )
-                    logger.info(
-                        "TEMP: sent WhatsApp notification for email from %s", raw_email.sender
+                    print(
+                        f"[PROCESS_EMAIL] TEMP: sent WhatsApp for email from {raw_email.sender}",
+                        flush=True,
                     )
             except Exception as e:
+                print(f"[PROCESS_EMAIL] TEMP: WhatsApp send FAILED: {e}", flush=True)
                 logger.warning("TEMP: failed to send WhatsApp notification: %s", e)
         # --- END TEMP ---
 
