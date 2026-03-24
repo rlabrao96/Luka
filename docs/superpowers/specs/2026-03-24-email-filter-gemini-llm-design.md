@@ -155,7 +155,7 @@ Keep `openai_api_key` for now (no other code uses it, but removing is a separate
 
 ### Dependencies
 
-In `requirements.txt`:
+In `backend/pyproject.toml`:
 - Add: `google-genai` (the newer SDK with async support, NOT `google-generativeai`)
 - Keep `openai` for now (remove in future cleanup)
 
@@ -184,7 +184,7 @@ Content based on the 3 Banco de Chile screenshots provided by the user.
 | `backend/modules/merchants/llm.py` | Modified | Swap OpenAI → Gemini 2.0 Flash, 4→3 categories |
 | `backend/modules/merchants/service.py` | Modified | Return 1 category for known merchants, 3 for new |
 | `backend/core/config.py` | Modified | Add `gemini_api_key` |
-| `requirements.txt` | Modified | Add `google-genai` |
+| `backend/pyproject.toml` | Modified | Add `google-genai` |
 | `docs/email-templates/banco-de-chile/` | New | 3 reference email templates |
 
 ## Testing
