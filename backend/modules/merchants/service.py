@@ -44,6 +44,12 @@ async def lookup_merchant(
         categories = [row.category for row in top.scalars().all()]
         if not categories and merchant.llm_suggested_categories:
             categories = merchant.llm_suggested_categories[:1]
+        if not categories:
+            # Merchant exists but has no categories — retry LLM
+            categories = await categorize_with_llm(normalized)
+            if categories:
+                merchant.llm_suggested_categories = categories
+                await db.commit()
     else:
         # L3: LLM fallback — create merchant row
         categories = await categorize_with_llm(normalized)

@@ -32,12 +32,13 @@ def _strip_code_fences(text: str) -> str:
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 async def _call_llm(merchant: str) -> list[str]:
     response = await _get_client().aio.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         contents=f"Comercio: {merchant}",
         config=genai.types.GenerateContentConfig(
             system_instruction=_SYSTEM_PROMPT,
             temperature=0.2,
-            max_output_tokens=100,
+            max_output_tokens=1024,
+            thinking_config=genai.types.ThinkingConfig(thinking_budget=0),
         ),
     )
     raw = _strip_code_fences(response.text)
