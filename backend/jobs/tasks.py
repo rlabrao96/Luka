@@ -1,6 +1,7 @@
 import logging
 import redis.asyncio as aioredis
 from core.config import settings
+from core.encryption import decrypt_token, encrypt_token
 from core.database import AsyncSessionLocal
 from modules.email.parser import parse_bank_email
 from modules.merchants.service import lookup_merchant
@@ -170,12 +171,44 @@ async def process_email(
         # Fetch email from provider
         from modules.email.factory import get_email_provider
 
-        # Access token retrieved from Supabase Vault in production
-        # For now, use a placeholder — Vault integration added in Plan 3
-        provider_instance = get_email_provider(user, access_token="", refresh_token="")
-        emails = await provider_instance.fetch_new_emails(
-            str(user.id), history_id=history_id, message_id=message_id
+        if not user.google_access_token_enc:
+            logger.warning("process_email: user %s has no Google tokens stored", user.email)
+            return
+
+        try:
+            access_token = decrypt_token(user.google_access_token_enc)
+            refresh_token = (
+                decrypt_token(user.google_refresh_token_enc)
+                if user.google_refresh_token_enc
+                else ""
+            )
+        except Exception as e:
+            logger.error("process_email: failed to decrypt tokens for %s: %s", user.email, e)
+            return
+
+        provider_instance = get_email_provider(
+            user, access_token=access_token, refresh_token=refresh_token
         )
+        try:
+            emails = await provider_instance.fetch_new_emails(
+                str(user.id), history_id=history_id, message_id=message_id
+            )
+        except Exception as e:
+            if "RefreshError" in type(e).__name__ or "invalid_grant" in str(e).lower():
+                logger.warning(
+                    "process_email: Google token revoked for %s, clearing tokens", user.email
+                )
+                user.google_access_token_enc = None
+                user.google_refresh_token_enc = None
+                await db.commit()
+                return
+            raise
+
+        # Persist refreshed token if the SDK auto-refreshed
+        new_token = provider_instance.get_current_token()
+        if new_token and new_token != access_token:
+            user.google_access_token_enc = encrypt_token(new_token)
+            await db.commit()
 
         for raw_email in emails:
             try:
@@ -229,8 +262,12 @@ async def process_email(
                     await db.commit()
 
                 # Build WhatsApp session
-                # Retrieve phone from Supabase Vault (placeholder)
-                phone = "+56900000000"  # TODO: retrieve from Vault in Plan 3
+                phone = user.phone_whatsapp
+                if not phone:
+                    logger.info(
+                        "process_email: user %s has no phone, skipping WhatsApp", user.email
+                    )
+                    continue
                 session = WhatsAppSession(
                     transaction_id=str(txn.id),
                     step="awaiting_category" if is_joint else "awaiting_split",
