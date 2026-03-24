@@ -21,6 +21,10 @@ export default function LoginPage() {
       options: {
         scopes: "openid email profile https://www.googleapis.com/auth/gmail.readonly",
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
       },
     });
   };
