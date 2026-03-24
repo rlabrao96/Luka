@@ -30,6 +30,7 @@ export interface UserMe {
   full_name: string;
   email_provider: string;
   whatsapp_verified: boolean;
+  phone_whatsapp: string | null;
   household_id: string | null;
 }
 
@@ -318,4 +319,52 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  // --- Profile ---
+  async updateProfile(payload: { full_name?: string; phone_whatsapp?: string }) {
+    return apiFetch<UserMe>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // --- Notifications ---
+  async getNotificationPreferences() {
+    return apiFetch<{ whatsapp_enabled: boolean }>("/notifications/preferences");
+  },
+
+  async updateNotificationPreferences(whatsapp_enabled: boolean) {
+    return apiFetch<{ whatsapp_enabled: boolean }>("/notifications/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ whatsapp_enabled }),
+    });
+  },
+
+  // --- Categories ---
+  async getCategoryPreferences() {
+    return apiFetch<{
+      categories: Array<{ category: string; sort_order: number; hidden: boolean }>;
+    }>("/categories/preferences");
+  },
+
+  async updateCategoryPreferences(
+    categories: Array<{ category: string; sort_order: number; hidden: boolean }>
+  ) {
+    return apiFetch<{
+      categories: Array<{ category: string; sort_order: number; hidden: boolean }>;
+    }>("/categories/preferences", {
+      method: "PUT",
+      body: JSON.stringify({ categories }),
+    });
+  },
+
+  // --- Delete Account ---
+  async deleteAccount() {
+    const authHeader = await getAuthHeader();
+    const res = await fetch(`${API_URL}/auth/me`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", ...authHeader, "X-Confirm-Delete": "ELIMINAR" },
+    });
+    if (!res.ok) throw new Error(`API error ${res.status}: /auth/me`);
+  },
 };
