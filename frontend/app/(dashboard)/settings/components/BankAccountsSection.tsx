@@ -12,8 +12,8 @@ import { api, type BankAccountRow } from "@/app/lib/api";
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   personal: "Personal",
-  partner: "Pareja",
-  joint: "Compartida",
+  partner: "Personal",
+  joint: "Hogar",
 };
 
 const ACCOUNT_TYPE_COLOR: Record<string, string> = {
@@ -242,7 +242,7 @@ function AccountCard({
         <div className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-3">
           <p className="text-xs text-luka-muted font-medium">Tipo de cuenta</p>
           <div className="flex gap-2">
-            {(["personal", "partner", "joint"] as const).map((t) => (
+            {(["personal", "joint"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setEditType(t)}
