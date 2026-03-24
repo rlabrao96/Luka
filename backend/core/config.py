@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     gcp_project_id: str = "luka-project"
     token_encryption_key: str = ""  # Fernet key for encrypting OAuth tokens at rest
+    gmail_pubsub_topic: str = "luka-gmail-notifications"
+    google_client_id: str = ""
+    google_client_secret: str = ""
 
     # SMTP Settings (legacy — prefer Resend)
     smtp_host: str = "smtp.gmail.com"
