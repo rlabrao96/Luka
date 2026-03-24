@@ -19,42 +19,29 @@ export default function InvitePage({
   const setHousehold = useLukaStore((s) => s.setHousehold);
   const reset = useLukaStore((s) => s.reset);
 
-  const [status, setStatus] = useState<"signing-out" | "loading" | "error">("signing-out");
+  const [status, setStatus] = useState<"loading" | "self-invite" | "error" | "success">("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
-  // Step 1: Sign out any existing session so the partner logs in with their own account
   useEffect(() => {
-    async function signOutAndRedirect() {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (session) {
-        // There's an active session — sign out first
-        await supabase.auth.signOut();
-        reset();
-      }
-
-      // Now try to accept (will fail with 401 if not logged in, which is expected)
-      setStatus("loading");
-    }
-    signOutAndRedirect();
-  }, [reset]);
-
-  // Step 2: Once signed out, try to accept the invite
-  useEffect(() => {
-    if (status !== "loading") return;
-
     async function tryAccept() {
       try {
         const data = await api.acceptInvite(token);
         setHousehold(data.household_id);
+        setStatus("success");
         router.push("/");
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : "";
 
-        // If 401/403, user needs to log in first
-        if (errMsg.includes("401") || errMsg.includes("403")) {
+        // Not logged in — redirect to login with return URL
+        if (errMsg.includes("401") || errMsg.includes("403") || errMsg.includes("Could not validate")) {
           router.push(`/login?redirect=/invite/${token}`);
+          return;
+        }
+
+        // Self-invite — special UI with option to switch accounts
+        if (errMsg.includes("propia invitación") || errMsg.includes("Ya eres miembro")) {
+          setErrorMessage(errMsg);
+          setStatus("self-invite");
           return;
         }
 
@@ -63,10 +50,17 @@ export default function InvitePage({
       }
     }
     tryAccept();
-  }, [token, router, setHousehold, status]);
+  }, [token, router, setHousehold]);
+
+  async function handleSwitchAccount() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    reset();
+    router.push(`/login?redirect=/invite/${token}`);
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-luka-light">
+    <div className="min-h-screen flex items-center justify-center bg-luka-light px-4">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center">
           <CardTitle className="flex justify-center">
@@ -81,16 +75,35 @@ export default function InvitePage({
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center space-y-4 py-4">
-          {(status === "signing-out" || status === "loading") && (
+          {status === "loading" && (
             <>
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-luka-primary border-t-transparent" />
-              <p className="text-luka-muted text-sm">
-                {status === "signing-out"
-                  ? "Preparando sesión..."
-                  : "Uniéndote al hogar..."}
-              </p>
+              <p className="text-luka-muted text-sm">Uniéndote al hogar...</p>
             </>
           )}
+
+          {status === "self-invite" && (
+            <>
+              <p className="text-center text-sm text-slate-700 font-medium">{errorMessage}</p>
+              <p className="text-center text-xs text-slate-500">
+                Abre este enlace en el navegador de tu pareja, o cambia de cuenta aquí.
+              </p>
+              <Button
+                onClick={handleSwitchAccount}
+                className="w-full bg-luka-primary hover:bg-blue-700"
+              >
+                Cambiar de cuenta
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => router.push("/")}
+                className="w-full"
+              >
+                Volver al inicio
+              </Button>
+            </>
+          )}
+
           {status === "error" && (
             <>
               <p className="text-center text-sm text-luka-danger">{errorMessage}</p>
