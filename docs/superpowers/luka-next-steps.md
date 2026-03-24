@@ -286,6 +286,11 @@ Next: Multi-bank parser support
   → Router in parse_bank_email() tries all parsers, returns first match
   → Reference templates in docs/email-templates/<bank-name>/
 
+Next: Deduplication
+  → Banco de Chile sends pairs: "Compra con TC" (enviodigital) + "Comprobante de Pago" (serviciodetransferencias) for the same purchase
+  → Deduplicate by (amount + merchant + date within 5-min window) before creating transaction
+  → Or: only process one sender per bank (e.g. prefer enviodigital, skip serviciodetransferencias comprobantes)
+
 Next: Complete transaction pipeline
   → Test with real Chilean bank email → parsed transaction → WhatsApp alert with category options
   → Create WhatsApp message templates (verification_code, transaction_alert) for 24h window bypass

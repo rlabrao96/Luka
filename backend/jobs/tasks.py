@@ -218,57 +218,6 @@ async def process_email(
             user.google_access_token_enc = encrypt_token(new_token)
             await db.commit()
 
-        # --- TEMP: send WhatsApp notification for every new email ---
-        for raw_email in emails:
-            try:
-                # Deduplicate: skip if we already notified for this message_id
-                dedup_key = f"email_notified:{raw_email.message_id}"
-                if await redis_client.get(dedup_key):
-                    print(
-                        f"[PROCESS_EMAIL] TEMP: skipping duplicate {raw_email.message_id}",
-                        flush=True,
-                    )
-                    continue
-                await redis_client.set(dedup_key, "1", ex=3600)  # 1h TTL
-
-                import httpx
-                from core.config import settings as _s
-
-                phone = user.phone_whatsapp
-                if phone:
-                    from zoneinfo import ZoneInfo
-
-                    chile_tz = ZoneInfo("America/Santiago")
-                    received = raw_email.received_at.astimezone(chile_tz).strftime("%H:%M %d/%m/%Y")
-                    msg = (
-                        f"📧 Nuevo email recibido:\n"
-                        f"*De:* {raw_email.sender}\n"
-                        f"*Asunto:* {raw_email.subject}\n"
-                        f"*Recibido:* {received}"
-                    )
-                    async with httpx.AsyncClient(timeout=15.0) as client:
-                        await client.post(
-                            f"https://graph.facebook.com/v22.0/{_s.whatsapp_phone_number_id}/messages",
-                            headers={
-                                "Authorization": f"Bearer {_s.whatsapp_access_token}",
-                                "Content-Type": "application/json",
-                            },
-                            json={
-                                "messaging_product": "whatsapp",
-                                "to": phone,
-                                "type": "text",
-                                "text": {"body": msg},
-                            },
-                        )
-                    print(
-                        f"[PROCESS_EMAIL] TEMP: sent WhatsApp for email from {raw_email.sender}",
-                        flush=True,
-                    )
-            except Exception as e:
-                print(f"[PROCESS_EMAIL] TEMP: WhatsApp send FAILED: {e}", flush=True)
-                logger.warning("TEMP: failed to send WhatsApp notification: %s", e)
-        # --- END TEMP ---
-
         for raw_email in emails:
             try:
                 # Pre-filter: skip non-financial emails
