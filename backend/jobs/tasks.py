@@ -224,7 +224,12 @@ async def process_email(
                 if not is_financial_email(raw_email.subject, raw_email.sender, raw_email.body):
                     continue
 
-                # Check bank account email_sender_pattern
+                # Parse email
+                parsed = parse_bank_email(raw_email.body)
+                if not parsed:
+                    continue
+
+                # Bank account is optional (not required for email-only users)
                 bank_result = await db.execute(
                     select(BankAccount).where(
                         and_(
@@ -234,12 +239,23 @@ async def process_email(
                     )
                 )
                 bank_account = bank_result.scalars().first()
-                if not bank_account:
-                    continue  # no registered bank account yet, skip
 
-                # Parse email
-                parsed = parse_bank_email(raw_email.body)
-                if not parsed:
+                # Get household — from bank account or user's membership
+                household_id = None
+                if bank_account:
+                    household_id = bank_account.household_id
+                else:
+                    from modules.households.models import HouseholdMember
+
+                    hm_result = await db.execute(
+                        select(HouseholdMember.household_id).where(
+                            HouseholdMember.user_id == user.id
+                        )
+                    )
+                    household_id = hm_result.scalar_one_or_none()
+
+                if not household_id:
+                    logger.warning("process_email: user %s has no household, skipping", user.email)
                     continue
 
                 # Lookup merchant categories (to provide options via WhatsApp)
@@ -248,8 +264,8 @@ async def process_email(
                 # Create pending transaction
                 txn = Transaction(
                     user_id=user.id,
-                    household_id=bank_account.household_id,
-                    bank_account_id=bank_account.id,
+                    household_id=household_id,
+                    bank_account_id=bank_account.id if bank_account else None,
                     raw_merchant_name=parsed.raw_merchant,
                     amount=parsed.amount,
                     transaction_date=parsed.transaction_date,
@@ -263,7 +279,7 @@ async def process_email(
                 await db.refresh(txn)
 
                 # Add transaction split AFTER commit so txn.id exists
-                is_joint = bank_account.account_type == "joint"
+                is_joint = bank_account and bank_account.account_type == "joint"
                 if is_joint:
                     # Auto-classify as shared, just ask for category
                     split = TransactionSplit(
