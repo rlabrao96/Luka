@@ -87,18 +87,18 @@ async def send_invite_email(
     """
 
     subject = f"¡{inviter_name} te invitó a unirte a Luka!"
-    from_email = settings.smtp_user or "onboarding@resend.dev"
 
     # Prefer Resend HTTP API (works on Railway where SMTP is blocked)
     if settings.resend_api_key:
         import httpx
 
+        resend_from = "Luka <onboarding@resend.dev>"
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {settings.resend_api_key}"},
                 json={
-                    "from": f"Luka <{from_email}>",
+                    "from": resend_from,
                     "to": [email_to],
                     "subject": subject,
                     "html": html_content,
@@ -117,7 +117,7 @@ async def send_invite_email(
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = from_email
+    msg["From"] = settings.smtp_user
     msg["To"] = email_to
     msg.attach(MIMEText("Has sido invitado a Luka.", "plain"))
     msg.attach(MIMEText(html_content, "html"))
