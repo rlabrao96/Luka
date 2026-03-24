@@ -363,6 +363,19 @@ export const api = {
     });
   },
 
+  // --- WhatsApp PIN ---
+  sendWhatsAppPin: (phone: string) =>
+    apiFetch<{ status: string }>("/auth/send-whatsapp-pin", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+    }),
+
+  verifyWhatsAppPin: (phone: string, pin: string) =>
+    apiFetch<{ status: string }>("/auth/verify-whatsapp-pin", {
+      method: "POST",
+      body: JSON.stringify({ phone, pin }),
+    }),
+
   // --- Delete Account ---
   async deleteAccount() {
     const authHeader = await getAuthHeader();
