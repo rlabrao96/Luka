@@ -26,11 +26,14 @@ class Settings(BaseSettings):
     environment: str = "development"
     gcp_project_id: str = "luka-project"
 
-    # SMTP Settings
+    # SMTP Settings (legacy — prefer Resend)
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
+
+    # Resend (transactional email via HTTP API)
+    resend_api_key: str = ""
 
 
 settings = Settings()

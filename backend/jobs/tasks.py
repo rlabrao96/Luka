@@ -86,21 +86,41 @@ async def send_invite_email(
     </html>
     """
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"¡{inviter_name} te invitó a unirte a Luka!"
-    msg["From"] = settings.smtp_user or "noreply@luka.app"
-    msg["To"] = email_to
+    subject = f"¡{inviter_name} te invitó a unirte a Luka!"
+    from_email = settings.smtp_user or "onboarding@resend.dev"
 
-    msg.attach(
-        MIMEText(
-            "Has sido invitado a Luka. Revisa este correo en un cliente que soporte HTML.", "plain"
-        )
-    )
-    msg.attach(MIMEText(html_content, "html"))
+    # Prefer Resend HTTP API (works on Railway where SMTP is blocked)
+    if settings.resend_api_key:
+        import httpx
 
-    if not settings.smtp_host or not settings.smtp_user:
-        logger.warning(f"SMTP not configured. Would have sent invite to {email_to}")
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+                json={
+                    "from": f"Luka <{from_email}>",
+                    "to": [email_to],
+                    "subject": subject,
+                    "html": html_content,
+                },
+            )
+            if resp.status_code not in (200, 201):
+                logger.error(f"Resend API error {resp.status_code}: {resp.text}")
+                raise Exception(f"Resend API error: {resp.text}")
+            logger.info(f"Invite email sent via Resend to {email_to}")
         return
+
+    # Fallback: SMTP (for local dev)
+    if not settings.smtp_host or not settings.smtp_user:
+        logger.warning(f"No email provider configured. Would have sent invite to {email_to}")
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = email_to
+    msg.attach(MIMEText("Has sido invitado a Luka.", "plain"))
+    msg.attach(MIMEText(html_content, "html"))
 
     def _send():
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
@@ -111,7 +131,7 @@ async def send_invite_email(
 
     try:
         await asyncio.to_thread(_send)
-        logger.info(f"Invite email sent successfully to {email_to}")
+        logger.info(f"Invite email sent via SMTP to {email_to}")
     except Exception as e:
         logger.error(f"Failed to send invite email to {email_to}: {e}")
         raise e
