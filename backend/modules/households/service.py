@@ -59,6 +59,7 @@ async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) ->
         SELECT
             t.user_id,
             u.full_name,
+            u.email,
             COALESCE(SUM(t.amount), 0) AS total_paid,
             COALESCE(SUM(t.amount) FILTER (WHERE ts.split_type = 'shared'), 0) AS shared_paid,
             COALESCE(SUM(t.amount) FILTER (WHERE ts.split_type = 'personal'), 0) AS personal_paid
@@ -67,7 +68,7 @@ async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) ->
         JOIN users u ON u.id = t.user_id
         WHERE t.household_id = :household_id
           AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
-        GROUP BY t.user_id, u.full_name
+        GROUP BY t.user_id, u.full_name, u.email
         """),
         {"household_id": str(household_id)},
     )
