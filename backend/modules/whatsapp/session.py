@@ -13,12 +13,19 @@ class WhatsAppSession:
     raw_merchant: str = ""
 
 
+def _normalize_phone(phone: str) -> str:
+    """Strip leading + so session keys are consistent regardless of format."""
+    return phone.lstrip("+")
+
+
 async def save_session(phone: str, session: WhatsAppSession, redis: Redis) -> None:
-    await redis.setex(f"wa_session:{phone}", _SESSION_TTL, json.dumps(asdict(session)))
+    await redis.setex(
+        f"wa_session:{_normalize_phone(phone)}", _SESSION_TTL, json.dumps(asdict(session))
+    )
 
 
 async def get_session(phone: str, redis: Redis) -> WhatsAppSession | None:
-    raw = await redis.get(f"wa_session:{phone}")
+    raw = await redis.get(f"wa_session:{_normalize_phone(phone)}")
     if not raw:
         return None
     data = json.loads(raw)
@@ -26,4 +33,4 @@ async def get_session(phone: str, redis: Redis) -> WhatsAppSession | None:
 
 
 async def clear_session(phone: str, redis: Redis) -> None:
-    await redis.delete(f"wa_session:{phone}")
+    await redis.delete(f"wa_session:{_normalize_phone(phone)}")
