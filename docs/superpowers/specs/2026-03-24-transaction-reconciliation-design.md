@@ -19,15 +19,23 @@ Also: cross-sender dedup for Banco de Chile (compra + comprobante pairs), and a 
 
 | Case | Label | Query condition |
 |------|-------|-----------------|
-| Awaiting reconciliation | `awaiting_reconciliation` | `source IN ('gmail','outlook')` AND `status='pending'` AND (`bank_account.last_synced_at IS NULL` OR `bank_account.last_synced_at < txn.created_at`) |
+| Awaiting reconciliation | `awaiting_reconciliation` | `source IN ('gmail','outlook')` AND `status='pending'` AND `max_synced_at IS NULL` OR `max_synced_at < txn.created_at` |
 | Needs classification | `needs_classification` | `source='fintoc'` AND `category IS NULL` AND `status='settled'` |
-| Unmatched email | `unmatched_email` | `source IN ('gmail','outlook')` AND `status='pending'` AND `bank_account.last_synced_at >= txn.created_at` |
+| Unmatched email | `unmatched_email` | `source IN ('gmail','outlook')` AND `status='pending'` AND `max_synced_at >= txn.created_at` |
 
-**For users without Fintoc** (no bank account): All email transactions go through the WhatsApp flow and become settled. No pending block needed — the endpoint returns empty lists.
+Where `max_synced_at` is a subquery:
+```sql
+(SELECT MAX(ba.last_synced_at) FROM bank_accounts ba
+ WHERE ba.user_id = txn.user_id AND ba.is_active)
+```
 
-**For awaiting_reconciliation vs unmatched_email:** The distinction is whether a Fintoc sync has run since the transaction was created. If `bank_account.last_synced_at >= txn.created_at`, at least one sync ran and didn't match it → it's unmatched. If no sync ran yet → still awaiting.
+This avoids joining on `bank_account_id` (which is NULL for email-only transactions) and instead checks whether ANY of the user's bank accounts have synced.
 
-**Note:** Users may have multiple bank accounts. Check `last_synced_at` across all active bank accounts for the user — if ANY account has synced after the transaction's `created_at`, the transaction has had a chance to be matched.
+**For users without Fintoc** (no bank account, no `last_synced_at`): After WhatsApp classification completes, email transactions move to `status='settled'` — they don't stay pending forever. The `process_email` pipeline should set `status='settled'` (not `'pending'`) when the user has no active Fintoc bank accounts, since there's nothing to reconcile against.
+
+**For awaiting_reconciliation vs unmatched_email:** The distinction is whether a Fintoc sync has run since the transaction was created. If `max_synced_at >= txn.created_at`, at least one sync ran and didn't match it → unmatched. If no sync ran yet → still awaiting.
+
+**Important — OUTER JOIN required:** The pending query must use `outerjoin` on `BankAccount` (not inner join) since email transactions may have `bank_account_id=NULL`. The existing `get_my_transactions` uses an INNER JOIN which already excludes email-only transactions — this is a pre-existing bug that should be fixed to use `outerjoin` as part of this work.
 
 ### Response shape
 
@@ -39,7 +47,9 @@ Also: cross-sender dedup for Banco de Chile (compra + comprobante pairs), and a 
 }
 ```
 
-Uses existing `TransactionResponse` schema. Auth: current user only.
+**New schema:** `PendingTransactionsResponse` in `schemas.py` — wraps 3 lists of `TransactionResponse`. Auth: current user only.
+
+**Reconciler fix:** When `reconcile_transactions` matches a pending email transaction to a Fintoc transaction, it should also set `bank_account_id` on the matched email transaction (so it appears correctly in `/mine` after the INNER→OUTER join fix).
 
 ### Endpoint: `DELETE /transactions/{id}`
 
@@ -48,7 +58,7 @@ Hard delete. Validates before deleting:
 - `source IN ('gmail', 'outlook')` (only email transactions can be deleted)
 - `status = 'pending'` (only pending transactions)
 
-Returns 204 on success, 404 if not found, 403 if validation fails.
+Returns 204 on success, 404 if not found, 400 if validation fails (e.g., "Only pending email transactions can be deleted").
 
 ## 2. Backend — Cross-Sender Dedup
 
@@ -60,9 +70,11 @@ Banco de Chile sends pairs for the same purchase:
 
 1. Query existing pending transactions for the same user where:
    - `amount` matches exactly
-   - `transaction_date` is within 5 minutes
+   - `created_at` is within 5 minutes (DB insertion time, not bank timestamp — both emails arrive within seconds)
    - `status = 'pending'`
 2. If a match exists → skip (don't create duplicate)
+
+Using `created_at` (not `transaction_date`) for the dedup window because both emails arrive near-simultaneously but may parse different timestamps from their bodies (authorization time vs settlement time).
 
 This is a simple pre-insert check, not a separate reconciliation pass.
 
@@ -135,8 +147,8 @@ Email arrives → Transaction(status="pending", source="gmail")
                     │                             (appears in "Sin match bancario")
                     │                             User can delete (hard delete)
                     │
-                    └── No Fintoc account → WhatsApp classifies → stays in pending block
-                                            as "awaiting_reconciliation" (no sync to compare against)
+                    └── No Fintoc account → WhatsApp classifies → status="settled"
+                                            (nothing to reconcile against, treat as final)
 
 Fintoc sync → new transaction, no email match → Transaction(status="settled", source="fintoc")
               │
@@ -151,8 +163,11 @@ Fintoc sync → new transaction, no email match → Transaction(status="settled"
 |------|--------|-------------|
 | `backend/modules/transactions/router.py` | Modified | Add `GET /pending`, `DELETE /{id}` |
 | `backend/modules/transactions/service.py` | Modified | Add `get_pending_transactions()`, `delete_transaction()` |
+| `backend/modules/transactions/schemas.py` | Modified | Add `PendingTransactionsResponse` schema |
+| `backend/modules/transactions/service.py` | Modified | Fix INNER→OUTER join on BankAccount in `/mine` and `/shared` |
 | `backend/modules/transactions/router.py` | Modified | Filter `status='pending'` from `/mine` |
-| `backend/jobs/tasks.py` | Modified | Add cross-sender dedup check before transaction insert |
+| `backend/modules/fintoc/reconciler.py` | Modified | Set `bank_account_id` on matched email transactions |
+| `backend/jobs/tasks.py` | Modified | Add cross-sender dedup; set `status='settled'` for non-Fintoc users |
 | `frontend/app/(dashboard)/transactions/page.tsx` | Modified | Add PendingBlock between SummaryBar and Tabs |
 | `frontend/app/(dashboard)/components/PendingBlock.tsx` | New | Pending block component with 3 sub-sections |
 | `frontend/app/lib/hooks/useTransactions.ts` | Modified | Add `usePendingTransactions()` hook |
