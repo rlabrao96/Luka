@@ -4,6 +4,7 @@ from core.config import settings
 from core.encryption import decrypt_token, encrypt_token
 from core.database import AsyncSessionLocal
 from modules.email.parser import parse_bank_email
+from modules.email.filter import is_financial_email
 from modules.merchants.service import lookup_merchant
 from modules.whatsapp.sender import send_expense_alert
 from modules.whatsapp.session import WhatsAppSession, save_session
@@ -270,6 +271,10 @@ async def process_email(
 
         for raw_email in emails:
             try:
+                # Pre-filter: skip non-financial emails
+                if not is_financial_email(raw_email.subject, raw_email.sender, raw_email.body):
+                    continue
+
                 # Check bank account email_sender_pattern
                 bank_result = await db.execute(
                     select(BankAccount).where(
