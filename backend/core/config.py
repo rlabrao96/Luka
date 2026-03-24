@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     cors_origins: str = ""  # Comma-separated additional CORS origins
     environment: str = "development"
     gcp_project_id: str = "luka-project"
+    token_encryption_key: str = ""  # Fernet key for encrypting OAuth tokens at rest
 
     # SMTP Settings (legacy — prefer Resend)
     smtp_host: str = "smtp.gmail.com"
