@@ -220,6 +220,16 @@ async def process_email(
 
         for raw_email in emails:
             try:
+                # Deduplicate: skip if we already processed this email
+                dedup_key = f"txn_processed:{raw_email.message_id}"
+                if await redis_client.get(dedup_key):
+                    print(
+                        f"[PROCESS_EMAIL] skipping duplicate email {raw_email.message_id}",
+                        flush=True,
+                    )
+                    continue
+                await redis_client.set(dedup_key, "1", ex=86400)  # 24h TTL
+
                 # Pre-filter: skip non-financial emails
                 if not is_financial_email(raw_email.subject, raw_email.sender, raw_email.body):
                     continue

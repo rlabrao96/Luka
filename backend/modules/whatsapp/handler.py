@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from redis.asyncio import Redis
 from modules.whatsapp.session import get_session, save_session, clear_session
-from modules.whatsapp.sender import send_category_list
+from modules.whatsapp.sender import send_category_list, send_text
 from modules.merchants.service import record_category_selection, lookup_merchant
 from modules.transactions.models import Transaction, TransactionSplit
 
@@ -40,6 +40,7 @@ async def handle_list_selection(
     await _save_split(session.transaction_id, session.split_type or "shared", category, db)
     await record_category_selection(session.raw_merchant, category, db=db, redis=redis)
     await clear_session(phone, redis)
+    await send_text(to=phone, body=f"✅ Guardado: {session.raw_merchant} → {category}")
 
 
 async def _save_split(

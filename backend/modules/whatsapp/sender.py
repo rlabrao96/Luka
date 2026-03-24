@@ -84,6 +84,22 @@ async def send_category_list(to: str, categories: list[str], context_msg: str = 
     return data["messages"][0]["id"]
 
 
+async def send_text(to: str, body: str) -> str:
+    """Send a simple text message. Returns message ID."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": body},
+    }
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.post(_url(), headers=_headers(), json=payload)
+        data = resp.json()
+        if resp.status_code != 200:
+            raise Exception(f"WhatsApp API Error: {data}")
+    return data["messages"][0]["id"]
+
+
 async def send_verification_pin(to: str, pin: str) -> None:
     """Send a text message with a verification PIN. Raises on failure."""
     payload = {
