@@ -223,6 +223,29 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
     }
 
 
+async def delete_transaction(
+    db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID
+) -> str:
+    """
+    Hard delete a pending email transaction.
+    Returns: 'deleted', 'not_found', or 'invalid'.
+    """
+    result = await db.execute(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.user_id == user_id,
+        )
+    )
+    txn = result.scalar_one_or_none()
+    if not txn:
+        return "not_found"
+    if txn.source not in ("gmail", "outlook") or txn.status != "pending":
+        return "invalid"
+    await db.delete(txn)
+    await db.commit()
+    return "deleted"
+
+
 def _txn_to_dict(txn: Transaction, split: TransactionSplit | None) -> dict:
     """Convert Transaction + optional Split to response dict."""
     return {
