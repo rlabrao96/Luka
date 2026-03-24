@@ -1,5 +1,5 @@
 # Luka — Project State Document
-**Date:** 2026-03-23 (session 3)
+**Date:** 2026-03-23 (session 4)
 **Status:** Full project audit complete. **Performance overhaul:** eliminated triple auth call chain (3 Supabase API calls → 0 per navigation), local JWT validation via PyJWT+JWKS (ES256/RS256/HS256), Redis user profile cache, all 8 dashboard queries prefetched on login, dynamic Recharts imports (~200KB deferred), Next.js optimizePackageImports. **Architecture fixes:** CORS from config, cache headers middleware, shared DB session in get_current_user, React Query polling for import status, InactivityGuard visibilitychange. **Cleanup:** removed 2.9GB abandoned worktrees, reorganized docs. **New documentation:** architecture, API reference, deployment guide, development guide, feature roadmap. **Bug fixes:** timezone date display (UTC→Chile offset), JWT ES256 support for Supabase ECC P-256 keys.
 
 ---
@@ -38,7 +38,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   ├── security.py            ← PyJWT JWKS validation (ES256/RS256/HS256), get_current_user()
 │   │   └── cache.py               ← Redis cache helpers (get/set/delete with TTL)
 │   ├── modules/
-│   │   ├── auth/                   ← User model + GET /auth/me
+│   │   ├── auth/                   ← User model + GET/PATCH/DELETE /auth/me
 │   │   ├── households/             ← Household, Member, Invite, BankAccount, Budget models
 │   │   │                             POST /, POST /{id}/invite, GET /{id}/summary, GET /{id}/partner-stats
 │   │   ├── transactions/           ← Transaction, TransactionSplit, ProcessedWebhook, FailedJob models
@@ -108,7 +108,9 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │       ├── transactions/page.tsx  ← /transactions — tabs (mine/shared) + search
 │   │       ├── household/page.tsx     ← /household — contribution bars + partner stats
 │   │       ├── budgets/page.tsx       ← /budgets — pace chart, allocation editor, waterfall cards
-│   │       ├── settings/page.tsx      ← /settings — sign-out + privacy disclosure
+│   │       ├── settings/
+│   │       │   ├── page.tsx              ← /settings — profile, bank accounts, hogar, notifications, categories, privacy, delete
+│   │       │   └── components/           ← ProfileSection, BankAccountsSection, HogarSection, NotificationsSection, CategoriesSection, PrivacySection, DeleteAccountSection
 │   │       └── components/
 │   │           ├── Sidebar.tsx         ← Desktop nav (hidden on mobile)
 │   │           ├── BottomNav.tsx       ← Mobile bottom tabs (hidden on lg+)
@@ -124,7 +126,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │           └── ImportStatusBanner.tsx     ← Polls import-status, shows progress banner
 │   │   └── lib/
 │   │       └── fintoc.d.ts             ← Global Window.Fintoc type declaration (single source)
-│   ├── components/ui/              ← shadcn/ui: badge, button, card, input, tabs, table, separator, avatar
+│   ├── components/ui/              ← shadcn/ui: badge, button, card, input, tabs, table, separator, avatar, bottom-sheet
 │   └── lib/utils.ts                ← cn() Tailwind class merger
 │
 └── docs/superpowers/
@@ -141,8 +143,9 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 ## Database Schema (12 tables)
 
 ```sql
-users              — id, email, full_name, whatsapp_verified, email_provider,
-                     mail_watch_subscription_id (Outlook), mail_watch_expiry
+users              — id, email, full_name, phone_whatsapp, whatsapp_verified, email_provider,
+                     mail_watch_subscription_id (Outlook), mail_watch_expiry,
+                     google_access_token_enc, google_refresh_token_enc
 
 households         — id, name, type ('individual'|'couple')
 
@@ -176,6 +179,11 @@ household_budget_allocations — id, household_id, month (DATE UNIQUE per househ
 transaction_splits — id, transaction_id, split_type ('personal'|'partner'|'shared'),
                      category, decided_by_user_id, whatsapp_message_id, decided_at
 
+notification_preferences — user_id (PK, FK users), whatsapp_enabled
+
+user_category_preferences — id, user_id, category, sort_order, hidden
+                     UNIQUE(user_id, category)
+
 processed_webhooks — message_id (PK), processed_at  ← idempotency
 
 failed_jobs        — id, job_name, payload (JSON), error_message, attempt_count
@@ -193,7 +201,15 @@ failed_jobs        — id, job_name, payload (JSON), error_message, attempt_coun
 ```
 GET  /health                                → {"status":"ok","app":"luka"}
 
-GET  /auth/me                               → current user
+GET  /auth/me                               → current user (includes phone_whatsapp)
+PATCH /auth/me                              → update profile (full_name, phone_whatsapp)
+DELETE /auth/me                             → delete account (requires X-Confirm-Delete: ELIMINAR)
+POST /auth/store-provider-tokens           → store encrypted Google OAuth tokens
+
+GET  /notifications/preferences            → get notification preferences (auto-creates default)
+PATCH /notifications/preferences           → update notification preferences (whatsapp_enabled)
+GET  /categories/preferences               → get category sort/hide preferences
+PUT  /categories/preferences               → replace all category preferences
 
 POST /households/                           → create household
 POST /households/{id}/invite               → invite partner by email
@@ -357,10 +373,13 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Gap | Impact | Notes |
 |-----|--------|-------|
 | WhatsApp Integration | ✅ DONE | Cloud API verified in Live Mode. Webhook listener and sender functional. |
-| Email watch setup | Medium | Onboarding connects email — initial watch setup needs triggering once after first login. Blocked on GCP/Azure credentials. |
-| Vault integration | Low | Supabase Vault for OAuth tokens (noted in design spec, not wired) — optional hardening |
-| Google/Microsoft OAuth login | Blocking for real users | GCP OAuth credentials not yet configured in Supabase |
-| Alembic auto-run on Railway | Low | Railway releaseCommand was unreliable — future migrations must be run manually from local env via `python3 -m alembic upgrade head` |
+| Frontend Redesign Tier 1 | ✅ DONE | DM Sans, card-based transactions, bottom sheets, collapsible filters, mobile-first |
+| Frontend Redesign Tier 2 | ✅ DONE | Settings page (7 sections), login/onboarding polish, invite flow with self-invite protection |
+| Google OAuth token storage | ✅ DONE | Fernet-encrypted tokens in users table (google_access_token_enc, google_refresh_token_enc) |
+| Resend email integration | ✅ DONE | Transactional emails via Resend HTTP API (Railway blocks outbound SMTP) |
+| Email watch setup | Medium | Gmail Pub/Sub watch needs GCP project + initial trigger after first login |
+| Email domain for Resend | Low | Currently sends from onboarding@resend.dev — custom domain needed for production emails |
+| Alembic auto-run on Railway | Low | Run manually: `cd backend && python3 -m alembic upgrade head` |
 
 ---
 
@@ -382,7 +401,7 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - Supabase redirect URL configured: `https://luka-lovat.vercel.app/auth/callback`
 
 **Database (Supabase):** ✅ LIVE
-- All 11 migrations applied (`alembic upgrade head` — confirmed at `011 head`)
+- All 16 migrations applied (`alembic upgrade head` — confirmed at `016 head`)
 - Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
 - Migration 010 adds bank account settings overhaul columns
 - Migration 011 adds `transaction_type`, `transfer_to_account_id`, `household_budget_allocations`

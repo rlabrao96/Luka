@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-23
+**Date:** 2026-03-23 (session 4)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -87,6 +87,21 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — Transaction dates shifted by timezone (UTC midnight → Chile UTC-3 = previous day); now parses date-only ✅
 - **Dependency** — Added PyJWT[crypto] to pyproject.toml ✅
 - **Config** — Added supabase_jwt_secret and cors_origins to Settings ✅
+- **Frontend Redesign Tier 1** — DM Sans typography, card-based transaction rows, bottom sheets (category + split type), collapsible mobile filters, underline tabs, gradient direction icons, date-grouped transactions ✅
+- **Frontend Redesign Tier 2** — Settings page full redesign: 7 sections (Profile, Bank Accounts, Hogar, Notifications, Categories, Privacy, Delete Account) ✅
+- **Feature** — Profile editing: PATCH /auth/me (name + phone_whatsapp) ✅
+- **Feature** — Notification preferences: GET/PATCH /notifications/preferences with optimistic toggle ✅
+- **Feature** — Category preferences: drag-and-drop reorder + hide/show, split into Ingresos/Gastos columns ✅
+- **Feature** — Delete account: application-level cascade delete + Supabase auth cleanup ✅
+- **Feature** — Hogar section: member info with email, invite partner with shareable link + copy button ✅
+- **Feature** — Invite flow: self-invite protection, "Cambiar de cuenta" button, cookie-based post-login redirect ✅
+- **Feature** — Resend email integration for transactional emails (Railway blocks SMTP) ✅
+- **Feature** — Google OAuth token encrypted storage (Fernet) in users table ✅
+- **DB migrations** — 013: phone_whatsapp on users, 014: notification_preferences, 015: user_category_preferences, 016: google_access_token_enc + google_refresh_token_enc ✅
+- **Bug fix** — PATCH /auth/me: re-fetch user from DB session (cached user was detached) ✅
+- **Bug fix** — apiFetch: extract backend error detail instead of generic "API error 400" ✅
+- **Style** — Login + onboarding pages polished (rounded-xl, focus rings, step indicator shadows) ✅
+- **Style** — Account type: removed "Pareja" option, renamed "Compartida" to "Hogar" ✅
 
 ---
 
@@ -176,7 +191,7 @@ API key loaded in Railway.
 
 ## Phase 2: Infrastructure Setup ✅ COMPLETE
 
-- **2.1** Database migrations — done (`012 head`)
+- **2.1** Database migrations — done (`016 head`)
 - **2.2** Railway backend — live at `https://luka-production-eb87.up.railway.app`
 - **2.3** Vercel frontend — live at `https://luka-lovat.vercel.app`
 - **2.4** Supabase redirect URL configured for Vercel callback
