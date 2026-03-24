@@ -180,9 +180,9 @@ Railway add-on configured. `REDIS_URL` auto-injected.
 
 ---
 
-### 1.6 OpenAI — LLM for Transaction Categorization ✅ DONE
+### 1.6 Gemini — LLM for Transaction Categorization ✅ DONE
 
-API key loaded in Railway.
+Swapped from OpenAI gpt-4o-mini to Google Gemini 2.0 Flash (cheaper, async SDK). API key loaded locally. **TODO:** Add `GEMINI_API_KEY` to Railway env vars.
 
 ---
 
@@ -264,9 +264,29 @@ Checklist before sharing Luka with anyone:
   → Email pipeline end-to-end: Gmail → webhook → worker → WhatsApp notification
   → WhatsApp PIN verification fully wired (backend + frontend)
 
-Next: Wire bank transaction parsing
-  → TEMP: currently sends WhatsApp for ALL emails (debug mode)
-  → Configure bank account with email_sender_pattern (e.g. alertas@santander.cl)
+✅ Week 8 (2026-03-24): Email pre-filter + Gemini LLM + parser fix — COMPLETE
+  → Keyword-based email pre-filter (27 Spanish financial terms) skips non-bank emails
+  → Gemini 2.0 Flash replaces OpenAI gpt-4o-mini (cheaper, async SDK, lazy client init)
+  → Merchant service: 1 category for known merchants, 3 for new (was 4 for all)
+  → Parser: strips HTML before regex, fixed merchant extraction for real Banco de Chile emails
+  → Email templates folder for Banco de Chile (3 formats)
+  → 21 new tests, all passing
+
+Next: Multi-bank parser support
+  → Each bank has different email formats — need per-bank parser patterns
+  → Banks to support (priority order):
+    1. Banco de Chile — ✅ compra + comprobante de pago working, transferencia needs recipient parsing
+    2. Banco Falabella — user already receiving emails, need email samples to build patterns
+    3. Banco Santander — existing test pattern, needs validation against real emails
+    4. BCI — existing test pattern, needs validation against real emails
+    5. Banco Estado — common in Chile, need email samples
+    6. Banco Itaú / Scotiabank — need email samples
+  → Approach: add bank-specific parser modules under backend/modules/email/parsers/
+  → Each module exports parse_<bank>_email() with bank-specific regex
+  → Router in parse_bank_email() tries all parsers, returns first match
+  → Reference templates in docs/email-templates/<bank-name>/
+
+Next: Complete transaction pipeline
   → Test with real Chilean bank email → parsed transaction → WhatsApp alert with category options
   → Create WhatsApp message templates (verification_code, transaction_alert) for 24h window bypass
   → Remove TEMP debug notification code
@@ -290,6 +310,6 @@ Next: P0 Features (see docs/roadmap.md)
 | 1.1 | Supabase: one vs separate dev/prod projects | One or two | Two (dev + prod) to avoid testing against real data |
 | 1.2 | Redis provider | Railway add-on, Upstash, Redis Cloud | Railway add-on (easiest, same infra) |
 | 1.3 | WhatsApp: personal vs business | Your number vs approved WABA | Start with test number, go through approval when ready for real users |
-| 1.6 | LLM: OpenAI vs other | OpenAI, Claude, Gemini | OpenAI gpt-4o-mini (already coded, cheapest, best for structured output) |
+| 1.6 | LLM: Gemini 2.0 Flash | — | Switched from OpenAI (Gemini is cheaper, user has Google account) |
 | 1.7 | Fintoc at launch? | Yes / No / Later | Later — email capture works without it |
 | 3.6 | Fintoc link UI for MVP? | Yes / No | No for MVP, yes for v1.1 |
