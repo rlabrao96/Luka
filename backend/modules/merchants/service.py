@@ -16,7 +16,7 @@ async def lookup_merchant(
 ) -> list[str]:
     """
     Look up merchant categories: Redis L1 → DB L2 → LLM fallback.
-    Returns list of up to 4 category strings.
+    Returns 1 category for known merchants, up to 3 for new merchants.
     """
     normalized = normalize_merchant(raw_name)
     cache_key = f"merchant:{normalized}"
@@ -35,11 +35,11 @@ async def lookup_merchant(
             select(MerchantCategorySelection)
             .where(MerchantCategorySelection.merchant_id == merchant.id)
             .order_by(MerchantCategorySelection.count.desc())
-            .limit(4)
+            .limit(1)
         )
         categories = [row.category for row in top.scalars().all()]
         if not categories and merchant.llm_suggested_categories:
-            categories = merchant.llm_suggested_categories
+            categories = merchant.llm_suggested_categories[:1]
     else:
         # L3: LLM fallback — create merchant row
         categories = await categorize_with_llm(normalized)
