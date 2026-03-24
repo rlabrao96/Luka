@@ -25,20 +25,24 @@ export default function SetupHouseholdPage() {
       <CardHeader><CardTitle className="text-luka-dark">¿Cómo usarás Luka?</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <Button variant={type === "individual" ? "default" : "outline"}
-          className="w-full" onClick={() => setType("individual")}>
+          className="w-full rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" onClick={() => setType("individual")}>
           Solo — quiero controlar mis gastos
         </Button>
         <Button variant={type === "couple" ? "default" : "outline"}
-          className="w-full" onClick={() => setType("couple")}>
+          className="w-full rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" onClick={() => setType("couple")}>
           En pareja — compartir con mi pareja
         </Button>
         {type === "couple" && (
-          <Input placeholder="Email de tu pareja" value={partnerEmail}
-            onChange={e => setPartnerEmail(e.target.value)} />
+          <Input
+            placeholder="Email de tu pareja"
+            value={partnerEmail}
+            onChange={e => setPartnerEmail(e.target.value)}
+            className="rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+          />
         )}
         {type && (
-          <Button 
-            className="w-full bg-luka-primary text-white hover:bg-blue-700" 
+          <Button
+            className="w-full bg-luka-primary text-white hover:bg-blue-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
             onClick={nextStep}
           >
             Continuar →

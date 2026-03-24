@@ -113,7 +113,7 @@ export default function ConnectBankPage() {
                 <Button
                   onClick={openFintocWidget}
                   disabled={!scriptReady}
-                  className="w-full bg-luka-primary text-white hover:bg-blue-700"
+                  className="w-full bg-luka-primary text-white hover:bg-blue-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 >
                   {scriptReady ? "Conectar banco" : "Cargando..."}
                 </Button>

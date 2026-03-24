@@ -59,14 +59,36 @@ export default function VerifyWhatsAppPage() {
         <p className="text-luka-muted text-sm">
           Luka te enviará alertas de gastos por WhatsApp. Necesitamos verificar tu número.
         </p>
-        <Input placeholder="+56 9 1234 5678" value={phone} onChange={e => setPhone(e.target.value)} disabled={isSubmitting} />
+        <Input
+          placeholder="+56 9 1234 5678"
+          value={phone}
+          onChange={e => setPhone(e.target.value)}
+          disabled={isSubmitting}
+          className="rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+        />
         <div className="space-y-2">
           {!pinSent ? (
-            <Button className="w-full bg-luka-primary" onClick={sendPin} disabled={isSubmitting}>Enviar PIN por WhatsApp</Button>
+            <Button
+              className="w-full bg-luka-primary rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              onClick={sendPin}
+              disabled={isSubmitting}
+            >
+              Enviar PIN por WhatsApp
+            </Button>
           ) : (
             <>
-              <Input placeholder="Código de 6 dígitos" value={pin} onChange={e => setPin(e.target.value)} disabled={isSubmitting} />
-              <Button className="w-full bg-luka-primary" onClick={verifyPin} disabled={isSubmitting}>
+              <Input
+                placeholder="Código de 6 dígitos"
+                value={pin}
+                onChange={e => setPin(e.target.value)}
+                disabled={isSubmitting}
+                className="rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+              <Button
+                className="w-full bg-luka-primary rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                onClick={verifyPin}
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? "Finalizando..." : "Verificar →"}
               </Button>
             </>

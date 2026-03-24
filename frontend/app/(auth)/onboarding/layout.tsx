@@ -44,8 +44,8 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
               <div key={step.label} className="flex items-center gap-2">
                 <div 
                   className={`w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md transition-all duration-300 ${
-                    isActive 
-                      ? "bg-white text-luka-primary ring-4 ring-white/40 scale-110" 
+                    isActive
+                      ? "bg-white text-luka-primary ring-4 ring-white/40 scale-110 shadow-[0_1px_3px_rgba(0,0,0,0.03)]"
                       : isPast
                       ? "bg-luka-primary text-white"
                       : "bg-white/20 text-white/50"
