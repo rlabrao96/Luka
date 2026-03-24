@@ -46,7 +46,7 @@ async def update_profile(
     if body.full_name is not None:
         user.full_name = body.full_name
     if body.phone_whatsapp is not None:
-        user.phone_whatsapp = body.phone_whatsapp
+        user.phone_whatsapp = body.phone_whatsapp or None  # empty string → NULL
     await db.commit()
     await db.refresh(user)
 
