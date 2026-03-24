@@ -10,11 +10,11 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
     result = await db.execute(
         select(Transaction, TransactionSplit, BankAccount.bank_name, BankAccount.account_kind)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-        .join(BankAccount, BankAccount.id == Transaction.bank_account_id)
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .where(
             Transaction.user_id == user_id,
             Transaction.transaction_date >= since,
-            BankAccount.is_active.is_(True),
+            Transaction.status != "pending",
         )
         .order_by(Transaction.transaction_date.desc())
     )
@@ -107,12 +107,11 @@ async def get_shared_transactions(
     result = await db.execute(
         select(Transaction, TransactionSplit, BankAccount.bank_name)
         .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-        .join(BankAccount, BankAccount.id == Transaction.bank_account_id)
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .where(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
             Transaction.transaction_date >= since,
-            BankAccount.is_active.is_(True),
         )
         .order_by(Transaction.transaction_date.desc())
     )
