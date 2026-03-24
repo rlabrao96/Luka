@@ -27,4 +27,4 @@ def upgrade():
 
 
 def downgrade():
-    op.execute("ALTER TABLE bank_accounts " "DROP CONSTRAINT IF EXISTS chk_bank_account_type")
+    op.execute("ALTER TABLE bank_accounts DROP CONSTRAINT IF EXISTS chk_bank_account_type")
