@@ -44,27 +44,25 @@ export default function InvitePage({
   useEffect(() => {
     if (status !== "loading") return;
 
-    api
-      .acceptInvite(token)
-      .then((data) => {
+    async function tryAccept() {
+      try {
+        const data = await api.acceptInvite(token);
         setHousehold(data.household_id);
         router.push("/");
-      })
-      .catch((err: unknown) => {
-        const msg =
-          err instanceof Error && err.message
-            ? err.message
-            : "Este enlace ya fue usado o expiró.";
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : "";
 
-        // If 401/403, user needs to log in first — redirect to login with return URL
-        if (msg.includes("401") || msg.includes("403")) {
+        // If 401/403, user needs to log in first
+        if (errMsg.includes("401") || errMsg.includes("403")) {
           router.push(`/login?redirect=/invite/${token}`);
           return;
         }
 
-        setErrorMessage(msg);
+        setErrorMessage(errMsg || "Este enlace ya fue usado o expiró.");
         setStatus("error");
-      });
+      }
+    }
+    tryAccept();
   }, [token, router, setHousehold, status]);
 
   return (
