@@ -1,4 +1,5 @@
 import { createClient } from "@/app/lib/supabase/server";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -8,6 +9,14 @@ export async function GET(request: Request) {
   if (code) {
     const supabase = await createClient();
     await supabase.auth.exchangeCodeForSession(code);
+
+    // Check for post-login redirect (e.g. invite flow)
+    const cookieStore = await cookies();
+    const postLoginRedirect = cookieStore.get("luka-post-login-redirect")?.value;
+    if (postLoginRedirect) {
+      cookieStore.delete("luka-post-login-redirect");
+      return NextResponse.redirect(`${origin}${postLoginRedirect}`);
+    }
 
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {

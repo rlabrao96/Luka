@@ -44,6 +44,22 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
     if invite.accepted_at:
         raise ValueError("Invite already accepted")
 
+    # Prevent inviter from accepting their own invite
+    if invite.invited_by == user.id:
+        raise ValueError(
+            "No puedes aceptar tu propia invitación. Abre el enlace en el navegador de tu pareja."
+        )
+
+    # Prevent user who is already a member of this household
+    existing = await db.execute(
+        select(HouseholdMember).where(
+            HouseholdMember.household_id == invite.household_id,
+            HouseholdMember.user_id == user.id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise ValueError("Ya eres miembro de este hogar.")
+
     invite.accepted_at = datetime.now(timezone.utc)
     member = HouseholdMember(household_id=invite.household_id, user_id=user.id, role="member")
     db.add(member)

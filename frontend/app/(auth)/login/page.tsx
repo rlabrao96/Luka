@@ -5,6 +5,15 @@ import Image from "next/image";
 import Link from "next/link";
 
 export default function LoginPage() {
+  // Store redirect URL (e.g. from invite flow) as cookie so server-side callback can read it
+  if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get("redirect");
+    if (redirect) {
+      document.cookie = `luka-post-login-redirect=${encodeURIComponent(redirect)}; path=/; max-age=600; SameSite=Lax`;
+    }
+  }
+
   const signInWithGoogle = async () => {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
