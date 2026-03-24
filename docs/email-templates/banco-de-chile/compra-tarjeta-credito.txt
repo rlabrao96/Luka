@@ -1,0 +1,12 @@
+<!--
+  Banco de Chile — Aviso de Compra con Tarjeta de Crédito
+  From: enviodigital@bancochile.cl
+  Subject: (inline notification, no specific subject)
+-->
+
+Juan Pérez González:
+
+Te informamos que se ha realizado una compra por $1.450 con Tarjeta de Crédito ****5032 en PARKING COSTANERA SANTIAGO CL el 11/03/2026 15:09.
+Revisa Saldos y Movimientos en App Mi Banco o Banco en Línea.
+
+Más información 600 637 3737.
