@@ -32,14 +32,13 @@ export function HogarSection() {
             {isCoupleHousehold ? "Pareja" : "Individual"}
           </span>
         </div>
-        {sorted.map((member: { user_id: string; user_name: string; user_email: string }) => (
+        {sorted.map((member) => (
           <div key={member.user_id} className="flex items-center justify-between">
             <span className="text-sm text-slate-500">
               {member.user_id === userId ? "Tú" : "Pareja"}
             </span>
             <div className="text-right">
-              <p className="text-sm font-medium text-slate-700">{member.user_name}</p>
-              <p className="text-xs text-slate-400">{member.user_email}</p>
+              <p className="text-sm font-medium text-slate-700">{member.full_name}</p>
             </div>
           </div>
         ))}

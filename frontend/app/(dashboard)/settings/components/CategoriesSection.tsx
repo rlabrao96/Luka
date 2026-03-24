@@ -82,7 +82,7 @@ function SortableItem({
 export function CategoriesSection() {
   const queryClient = useQueryClient();
   const [localCats, setLocalCats] = useState<CatPref[]>([]);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const { data, isLoading } = useQuery({
     queryKey: ["category-preferences"],
