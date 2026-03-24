@@ -29,3 +29,9 @@ class CategoryUpdateRequest(BaseModel):
 
 class SplitTypeUpdateRequest(BaseModel):
     split_type: Literal["personal", "shared", "partner"]
+
+
+class PendingTransactionsResponse(BaseModel):
+    awaiting_reconciliation: list[TransactionResponse] = []
+    needs_classification: list[TransactionResponse] = []
+    unmatched_email: list[TransactionResponse] = []
