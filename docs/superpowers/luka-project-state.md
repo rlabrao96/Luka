@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-23 (session 4)
-**Status:** Full project audit complete. **Performance overhaul:** eliminated triple auth call chain (3 Supabase API calls → 0 per navigation), local JWT validation via PyJWT+JWKS (ES256/RS256/HS256), Redis user profile cache, all 8 dashboard queries prefetched on login, dynamic Recharts imports (~200KB deferred), Next.js optimizePackageImports. **Architecture fixes:** CORS from config, cache headers middleware, shared DB session in get_current_user, React Query polling for import status, InactivityGuard visibilitychange. **Cleanup:** removed 2.9GB abandoned worktrees, reorganized docs. **New documentation:** architecture, API reference, deployment guide, development guide, feature roadmap. **Bug fixes:** timezone date display (UTC→Chile offset), JWT ES256 support for Supabase ECC P-256 keys.
+**Date:** 2026-03-24 (session 5)
+**Status:** **Email pipeline fully wired and live.** Gmail Pub/Sub → webhook → ARQ worker → email fetch → WhatsApp notification end-to-end working in production. **WhatsApp PIN verification** working (send/verify via Redis with brute-force protection). **Google OAuth token flow** complete: tokens captured at login, Fernet-encrypted, stored in DB, auto-refreshed by Gmail SDK. **GCP Pub/Sub OIDC auth** configured with service account. Fallback email fetch when History API returns empty. Chile timezone on notifications.
 
 ---
 
@@ -205,6 +205,9 @@ GET  /auth/me                               → current user (includes phone_wha
 PATCH /auth/me                              → update profile (full_name, phone_whatsapp)
 DELETE /auth/me                             → delete account (requires X-Confirm-Delete: ELIMINAR)
 POST /auth/store-provider-tokens           → store encrypted Google OAuth tokens
+POST /auth/setup-email-watch              → activate Gmail Pub/Sub watch for current user
+POST /auth/send-whatsapp-pin              → send 6-digit PIN to phone via WhatsApp
+POST /auth/verify-whatsapp-pin            → verify PIN, set whatsapp_verified=True
 
 GET  /notifications/preferences            → get notification preferences (auto-creates default)
 PATCH /notifications/preferences           → update notification preferences (whatsapp_enabled)
@@ -314,8 +317,11 @@ SUPABASE_SERVICE_KEY=...
 REDIS_URL=redis://...
 
 # Gmail (Google Cloud Pub/Sub)
-GCP_PROJECT_ID=luka-project
-PUBSUB_AUDIENCE=https://your-domain/webhooks/gmail
+GCP_PROJECT_ID=luka-490500
+PUBSUB_AUDIENCE=https://luka-production-eb87.up.railway.app/webhooks/gmail
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+TOKEN_ENCRYPTION_KEY=...  # Fernet key for encrypting Google OAuth tokens
 
 # Outlook (Microsoft Graph)
 MICROSOFT_CLIENT_ID=...
@@ -377,7 +383,9 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Frontend Redesign Tier 2 | ✅ DONE | Settings page (7 sections), login/onboarding polish, invite flow with self-invite protection |
 | Google OAuth token storage | ✅ DONE | Fernet-encrypted tokens in users table (google_access_token_enc, google_refresh_token_enc) |
 | Resend email integration | ✅ DONE | Transactional emails via Resend HTTP API (Railway blocks outbound SMTP) |
-| Email watch setup | Medium | Gmail Pub/Sub watch needs GCP project + initial trigger after first login |
+| Email watch setup | ✅ DONE | Gmail Pub/Sub watch live, OIDC auth working, fallback fetch when History API empty |
+| WhatsApp PIN verification | ✅ DONE | Send/verify PIN via Redis (5-min TTL), brute-force protection (5 attempts) |
+| Email pipeline end-to-end | ✅ DONE | Gmail → Pub/Sub → webhook → ARQ worker → fetch email → WhatsApp notification |
 | Email domain for Resend | Low | Currently sends from onboarding@resend.dev — custom domain needed for production emails |
 | Alembic auto-run on Railway | Low | Run manually: `cd backend && python3 -m alembic upgrade head` |
 

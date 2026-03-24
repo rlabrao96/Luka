@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-23 (session 4)
+**Date:** 2026-03-24 (session 5)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -102,6 +102,18 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — apiFetch: extract backend error detail instead of generic "API error 400" ✅
 - **Style** — Login + onboarding pages polished (rounded-xl, focus rings, step indicator shadows) ✅
 - **Style** — Account type: removed "Pareja" option, renamed "Compartida" to "Hogar" ✅
+- **Feature** — WhatsApp PIN verification: send/verify endpoints with Redis TTL + brute-force protection (5 attempts) ✅
+- **Feature** — WhatsApp PIN onboarding UI wired (send PIN, verify, skip option) ✅
+- **Feature** — Gmail Pub/Sub pipeline end-to-end: webhook → ARQ worker → email fetch → WhatsApp notification ✅
+- **Feature** — Gmail watch setup endpoint (POST /auth/setup-email-watch) ✅
+- **Feature** — OAuth callback captures provider_token + provider_refresh_token, stores encrypted in backend ✅
+- **Feature** — GmailProvider: auto-refresh tokens, persist refreshed token back to DB ✅
+- **Feature** — Fallback email fetch: when History API returns empty, fetches latest INBOX message ✅
+- **Feature** — WhatsApp email notifications include sender, subject, and Chile-timezone received time ✅
+- **Infra** — GCP Pub/Sub OIDC authentication configured with service account ✅
+- **Bug fix** — scalar_one_or_none in auth router for stale cached users ✅
+- **Bug fix** — Redis user cache invalidation when JWT sub doesn't match cached ID ✅
+- **Bug fix** — Force Google refresh token on every login (access_type=offline, prompt=consent) ✅
 
 ---
 
@@ -136,21 +148,18 @@ Railway add-on configured. `REDIS_URL` auto-injected.
 
 ---
 
-### 1.4 Gmail Push Notifications — Google Cloud Pub/Sub
+### 1.4 Gmail Push Notifications — Google Cloud Pub/Sub ✅ DONE
 
-**What you need:**
-1. Google Cloud Console → Create project (or use existing) → Enable Gmail API + Cloud Pub/Sub API
-2. Create Pub/Sub topic: e.g. `luka-gmail-notifications`
-3. Create subscription on that topic with push delivery to: `https://your-api.railway.app/webhooks/gmail`
-4. Grant Gmail service account publish rights on the topic
-5. Collect:
-   - `GCP_PROJECT_ID` (your Google Cloud project ID)
-   - `PUBSUB_AUDIENCE` = your Railway backend URL (used for OIDC token verification)
-
-**Note:** Gmail watch subscriptions expire every 7 days. The `renew_mail_watches` ARQ cron job handles renewal automatically — but you need to call `POST /email/setup-gmail-watch` (or wire the initial watch setup) once after first login.
-
-**Decision needed:**
-- Do you have a Google Cloud project already? If you used one for Google OAuth above, you can reuse it.
+**Configured:**
+- GCP project: `luka-490500`
+- Pub/Sub topic: `luka-gmail-notifications`
+- Push subscription: `gmail-push-sub` → `https://luka-production-eb87.up.railway.app/webhooks/gmail`
+- OIDC auth: service account `luka-pubsub-push@luka-490500.iam.gserviceaccount.com`
+- Gmail API + Pub/Sub API enabled
+- `gmail-api-push@system.gserviceaccount.com` granted Publisher on topic
+- Google OAuth scopes include `gmail.readonly` (bundled at login time)
+- Gmail watch active, expires every 7 days, auto-renewed by `renew_mail_watches` cron
+- **End-to-end tested**: email received → WhatsApp notification sent ✅
 
 ---
 
@@ -208,13 +217,9 @@ API key loaded in Railway.
 
 ---
 
-### 3.5 WhatsApp Onboarding PIN Verification (Small — ~2h)
+### ✅ 3.5 WhatsApp Onboarding PIN Verification — DONE
 
-**Problem:** The onboarding step at `/onboarding/verify-whatsapp` exists in the UI but the backend verification logic (`whatsapp_verified = True` on User) isn't fully wired to the onboarding flow.
-
-**What to build:**
-- Backend: `POST /auth/verify-whatsapp` that takes `{phone, pin}`, validates, sets `user.whatsapp_verified = True`
-- Frontend: connect the form in `verify-whatsapp/page.tsx` to this endpoint
+Backend: `POST /auth/send-whatsapp-pin` + `POST /auth/verify-whatsapp-pin` with Redis-backed PIN (5-min TTL), brute-force protection (5 attempts). Frontend: onboarding page wired with countdown, resend, skip option.
 
 ---
 
@@ -231,14 +236,14 @@ Checklist before sharing Luka with anyone:
 - [x] All Phase 1 credentials obtained and loaded into Railway/Vercel
 - [x] `alembic upgrade head` run on production DB (at `011 head`)
 - [x] Health check passes: `GET /health → {"status":"ok","app":"luka"}`
-- [ ] Can log in with Google or Microsoft account — **blocked on GCP OAuth setup (1.4)**
+- [x] Can log in with Google account (Gmail OAuth + gmail.readonly scope) ✅
 - [x] Dashboard loads (no infinite spinner)
 - [x] Auth middleware redirects logged-out users
 - [x] User row auto-created on first login (no more 401 "User not found")
 - [ ] Fintoc widget opens and connects a real bank account end-to-end — **needs real Fintoc sandbox test**
 - [x] WhatsApp sends test message successfully (verified 2026-03-20)
 - [x] Legal pages live and accessible (verified 2026-03-20)
-- [ ] Gmail webhook receives a test email — **blocked on GCP Pub/Sub setup (1.4)**
+- [x] Gmail webhook receives email and sends WhatsApp notification ✅ (tested 2026-03-24)
 - [x] Pre-commit hooks active: `pre-commit install`
 
 ---
@@ -253,24 +258,27 @@ Checklist before sharing Luka with anyone:
 ✅ Week 5 (2026-03-20): Transaction UX overhaul (pagination, filters, smart summary) + import status stale guard + production bug fixes — COMPLETE
 ✅ Week 6 (2026-03-20): Budgeting waterfall — Fintoc classifier, personal budget service, pace chart, allocation editor, waterfall cards, budgets page rewrite, migration 011 — COMPLETE
 
-Next: Enable login (blocking everything else)
-  → 1.4 Google Cloud: create OAuth 2.0 credentials → enable in Supabase Auth → Google
-  → 1.5 Azure: app registration + Mail.Read permission → enable in Supabase Auth → Azure
-  → Test: can log in with real Google/Microsoft account
+✅ Week 7 (2026-03-24): Gmail pipeline + WhatsApp PIN verification — COMPLETE
+  → Gmail OAuth tokens captured at login, encrypted, stored in DB
+  → GCP Pub/Sub configured with OIDC auth
+  → Email pipeline end-to-end: Gmail → webhook → worker → WhatsApp notification
+  → WhatsApp PIN verification fully wired (backend + frontend)
 
-Next: Enable email pipeline
-  → 1.4 GCP Pub/Sub topic + Gmail webhook push subscription
-  → 1.5 Azure Mail.Read delegated permission
-  → Test end-to-end: bank email → transaction captured → WhatsApp alert
+Next: Wire bank transaction parsing
+  → TEMP: currently sends WhatsApp for ALL emails (debug mode)
+  → Configure bank account with email_sender_pattern (e.g. alertas@santander.cl)
+  → Test with real Chilean bank email → parsed transaction → WhatsApp alert with category options
+  → Create WhatsApp message templates (verification_code, transaction_alert) for 24h window bypass
+  → Remove TEMP debug notification code
+
+Next: Microsoft Azure / Outlook support
+  → 1.5 Azure app registration + Mail.Read permission
+  → Enable Microsoft OAuth in Supabase Auth
+  → Wire OutlookProvider token storage (same pattern as Gmail)
 
 Next: P0 Features (see docs/roadmap.md)
-  → Transaction search & filtering (2-3 days)
   → Category budget alerts via WhatsApp (1-2 days)
   → Recurring transaction detection (2-3 days)
-
-Polish (optional, can do anytime):
-  → 3.5 WhatsApp PIN verify (once WhatsApp credentials available)
-  → Write a test transaction email and verify the full pipeline
 ```
 
 ---
