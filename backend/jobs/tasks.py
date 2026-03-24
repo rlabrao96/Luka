@@ -11,6 +11,7 @@ from modules.transactions.models import Transaction, TransactionSplit, Processed
 from modules.auth.models import User
 from modules.households.models import BankAccount
 from modules.fintoc.client import FintocClient
+from modules.email.factory import get_email_provider
 from sqlalchemy import select, and_, delete, update
 from datetime import datetime, timedelta, timezone
 import smtplib
@@ -169,8 +170,6 @@ async def process_email(
             return  # can't send WhatsApp without verified number
 
         # Fetch email from provider
-        from modules.email.factory import get_email_provider
-
         if not user.google_access_token_enc:
             logger.warning("process_email: user %s has no Google tokens stored", user.email)
             return
@@ -305,12 +304,44 @@ async def renew_mail_watches(ctx: dict) -> None:
         )
         users = result.scalars().all()
         for user in users:
+            if not user.google_access_token_enc:
+                logger.warning("renew_mail_watches: user %s has no tokens, skipping", user.email)
+                continue
             try:
                 from modules.email.factory import get_email_provider
 
-                provider = get_email_provider(user, access_token="")
-                await provider.renew_watch(str(user.id))
+                access_token = decrypt_token(user.google_access_token_enc)
+                refresh_token = (
+                    decrypt_token(user.google_refresh_token_enc)
+                    if user.google_refresh_token_enc
+                    else ""
+                )
+                provider = get_email_provider(
+                    user, access_token=access_token, refresh_token=refresh_token
+                )
+                watch_result = await provider.renew_watch(str(user.id))
+
+                # Persist updated expiry from renewed watch
+                user.mail_watch_subscription_id = watch_result.get("subscription_id")
+                expiry_ms = watch_result.get("expiry")
+                if expiry_ms:
+                    user.mail_watch_expiry = datetime.fromtimestamp(
+                        int(expiry_ms) / 1000, tz=timezone.utc
+                    )
+
+                # Persist refreshed token if changed
+                new_token = provider.get_current_token()
+                if new_token and new_token != access_token:
+                    user.google_access_token_enc = encrypt_token(new_token)
+
+                await db.commit()
             except Exception as e:
+                if "RefreshError" in type(e).__name__ or "invalid_grant" in str(e).lower():
+                    logger.warning("renew_mail_watches: Google token revoked for %s", user.email)
+                    user.google_access_token_enc = None
+                    user.google_refresh_token_enc = None
+                    await db.commit()
+                    continue
                 await _record_failed_job(
                     "renew_mail_watches", {"user_id": str(user.id)}, str(e), db
                 )
