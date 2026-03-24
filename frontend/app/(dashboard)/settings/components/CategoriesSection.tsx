@@ -104,9 +104,6 @@ function CategoryColumn({
   onToggleHidden: (cat: string) => void;
 }) {
   const group = title === "Ingresos" ? "income" : "expense";
-  const visible = items.filter((c) => !c.hidden);
-  const hidden = items.filter((c) => c.hidden);
-  const sorted = [...visible, ...hidden];
 
   return (
     <div>
@@ -116,9 +113,9 @@ function CategoryColumn({
         collisionDetection={closestCenter}
         onDragEnd={(e) => onDragEnd(e, group)}
       >
-        <SortableContext items={sorted.map((c) => c.category)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={items.map((c) => c.category)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1.5">
-            {sorted.map((item) => (
+            {items.map((item) => (
               <SortableItem key={item.category} item={item} onToggleHidden={onToggleHidden} />
             ))}
           </div>
@@ -221,19 +218,19 @@ export function CategoriesSection() {
 
       {/* Desktop: 2 columns, Mobile: stacked (income first) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="order-2 lg:order-1">
+        <div className="order-1">
           <CategoryColumn
-            title="Gastos"
-            items={expenseCats}
+            title="Ingresos"
+            items={incomeCats}
             sensors={sensors}
             onDragEnd={handleDragEnd}
             onToggleHidden={handleToggleHidden}
           />
         </div>
-        <div className="order-1 lg:order-2">
+        <div className="order-2">
           <CategoryColumn
-            title="Ingresos"
-            items={incomeCats}
+            title="Gastos"
+            items={expenseCats}
             sensors={sensors}
             onDragEnd={handleDragEnd}
             onToggleHidden={handleToggleHidden}
