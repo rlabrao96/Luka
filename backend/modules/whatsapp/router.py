@@ -1,10 +1,13 @@
 import hashlib
 import hmac
 import json
+import logging
 from fastapi import APIRouter, HTTPException, Request
 from core.config import settings
 from core.database import AsyncSessionLocal
 import redis.asyncio as aioredis
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["webhooks"])
 
@@ -64,8 +67,8 @@ async def whatsapp_webhook(request: Request):
                                     db=db,
                                     redis=redis_client,
                                 )
-                    except Exception:
-                        pass  # ACK always, never fail the webhook
+                    except Exception as e:
+                        logger.error("WhatsApp webhook handler error: %s", e, exc_info=True)
                     finally:
                         await redis_client.aclose()
 

@@ -14,15 +14,15 @@ async def handle_button_click(phone: str, button_id: str, db: AsyncSession, redi
     if not session:
         return  # session expired
 
-    if button_id in ("split_personal", "split_partner"):
-        split_type = "personal" if button_id == "split_personal" else "partner"
-        await _save_split(session.transaction_id, split_type, None, db)
-        await clear_session(phone, redis)
-
-    elif button_id == "split_shared":
-        # Advance session to category step
+    if button_id in ("split_personal", "split_partner", "split_shared"):
+        split_type = {
+            "split_personal": "personal",
+            "split_partner": "partner",
+            "split_shared": "shared",
+        }[button_id]
+        # Save split type, then advance to category step
         session.step = "awaiting_category"
-        session.split_type = "shared"
+        session.split_type = split_type
         await save_session(phone, session, redis)
         categories = await lookup_merchant(session.raw_merchant, db=db, redis=redis)
         await send_category_list(to=phone, categories=categories)
