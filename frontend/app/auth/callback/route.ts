@@ -7,51 +7,62 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { data } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) {
+      console.error("exchangeCodeForSession failed:", error.message);
+      return NextResponse.redirect(`${origin}/login?error=auth_failed`);
+    }
+
     const session = data?.session;
 
-    if (session) {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    if (!session) {
+      console.error("No session returned after code exchange");
+      return NextResponse.redirect(`${origin}/login?error=no_session`);
+    }
 
-      // Store Google provider tokens for Gmail API access
-      if (session.provider_token) {
-        try {
-          await fetch(`${apiUrl}/auth/store-provider-tokens`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({
-              provider_token: session.provider_token,
-              provider_refresh_token: session.provider_refresh_token ?? null,
-            }),
-          });
-        } catch (err) {
-          console.error("Failed to store provider tokens", err);
-        }
-      }
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-      // Check if user needs onboarding
+    // Store Google provider tokens for Gmail API access
+    if (session.provider_token) {
       try {
-        const res = await fetch(`${apiUrl}/auth/me`, {
+        await fetch(`${apiUrl}/auth/store-provider-tokens`, {
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
+          body: JSON.stringify({
+            provider_token: session.provider_token,
+            provider_refresh_token: session.provider_refresh_token ?? null,
+          }),
         });
-        if (res.ok) {
-          const user = await res.json();
-          if (!user.household_id) {
-            return NextResponse.redirect(`${origin}/onboarding/setup-household`);
-          }
-        }
       } catch (err) {
-        console.error("Failed to fetch user during callback", err);
+        console.error("Failed to store provider tokens", err);
       }
     }
+
+    // Check if user needs onboarding
+    try {
+      const res = await fetch(`${apiUrl}/auth/me`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      if (res.ok) {
+        const user = await res.json();
+        if (!user.household_id) {
+          return NextResponse.redirect(`${origin}/onboarding/setup-household`);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch user during callback", err);
+    }
+
+    return NextResponse.redirect(`${origin}/`);
   }
 
-  // Fallback or returning user
-  return NextResponse.redirect(`${origin}/`);
+  // No code parameter — redirect to login
+  return NextResponse.redirect(`${origin}/login?error=no_code`);
 }
