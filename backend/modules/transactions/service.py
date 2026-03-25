@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
 from modules.transactions.models import Transaction, TransactionSplit
@@ -244,6 +244,25 @@ async def delete_transaction(
     await db.delete(txn)
     await db.commit()
     return "deleted"
+
+
+async def is_duplicate_transaction(db: AsyncSession, user_id: uuid.UUID, amount: int) -> bool:
+    """
+    Check if a pending transaction with the same amount was created in the last 5 minutes.
+    Used to deduplicate Banco de Chile compra + comprobante email pairs.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+    result = await db.execute(
+        select(Transaction)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.amount == amount,
+            Transaction.status == "pending",
+            Transaction.created_at >= cutoff,
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
 
 
 def _txn_to_dict(txn: Transaction, split: TransactionSplit | None) -> dict:

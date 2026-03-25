@@ -13,6 +13,7 @@ from modules.auth.models import User
 from modules.households.models import BankAccount
 from modules.fintoc.client import FintocClient
 from modules.email.factory import get_email_provider
+from modules.transactions.service import is_duplicate_transaction
 from sqlalchemy import select, and_, delete, update
 from datetime import datetime, timedelta, timezone
 import smtplib
@@ -271,6 +272,18 @@ async def process_email(
                 # Lookup merchant categories (to provide options via WhatsApp)
                 categories = await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
 
+                # Cross-sender dedup: skip if same amount was created in last 5 min
+                if await is_duplicate_transaction(db, user.id, parsed.amount):
+                    print(
+                        f"[PROCESS_EMAIL] skipping duplicate transaction ${parsed.amount} for {user.email}",
+                        flush=True,
+                    )
+                    continue
+
+                # Non-Fintoc users: set status to settled (nothing to reconcile)
+                has_fintoc = bank_account is not None
+                txn_status = "pending" if has_fintoc else "settled"
+
                 # Create pending transaction
                 txn = Transaction(
                     user_id=user.id,
@@ -280,7 +293,7 @@ async def process_email(
                     amount=parsed.amount,
                     transaction_date=parsed.transaction_date,
                     source=provider,
-                    status="pending",
+                    status=txn_status,
                     raw_email_text=raw_email.body,
                 )
 
