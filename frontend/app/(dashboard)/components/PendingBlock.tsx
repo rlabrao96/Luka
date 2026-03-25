@@ -1,5 +1,6 @@
 // frontend/app/(dashboard)/components/PendingBlock.tsx
 "use client";
+import { useState } from "react";
 import { usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction } from "@/app/lib/api";
@@ -88,6 +89,8 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
 export function PendingBlock() {
   const { data, isLoading } = usePendingTransactions();
   const queryClient = useQueryClient();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
   if (isLoading || !data) return null;
 
   const { awaiting_reconciliation, unmatched_email } = data;
@@ -95,19 +98,16 @@ export function PendingBlock() {
 
   if (total === 0) return null;
 
-  async function handleDelete(id: string) {
-    if (!confirm("¿Eliminar esta transacción? Esta acción no se puede deshacer.")) return;
+  function handleDelete(id: string) {
     const queryKey = ["transactions", "pending"];
-    // Must await — cancelQueries is async; without this, in-flight refetch overwrites the optimistic update
-    await queryClient.cancelQueries({ queryKey });
-    // Snapshot for rollback on error
     const previous = queryClient.getQueryData(queryKey);
+    setConfirmingId(null);
     // Optimistic: remove immediately from cache
     queryClient.setQueryData(queryKey, (old: typeof data) => {
       if (!old) return old;
       return { ...old, unmatched_email: old.unmatched_email.filter((t) => t.id !== id) };
     });
-    // Sync with DB — optimistic state is already correct, only rollback on error
+    // Sync with DB — only rollback on error
     api.deleteTransaction(id)
       .catch(() => queryClient.setQueryData(queryKey, previous));
   }
@@ -130,15 +130,33 @@ export function PendingBlock() {
         title="Sin match bancario"
         transactions={unmatched_email}
         borderLeft
-        renderAction={(txn) => (
-          <button
-            onClick={() => handleDelete(txn.id)}
-            className="flex items-center gap-1 text-[11px] font-medium text-red-600 border border-red-300 rounded-md px-2.5 py-1.5 hover:bg-red-50 transition-colors"
-          >
-            <Trash2 size={12} />
-            Eliminar
-          </button>
-        )}
+        renderAction={(txn) =>
+          confirmingId === txn.id ? (
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-slate-500 mr-1">¿Eliminar?</span>
+              <button
+                onClick={() => handleDelete(txn.id)}
+                className="text-[11px] font-semibold text-white bg-red-500 rounded-md px-2.5 py-1.5 hover:bg-red-600 transition-colors"
+              >
+                Sí
+              </button>
+              <button
+                onClick={() => setConfirmingId(null)}
+                className="text-[11px] font-medium text-slate-500 border border-slate-200 rounded-md px-2.5 py-1.5 hover:bg-slate-50 transition-colors"
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmingId(txn.id)}
+              className="flex items-center gap-1 text-[11px] font-medium text-red-600 border border-red-300 rounded-md px-2.5 py-1.5 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 size={12} />
+              Eliminar
+            </button>
+          )
+        }
       />
     </div>
   );
