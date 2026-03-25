@@ -92,10 +92,27 @@ async def reconcile_transactions(
     for ftc_txn in fintoc_transactions:
         match = find_match(ftc_txn, pending)
         if match:
+            # Find the bank account for this Fintoc sync
+            from modules.households.models import BankAccount as BA
+
+            ba_result = await db.execute(
+                select(BA.id)
+                .where(
+                    BA.user_id == user_id,
+                    BA.is_active.is_(True),
+                )
+                .limit(1)
+            )
+            ba_id = ba_result.scalar_one_or_none()
+
             await db.execute(
                 update(Transaction)
                 .where(Transaction.id == match.transaction_id)
-                .values(status="reconciled", fintoc_id=ftc_txn.id)
+                .values(
+                    status="reconciled",
+                    fintoc_id=ftc_txn.id,
+                    bank_account_id=ba_id,
+                )
             )
             matched += 1
             # Remove matched pending to prevent duplicate matching
