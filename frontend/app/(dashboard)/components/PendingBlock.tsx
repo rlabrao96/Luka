@@ -86,20 +86,18 @@ function PendingSection({ title, transactions, renderAction, onCategoryClick, bo
               <div className="flex justify-between items-center mt-1">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <SourceBadge source={txn.source} />
-                  {txn.category ? (
-                    <button
-                      onClick={() => onCategoryClick?.(txn)}
-                      className="text-[11px] text-slate-400 truncate hover:text-slate-600 hover:underline transition-colors text-left"
-                    >
-                      {txn.category}
-                    </button>
-                  ) : onCategoryClick ? (
+                  {onCategoryClick ? (
                     <button
                       onClick={() => onCategoryClick(txn)}
-                      className="text-[11px] text-slate-300 italic hover:text-slate-500 transition-colors"
+                      className={cn(
+                        "text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 w-[90px] text-center truncate",
+                        txn.category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600"
+                      )}
                     >
-                      Sin categoría
+                      {txn.category ?? "Sin categoría"}
                     </button>
+                  ) : txn.category ? (
+                    <span className="text-[11px] text-slate-400 truncate">{txn.category}</span>
                   ) : null}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
