@@ -236,6 +236,12 @@ export const api = {
   deleteTransaction: (id: string) =>
     apiFetch<void>(`/transactions/${id}`, { method: "DELETE" }),
 
+  updateCategory: (id: string, category: string) =>
+    apiFetch<{ ok: boolean }>(`/transactions/${id}/category`, {
+      method: "PATCH",
+      body: JSON.stringify({ category }),
+    }),
+
   getHouseholdSummary: (householdId: string) =>
     apiFetch<HouseholdSummaryRow[]>(`/households/${householdId}/summary`),
 
