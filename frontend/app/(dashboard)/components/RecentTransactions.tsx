@@ -340,7 +340,7 @@ export function RecentTransactions({
                         )}
                       >
                         {isOutflow
-                          ? formatCLP(Math.abs(Number(txn.amount)))
+                          ? `(${formatCLP(Math.abs(Number(txn.amount)))})`
                           : `+${formatCLP(Math.abs(Number(txn.amount)))}`}
                       </span>
                     </div>
