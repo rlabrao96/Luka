@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/app/lib/api";
+import { api, PendingTransactions } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 
 function getSince(): string {
@@ -34,5 +34,13 @@ export function useMonthlySpending() {
     queryKey: ["transactions", "monthly-summary", householdId],
     queryFn: () => api.getMonthlySpending(householdId!),
     enabled: !!householdId,
+  });
+}
+
+export function usePendingTransactions() {
+  return useQuery({
+    queryKey: ["transactions", "pending"],
+    queryFn: () => api.getPendingTransactions(),
+    staleTime: 30 * 1000,
   });
 }

@@ -54,6 +54,12 @@ export interface Transaction {
   transaction_type: string | null;
 }
 
+export interface PendingTransactions {
+  awaiting_reconciliation: Transaction[];
+  needs_classification: Transaction[];
+  unmatched_email: Transaction[];
+}
+
 export interface HouseholdSummaryRow {
   user_id: string;
   full_name: string;
@@ -223,6 +229,12 @@ export const api = {
 
   getSharedTransactions: (householdId: string, since: string) =>
     apiFetch<Transaction[]>(`/transactions/shared?household_id=${householdId}&since=${since}`),
+
+  getPendingTransactions: () =>
+    apiFetch<PendingTransactions>("/transactions/pending"),
+
+  deleteTransaction: (id: string) =>
+    apiFetch<void>(`/transactions/${id}`, { method: "DELETE" }),
 
   getHouseholdSummary: (householdId: string) =>
     apiFetch<HouseholdSummaryRow[]>(`/households/${householdId}/summary`),
