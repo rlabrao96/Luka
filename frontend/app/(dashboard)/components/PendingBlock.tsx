@@ -95,11 +95,11 @@ export function PendingBlock() {
 
   if (total === 0) return null;
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm("¿Eliminar esta transacción? Esta acción no se puede deshacer.")) return;
     const queryKey = ["transactions", "pending"];
-    // Cancel in-flight refetches so they don't overwrite the optimistic update
-    queryClient.cancelQueries({ queryKey });
+    // Must await — cancelQueries is async; without this, in-flight refetch overwrites the optimistic update
+    await queryClient.cancelQueries({ queryKey });
     // Snapshot for rollback on error
     const previous = queryClient.getQueryData(queryKey);
     // Optimistic: remove immediately from cache
