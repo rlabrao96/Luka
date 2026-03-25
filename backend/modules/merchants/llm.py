@@ -13,10 +13,40 @@ def _get_client() -> genai.Client:
     return _client
 
 
+_EXPENSE_CATEGORIES = [
+    "Alimentación",
+    "Supermercado",
+    "Transporte",
+    "Combustible",
+    "Entretenimiento",
+    "Salud",
+    "Farmacia",
+    "Hogar",
+    "Ropa",
+    "Tecnología",
+    "Educación",
+    "Viajes",
+    "Servicios",
+    "Otros",
+]
+
+_INCOME_CATEGORIES = [
+    "Sueldo",
+    "Freelance",
+    "Inversiones",
+    "Arriendo",
+    "Bono",
+    "Transferencia de terceros",
+    "Deuda pendiente",
+    "Otros ingresos",
+]
+
 _SYSTEM_PROMPT = (
     "Eres un asistente de finanzas personales chileno. "
     "Cuando recibas el nombre de un comercio de un banco chileno, "
-    "responde ÚNICAMENTE con un JSON con exactamente 3 categorías de presupuesto en español. "
+    "elige las 3 categorías más apropiadas de esta lista EXACTA de categorías de gastos: "
+    f"{', '.join(_EXPENSE_CATEGORIES)}. "
+    "No inventes categorías nuevas. Responde ÚNICAMENTE con un JSON. "
     'Formato: {"categories": ["cat1","cat2","cat3"]}'
 )
 

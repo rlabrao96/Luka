@@ -41,12 +41,12 @@ async def send_expense_alert(
             "body": {"text": body_text},
             "action": {
                 "buttons": [
-                    {"type": "reply", "reply": {"id": "split_personal", "title": "Mío"}},
+                    {"type": "reply", "reply": {"id": "split_personal", "title": "Personal"}},
                     {
                         "type": "reply",
                         "reply": {"id": "split_partner", "title": f"De {partner_name}"},
                     },
-                    {"type": "reply", "reply": {"id": "split_shared", "title": "Compartido"}},
+                    {"type": "reply", "reply": {"id": "split_shared", "title": "Hogar"}},
                 ]
             },
         },
