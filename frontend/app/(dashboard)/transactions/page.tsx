@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Landmark, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { FilterPanel } from "../components/FilterPanel";
+import { PendingBlock } from "../components/PendingBlock";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
@@ -422,6 +423,9 @@ export default function TransactionsPage() {
         userId={userId}
         householdId={householdId}
       />
+
+      {/* Pending transactions */}
+      <PendingBlock />
 
       {/* Tabs */}
       <Tabs defaultValue="all" onValueChange={() => setPage(1)}>
