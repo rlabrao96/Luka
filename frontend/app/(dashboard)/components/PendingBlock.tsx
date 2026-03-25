@@ -1,6 +1,5 @@
 // frontend/app/(dashboard)/components/PendingBlock.tsx
 "use client";
-import { useState } from "react";
 import { usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction } from "@/app/lib/api";
@@ -89,8 +88,6 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
 export function PendingBlock() {
   const { data, isLoading } = usePendingTransactions();
   const queryClient = useQueryClient();
-  const [deleting, setDeleting] = useState<string | null>(null);
-
   if (isLoading || !data) return null;
 
   const { awaiting_reconciliation, unmatched_email } = data;
@@ -98,15 +95,20 @@ export function PendingBlock() {
 
   if (total === 0) return null;
 
-  async function handleDelete(id: string) {
+  function handleDelete(id: string) {
     if (!confirm("¿Eliminar esta transacción? Esta acción no se puede deshacer.")) return;
-    setDeleting(id);
-    try {
-      await api.deleteTransaction(id);
-      await queryClient.invalidateQueries({ queryKey: ["transactions", "pending"] });
-    } finally {
-      setDeleting(null);
-    }
+    // Optimistic: remove immediately from cache
+    queryClient.setQueryData(["transactions", "pending"], (old: typeof data) => {
+      if (!old) return old;
+      return {
+        ...old,
+        unmatched_email: old.unmatched_email.filter((t) => t.id !== id),
+      };
+    });
+    // Fire-and-forget: sync with DB in background
+    api.deleteTransaction(id).catch(() => {
+      queryClient.invalidateQueries({ queryKey: ["transactions", "pending"] });
+    });
   }
 
   return (
@@ -130,8 +132,7 @@ export function PendingBlock() {
         renderAction={(txn) => (
           <button
             onClick={() => handleDelete(txn.id)}
-            disabled={deleting === txn.id}
-            className="flex items-center gap-1 text-[11px] font-medium text-red-600 border border-red-300 rounded-md px-2.5 py-1.5 hover:bg-red-50 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 text-[11px] font-medium text-red-600 border border-red-300 rounded-md px-2.5 py-1.5 hover:bg-red-50 transition-colors"
           >
             <Trash2 size={12} />
             Eliminar
