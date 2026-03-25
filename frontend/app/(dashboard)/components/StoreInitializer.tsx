@@ -91,6 +91,11 @@ export function StoreInitializer({ userId, householdId, userFullName }: Props) {
         queryFn: () => api.getBankAccounts(householdId),
         staleTime: 60 * 1000,
       });
+      queryClient.prefetchQuery({
+        queryKey: ["transactions", "pending"],
+        queryFn: () => api.getPendingTransactions(),
+        staleTime: 30 * 1000,
+      });
     } else if (userId) {
       if (!window.location.pathname.includes("/onboarding")) {
         router.push("/onboarding/setup-household");
