@@ -97,18 +97,20 @@ export function PendingBlock() {
 
   function handleDelete(id: string) {
     if (!confirm("¿Eliminar esta transacción? Esta acción no se puede deshacer.")) return;
+    const queryKey = ["transactions", "pending"];
+    // Cancel in-flight refetches so they don't overwrite the optimistic update
+    queryClient.cancelQueries({ queryKey });
+    // Snapshot for rollback on error
+    const previous = queryClient.getQueryData(queryKey);
     // Optimistic: remove immediately from cache
-    queryClient.setQueryData(["transactions", "pending"], (old: typeof data) => {
+    queryClient.setQueryData(queryKey, (old: typeof data) => {
       if (!old) return old;
-      return {
-        ...old,
-        unmatched_email: old.unmatched_email.filter((t) => t.id !== id),
-      };
+      return { ...old, unmatched_email: old.unmatched_email.filter((t) => t.id !== id) };
     });
-    // Fire-and-forget: sync with DB in background
-    api.deleteTransaction(id).catch(() => {
-      queryClient.invalidateQueries({ queryKey: ["transactions", "pending"] });
-    });
+    // Sync with DB — invalidate on success, rollback on error
+    api.deleteTransaction(id)
+      .then(() => queryClient.invalidateQueries({ queryKey }))
+      .catch(() => queryClient.setQueryData(queryKey, previous));
   }
 
   return (
