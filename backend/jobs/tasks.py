@@ -4,7 +4,7 @@ from core.config import settings
 from core.encryption import decrypt_token, encrypt_token
 from core.database import AsyncSessionLocal
 from modules.email.parser import parse_bank_email
-from modules.email.filter import is_financial_email
+from modules.email.filter import is_financial_email, is_bank_sender
 from modules.merchants.service import lookup_merchant
 from modules.whatsapp.sender import send_expense_alert
 from modules.whatsapp.session import WhatsAppSession, save_session
@@ -230,6 +230,14 @@ async def process_email(
                     )
                     continue
                 await redis_client.set(dedup_key, "1", ex=86400)  # 24h TTL
+
+                # Pre-filter: only process emails from known bank domains
+                if not is_bank_sender(raw_email.sender):
+                    print(
+                        f"[PROCESS_EMAIL] skipping non-bank sender: {raw_email.sender}",
+                        flush=True,
+                    )
+                    continue
 
                 # Pre-filter: skip non-financial emails
                 if not is_financial_email(raw_email.subject, raw_email.sender, raw_email.body):

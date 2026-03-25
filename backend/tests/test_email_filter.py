@@ -1,4 +1,4 @@
-from modules.email.filter import is_financial_email
+from modules.email.filter import is_financial_email, is_bank_sender
 
 
 def test_matches_transfer_email():
@@ -87,3 +87,38 @@ def test_matches_keyword_in_sender_only():
         sender="serviciodetransferencias@bancochile.cl",
         body="You have a new message",
     )
+
+
+# ── is_bank_sender tests ──
+
+
+def test_bank_sender_exact_domain():
+    assert is_bank_sender("notificaciones@bancochile.cl")
+
+
+def test_bank_sender_subdomain():
+    assert is_bank_sender("alertas@noti.santander.cl")
+
+
+def test_bank_sender_with_display_name():
+    assert is_bank_sender("Banco de Chile <enviodigital@bancochile.cl>")
+
+
+def test_bank_sender_fintech():
+    assert is_bank_sender("no-reply@tenpo.cl")
+    assert is_bank_sender("alertas@somosmach.com")
+    assert is_bank_sender("noti@mercadopago.com")
+
+
+def test_bank_sender_rejects_unknown():
+    assert not is_bank_sender("promo@tienda.cl")
+    assert not is_bank_sender("offers@amazon.com")
+
+
+def test_bank_sender_rejects_gmail():
+    assert not is_bank_sender("someone@gmail.com")
+
+
+def test_bank_sender_rejects_empty():
+    assert not is_bank_sender("")
+    assert not is_bank_sender("no-email-here")
