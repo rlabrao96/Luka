@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, type Transaction } from "@/app/lib/api";
+import { api, type Transaction, type PendingTransactions } from "@/app/lib/api";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CategoryBottomSheet } from "./CategoryBottomSheet";
 
 const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
   personal: { label: "Personal", className: "bg-blue-50 text-blue-600" },
@@ -39,10 +40,11 @@ interface PendingSectionProps {
   title: string;
   transactions: Transaction[];
   renderAction?: (txn: Transaction) => React.ReactNode;
+  onCategoryClick?: (txn: Transaction) => void;
   borderLeft?: boolean;
 }
 
-function PendingSection({ title, transactions, renderAction, borderLeft }: PendingSectionProps) {
+function PendingSection({ title, transactions, renderAction, onCategoryClick, borderLeft }: PendingSectionProps) {
   if (transactions.length === 0) return null;
   return (
     <div className="mt-3 first:mt-0">
@@ -84,9 +86,21 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
               <div className="flex justify-between items-center mt-1">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <SourceBadge source={txn.source} />
-                  {txn.category && (
-                    <span className="text-[11px] text-slate-400 truncate">{txn.category}</span>
-                  )}
+                  {txn.category ? (
+                    <button
+                      onClick={() => onCategoryClick?.(txn)}
+                      className="text-[11px] text-slate-400 truncate hover:text-slate-600 hover:underline transition-colors text-left"
+                    >
+                      {txn.category}
+                    </button>
+                  ) : onCategoryClick ? (
+                    <button
+                      onClick={() => onCategoryClick(txn)}
+                      className="text-[11px] text-slate-300 italic hover:text-slate-500 transition-colors"
+                    >
+                      Sin categoría
+                    </button>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {split && (
@@ -114,6 +128,11 @@ export function PendingBlock() {
   const { data, isLoading } = usePendingTransactions();
   const queryClient = useQueryClient();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [categorySheet, setCategorySheet] = useState<{
+    txnId: string;
+    currentCategory: string | null;
+    isIncome: boolean;
+  } | null>(null);
 
   if (isLoading || !data) return null;
 
@@ -134,6 +153,28 @@ export function PendingBlock() {
       .catch(() => queryClient.setQueryData(queryKey, previous));
   }
 
+  function handleCategorySelect(category: string | null) {
+    if (!categorySheet) return;
+    const { txnId } = categorySheet;
+    setCategorySheet(null);
+    const queryKey = ["transactions", "pending"];
+    const previous = queryClient.getQueryData(queryKey);
+    // Optimistic: update category in cache immediately
+    queryClient.setQueryData(queryKey, (old: PendingTransactions | undefined) => {
+      if (!old) return old;
+      const update = (list: Transaction[]) =>
+        list.map((t) => (t.id === txnId ? { ...t, category } : t));
+      return {
+        ...old,
+        awaiting_reconciliation: update(old.awaiting_reconciliation),
+        unmatched_email: update(old.unmatched_email),
+      };
+    });
+    // Sync to DB + train merchant data in background
+    api.updateCategory(txnId, category ?? "")
+      .catch(() => queryClient.setQueryData(queryKey, previous));
+  }
+
   return (
     <div className="bg-orange-50 border border-orange-300 rounded-xl p-4">
       <div className="flex items-center gap-2 mb-1">
@@ -146,12 +187,18 @@ export function PendingBlock() {
       <PendingSection
         title="Esperando confirmación bancaria"
         transactions={awaiting_reconciliation}
+        onCategoryClick={(txn) =>
+          setCategorySheet({ txnId: txn.id, currentCategory: txn.category ?? null, isIncome: Number(txn.amount) < 0 })
+        }
       />
 
       <PendingSection
         title="Sin match bancario"
         transactions={unmatched_email}
         borderLeft
+        onCategoryClick={(txn) =>
+          setCategorySheet({ txnId: txn.id, currentCategory: txn.category ?? null, isIncome: Number(txn.amount) < 0 })
+        }
         renderAction={(txn) =>
           confirmingId === txn.id ? (
             <div className="flex items-center gap-1">
@@ -180,6 +227,16 @@ export function PendingBlock() {
           )
         }
       />
+
+      {categorySheet && (
+        <CategoryBottomSheet
+          open={!!categorySheet}
+          onClose={() => setCategorySheet(null)}
+          currentCategory={categorySheet.currentCategory}
+          isIncome={categorySheet.isIncome}
+          onSelect={handleCategorySelect}
+        />
+      )}
     </div>
   );
 }

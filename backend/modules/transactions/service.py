@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func, delete as sql_delete
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount
+from modules.merchants.service import record_category_selection
+from core.cache import _get_redis
 
 
 async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date) -> list[dict]:
@@ -141,6 +143,12 @@ async def update_category(
         return False
     txn.category = category
     await db.commit()
+    # Train merchant data: record this user correction for future suggestions
+    if category:
+        try:
+            await record_category_selection(txn.raw_merchant_name, category, db, _get_redis())
+        except Exception:
+            pass  # never block the category save if training fails
     return True
 
 
