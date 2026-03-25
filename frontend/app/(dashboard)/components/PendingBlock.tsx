@@ -5,28 +5,30 @@ import { usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction } from "@/app/lib/api";
 import { Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-function formatCLP(n: number) {
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
+const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
+  personal: { label: "Personal", className: "bg-blue-50 text-blue-600" },
+  partner: { label: "Personal", className: "bg-blue-50 text-blue-600" },
+  shared: { label: "Hogar", className: "bg-emerald-50 text-emerald-600" },
+};
+
+function toTitleCase(str: string) {
+  return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
-  const time = d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
-  if (diffDays === 0) return `Hoy, ${time}`;
-  if (diffDays === 1) return `Ayer, ${time}`;
-  return `${diffDays} días`;
+function formatCLP(amount: number) {
+  return `$${Math.round(amount).toLocaleString("es-CL")}`;
 }
 
 function SourceBadge({ source }: { source: string }) {
   const isEmail = source === "gmail" || source === "outlook";
   return (
     <span
-      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+      className={cn(
+        "text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0",
         isEmail ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"
-      }`}
+      )}
     >
       {isEmail ? "Email" : "Fintoc"}
     </span>
@@ -48,39 +50,61 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
         {title}
       </p>
       <div className="space-y-1">
-        {transactions.map((txn) => (
-          <div
-            key={txn.id}
-            className={`bg-white rounded-lg px-3 py-2.5 flex items-center justify-between ${
-              borderLeft ? "border-l-[3px] border-l-amber-400" : ""
-            }`}
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-800 truncate">
-                {txn.raw_merchant_name}
-              </p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <SourceBadge source={txn.source} />
-                <span className="text-[11px] text-slate-500">
-                  {txn.split_type ? `${txn.split_type === "personal" ? "Mío" : txn.split_type === "partner" ? "Pareja" : "Compartido"}` : ""}
-                  {txn.category ? ` · ${txn.category}` : ""}
-                  {!txn.category && txn.source === "fintoc" ? (
-                    <span className="text-red-500">Sin categoría</span>
-                  ) : null}
+        {transactions.map((txn) => {
+          const amount = Number(txn.amount);
+          const isOutflow = amount >= 0; // email txns stored as positive = expense
+          const formattedAmount = isOutflow
+            ? `(${formatCLP(Math.abs(amount))})`
+            : `+${formatCLP(Math.abs(amount))}`;
+          const split = txn.split_type ? SPLIT_STYLES[txn.split_type] : null;
+
+          return (
+            <div
+              key={txn.id}
+              className={cn(
+                "bg-white rounded-lg px-3 py-2.5",
+                borderLeft ? "border-l-[3px] border-l-amber-400" : ""
+              )}
+            >
+              {/* Row 1: name + amount */}
+              <div className="flex justify-between items-baseline gap-2">
+                <p className="text-sm font-semibold text-slate-800 truncate">
+                  {toTitleCase(txn.raw_merchant_name)}
+                </p>
+                <span
+                  className={cn(
+                    "text-[15px] font-bold tabular-nums shrink-0",
+                    isOutflow ? "text-slate-800" : "text-emerald-600"
+                  )}
+                >
+                  {formattedAmount}
                 </span>
               </div>
-            </div>
-            <div className="flex items-center gap-2.5 shrink-0">
-              <div className="text-right">
-                <p className="text-sm font-semibold text-slate-800 tabular-nums">
-                  {formatCLP(Number(txn.amount))}
-                </p>
-                <p className="text-[10px] text-orange-500">{formatTime(txn.transaction_date)}</p>
+              {/* Row 2: source + category (left) | split badge + action (right) */}
+              <div className="flex justify-between items-center mt-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <SourceBadge source={txn.source} />
+                  {txn.category && (
+                    <span className="text-[11px] text-slate-400 truncate">{txn.category}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {split && (
+                    <span
+                      className={cn(
+                        "text-[10px] font-medium px-1.5 py-0.5 rounded w-[60px] text-center",
+                        split.className
+                      )}
+                    >
+                      {split.label}
+                    </span>
+                  )}
+                  {renderAction?.(txn)}
+                </div>
               </div>
-              {renderAction?.(txn)}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -102,12 +126,10 @@ export function PendingBlock() {
     const queryKey = ["transactions", "pending"];
     const previous = queryClient.getQueryData(queryKey);
     setConfirmingId(null);
-    // Optimistic: remove immediately from cache
     queryClient.setQueryData(queryKey, (old: typeof data) => {
       if (!old) return old;
       return { ...old, unmatched_email: old.unmatched_email.filter((t) => t.id !== id) };
     });
-    // Sync with DB — only rollback on error
     api.deleteTransaction(id)
       .catch(() => queryClient.setQueryData(queryKey, previous));
   }
@@ -133,16 +155,16 @@ export function PendingBlock() {
         renderAction={(txn) =>
           confirmingId === txn.id ? (
             <div className="flex items-center gap-1">
-              <span className="text-[11px] text-slate-500 mr-1">¿Eliminar?</span>
+              <span className="text-[11px] text-slate-500">¿Eliminar?</span>
               <button
                 onClick={() => handleDelete(txn.id)}
-                className="text-[11px] font-semibold text-white bg-red-500 rounded-md px-2.5 py-1.5 hover:bg-red-600 transition-colors"
+                className="text-[11px] font-semibold text-white bg-red-500 rounded-md px-2 py-1 hover:bg-red-600 transition-colors"
               >
                 Sí
               </button>
               <button
                 onClick={() => setConfirmingId(null)}
-                className="text-[11px] font-medium text-slate-500 border border-slate-200 rounded-md px-2.5 py-1.5 hover:bg-slate-50 transition-colors"
+                className="text-[11px] font-medium text-slate-500 border border-slate-200 rounded-md px-2 py-1 hover:bg-slate-50 transition-colors"
               >
                 No
               </button>
@@ -150,9 +172,9 @@ export function PendingBlock() {
           ) : (
             <button
               onClick={() => setConfirmingId(txn.id)}
-              className="flex items-center gap-1 text-[11px] font-medium text-red-600 border border-red-300 rounded-md px-2.5 py-1.5 hover:bg-red-50 transition-colors"
+              className="flex items-center gap-1 text-[11px] font-medium text-red-600 border border-red-300 rounded-md px-2 py-1 hover:bg-red-50 transition-colors"
             >
-              <Trash2 size={12} />
+              <Trash2 size={11} />
               Eliminar
             </button>
           )
