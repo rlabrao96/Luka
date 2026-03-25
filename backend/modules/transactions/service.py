@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, func
+from sqlalchemy import select, text, func, delete as sql_delete
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount
 
@@ -241,6 +241,10 @@ async def delete_transaction(
         return "not_found"
     if txn.source not in ("gmail", "outlook") or txn.status != "pending":
         return "invalid"
+    # Delete associated splits first to avoid FK violation
+    await db.execute(
+        sql_delete(TransactionSplit).where(TransactionSplit.transaction_id == transaction_id)
+    )
     await db.delete(txn)
     await db.commit()
     return "deleted"
