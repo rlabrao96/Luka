@@ -107,9 +107,8 @@ export function PendingBlock() {
       if (!old) return old;
       return { ...old, unmatched_email: old.unmatched_email.filter((t) => t.id !== id) };
     });
-    // Sync with DB — invalidate on success, rollback on error
+    // Sync with DB — optimistic state is already correct, only rollback on error
     api.deleteTransaction(id)
-      .then(() => queryClient.invalidateQueries({ queryKey }))
       .catch(() => queryClient.setQueryData(queryKey, previous));
   }
 
