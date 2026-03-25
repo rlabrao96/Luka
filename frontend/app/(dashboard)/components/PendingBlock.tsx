@@ -93,8 +93,8 @@ export function PendingBlock() {
 
   if (isLoading || !data) return null;
 
-  const { awaiting_reconciliation, needs_classification, unmatched_email } = data;
-  const total = awaiting_reconciliation.length + needs_classification.length + unmatched_email.length;
+  const { awaiting_reconciliation, unmatched_email } = data;
+  const total = awaiting_reconciliation.length + unmatched_email.length;
 
   if (total === 0) return null;
 
@@ -109,14 +109,6 @@ export function PendingBlock() {
     }
   }
 
-  async function handleClassify(id: string) {
-    const category = prompt("Categoría para este gasto:");
-    if (!category) return;
-    await api.updateCategory(id, category);
-    await queryClient.invalidateQueries({ queryKey: ["transactions", "pending"] });
-    await queryClient.invalidateQueries({ queryKey: ["transactions", "mine"] });
-  }
-
   return (
     <div className="bg-orange-50 border border-orange-300 rounded-xl p-4">
       <div className="flex items-center gap-2 mb-1">
@@ -129,19 +121,6 @@ export function PendingBlock() {
       <PendingSection
         title="Esperando confirmación bancaria"
         transactions={awaiting_reconciliation}
-      />
-
-      <PendingSection
-        title="Necesitan categoría"
-        transactions={needs_classification}
-        renderAction={(txn) => (
-          <button
-            onClick={() => handleClassify(txn.id)}
-            className="bg-blue-600 text-white text-[11px] font-semibold rounded-md px-3 py-1.5 hover:bg-blue-700 transition-colors"
-          >
-            Clasificar
-          </button>
-        )}
       />
 
       <PendingSection
