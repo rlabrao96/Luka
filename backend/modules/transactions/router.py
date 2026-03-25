@@ -12,6 +12,7 @@ from modules.transactions.schemas import (
     TransactionResponse,
     CategoryUpdateRequest,
     SplitTypeUpdateRequest,
+    PendingTransactionsResponse,
 )
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -51,6 +52,14 @@ async def shared_transactions(
     return await service.get_shared_transactions(db, household_id, since=since or _default_since())
 
 
+@router.get("/pending", response_model=PendingTransactionsResponse)
+async def pending_transactions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await service.get_pending_transactions(db, current_user.id)
+
+
 @router.patch("/{transaction_id}/category")
 async def update_category(
     transaction_id: uuid.UUID,
@@ -75,3 +84,16 @@ async def update_split_type(
     if not found:
         raise HTTPException(404, "Transaction not found")
     return {"ok": True}
+
+
+@router.delete("/{transaction_id}", status_code=204)
+async def delete_transaction(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await service.delete_transaction(db, transaction_id, current_user.id)
+    if result == "not_found":
+        raise HTTPException(404, "Transaction not found")
+    if result == "invalid":
+        raise HTTPException(400, "Only pending email transactions can be deleted")
