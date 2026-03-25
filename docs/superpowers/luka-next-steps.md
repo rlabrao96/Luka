@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-24 (session 5)
+**Date:** 2026-03-25 (session 7)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -127,6 +127,14 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — WhatsApp webhook error logging (was silent except:pass) ✅
 - **Bug fix** — Removed TEMP debug WhatsApp notifications ✅
 - **Docs** — Banco de Chile email templates in docs/email-templates/ ✅
+- **Feature** — PendingBlock: 2-bucket UI (awaiting reconciliation + unmatched email), inline delete with confirm-in-place, inline category dropdown matching regular cards ✅
+- **Feature** — Category editing on pending cards trains merchant_category_selections (feedback loop) ✅
+- **Feature** — PendingBlock prefetched in StoreInitializer — no waterfall delay on page load ✅
+- **Feature** — Cross-sender dedup: 5-min window prevents BChile double-entry ✅
+- **Feature** — Non-Fintoc users: email txns set to settled immediately ✅
+- **Fix** — WhatsApp split labels Personal/Hogar (was Mío/Compartido) ✅
+- **Fix** — LLM constrained to fixed category list matching frontend ✅
+- **Fix** — Desktop transaction list was missing parentheses on outflows ✅
 
 ---
 
@@ -284,6 +292,18 @@ Checklist before sharing Luka with anyone:
   → Parser: strips HTML before regex, fixed merchant extraction for real Banco de Chile emails
   → Email templates folder for Banco de Chile (3 formats)
   → 21 new tests, all passing
+
+✅ Week 9 (2026-03-25): PendingBlock polish + pipeline alignment — COMPLETE
+  → PendingBlock: 3-bucket logic → 2-bucket UI (removed needs_classification flood)
+  → Cross-sender dedup: 5-min amount+user window prevents BChile compra+comprobante double entry
+  → Non-Fintoc users: email txns set to status=settled immediately (nothing to reconcile)
+  → Inline optimistic delete with confirm-in-place (no browser dialog, no refetch race)
+  → Category editing on pending cards: same inline dropdown as regular cards
+  → Merchant training: update_category now calls record_category_selection (WhatsApp + dashboard)
+  → PendingBlock prefetched in StoreInitializer alongside all other dashboard queries
+  → WhatsApp split labels: Personal/Hogar (was Mío/Compartido)
+  → LLM category list constrained to fixed frontend list (no invented categories)
+  → Fixed desktop transaction list showing expenses without parentheses
 
 Next: Multi-bank parser support
   → Each bank has different email formats — need per-bank parser patterns

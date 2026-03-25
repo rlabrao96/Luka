@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-24 (session 6)
-**Status:** **Full email-to-WhatsApp transaction pipeline live.** Email → pre-filter (keyword) → HTML-strip parser → Gemini 2.5 Flash-Lite categorization → WhatsApp split question → category picker → ✅ confirmation. Bank account optional (email-only users supported). Per-email dedup via Redis. Phone number normalization for WhatsApp sessions. Merchant race condition handling. All tested end-to-end in production.
+**Date:** 2026-03-25 (session 7)
+**Status:** **Full email-to-WhatsApp transaction pipeline live. PendingBlock fully polished.** Email → pre-filter → parser → Gemini categorization → WhatsApp split/category → ✅. PendingBlock: 2-bucket UI (awaiting reconciliation + unmatched email), inline optimistic delete, inline category dropdown (same as regular cards), merchant training feedback loop on every category edit, prefetched at dashboard init. WhatsApp labels and LLM categories now use fixed list matching the frontend.
 
 ---
 
@@ -222,6 +222,9 @@ GET  /households/{id}/partner-stats        → partner aggregate via SECURITY DE
 GET  /transactions/mine?since=YYYY-MM-DD   → current user's transactions (default: 6 months, no row cap)
 GET  /transactions/shared?household_id=X&since=YYYY-MM-DD → shared household transactions
 GET  /transactions/monthly-summary?household_id=X → last 6 months aggregated (personal + shared)
+GET  /transactions/pending              → pending email txns grouped: awaiting_reconciliation + unmatched_email
+PATCH /transactions/{id}/category      → update category + train merchant_category_selections
+DELETE /transactions/{id}              → hard-delete pending email transaction (deletes splits first)
 
 GET  /budgets/monthly/{id}?month=YYYY-MM   → budget status
 POST /budgets/monthly/{id}                 → set monthly budget
@@ -395,7 +398,9 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Transaction dedup | ✅ DONE | Per-email Redis key `txn_processed:{message_id}` (24h TTL) |
 | Merchant race condition | ✅ DONE | IntegrityError on duplicate insert → rollback + re-query existing row |
 | Multi-bank parser | ❌ TODO | Only Banco de Chile compra/comprobante formats handled. Santander, BCI, Falabella, Estado need email samples |
-| Transaction dedup (cross-sender) | ❌ TODO | BChile sends compra + comprobante pairs for same purchase — need amount+merchant+time dedup |
+| Transaction dedup (cross-sender) | ✅ DONE | 5-min window dedup by amount+user prevents BChile compra+comprobante double entry |
+| PendingBlock UI | ✅ DONE | 2-bucket pending block (awaiting reconciliation + unmatched email) with inline delete, inline category dropdown, merchant training, prefetched at init |
+| WhatsApp labels aligned | ✅ DONE | Split buttons now say Personal/Hogar matching dashboard; LLM constrained to fixed category list |
 | Email domain for Resend | Low | Currently sends from onboarding@resend.dev — custom domain needed for production emails |
 | Alembic auto-run on Railway | Low | Run manually: `cd backend && python3 -m alembic upgrade head` |
 
