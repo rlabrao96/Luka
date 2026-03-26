@@ -74,6 +74,34 @@ export interface PartnerStats {
   by_category: Array<{ category: string; amount: number }>;
 }
 
+export interface MemberTotal {
+  user_id: string;
+  full_name: string;
+  amount: number;
+  pct: number;
+}
+
+export interface CategoryBreakdownRow {
+  category: string;
+  member_totals: MemberTotal[];
+  total: number;
+  pct_of_overall: number;
+}
+
+export interface SettlementResponse {
+  from_user_id: string;
+  from_user_name: string;
+  to_user_id: string;
+  to_user_name: string;
+  amount: number;
+  split_ratio: number[];
+  month: string;
+}
+
+export interface SplitRatioResponse {
+  split_ratio: number[];
+}
+
 export interface MonthlySpendingPoint {
   month: string;
   personal: number;
@@ -240,6 +268,22 @@ export const api = {
 
   getPartnerStats: (householdId: string) =>
     apiFetch<PartnerStats>(`/households/${householdId}/partner-stats`),
+
+  getCategoryBreakdown: (householdId: string, month?: string) =>
+    apiFetch<CategoryBreakdownRow[]>(
+      `/households/${householdId}/category-breakdown${month ? `?month=${month}` : ""}`
+    ),
+  getSettlement: (householdId: string, month?: string) =>
+    apiFetch<SettlementResponse>(
+      `/households/${householdId}/settlement${month ? `?month=${month}` : ""}`
+    ),
+  getSplitRatio: (householdId: string) =>
+    apiFetch<SplitRatioResponse>(`/households/${householdId}/split-ratio`),
+  updateSplitRatio: (householdId: string, ratio: number[]) =>
+    apiFetch<SplitRatioResponse>(`/households/${householdId}/split-ratio`, {
+      method: "PATCH",
+      body: JSON.stringify({ ratio }),
+    }),
 
   getBudgetStatus: (householdId: string, month?: string) =>
     apiFetch<BudgetStatus>(`/budgets/monthly/${householdId}${month ? `?month=${month}` : ""}`),
