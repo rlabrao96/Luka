@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-25 (session 7)
-**Status:** **Full email-to-WhatsApp transaction pipeline live. PendingBlock fully polished.** Email → pre-filter → parser → Gemini categorization → WhatsApp split/category → ✅. PendingBlock: 2-bucket UI (awaiting reconciliation + unmatched email), inline optimistic delete, inline category dropdown (same as regular cards), merchant training feedback loop on every category edit, prefetched at dashboard init. WhatsApp labels and LLM categories now use fixed list matching the frontend.
+**Date:** 2026-03-26 (session 8)
+**Status:** **Luka Connect built + Fintoc removed.** New standalone bank scraping service (`luka-connect` repo) replaces Fintoc. Backend: new `bank_connect` module (encryption, service, mapper, router, ARQ jobs). Frontend: credential entry modal, sync status UI. Email pipeline unchanged and still primary for real-time alerts.
 
 ---
 
@@ -53,15 +53,19 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   │                             GET/POST /budgets/monthly/{household_id}
 │   │   │                             GET /budgets/personal/{household_id}
 │   │   │                             GET/POST /budgets/allocation/{household_id}
-│   │   └── fintoc/                 ← FintocClient + classifier + reconcile_transactions()
+│   │   └── bank_connect/           ← Luka Connect integration (replaces Fintoc)
+│   │       ├── encryption.py       ← AES-256-GCM encrypt/decrypt
+│   │       ├── models.py           ← BankCredential model
+│   │       ├── service.py          ← store/delete/decrypt creds, trigger sync
+│   │       ├── mapper.py           ← movement → transaction mapping + dedup
+│   │       ├── scheduler.py        ← get_due_syncs query
+│   │       └── router.py           ← connect/disconnect/sync/status/webhook
 │   ├── jobs/
 │   │   ├── queue.py                ← ARQ enqueue helpers
-│   │   └── tasks.py                ← 5 async tasks (see ARQ Jobs below)
+│   │   └── tasks.py                ← 7 async tasks (see ARQ Jobs below)
 │   ├── modules/
-│   │   └── bank_accounts/              ← BankAccount CRUD + Fintoc webhook handler
-│   │       └── router.py               ← GET /bank-accounts, POST /bank-accounts/fintoc/connect
-│   │                                     POST /bank-accounts/webhooks/fintoc-link (link.created)
-│   │                                     GET /bank-accounts/import-status
+│   │   └── bank_accounts/              ← BankAccount CRUD
+│   │       └── router.py               ← GET/POST/PATCH/DELETE /bank-accounts
 │   ├── alembic/
 │   │   └── versions/
 │   │       ├── 001_initial_schema.py     ← All 12 tables
@@ -122,10 +126,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │           ├── AllocationCard.tsx         ← Dual sliders (Hogar/Ahorro), Personal read-only, suggestion pills
 │   │           ├── WaterfallCards.tsx         ← Household + Personal budget cards with progress bars
 │   │           ├── StoreInitializer.tsx       ← Calls GET /auth/me on mount, populates Zustand
-│   │           ├── InactivityGuard.tsx        ← Auto-logout after 1h inactivity
-│   │           └── ImportStatusBanner.tsx     ← Polls import-status, shows progress banner
-│   │   └── lib/
-│   │       └── fintoc.d.ts             ← Global Window.Fintoc type declaration (single source)
+│   │           └── InactivityGuard.tsx        ← Auto-logout after 1h inactivity
 │   ├── components/ui/              ← shadcn/ui: badge, button, card, input, tabs, table, separator, avatar, bottom-sheet
 │   └── lib/utils.ts                ← cn() Tailwind class merger
 │
@@ -156,7 +157,11 @@ household_invites  — id, household_id, invited_by, invited_email,
 
 bank_accounts      — id, household_id, user_id, bank_name, account_type
                      ('personal'|'joint'), email_sender_pattern,
-                     fintoc_link_id (nullable), fintoc_account_id (nullable)
+                     account_kind, account_number, currency, is_active
+
+bank_credentials   — id, user_id, bank_code, encrypted_rut, encrypted_password,
+                     encryption_iv, next_sync_at, last_sync_at, last_sync_status,
+                     current_job_id  (RLS: user_id = auth.uid())
 
 household_budgets  — id, household_id, bank_account_id, month (DATE),
                      budgeted (Numeric), source
@@ -168,7 +173,7 @@ merchant_category_selections — id, merchant_id, category, count, last_used_at
 
 transactions       — id, user_id, household_id, bank_account_id, merchant_id,
                      amount, currency, transaction_date, category,
-                     status ('pending'|'reconciled'), source, fintoc_id,
+                     status ('pending'|'settled'), source, source_type ('email'|'connect'|'manual'),
                      transaction_type ('expense'|'income'|'transfer'),
                      transfer_to_account_id (FK bank_accounts, nullable),
                      raw_email_text (purged after 24h)
@@ -233,10 +238,16 @@ GET  /budgets/allocation/{id}?month=YYYY-MM-DD → current allocation + suggesti
 POST /budgets/allocation/{id}              → upsert allocation (hogar_pct, ahorro_pct, personal_pct)
 
 GET  /bank-accounts                         → list user's bank accounts
-GET  /bank-accounts/fintoc/accounts?link_token=X → list Fintoc accounts for a link
-POST /bank-accounts/fintoc/connect          → store fintoc_link_id + fintoc_account_id
-POST /bank-accounts/webhooks/fintoc-link    → Fintoc link.created webhook → enqueue import job
-GET  /bank-accounts/import-status?household_id=X → check if import is in progress
+POST /bank-accounts                         → create bank account
+PATCH /bank-accounts/{id}                   → update bank account
+DELETE /bank-accounts/{id}                  → delete bank account
+
+POST /bank-connect/connect                  → store encrypted creds + trigger initial async sync
+DELETE /bank-connect/disconnect?bank_code=X → hard delete credentials
+POST /bank-connect/sync?bank_code=X        → manual sync trigger (async with callback)
+GET  /bank-connect/sync-status?bank_code=X → poll sync progress
+GET  /bank-connect/connections              → list connected banks
+POST /bank-connect/webhooks/luka-connect   → callback from Luka Connect service
 
 POST /webhooks/gmail                        → Gmail push notification
 POST /webhooks/outlook                      → Outlook push notification
@@ -254,8 +265,8 @@ POST /webhooks/whatsapp                    → WhatsApp message receive
 | `renew_mail_watches` | Cron 3am daily | Renew Gmail (7d expiry) and Outlook (3d expiry) subscriptions |
 | `purge_raw_emails` | Cron hourly | Set `raw_email_text = NULL` on transactions >24h old |
 | `cleanup_processed_webhooks` | Cron 4am daily | Delete idempotency records >7 days |
-| `run_fintoc_sync` | Cron 2am nightly | Fetch settled Fintoc txns → classify (income/transfer/expense) → reconcile vs pending by amount + date±3d + fuzzy merchant ≥70% |
-| `import_fintoc_history` | On-demand (Fintoc link.created) | Bulk import historical movements with classifier; skips inbound transfer duplicates; only creates TransactionSplit for EXPENSE |
+| `schedule_connect_syncs` | Cron hourly | Find users due for daily bank sync, enqueue `run_connect_sync` for each |
+| `run_connect_sync` | On-demand (enqueued by scheduler) | Send WhatsApp 2FA nudge, call Luka Connect async with callback |
 
 ---
 
@@ -289,7 +300,7 @@ luka-danger   = #EF4444  (budget exceeded, sign-out button)
 
 6. **Merchant learning** — Global `merchants` table shared across all users. LLM categorizes on first encounter, frequency of user selections improves future suggestions.
 
-7. **Fintoc reconciliation** — Matches email-parsed pending transactions to Fintoc-settled transactions using: exact amount match → ±3 day date window → rapidfuzz partial_ratio ≥ 70% on merchant name.
+7. **Luka Connect** — Standalone bank scraping service (separate repo `luka-connect`). Replaces Fintoc. Node.js/Express + Puppeteer + Chromium. Deployed on its own Railway project. Stateless — credentials managed by Luka backend, encrypted with AES-256-GCM.
 
 8. **No ledger/debt table** — Contribution transparency via aggregate query on transactions. No debt tracking between partners.
 
@@ -299,7 +310,7 @@ luka-danger   = #EF4444  (budget exceeded, sign-out button)
 
 11. **User auto-provisioning** — `get_current_user()` in `security.py` auto-creates the `users` row on first authenticated request using Supabase JWT metadata (name, email, OAuth provider). No separate signup endpoint needed.
 
-12. **Fintoc connect flow** — Uses webhookUrl pattern: frontend opens Fintoc JS widget with `webhookUrl` pointing to backend; Fintoc POSTs `link.created` event with `link_token`; backend fetches accounts and enqueues import job. Onboarding and settings both wire this flow.
+12. **Bank connect flow** — User enters RUT + password in onboarding modal → backend encrypts with AES-256-GCM → calls Luka Connect `/scrape` → user approves 2FA on phone → Luka Connect callbacks with movements → backend maps + dedup + reconciles with email txns.
 
 13. **asyncpg compatibility** — `statement_cache_size=0` set on async engine to handle Supabase's PgBouncer transaction-mode pooler which doesn't support named prepared statements.
 
@@ -336,8 +347,11 @@ WHATSAPP_APP_SECRET=...
 WHATSAPP_PHONE_NUMBER_ID=...
 WHATSAPP_ACCESS_TOKEN=...
 
-# Fintoc
-FINTOC_API_KEY=...
+# Luka Connect (bank scraping service)
+LUKA_CONNECT_URL=https://<luka-connect-railway-url>
+LUKA_CONNECT_API_KEY=<shared API key>
+CONNECT_ENCRYPTION_KEY=<64-char hex, generate: python3 -c "import secrets; print(secrets.token_hex(32))">
+BACKEND_PUBLIC_URL=https://luka-production-eb87.up.railway.app
 
 # LLM
 GEMINI_API_KEY=...   # Google AI Studio (Gemini 2.5 Flash-Lite)
@@ -353,7 +367,7 @@ ENVIRONMENT=production
 ## Test Coverage
 
 ```
-backend/tests/          31 passing, 7 skipped (require live DB)
+backend/tests/          109 passing, 7 skipped (require live DB)
 
 test_auth.py            ← Auth middleware
 test_budget_allocation_service.py ← Allocation suggestions (default, historical, rounding)
@@ -361,9 +375,8 @@ test_budget_personal_service.py   ← Personal ceiling, pace, breakdown (waterfa
 test_budgets_api.py     ← Budget endpoints (1 skipped: live DB)
 test_email_parser.py    ← Regex parsing for Chilean bank emails
 test_email_webhooks.py  ← Gmail + Outlook webhook handlers
-test_fintoc_classifier.py ← INCOME/EXPENSE/TRANSFER/INBOUND_TRANSFER_SKIP classification (7 tests)
-test_fintoc_import.py   ← Fintoc sync job end-to-end
-test_fintoc_reconciler.py ← Reconciliation engine (exact, window, fuzzy, no-match)
+test_bank_connect_encryption.py ← AES-256-GCM encrypt/decrypt roundtrip (3 tests)
+test_bank_connect_mapper.py    ← Movement→transaction mapping + dedup key (7 tests)
 test_health.py          ← Health check
 test_household_privacy.py ← RLS policies (2 skipped: live DB)
 test_households.py      ← Create/invite (3 skipped: live DB)
@@ -397,6 +410,9 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Email-only users | ✅ DONE | Bank account not required — household resolved from HouseholdMember |
 | Transaction dedup | ✅ DONE | Per-email Redis key `txn_processed:{message_id}` (24h TTL) |
 | Merchant race condition | ✅ DONE | IntegrityError on duplicate insert → rollback + re-query existing row |
+| Luka Connect deployment | ⚠️ PENDING | Code built, Docker ready. Needs: Railway project creation, env vars, deploy, verify /health |
+| Migration 017 on production | ⚠️ PENDING | `alembic upgrade head` — drops Fintoc columns, creates bank_credentials table |
+| Luka Connect backend env vars | ⚠️ PENDING | LUKA_CONNECT_URL, LUKA_CONNECT_API_KEY, CONNECT_ENCRYPTION_KEY, BACKEND_PUBLIC_URL |
 | Multi-bank parser | ❌ TODO | Only Banco de Chile compra/comprobante formats handled. Santander, BCI, Falabella, Estado need email samples |
 | Transaction dedup (cross-sender) | ✅ DONE | 5-min window dedup by amount+user prevents BChile compra+comprobante double entry |
 | PendingBlock UI | ✅ DONE | 2-bucket pending block (awaiting reconciliation + unmatched email) with inline delete, inline category dropdown, merchant training, prefetched at init |
@@ -423,8 +439,13 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - Environment vars set: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - Supabase redirect URL configured: `https://luka-lovat.vercel.app/auth/callback`
 
-**Database (Supabase):** ✅ LIVE
-- All 16 migrations applied (`alembic upgrade head` — confirmed at `016 head`)
+**Luka Connect (Railway):** ⚠️ NOT YET DEPLOYED
+- Repo: `rlabrao96/luka-connect` (GitHub, private)
+- Needs: new Railway project, Dockerfile auto-detected, env vars (PORT, ALLOWED_API_KEYS)
+- See `luka-connect/docs/implementation-status.md` for full deployment steps
+
+**Database (Supabase):** ✅ LIVE (migration 017 pending)
+- 16 migrations applied (`016 head`), migration 017 ready to run
 - Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
 - Migration 010 adds bank account settings overhaul columns
 - Migration 011 adds `transaction_type`, `transfer_to_account_id`, `household_budget_allocations`

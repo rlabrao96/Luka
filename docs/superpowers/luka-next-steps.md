@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-25 (session 7)
+**Date:** 2026-03-26 (session 8)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -135,6 +135,17 @@ This document walks through every decision and credential that requires your inp
 - **Fix** — WhatsApp split labels Personal/Hogar (was Mío/Compartido) ✅
 - **Fix** — LLM constrained to fixed category list matching frontend ✅
 - **Fix** — Desktop transaction list was missing parentheses on outflows ✅
+- **Feature** — Luka Connect: standalone bank scraping service (separate repo `luka-connect`) ✅
+- **Feature** — Luka Connect: Express API with /scrape + /health, Dockerized with Chromium + Xvfb ✅
+- **Feature** — Luka Connect: 9 Chilean bank scrapers (Banco de Chile enhanced, others from fork) ✅
+- **Refactor** — Fintoc removed entirely: module, tests, jobs, endpoints, config, frontend widget ✅
+- **Feature** — bank_connect module: AES-256-GCM encryption, BankCredential model, service, mapper, router ✅
+- **Feature** — bank_connect: 6 API endpoints (connect/disconnect/sync/status/connections/webhook) ✅
+- **Feature** — bank_connect: ARQ jobs (schedule_connect_syncs hourly cron + run_connect_sync) ✅
+- **Feature** — Migration 017: drop Fintoc columns, create bank_credentials table with RLS ✅
+- **Feature** — Frontend: bank credential entry modal (3-screen: form → 2FA → success) ✅
+- **Feature** — Frontend: sync status UI in settings (connection cards, manual sync, disconnect) ✅
+- **Feature** — Frontend: Luka Connect API methods in api.ts ✅
 
 ---
 
@@ -207,15 +218,15 @@ Swapped from OpenAI gpt-4o-mini to Google Gemini 2.0 Flash (cheaper, async SDK).
 
 ---
 
-### 1.7 Fintoc — Chilean Open Banking (Optional for MVP)
+### 1.7 ~~Fintoc~~ → Luka Connect ✅ REPLACED
 
-**What you need:**
-1. Request API access at [fintoc.com](https://fintoc.com) — they're a Chilean startup, sign up for sandbox
-2. Collect: `FINTOC_API_KEY`
+Fintoc has been removed and replaced by **Luka Connect** — a standalone bank scraping service.
 
-**Note:** Fintoc reconciliation is the "accuracy booster" — transactions still work without it (captured from emails). Fintoc adds the confirmed settlement amounts. You can skip this for initial launch and add later.
-
-**Decision needed:** Do you want Fintoc at launch or post-launch?
+**What still needs to be done:**
+1. Deploy `luka-connect` repo to a new Railway project (see `luka-connect/docs/implementation-status.md`)
+2. Set env vars on Luka backend: `LUKA_CONNECT_URL`, `LUKA_CONNECT_API_KEY`, `CONNECT_ENCRYPTION_KEY`, `BACKEND_PUBLIC_URL`
+3. Run `alembic upgrade head` on production Supabase (migration 017)
+4. Test end-to-end: onboarding → enter Banco de Chile creds → approve 2FA → transactions imported
 
 ---
 
@@ -261,7 +272,10 @@ Checklist before sharing Luka with anyone:
 - [x] Dashboard loads (no infinite spinner)
 - [x] Auth middleware redirects logged-out users
 - [x] User row auto-created on first login (no more 401 "User not found")
-- [ ] Fintoc widget opens and connects a real bank account end-to-end — **needs real Fintoc sandbox test**
+- [ ] Luka Connect deployed to Railway and /health verified
+- [ ] Migration 017 run on production Supabase
+- [ ] Backend env vars set (LUKA_CONNECT_URL, LUKA_CONNECT_API_KEY, CONNECT_ENCRYPTION_KEY, BACKEND_PUBLIC_URL)
+- [ ] Bank connect onboarding flow tested end-to-end (enter creds → 2FA → transactions imported)
 - [x] WhatsApp sends test message successfully (verified 2026-03-20)
 - [x] Legal pages live and accessible (verified 2026-03-20)
 - [x] Gmail webhook receives email and sends WhatsApp notification ✅ (tested 2026-03-24)
@@ -304,6 +318,23 @@ Checklist before sharing Luka with anyone:
   → WhatsApp split labels: Personal/Hogar (was Mío/Compartido)
   → LLM category list constrained to fixed frontend list (no invented categories)
   → Fixed desktop transaction list showing expenses without parentheses
+
+✅ Week 10 (2026-03-26): Luka Connect + Fintoc removal — COMPLETE
+  → Built luka-connect: standalone Node.js/Express bank scraping API (separate repo)
+  → 9 Chilean bank scrapers (Banco de Chile enhanced, others from fork)
+  → Dockerized with Chromium + Xvfb, pushed to GitHub
+  → Removed Fintoc entirely: module, tests, jobs, endpoints, config, frontend
+  → New bank_connect module: encryption (AES-256-GCM), models, service, mapper, router, ARQ jobs
+  → Migration 017: drops Fintoc columns, creates bank_credentials + source_type
+  → Frontend: credential entry modal (onboarding), sync status UI (settings)
+  → 109 backend tests passing, frontend build clean
+
+Next: Deploy Luka Connect
+  → Create Railway project for luka-connect (separate from Luka)
+  → Set ALLOWED_API_KEYS env var
+  → Set backend env vars: LUKA_CONNECT_URL, LUKA_CONNECT_API_KEY, CONNECT_ENCRYPTION_KEY, BACKEND_PUBLIC_URL
+  → Run migration 017 on production Supabase
+  → Test full flow end-to-end
 
 Next: Multi-bank parser support
   → Each bank has different email formats — need per-bank parser patterns
@@ -349,5 +380,4 @@ Next: P0 Features (see docs/roadmap.md)
 | 1.2 | Redis provider | Railway add-on, Upstash, Redis Cloud | Railway add-on (easiest, same infra) |
 | 1.3 | WhatsApp: personal vs business | Your number vs approved WABA | Start with test number, go through approval when ready for real users |
 | 1.6 | LLM: Gemini 2.0 Flash | — | Switched from OpenAI (Gemini is cheaper, user has Google account) |
-| 1.7 | Fintoc at launch? | Yes / No / Later | Later — email capture works without it |
-| 3.6 | Fintoc link UI for MVP? | Yes / No | No for MVP, yes for v1.1 |
+| 1.7 | ~~Fintoc~~ | Replaced by Luka Connect | Direct bank scraping via luka-connect service |
