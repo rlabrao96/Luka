@@ -217,6 +217,21 @@ export interface BankAccountRow {
   balance_limit: number | null;
 }
 
+export interface RecurringExpense {
+  merchant_name: string;
+  category: string | null;
+  average_amount: number;
+  last_amount: number;
+  previous_amount: number | null;
+  last_charge_date: string;
+  predicted_next_date: string;
+  frequency: string;
+  trend: "stable" | "increased" | "decreased";
+  trend_pct: number | null;
+  months_seen: number;
+  split_type: string;
+}
+
 // --- Luka Connect ---
 
 export interface ConnectBankPayload {
@@ -432,6 +447,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ phone, pin }),
     }),
+
+  getSubscriptions: (monthsBack?: number) =>
+    apiFetch<RecurringExpense[]>(`/subscriptions/detected${monthsBack ? `?months_back=${monthsBack}` : ""}`),
 
   // --- Delete Account ---
   async deleteAccount() {
