@@ -21,9 +21,10 @@ from modules.transactions.router import router as transactions_router
 from modules.whatsapp.router import router as whatsapp_router
 from modules.settings.router import router as settings_router
 from modules.bank_connect.router import router as bank_connect_router
+from modules.subscriptions.router import router as subscriptions_router
 
 # Paths that benefit from short private caching (browser-only, per-user data)
-_CACHEABLE_PREFIXES = ("/auth/me", "/transactions/", "/budgets/", "/households/")
+_CACHEABLE_PREFIXES = ("/auth/me", "/transactions/", "/budgets/", "/households/", "/subscriptions/")
 
 
 class CacheHeaderMiddleware(BaseHTTPMiddleware):
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(bank_accounts_router)
     app.include_router(settings_router)
     app.include_router(bank_connect_router)
+    app.include_router(subscriptions_router)
 
     return app
 
