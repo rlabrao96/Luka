@@ -429,6 +429,52 @@ async def cleanup_processed_webhooks(ctx: dict) -> None:
         await db.commit()
 
 
+async def schedule_connect_syncs(ctx: dict) -> None:
+    """Hourly cron: find users due for sync, enqueue run_connect_sync for each."""
+    async with AsyncSessionLocal() as db:
+        from modules.bank_connect.scheduler import get_due_syncs
+
+        due = await get_due_syncs(db)
+        redis = ctx["redis"]  # ArqRedis pool from worker startup
+        for cred in due:
+            await redis.enqueue_job(
+                "run_connect_sync",
+                str(cred.id),
+            )
+        if due:
+            print(f"[SCHEDULE_CONNECT_SYNCS] Enqueued {len(due)} syncs", flush=True)
+
+
+async def run_connect_sync(ctx: dict, credential_id: str) -> None:
+    """Run a single bank sync: decrypt creds, send WhatsApp 2FA nudge, call Luka Connect."""
+    from modules.bank_connect.models import BankCredential
+    from modules.bank_connect.service import trigger_sync
+    from modules.whatsapp.sender import send_text
+    from modules.auth.models import User
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(BankCredential).where(BankCredential.id == credential_id))
+        cred = result.scalar_one_or_none()
+        if not cred:
+            return
+
+        # Send WhatsApp 2FA nudge to user
+        user_result = await db.execute(select(User).where(User.id == cred.user_id))
+        user = user_result.scalar_one_or_none()
+        if user and user.phone_whatsapp:
+            await send_text(
+                to=user.phone_whatsapp,
+                body=(
+                    "Luka está sincronizando tu banco. "
+                    "Aprueba la Clave Dinámica en tu app del banco."
+                ),
+            )
+
+        # Trigger async scrape with callback
+        callback_url = f"{settings.backend_public_url}/bank-connect/webhooks/luka-connect"
+        await trigger_sync(db=db, cred=cred, mode="recent", callback_url=callback_url)
+
+
 async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> None:
     """Helper to log failed job to database."""
     db.add(FailedJob(job_name=job_name, payload=payload, error_message=error))
