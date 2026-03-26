@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,9 +100,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
    Main page component
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type Screen = "intro" | "select" | "credentials" | "waiting" | "success";
-
-const COUNTDOWN_SECONDS = 120;
+type Screen = "intro" | "select" | "credentials" | "success";
 
 export default function ConnectBankPage() {
   const router = useRouter();
@@ -113,54 +111,6 @@ export default function ConnectBankPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
-
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
-  const stopPolling = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-  };
-
-  const startWaiting = () => {
-    setScreen("waiting");
-    setCountdown(COUNTDOWN_SECONDS);
-    setError(null);
-
-    timerRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          stopPolling();
-          setError("timeout");
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const status = await api.getSyncStatus(selectedBank!.code);
-        if (status.last_sync_status === "success") {
-          stopPolling();
-          setScreen("success");
-        } else if (status.last_sync_status?.startsWith("failed")) {
-          stopPolling();
-          setError("failed");
-        }
-      } catch {
-        // ignore transient errors
-      }
-    }, 3000);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,7 +121,8 @@ export default function ConnectBankPage() {
 
     try {
       await api.connectBank({ bank_code: selectedBank.code, rut: rut.trim(), password });
-      startWaiting();
+      // API responded "started" — scrape runs in background, don't make user wait
+      setScreen("success");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Error al conectar";
       setError(message);
@@ -180,21 +131,8 @@ export default function ConnectBankPage() {
     }
   };
 
-  const handleRetry = () => {
-    stopPolling();
-    setError(null);
-    setScreen("credentials");
-    setPassword("");
-  };
-
   const handleSkip = () => router.push("/");
   const handleContinue = () => router.push("/");
-
-  const formatCountdown = (seconds: number) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
-    const s = (seconds % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
-  };
 
   /* ── Screen 0: Intro ──────────────────────────────────────────────────── */
 
@@ -387,105 +325,17 @@ export default function ConnectBankPage() {
     );
   }
 
-  /* ── Screen 3: Waiting / 2FA ──────────────────────────────────────────── */
-
-  if (screen === "waiting" && selectedBank) {
-    const isTimeout = error === "timeout";
-    const isFailed = error === "failed";
-    const hasError = isTimeout || isFailed;
-
-    return (
-      <div className="space-y-6">
-        <div className="text-center space-y-2">
-          <h2 className="text-xl font-bold text-white">
-            {hasError ? "No se pudo conectar" : `Conectando con ${selectedBank.name}`}
-          </h2>
-          <p className="text-sm text-white/60">
-            {isTimeout
-              ? "Se agoto el tiempo de espera."
-              : isFailed
-              ? "Verifica tus credenciales e intentalo de nuevo."
-              : selectedBank.requires2FA
-              ? "Aprueba la Clave Dinamica en tu app del banco"
-              : "Estamos importando tus movimientos"}
-          </p>
-        </div>
-
-        {!hasError ? (
-          <>
-            {/* Animated spinner with bank icon */}
-            <div className="flex justify-center py-4">
-              <div className="relative">
-                <div className="w-20 h-20 rounded-full border-[3px] border-white/10 border-t-luka-primary animate-spin" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <BankIcon bank={selectedBank} size={36} />
-                </div>
-              </div>
-            </div>
-
-            {/* Instructions card — different message based on 2FA requirement */}
-            <div className="bg-white/10 rounded-xl p-4 border border-white/10 text-center space-y-1.5">
-              {selectedBank.requires2FA ? (
-                <>
-                  <p className="text-sm text-white font-medium">
-                    Revisa la app de tu banco
-                  </p>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    {selectedBank.name} enviara una Clave Dinamica.<br />
-                    Apruebala para completar la conexion.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm text-white font-medium">
-                    Importando movimientos
-                  </p>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    Esto puede tomar un par de minutos.<br />
-                    No cierres esta ventana.
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* Countdown */}
-            <div className="text-center">
-              <p className="text-[11px] text-white/40 mb-1 uppercase tracking-wider">Tiempo restante</p>
-              <p className="text-3xl font-bold text-white tabular-nums">
-                {formatCountdown(countdown)}
-              </p>
-            </div>
-          </>
-        ) : (
-          <div className="space-y-4 pt-4">
-            <Button
-              onClick={handleRetry}
-              className="w-full bg-luka-primary text-white hover:bg-luka-primary-dark rounded-xl h-12 text-base font-semibold"
-            >
-              Intentar de nuevo
-            </Button>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={handleSkip}
-          className="w-full text-sm text-white/50 hover:text-white/80 text-center py-1 transition-colors"
-        >
-          Omitir por ahora
-        </button>
-      </div>
-    );
-  }
-
-  /* ── Screen 4: Success ────────────────────────────────────────────────── */
+  /* ── Screen 3: Success — scrape started in background ────────────────── */
 
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
-        <h2 className="text-xl font-bold text-white">Banco conectado</h2>
-        <p className="text-sm text-white/60">
-          Tus movimientos se importaron correctamente.
+        <h2 className="text-xl font-bold text-white">Banco conectado correctamente</h2>
+        <p className="text-sm text-white/70">
+          Estamos importando tus movimientos históricos. Esto puede tomar alrededor de 5 minutos.
+        </p>
+        <p className="text-xs text-white/50">
+          Tus transacciones aparecerán automáticamente en el dashboard.
         </p>
       </div>
 
@@ -517,7 +367,7 @@ export default function ConnectBankPage() {
         onClick={handleContinue}
         className="w-full bg-luka-primary text-white hover:bg-luka-primary-dark rounded-xl h-12 text-base font-semibold shadow-lg shadow-blue-500/20"
       >
-        Continuar
+        Ir al dashboard
       </Button>
     </div>
   );

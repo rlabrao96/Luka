@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -267,7 +267,7 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
    Connect Bank Modal (Luka Connect flow — for settings)
    ═══════════════════════════════════════════════════════════════════ */
 
-type ModalStep = "select" | "credentials" | "waiting" | "success";
+type ModalStep = "select" | "credentials" | "success";
 
 function ConnectBankModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -277,37 +277,6 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState(120);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
-  const stopPolling = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-  };
-
-  const startWaiting = () => {
-    setStep("waiting");
-    setCountdown(120);
-    setError(null);
-    timerRef.current = setInterval(() => {
-      setCountdown((p) => { if (p <= 1) { stopPolling(); setError("timeout"); return 0; } return p - 1; });
-    }, 1000);
-    pollRef.current = setInterval(async () => {
-      try {
-        const status = await api.getSyncStatus(selectedBank!.code);
-        if (status.last_sync_status === "success") { stopPolling(); setStep("success"); }
-        else if (status.last_sync_status?.startsWith("failed")) { stopPolling(); setError("failed"); }
-      } catch { /* ignore */ }
-    }, 3000);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -316,7 +285,8 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
     setIsSubmitting(true);
     try {
       await api.connectBank({ bank_code: selectedBank.code, rut: rut.trim(), password });
-      startWaiting();
+      // API responded "started" — scrape runs in background, don't make user wait
+      setStep("success");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al conectar");
     } finally { setIsSubmitting(false); }
@@ -328,8 +298,6 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
-  const fmt = (s: number) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -338,7 +306,6 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
           <h3 className="font-semibold text-luka-dark">
             {step === "select" && "Selecciona tu banco"}
             {step === "credentials" && selectedBank?.name}
-            {step === "waiting" && (error ? "No se pudo conectar" : `Conectando con ${selectedBank?.name}`)}
             {step === "success" && "Banco conectado"}
           </h3>
           <button onClick={onClose} className="text-luka-muted hover:text-luka-dark">
@@ -398,51 +365,26 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
             </form>
           )}
 
-          {/* Step 3: Waiting */}
-          {step === "waiting" && selectedBank && (
-            <div className="space-y-5 text-center">
-              {!error ? (
-                <>
-                  <div className="flex justify-center py-3">
-                    <div className="relative">
-                      <div className="w-16 h-16 rounded-full border-[3px] border-slate-100 border-t-luka-primary animate-spin" />
-                      <div className="absolute inset-0 flex items-center justify-center"><BankIcon bank={selectedBank} size={32} /></div>
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4 space-y-1">
-                    {selectedBank.requires2FA ? (
-                      <>
-                        <p className="text-sm text-luka-dark font-medium">Revisa la app de tu banco</p>
-                        <p className="text-xs text-luka-muted">{selectedBank.name} enviará una Clave Dinámica. Apruébala para completar.</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm text-luka-dark font-medium">Importando movimientos</p>
-                        <p className="text-xs text-luka-muted">Esto puede tomar un par de minutos.</p>
-                      </>
-                    )}
-                  </div>
-                  <p className="text-2xl font-bold text-luka-dark tabular-nums">{fmt(countdown)}</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm text-luka-muted">{error === "timeout" ? "Se agotó el tiempo." : "Verifica tus credenciales."}</p>
-                  <Button onClick={() => { stopPolling(); setError(null); setStep("credentials"); setPassword(""); }} className="w-full bg-luka-primary text-white rounded-xl h-11">Intentar de nuevo</Button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Step 4: Success */}
-          {step === "success" && (
+          {/* Step 3: Success — scrape started in background */}
+          {step === "success" && selectedBank && (
             <div className="space-y-5 text-center">
               <div className="flex justify-center py-4">
                 <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center">
                   <svg className="w-8 h-8 text-luka-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                 </div>
               </div>
-              <p className="text-sm text-luka-muted">Tus movimientos se importaron correctamente.</p>
-              <Button onClick={handleSuccess} className="w-full bg-luka-primary text-white rounded-xl h-11">Listo</Button>
+              <div>
+                <p className="text-sm font-semibold text-luka-dark">Banco conectado correctamente</p>
+                <p className="text-sm text-luka-muted mt-2">
+                  Estamos importando tus movimientos históricos. Esto puede tomar alrededor de 5 minutos.
+                </p>
+                <p className="text-xs text-luka-muted mt-1">
+                  Tus transacciones aparecerán automáticamente en el dashboard.
+                </p>
+              </div>
+              <Button onClick={handleSuccess} className="w-full bg-luka-primary text-white rounded-xl h-11">
+                Volver a configuración
+              </Button>
             </div>
           )}
         </div>
