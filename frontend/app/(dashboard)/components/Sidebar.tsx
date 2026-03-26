@@ -50,13 +50,13 @@ export function Sidebar() {
     <aside className="hidden lg:flex flex-col w-64 shrink-0 h-full bg-white border-r border-slate-200/80 shadow-sm">
       {/* Logo */}
       <div className="px-5 py-6 border-b border-slate-100">
-        <div className="flex items-center justify-center py-3 border border-blue-50 bg-slate-50/40 rounded-2xl shadow-sm">
+        <div className="flex items-center justify-center py-3 border border-blue-100 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200">
           <Image 
             src="/logo-dashboard.svg" 
             alt="Luka Logo" 
-            width={130} 
-            height={40} 
-            className="h-10 w-auto"
+            width={140} 
+            height={44} 
+            className="h-11 w-auto"
             priority
           />
         </div>

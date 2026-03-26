@@ -1,7 +1,6 @@
 "use client";
 
-import Script from "next/script";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,8 +39,6 @@ function formatLastSync(iso: string): string {
 
 function bankLabel(bankName: string): string {
   if (!bankName) return "Banco desconocido";
-  // capitalize each word, trim "fintoc" fallback
-  if (bankName.toLowerCase() === "fintoc") return "Banco (Fintoc)";
   return bankName
     .split(" ")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -81,8 +78,6 @@ function AccountCard({
   const kindLabel = account.account_kind
     ? (ACCOUNT_KIND_LABEL[account.account_kind] ?? account.account_kind)
     : null;
-  const isFirstImport = account.import_status === "importing" && !account.last_synced_at;
-  const isFirstImportFailed = account.import_status === "failed" && !account.last_synced_at;
 
   const last4 = account.account_number ? account.account_number.slice(-4) : null;
   const maskedNumber = last4 ? `•••• ${last4}` : null;
@@ -181,17 +176,6 @@ function AccountCard({
         {account.last_synced_at && (
           <span className="text-xs text-slate-400">Última sync: {formatLastSync(account.last_synced_at)}</span>
         )}
-        {isFirstImport && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
-            Sincronizando...
-          </span>
-        )}
-        {isFirstImportFailed && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-            Error al sincronizar
-          </span>
-        )}
       </div>
 
       {/* Footer — only for own accounts */}
@@ -289,98 +273,29 @@ function ConnectBankSection() {
   const userId = useLukaStore((s) => s.userId);
   const queryClient = useQueryClient();
 
-  const [scriptReady, setScriptReady] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  // Patch Fintoc SDK v1 postMessage DataCloneError bug
-  useEffect(() => {
-    const proto = Window.prototype;
-    const orig = proto.postMessage;
-    proto.postMessage = function (this: Window, msg: unknown, ...args: unknown[]) {
-      try {
-        return orig.apply(this, [msg, ...args] as Parameters<typeof orig>);
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "DataCloneError") return;
-        throw e;
-      }
-    };
-    return () => {
-      proto.postMessage = orig;
-    };
-  }, []);
-
-
-  function openWidget() {
-    if (!window.Fintoc) {
-      setMessage("El widget de Fintoc no está disponible. Recarga la página.");
-      return;
-    }
-    if (!householdId || !userId) {
-      setMessage("Aún cargando tu sesión — espera un momento e intenta de nuevo.");
-      return;
-    }
-    setMessage(null);
-
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-    const webhookUrl = `${apiUrl}/bank-accounts/webhooks/fintoc-link?household_id=${householdId}&user_id=${userId}`;
-
-    const widget = window.Fintoc.create({
-      publicKey: process.env.NEXT_PUBLIC_FINTOC_PUBLIC_KEY ?? "",
-      product: "movements",
-      country: "cl",
-      holderType: "individual",
-      webhookUrl,
-      onSuccess: () => {
-        setMessage("¡Cuenta conectada! El historial se importa en segundo plano.");
-        queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
-      },
-      onExit: () => setMessage("Conexión cancelada."),
-      onEvent: (eventName: string) => {
-        if (eventName === "closed") setMessage("Conexión cancelada.");
-      },
-    });
-    widget.open();
-  }
-
-  const [pollStart] = useState(() => Date.now());
-
-  // Any account doing its first-ever import?
-  const hasActiveFirstImport = (accounts: BankAccountRow[] | undefined) =>
-    !!accounts?.some((a) => a.import_status === "importing" && !a.last_synced_at);
-
   const { data: accounts, isLoading: loadingAccounts } = useQuery({
     queryKey: ["bank-accounts", householdId],
     queryFn: () => api.getBankAccounts(householdId!),
     enabled: !!householdId,
-    staleTime: 0,
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      const elapsed = Date.now() - pollStart;
-      if (elapsed > 10 * 60 * 1000) return false;        // hard stop at 10 min
-      if (hasActiveFirstImport(data)) return 5_000;       // poll every 5s while importing
-      return false;                                        // no active import — stop
-    },
+    staleTime: 30_000,
   });
 
   return (
     <div className="w-full">
-      <Script src="https://js.fintoc.com/v1/" onReady={() => setScriptReady(true)} />
       <Card className="shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base text-luka-dark">Cuentas bancarias</CardTitle>
           <Button
             size="sm"
             variant="outline"
-            onClick={openWidget}
-            disabled={!scriptReady || !householdId}
+            onClick={() => {/* Luka Connect modal — Task 14 */}}
+            disabled={!householdId}
             className="text-luka-primary border-luka-primary hover:bg-luka-light"
           >
             + Agregar cuenta
           </Button>
         </CardHeader>
         <CardContent>
-          {message && <p className="text-sm text-luka-muted mb-3">{message}</p>}
-
           {loadingAccounts && (
             <p className="text-sm text-luka-muted">Cargando cuentas...</p>
           )}

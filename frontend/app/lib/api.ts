@@ -168,38 +168,9 @@ export interface SetAllocationPayload {
   personal_pct: number;
 }
 
-export interface FintocAccount {
-  id: string;       // fintoc_account_id
-  name: string;     // e.g. "Cuenta Corriente"
-  type: string;     // e.g. "checking_account" | "credit_card"
-  number: string;   // e.g. "****1234"
-  currency: string;
-}
-
-export interface SelectedFintocAccount {
-  fintoc_account_id: string;
-  label: "personal" | "partner" | "joint";
-  currency?: string;
-}
-
-export interface ConnectFintocPayload {
-  link_token: string;
-  household_id: string;
-  accounts: SelectedFintocAccount[];
-}
-
-export interface ConnectFintocResult {
-  created: number;
-  accounts: Array<{ id: string; fintoc_account_id: string; account_type: string }>;
-}
-
 export interface UpdateBankAccountPayload {
   account_type?: "personal" | "partner" | "joint";
   is_active?: boolean;
-}
-
-export interface ImportStatus {
-  importing: boolean;
 }
 
 export interface BankAccountRow {
@@ -212,11 +183,32 @@ export interface BankAccountRow {
   currency: string | null;
   is_active: boolean;
   user_id: string;
-  import_status: "pending" | "importing" | "done" | "failed";
-  fintoc_account_id: string | null;
   last_synced_at: string | null;
   balance_available: number | null;
   balance_current: number | null;
+}
+
+// --- Luka Connect ---
+
+export interface ConnectBankPayload {
+  bank_code: string;
+  rut: string;
+  password: string;
+}
+
+export interface SyncStatus {
+  bank_code: string;
+  last_sync_at: string | null;
+  last_sync_status: string | null;
+  current_job_id: string | null;
+  next_sync_at: string | null;
+}
+
+export interface BankConnection {
+  bank_code: string;
+  last_sync_at: string | null;
+  last_sync_status: string | null;
+  next_sync_at: string | null;
 }
 
 // ── API calls ──────────────────────────────────────────────
@@ -266,11 +258,6 @@ export const api = {
   getMonthlySpending: (householdId: string) =>
     apiFetch<MonthlySpendingPoint[]>(`/transactions/monthly-summary?household_id=${householdId}`),
 
-  getFintocAccounts: (linkToken: string) =>
-    apiFetch<FintocAccount[]>(
-      `/bank-accounts/fintoc/accounts?link_token=${encodeURIComponent(linkToken)}`
-    ),
-
   createHousehold: (name: string, type: "individual" | "couple") =>
     apiFetch<{ id: string; name: string; type: string }>("/households", {
       method: "POST",
@@ -282,15 +269,6 @@ export const api = {
       `/households/${householdId}/invite`,
       { method: "POST", body: JSON.stringify({ email }) }
     ),
-
-  connectFintocAccounts: (payload: ConnectFintocPayload) =>
-    apiFetch<ConnectFintocResult>("/bank-accounts/fintoc/connect", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-
-  getImportStatus: (householdId: string) =>
-    apiFetch<ImportStatus>(`/bank-accounts/import-status?household_id=${householdId}`),
 
   getBankAccounts: (householdId: string) =>
     apiFetch<BankAccountRow[]>(`/bank-accounts?household_id=${householdId}`),
@@ -342,6 +320,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  // --- Luka Connect ---
+  connectBank: (payload: ConnectBankPayload) =>
+    apiFetch("/bank-connect/connect", { method: "POST", body: JSON.stringify(payload) }),
+
+  disconnectBank: (bankCode: string) =>
+    apiFetch(`/bank-connect/disconnect?bank_code=${bankCode}`, { method: "DELETE" }),
+
+  getSyncStatus: (bankCode: string): Promise<SyncStatus> =>
+    apiFetch(`/bank-connect/sync-status?bank_code=${bankCode}`),
+
+  manualSync: (bankCode: string) =>
+    apiFetch(`/bank-connect/sync?bank_code=${bankCode}`, { method: "POST" }),
+
+  getBankConnections: (): Promise<BankConnection[]> =>
+    apiFetch("/bank-connect/connections"),
 
   // --- Profile ---
   async updateProfile(payload: { full_name?: string; phone_whatsapp?: string }) {

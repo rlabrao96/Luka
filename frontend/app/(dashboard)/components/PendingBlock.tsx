@@ -41,7 +41,7 @@ function SourceBadge({ source }: { source: string }) {
         isEmail ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"
       )}
     >
-      {isEmail ? "Email" : "Fintoc"}
+      {isEmail ? "Email" : "Banco"}
     </span>
   );
 }

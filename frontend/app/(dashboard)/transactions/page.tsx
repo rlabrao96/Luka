@@ -74,7 +74,7 @@ function SummaryBar({ accounts, sharedTxns, periodLabel, userId, householdId }: 
 
   const hasBalances = myAccounts.some((a) => a.balance_available !== null);
 
-  // Fall back to summing expense transactions if no Fintoc balance yet
+  // Fall back to summing expense transactions if no balance data yet
   const sharedFallback = sharedTxns
     .filter((t) => t.transaction_type === "expense")
     .reduce((s, t) => s + Number(t.amount), 0);
@@ -415,7 +415,7 @@ export default function TransactionsPage() {
         </button>
       </FilterPanel>
 
-      {/* Summary cards — Fintoc balances */}
+      {/* Summary cards — account balances */}
       <SummaryBar
         accounts={accounts}
         sharedTxns={summaryShared}
