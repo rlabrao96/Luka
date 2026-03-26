@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -267,7 +267,7 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
    Connect Bank Modal (Luka Connect flow — for settings)
    ═══════════════════════════════════════════════════════════════════ */
 
-type ModalStep = "select" | "credentials" | "success";
+type ModalStep = "select" | "credentials" | "connecting" | "success";
 
 function ConnectBankModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -277,6 +277,49 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+  };
+
+  const waitForSessionStart = (bankCode: string) => {
+    setStep("connecting");
+    setError(null);
+
+    // Poll every 3s for up to 60s to confirm session started
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await api.getSyncStatus(bankCode);
+        const s = status.last_sync_status;
+        if (s === "in_progress" || s === "awaiting_2fa" || s === "success") {
+          stopPolling();
+          setStep("success");
+        } else if (s?.startsWith("failed")) {
+          stopPolling();
+          setError(s === "failed_login" ? "Credenciales incorrectas. Verifica tu RUT y clave." : "Error al conectar con el banco.");
+          setStep("credentials");
+          setPassword("");
+        }
+      } catch { /* ignore */ }
+    }, 3000);
+
+    // Timeout after 60s
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      // If still connecting after 60s, assume it's working (scrape is slow)
+      setStep("success");
+    }, 60000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -285,8 +328,8 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
     setIsSubmitting(true);
     try {
       await api.connectBank({ bank_code: selectedBank.code, rut: rut.trim(), password });
-      // API responded "started" — scrape runs in background, don't make user wait
-      setStep("success");
+      // API responded "started" — now poll to confirm session actually started
+      waitForSessionStart(selectedBank.code);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al conectar");
     } finally { setIsSubmitting(false); }
@@ -306,7 +349,8 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
           <h3 className="font-semibold text-luka-dark">
             {step === "select" && "Selecciona tu banco"}
             {step === "credentials" && selectedBank?.name}
-            {step === "success" && "Banco conectado"}
+            {step === "connecting" && `Conectando con ${selectedBank?.name}`}
+            {step === "success" && "Sesión iniciada"}
           </h3>
           <button onClick={onClose} className="text-luka-muted hover:text-luka-dark">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M15 5L5 15M5 5l10 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
@@ -365,7 +409,23 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
             </form>
           )}
 
-          {/* Step 3: Success — scrape started in background */}
+          {/* Step 3: Connecting — waiting for session confirmation */}
+          {step === "connecting" && selectedBank && (
+            <div className="space-y-5 text-center">
+              <div className="flex justify-center py-3">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full border-[3px] border-slate-100 border-t-luka-primary animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center"><BankIcon bank={selectedBank} size={32} /></div>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-luka-dark">Iniciando sesión en {selectedBank.name}...</p>
+                <p className="text-xs text-luka-muted mt-1">Esto puede tomar unos segundos.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Success — scrape started in background */}
           {step === "success" && selectedBank && (
             <div className="space-y-5 text-center">
               <div className="flex justify-center py-4">
@@ -374,9 +434,9 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <div>
-                <p className="text-sm font-semibold text-luka-dark">Banco conectado correctamente</p>
+                <p className="text-sm font-semibold text-luka-dark">Sesión iniciada correctamente</p>
                 <p className="text-sm text-luka-muted mt-2">
-                  Estamos importando tus movimientos históricos. Esto puede tomar alrededor de 5 minutos.
+                  Estamos extrayendo tus movimientos históricos. Esto puede tomar alrededor de 5 minutos.
                 </p>
                 <p className="text-xs text-luka-muted mt-1">
                   Tus transacciones aparecerán automáticamente en el dashboard.

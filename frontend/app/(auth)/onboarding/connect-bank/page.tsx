@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,7 +100,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
    Main page component
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type Screen = "intro" | "select" | "credentials" | "success";
+type Screen = "intro" | "select" | "credentials" | "connecting" | "success";
 
 export default function ConnectBankPage() {
   const router = useRouter();
@@ -111,6 +111,46 @@ export default function ConnectBankPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+  };
+
+  const waitForSessionStart = (bankCode: string) => {
+    setScreen("connecting");
+    setError(null);
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await api.getSyncStatus(bankCode);
+        const s = status.last_sync_status;
+        if (s === "in_progress" || s === "awaiting_2fa" || s === "success") {
+          stopPolling();
+          setScreen("success");
+        } else if (s?.startsWith("failed")) {
+          stopPolling();
+          setError(s === "failed_login" ? "Credenciales incorrectas. Verifica tu RUT y clave." : "Error al conectar con el banco.");
+          setScreen("credentials");
+          setPassword("");
+        }
+      } catch { /* ignore */ }
+    }, 3000);
+
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      setScreen("success");
+    }, 60000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,8 +161,7 @@ export default function ConnectBankPage() {
 
     try {
       await api.connectBank({ bank_code: selectedBank.code, rut: rut.trim(), password });
-      // API responded "started" — scrape runs in background, don't make user wait
-      setScreen("success");
+      waitForSessionStart(selectedBank.code);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Error al conectar";
       setError(message);
@@ -325,14 +364,38 @@ export default function ConnectBankPage() {
     );
   }
 
-  /* ── Screen 3: Success — scrape started in background ────────────────── */
+  /* ── Screen 3: Connecting — waiting for session confirmation ─────────── */
+
+  if (screen === "connecting" && selectedBank) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-xl font-bold text-white">Conectando con {selectedBank.name}</h2>
+          <p className="text-sm text-white/60">Iniciando sesión, esto puede tomar unos segundos...</p>
+        </div>
+        <div className="flex justify-center py-4">
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full border-[3px] border-white/10 border-t-luka-primary animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <BankIcon bank={selectedBank} size={36} />
+            </div>
+          </div>
+        </div>
+        <button type="button" onClick={handleSkip} className="w-full text-sm text-white/50 hover:text-white/80 text-center py-1 transition-colors">
+          Omitir por ahora
+        </button>
+      </div>
+    );
+  }
+
+  /* ── Screen 4: Success — scrape started in background ────────────────── */
 
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
-        <h2 className="text-xl font-bold text-white">Banco conectado correctamente</h2>
+        <h2 className="text-xl font-bold text-white">Sesión iniciada correctamente</h2>
         <p className="text-sm text-white/70">
-          Estamos importando tus movimientos históricos. Esto puede tomar alrededor de 5 minutos.
+          Estamos extrayendo tus movimientos históricos. Esto puede tomar alrededor de 5 minutos.
         </p>
         <p className="text-xs text-white/50">
           Tus transacciones aparecerán automáticamente en el dashboard.

@@ -14,13 +14,34 @@ def dedup_key(date_str: str, normalized_desc: str, amount: float, bank_account_i
 
 
 def parse_movement_date(date_str: str, time_str: str | None = None) -> datetime:
-    """Parse dd-mm-yyyy date and optional HH:MM time into a timezone-aware datetime."""
-    day, month, year = date_str.split("-")
+    """Parse date string and optional HH:MM time into a timezone-aware datetime.
+
+    Supports: dd-mm-yyyy, dd/mm/yyyy, yyyy-mm-dd, yyyy/mm/dd
+    """
     hour, minute = (0, 0)
     if time_str:
         parts = time_str.split(":")
         hour, minute = int(parts[0]), int(parts[1])
-    return datetime(int(year), int(month), int(day), hour, minute, tzinfo=timezone.utc)
+
+    # Normalize separators
+    cleaned = date_str.replace("/", "-")
+    parts = cleaned.split("-")
+
+    if len(parts) == 3:
+        if len(parts[0]) == 4:
+            # yyyy-mm-dd
+            year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
+        else:
+            # dd-mm-yyyy
+            day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+    else:
+        # Fallback: try dateutil-style parsing
+        from dateutil.parser import parse as dateutil_parse
+
+        dt = dateutil_parse(date_str)
+        return dt.replace(hour=hour, minute=minute, tzinfo=timezone.utc)
+
+    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
 
 
 def map_movement_to_transaction(
