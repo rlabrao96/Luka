@@ -1,6 +1,7 @@
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from modules.households.models import Household, HouseholdMember, HouseholdInvite
@@ -157,6 +158,88 @@ async def get_category_breakdown(db: AsyncSession, household_id, month: str | No
     result = await db.execute(sql, params)
     rows = [dict(r._mapping) for r in result.all()]
     return build_category_breakdown(rows)
+
+
+def calculate_settlement(members: list[dict], split_ratio: list[int]) -> dict:
+    """Pure function: calculates who owes whom based on actual spending and ratio."""
+    if len(members) != 2:
+        return {
+            "from_user_id": "",
+            "from_user_name": "",
+            "to_user_id": "",
+            "to_user_name": "",
+            "amount": Decimal("0"),
+        }
+
+    grand_total = sum(m["total"] for m in members)
+    if grand_total == 0:
+        return {
+            "from_user_id": str(members[0]["user_id"]),
+            "from_user_name": members[0]["full_name"],
+            "to_user_id": str(members[1]["user_id"]),
+            "to_user_name": members[1]["full_name"],
+            "amount": Decimal("0"),
+        }
+
+    expected_0 = grand_total * Decimal(split_ratio[0]) / Decimal(100)
+    diff_0 = expected_0 - members[0]["total"]
+
+    if diff_0 > 0:
+        return {
+            "from_user_id": str(members[0]["user_id"]),
+            "from_user_name": members[0]["full_name"],
+            "to_user_id": str(members[1]["user_id"]),
+            "to_user_name": members[1]["full_name"],
+            "amount": diff_0,
+        }
+    else:
+        return {
+            "from_user_id": str(members[1]["user_id"]),
+            "from_user_name": members[1]["full_name"],
+            "to_user_id": str(members[0]["user_id"]),
+            "to_user_name": members[0]["full_name"],
+            "amount": abs(diff_0),
+        }
+
+
+async def get_settlement(db: AsyncSession, household_id, month: str | None = None):
+    """Returns settlement suggestion for the household."""
+    params: dict = {"household_id": str(household_id)}
+    if month:
+        month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = :month_start"
+        params["month_start"] = f"{month}-01"
+    else:
+        month_clause = (
+            "DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)"
+        )
+
+    sql = text(f"""
+        SELECT u.id AS user_id, u.full_name,
+               COALESCE(SUM(ABS(t.amount)), 0) AS total
+        FROM transactions t
+        JOIN transaction_splits ts ON ts.transaction_id = t.id
+        JOIN users u ON u.id = t.user_id
+        WHERE t.household_id = :household_id
+          AND ts.split_type = 'shared'
+          AND t.transaction_type = 'expense'
+          AND {month_clause}
+        GROUP BY u.id, u.full_name
+        ORDER BY total DESC
+    """)
+    result = await db.execute(sql, params)
+    members = [dict(r._mapping) for r in result.all()]
+
+    h_result = await db.execute(
+        text("SELECT split_ratio FROM households WHERE id = :id"),
+        {"id": str(household_id)},
+    )
+    row = h_result.scalar_one_or_none()
+    split_ratio = row if row else [50, 50]
+
+    settlement = calculate_settlement(members, split_ratio)
+    settlement["split_ratio"] = split_ratio
+    settlement["month"] = month or "current"
+    return settlement
 
 
 async def get_partner_stats(
