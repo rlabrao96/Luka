@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.database import get_db
 from core.security import get_current_user
+from modules.bank_connect.accounts import ensure_accounts
 from modules.bank_connect.mapper import (
     map_movement_to_transaction,
     parse_movement_date,
@@ -22,7 +23,7 @@ from modules.bank_connect.service import (
     trigger_sync,
     _random_next_sync,
 )
-from modules.households.models import BankAccount, HouseholdMember
+from modules.households.models import HouseholdMember
 from modules.transactions.models import Transaction
 
 router = APIRouter(prefix="/bank-connect", tags=["bank-connect"])
@@ -46,7 +47,7 @@ class ConnectCallback(BaseModel):
     jobId: str
     status: str
     movements: list[dict] | None = None
-    balances: dict | None = None
+    allBalances: dict | None = None  # Was "balances" — matches scraper field name
     creditCards: list[dict] | None = None
     error: str | None = None
 
@@ -67,7 +68,7 @@ async def connect_bank(
         password=body.password,
     )
     callback_url = f"{settings.backend_public_url}/bank-connect/webhooks/luka-connect"
-    await trigger_sync(db=db, cred=cred, mode="full", callback_url=callback_url)
+    await trigger_sync(db=db, cred=cred, days_back=90, callback_url=callback_url)
     return {"status": "started", "bank_code": body.bank_code, "job_id": str(cred.current_job_id)}
 
 
@@ -85,6 +86,7 @@ async def disconnect_bank(
 @router.post("/sync")
 async def manual_sync(
     bank_code: str,
+    days_back: int = 4,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -93,7 +95,7 @@ async def manual_sync(
     if not cred:
         raise HTTPException(status_code=404, detail="No connection found for this bank")
     callback_url = f"{settings.backend_public_url}/bank-connect/webhooks/luka-connect"
-    result = await trigger_sync(db=db, cred=cred, mode="recent", callback_url=callback_url)
+    result = await trigger_sync(db=db, cred=cred, days_back=days_back, callback_url=callback_url)
     return result
 
 
@@ -160,10 +162,23 @@ async def handle_connect_callback(
         await db.commit()
         return {"status": "ack"}
 
-    if body.status == "completed" and body.movements:
-        created, enriched, skipped = await _process_movements(
-            db=db, cred=cred, movements=body.movements
+    if body.status == "completed":
+        # Always run account creation/balance updates, even with no movements
+        ba_map = await ensure_accounts(
+            db=db,
+            user_id=cred.user_id,
+            bank_code=cred.bank_code,
+            movements=body.movements,
+            all_balances=body.allBalances,
+            credit_cards=body.creditCards,
         )
+
+        created, enriched, skipped = 0, 0, 0
+        if body.movements:
+            created, enriched, skipped = await _process_movements(
+                db=db, cred=cred, movements=body.movements, ba_map=ba_map
+            )
+
         cred.last_sync_at = datetime.now(timezone.utc)
         cred.last_sync_status = "success"
         cred.current_job_id = None
@@ -174,28 +189,32 @@ async def handle_connect_callback(
     return {"status": "ack"}
 
 
+def _find_cc_account(ba_map: dict[tuple[str, str], uuid.UUID], currency: str) -> uuid.UUID | None:
+    """Find the first credit card account for a given currency."""
+    for (name, curr), acct_id in ba_map.items():
+        if curr == currency and ("Nacional" in name or "Internacional" in name):
+            return acct_id
+    return None
+
+
 async def _process_movements(
-    db: AsyncSession, cred: BankCredential, movements: list[dict]
+    db: AsyncSession,
+    cred: BankCredential,
+    movements: list[dict],
+    ba_map: dict[tuple[str, str], uuid.UUID],
 ) -> tuple[int, int, int]:
     """Process movements: dedup, reconcile with email txns, create new ones."""
     created = 0
     enriched = 0
     skipped = 0
 
-    # Pre-fetch household_id and bank_accounts once (not per movement)
+    # Pre-fetch household_id once (not per movement)
     hm_result = await db.execute(
         select(HouseholdMember.household_id).where(HouseholdMember.user_id == cred.user_id)
     )
     household_id = hm_result.scalar_one_or_none()
     if not household_id:
         return 0, 0, len(movements)
-
-    ba_result = await db.execute(
-        select(BankAccount.id, BankAccount.account_number).where(
-            BankAccount.user_id == cred.user_id
-        )
-    )
-    ba_map = {row[1]: row[0] for row in ba_result.fetchall() if row[1]}
 
     for mov in movements:
         # Skip movements with missing or invalid dates
@@ -241,9 +260,21 @@ async def _process_movements(
 
         if email_txn:
             email_txn.transaction_date = mov_date
+            # Also link to bank account
+            email_txn.bank_account_id = ba_map.get(
+                (mov.get("accountName", ""), mov.get("currency", "CLP"))
+            )
             enriched += 1
         else:
-            ba_id = ba_map.get(mov.get("accountNumber"))
+            # For CC movements, fall back to first CC account for that currency
+            acct_name = mov.get("accountName", "")
+            currency = mov.get("currency", "CLP")
+            source = mov.get("source", "")
+
+            if source in ("credit_card_billed", "credit_card_unbilled"):
+                ba_id = _find_cc_account(ba_map, currency)
+            else:
+                ba_id = ba_map.get((acct_name, currency))
 
             txn_data = map_movement_to_transaction(
                 movement=mov,
@@ -255,5 +286,4 @@ async def _process_movements(
             db.add(txn)
             created += 1
 
-    await db.commit()
     return created, enriched, skipped

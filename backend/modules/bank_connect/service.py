@@ -79,7 +79,7 @@ async def decrypt_credentials(cred: BankCredential) -> tuple[str, str]:
 async def trigger_sync(
     db: AsyncSession,
     cred: BankCredential,
-    mode: str = "recent",
+    days_back: int = 4,
     callback_url: str | None = None,
 ) -> dict:
     """Call Luka Connect to start a scrape. Returns sync response."""
@@ -97,7 +97,7 @@ async def trigger_sync(
         "bank": cred.bank_code,
         "rut": rut,
         "password": password,
-        "mode": mode,
+        "days_back": days_back,
         "jobId": job_id,
     }
     if callback_url:
