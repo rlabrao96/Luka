@@ -39,5 +39,11 @@ class Settings(BaseSettings):
     # Resend (transactional email via HTTP API)
     resend_api_key: str = ""
 
+    # Luka Connect (bank scraper service)
+    connect_encryption_key: str = ""  # 32-byte hex key for AES-256-GCM
+    luka_connect_url: str = "http://localhost:3001"
+    luka_connect_api_key: str = ""
+    backend_public_url: str = "http://localhost:8000"  # Used for webhook callback URLs
+
 
 settings = Settings()
