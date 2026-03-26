@@ -454,6 +454,120 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   Detected account card (Luka Connect — auto-created accounts)
+   ═══════════════════════════════════════════════════════════════════ */
+
+function DetectedAccountCard({
+  account,
+  householdId,
+}: {
+  account: BankAccountRow;
+  householdId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [updating, setUpdating] = useState(false);
+
+  const kindLabels: Record<string, string> = {
+    checking_account: "Cta. Corriente",
+    credit_card: "Tarjeta de Crédito",
+    line_of_credit: "Línea de Crédito",
+    savings_account: "Cuenta Ahorro",
+  };
+
+  async function toggleActive() {
+    setUpdating(true);
+    try {
+      await api.updateBankAccount(account.id, householdId, {
+        is_active: !account.is_active,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function toggleType() {
+    const newType = account.account_type === "joint" ? "personal" : "joint";
+    setUpdating(true);
+    try {
+      await api.updateBankAccount(account.id, householdId, {
+        account_type: newType,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  const formatBalance = (val: number | null, currency: string | null) => {
+    if (val === null) return "—";
+    if (currency === "USD") return `US$${Math.round(val).toLocaleString("en-US")}`;
+    return `$${Math.round(val).toLocaleString("es-CL")}`;
+  };
+
+  return (
+    <div
+      className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+        account.is_active
+          ? "bg-white border-slate-100"
+          : "bg-slate-50 border-slate-100 opacity-60"
+      }`}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-800 truncate">
+            {account.account_name ?? account.bank_name}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-[10px] font-medium text-slate-400">
+              {kindLabels[account.account_kind ?? ""] ?? account.account_kind}
+            </span>
+            {account.currency && (
+              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
+                {account.currency}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="text-right">
+          <p className="text-sm font-bold tabular-nums text-slate-800">
+            {formatBalance(account.balance_current, account.currency)}
+          </p>
+          {account.last_synced_at && (
+            <p className="text-[9px] text-slate-400">
+              {new Date(account.last_synced_at).toLocaleDateString("es-CL")}
+            </p>
+          )}
+        </div>
+
+        <button
+          onClick={toggleType}
+          disabled={updating}
+          className={`text-[10px] font-medium px-2 py-1 rounded-md border transition-colors ${
+            account.account_type === "joint"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+              : "bg-blue-50 border-blue-200 text-blue-700"
+          }`}
+        >
+          {account.account_type === "joint" ? "Compartida" : "Personal"}
+        </button>
+
+        <button
+          onClick={toggleActive}
+          disabled={updating}
+          className="text-[10px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          {account.is_active ? "Ocultar" : "Mostrar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    Exported section — single unified card
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -497,7 +611,7 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
         ))}
 
         {/* Email-linked bank accounts */}
-        {hasAccounts && accounts.map((account) => (
+        {hasAccounts && accounts.filter((a) => a.account_name === null).map((account) => (
           <AccountCard
             key={account.id} account={account} currentUserId={userId} householdId={householdId}
             onDeleted={(id) => {
@@ -509,6 +623,44 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
             }}
           />
         ))}
+
+        {/* Detected accounts from Luka Connect */}
+        {(() => {
+          // Connect-created accounts have account_name set; email-linked ones don't
+          const detectedAccounts = accounts?.filter((a) => a.account_name !== null) ?? [];
+          if (detectedAccounts.length === 0) return null;
+
+          // Group by bank
+          const byBank = new Map<string, BankAccountRow[]>();
+          detectedAccounts.forEach((a) => {
+            const list = byBank.get(a.bank_name) ?? [];
+            list.push(a);
+            byBank.set(a.bank_name, list);
+          });
+
+          return (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-slate-700">Cuentas Detectadas</h3>
+              <p className="text-xs text-slate-400">
+                Cuentas creadas automáticamente al sincronizar con tu banco.
+              </p>
+              {Array.from(byBank.entries()).map(([bankName, bankAccounts]) => (
+                <div key={bankName} className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                    {bankName}
+                  </p>
+                  {bankAccounts.map((a) => (
+                    <DetectedAccountCard
+                      key={a.id}
+                      account={a}
+                      householdId={householdId!}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {showModal && <ConnectBankModal onClose={() => setShowModal(false)} />}
