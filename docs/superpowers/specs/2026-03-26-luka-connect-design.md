@@ -87,7 +87,7 @@ GET /health
 
 ### Sync vs Async
 
-- **Initial connection (onboarding):** Synchronous. `mode=full`, `callbackUrl=null`. Frontend polls `GET /bank-connect/sync-status` on Luka backend. Returns 3 months of history.
+- **Initial connection (onboarding):** Synchronous. `mode=full`, `callbackUrl=null`. Frontend polls `GET /bank-connect/sync-status` on Luka backend. Returns 3 months of history. No fixed timeout on the full scrape — it takes as long as it needs (~2-3 min). The 120s timeout applies only to 2FA approval, not the entire operation.
 - **Scheduled/manual syncs:** Asynchronous. `mode=recent`, with `callbackUrl`. Returns last 1-2 days. Luka Connect POSTs callback when done.
 
 ### Security
@@ -184,6 +184,7 @@ bank_credentials (
   next_sync_at    timestamptz,
   last_sync_at    timestamptz,
   last_sync_status varchar,                  -- 'success', 'failed_2fa', 'failed_login', 'failed_error'
+  current_job_id  uuid,                      -- in-flight scrape job ID (null when idle)
   created_at      timestamptz DEFAULT now(),
   updated_at      timestamptz DEFAULT now(),
   UNIQUE(user_id, bank_code)
