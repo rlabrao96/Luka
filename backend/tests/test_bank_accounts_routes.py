@@ -1,6 +1,6 @@
 import pytest
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 HOUSEHOLD_ID = str(uuid.uuid4())
 ACCOUNT_ID = str(uuid.uuid4())
@@ -14,33 +14,6 @@ def _make_bank_account(import_status="done", is_active=True, user_id=None):
     acc.user_id = user_id  # caller must pass mock_current_user.id for ownership tests; None = unknown other user
     acc.account_type = "personal"
     return acc
-
-
-@pytest.mark.asyncio
-async def test_get_fintoc_accounts_returns_list(http_client, override_auth, override_db):
-    mock_accounts = [
-        {
-            "id": "acc_1",
-            "name": "Cuenta Corriente",
-            "type": "checking_account",
-            "number": "****1234",
-        },
-    ]
-    with patch("modules.bank_accounts.router.FintocClient") as MockClient:
-        instance = AsyncMock()
-        instance.fetch_accounts = AsyncMock(return_value=mock_accounts)
-        MockClient.return_value = instance
-
-        response = await http_client.get("/bank-accounts/fintoc/accounts?link_token=lt_test")
-
-    assert response.status_code == 200
-    assert response.json() == mock_accounts
-
-
-@pytest.mark.asyncio
-async def test_get_fintoc_accounts_requires_auth(http_client):
-    response = await http_client.get("/bank-accounts/fintoc/accounts?link_token=lt_test")
-    assert response.status_code in (401, 403)  # unauthenticated
 
 
 # ---------------------------------------------------------------------------
@@ -58,75 +31,6 @@ def _make_execute_result(scalar_value):
     result.scalar_one_or_none = MagicMock(return_value=scalar_value)
     result.scalars.return_value.first.return_value = scalar_value
     return result
-
-
-# ---------------------------------------------------------------------------
-# Task 8: POST /bank-accounts/fintoc/connect
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_connect_fintoc_returns_403_if_not_member(http_client, override_auth, override_db):
-    # _require_membership uses db.execute(...).scalar_one_or_none() -> None = not a member
-    override_db.execute = AsyncMock(return_value=_make_execute_result(None))
-
-    response = await http_client.post(
-        "/bank-accounts/fintoc/connect",
-        json={
-            "link_token": "lt_test",
-            "household_id": HOUSEHOLD_ID,
-            "accounts": [{"fintoc_account_id": "acc_1", "label": "personal"}],
-        },
-    )
-    assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_connect_fintoc_creates_accounts(
-    http_client, override_auth, override_db, mock_current_user
-):
-    mock_member = MagicMock()
-    # _require_membership: db.execute returns member found
-    override_db.execute = AsyncMock(return_value=_make_execute_result(mock_member))
-    # db.scalar: duplicate checks return None (no duplicate)
-    override_db.scalar = AsyncMock(side_effect=[None, None])
-    override_db.flush = AsyncMock()
-
-    with patch("modules.bank_accounts.router.enqueue_job", AsyncMock(return_value=None)):
-        response = await http_client.post(
-            "/bank-accounts/fintoc/connect",
-            json={
-                "link_token": "lt_abc",
-                "household_id": HOUSEHOLD_ID,
-                "accounts": [
-                    {"fintoc_account_id": "acc_1", "label": "personal"},
-                    {"fintoc_account_id": "acc_2", "label": "joint"},
-                ],
-            },
-        )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["created"] == 2
-
-
-@pytest.mark.asyncio
-async def test_connect_fintoc_returns_409_on_duplicate(http_client, override_auth, override_db):
-    mock_member = MagicMock()
-    mock_existing = MagicMock()  # existing account found
-    # _require_membership: execute returns member
-    override_db.execute = AsyncMock(return_value=_make_execute_result(mock_member))
-    # db.scalar: duplicate check returns existing account
-    override_db.scalar = AsyncMock(return_value=mock_existing)
-
-    response = await http_client.post(
-        "/bank-accounts/fintoc/connect",
-        json={
-            "link_token": "lt_abc",
-            "household_id": HOUSEHOLD_ID,
-            "accounts": [{"fintoc_account_id": "acc_duplicate", "label": "personal"}],
-        },
-    )
-    assert response.status_code == 409
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str = ""
     whatsapp_phone_number_id: str = ""
     whatsapp_access_token: str = ""
-    fintoc_api_key: str = ""
     openai_api_key: str = ""
     gemini_api_key: str = ""  # Google AI Studio API key
     frontend_url: str = "http://localhost:3000"
