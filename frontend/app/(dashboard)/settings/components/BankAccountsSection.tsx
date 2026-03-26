@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useLukaStore } from "@/app/lib/store";
-import { api, type BankAccountRow } from "@/app/lib/api";
+import { api, type BankAccountRow, type BankConnection } from "@/app/lib/api";
+import { useBankConnections, useSyncStatus } from "@/app/lib/hooks/useSyncStatus";
 
 // ── Label helpers ──────────────────────────────────────────
 
@@ -266,6 +267,150 @@ function AccountCard({
   );
 }
 
+// ── Sync status helpers ────────────────────────────────────
+
+function syncStatusDot(status: string | null): { color: string; label: string } {
+  if (!status) return { color: "bg-gray-300", label: "Pendiente" };
+  if (status === "success") return { color: "bg-green-500", label: "Sincronizado" };
+  if (status.startsWith("failed")) return { color: "bg-red-500", label: "Error" };
+  if (status === "in_progress" || status === "awaiting_2fa")
+    return { color: "bg-yellow-400", label: "Sincronizando..." };
+  return { color: "bg-gray-300", label: "Pendiente" };
+}
+
+function formatBankCode(code: string): string {
+  return code
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+// ── Individual bank connection card ───────────────────────
+
+function BankConnectionCard({ connection }: { connection: BankConnection }) {
+  const queryClient = useQueryClient();
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  const { data: syncStatus } = useSyncStatus(connection.bank_code);
+
+  const status = syncStatus?.last_sync_status ?? connection.last_sync_status;
+  const lastSyncAt = syncStatus?.last_sync_at ?? connection.last_sync_at;
+  const { color, label } = syncStatusDot(status);
+
+  const { mutate: triggerSync, isPending: syncing } = useMutation({
+    mutationFn: () => api.manualSync(connection.bank_code),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync-status", connection.bank_code] });
+      queryClient.invalidateQueries({ queryKey: ["bank-connections"] });
+    },
+  });
+
+  const { mutate: disconnect, isPending: disconnecting } = useMutation({
+    mutationFn: () => api.disconnectBank(connection.bank_code),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bank-connections"] });
+    },
+  });
+
+  return (
+    <div className="rounded-xl border bg-white shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-luka-dark text-sm">
+            {formatBankCode(connection.bank_code)}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
+            <span className="text-xs text-luka-muted">{label}</span>
+          </span>
+        </div>
+        {lastSyncAt && (
+          <span className="text-xs text-slate-400">
+            Última sync: {formatLastSync(lastSyncAt)}
+          </span>
+        )}
+      </div>
+
+      {/* Footer actions */}
+      <div className="flex items-center justify-between px-4 pb-3 pt-1 border-t border-gray-50 mt-1">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => triggerSync()}
+          disabled={syncing || status === "in_progress" || status === "awaiting_2fa"}
+          className="text-xs text-luka-primary border-luka-primary hover:bg-luka-light h-7 px-3"
+        >
+          {syncing ? "Iniciando..." : "Sincronizar ahora"}
+        </Button>
+
+        <div className="flex items-center gap-2">
+          {!confirmDisconnect && (
+            <button
+              onClick={() => setConfirmDisconnect(true)}
+              className="text-xs text-red-400 hover:text-red-600"
+            >
+              Desconectar
+            </button>
+          )}
+          {confirmDisconnect && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-luka-muted">¿Seguro?</span>
+              <button
+                onClick={() => disconnect()}
+                disabled={disconnecting}
+                className="text-xs text-red-500 font-medium hover:text-red-700 disabled:opacity-50"
+              >
+                {disconnecting ? "..." : "Sí"}
+              </button>
+              <button
+                onClick={() => setConfirmDisconnect(false)}
+                className="text-xs text-luka-muted hover:text-luka-dark"
+              >
+                No
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Bank connections (Luka Connect) section ───────────────
+
+function BankConnectionsSection() {
+  const { data: connections, isLoading } = useBankConnections();
+
+  return (
+    <Card className="shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base text-luka-dark">Bancos conectados</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading && (
+          <p className="text-sm text-luka-muted">Cargando bancos...</p>
+        )}
+
+        {!isLoading && (!connections || connections.length === 0) && (
+          <p className="text-sm text-luka-muted">
+            No hay bancos conectados. Conecta tu banco para importar transacciones automáticamente.
+          </p>
+        )}
+
+        {!isLoading && connections && connections.length > 0 && (
+          <div className="space-y-3">
+            {connections.map((conn) => (
+              <BankConnectionCard key={conn.bank_code} connection={conn} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Connect bank section ───────────────────────────────────
 
 function ConnectBankSection() {
@@ -350,7 +495,8 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
           Cuentas Bancarias
         </h3>
       </div>
-      <div className="px-5 pb-5">
+      <div className="px-5 pb-5 space-y-4">
+        <BankConnectionsSection />
         <ConnectBankSection />
       </div>
     </div>
