@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, date
+import sqlalchemy as sa
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -55,6 +56,10 @@ class BankAccount(Base):
     )  # 'checking_account' | 'credit_card' | etc
     account_number: Mapped[str | None] = mapped_column(String, nullable=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    account_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    balance_current: Mapped[int | None] = mapped_column(sa.BigInteger, nullable=True)
+    balance_limit: Mapped[int | None] = mapped_column(sa.BigInteger, nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
