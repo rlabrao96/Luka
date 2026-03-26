@@ -1,15 +1,16 @@
 # Luka Connect — Design Spec
 
-> Direct bank connection service for Luka. Replaces Fintoc with browser-based bank scraping.
+> Direct bank connection service. Replaces Fintoc with browser-based bank scraping.
+> Designed as a reusable service — Luka is the first consumer, but Connect is built to serve other products and eventually stand alone.
 > Date: 2026-03-26
 
 ---
 
 ## Overview
 
-Luka Connect is a standalone, stateless Node.js service that logs into Chilean banks via browser automation (Puppeteer + Chromium) and returns raw transaction data. It lives in its own repo (`luka-connect`), deployed as a Dockerized service on Railway.
+Luka Connect is a standalone, stateless Node.js service that logs into Chilean banks via browser automation (Puppeteer + Chromium) and returns raw transaction data. It lives in its own repo (`luka-connect`) and its own Railway project, fully independent from Luka's infrastructure.
 
-Luka's FastAPI backend orchestrates everything: credential storage, sync scheduling, movement-to-transaction mapping, and reconciliation with the existing email pipeline. Luka Connect has no database and no business logic — it only knows how to talk to banks.
+Luka Connect has no database and no business logic — it only knows how to talk to banks. Each consumer (Luka, future products) is responsible for credential storage, scheduling, and business logic on their side. Connect just takes credentials in, returns movements out.
 
 ### Why
 
@@ -92,9 +93,10 @@ GET /health
 
 ### Security
 
-- No public access. Only Luka backend calls it via shared API key.
+- No public access. Consumers authenticate via API key in `X-API-Key` header.
+- Supports multiple API keys (one per consumer) via `ALLOWED_API_KEYS` env var (comma-separated). Luka is the first consumer; future products get their own key.
 - Credentials come in the request body, exist only in memory during the scrape, never persisted by Connect.
-- HTTPS between services. Railway private networking when possible.
+- HTTPS between services.
 
 ### Tech Stack
 
@@ -326,12 +328,12 @@ Onboarding → enter creds → sync POST /scrape (mode=full) →
 
 ## Deployment
 
-| Service | Platform | Estimated Cost |
-|---------|----------|---------------|
-| Luka Connect | Railway (Docker) | ~$10-15/mo (Chrome memory) |
-| Luka Backend | Railway (existing) | No change |
-| Frontend | Vercel (existing) | No change |
-| Database | Supabase (existing) | No change (one new table) |
+| Service | Platform | Project | Estimated Cost |
+|---------|----------|---------|---------------|
+| Luka Connect | Railway (Docker) | **Separate Railway project** (`luka-connect`) | ~$10-15/mo (Chrome memory) |
+| Luka Backend | Railway (existing) | Luka project | No change |
+| Frontend | Vercel (existing) | Luka project | No change |
+| Database | Supabase (existing) | Luka project | No change (one new table) |
 
 ---
 
