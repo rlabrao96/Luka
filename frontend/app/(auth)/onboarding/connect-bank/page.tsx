@@ -2,19 +2,112 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/app/lib/api";
 
-type Screen = "form" | "waiting" | "success";
+/* ═══════════════════════════════════════════════════════════════════════════
+   Bank registry — brand colors, icons, and availability
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+interface BankDef {
+  code: string;
+  name: string;
+  color: string;
+  textColor: string;
+  initials: string;
+  available: boolean;
+}
+
+const BANKS: BankDef[] = [
+  { code: "bchile",     name: "Banco de Chile",   color: "#003B71", textColor: "#FFFFFF", initials: "BC",  available: true },
+  { code: "bestado",    name: "Banco Estado",      color: "#D52B1E", textColor: "#FFFFFF", initials: "BE",  available: false },
+  { code: "bci",        name: "BCI",               color: "#E63027", textColor: "#FFFFFF", initials: "BCI", available: false },
+  { code: "santander",  name: "Banco Santander",   color: "#EC0000", textColor: "#FFFFFF", initials: "S",   available: false },
+  { code: "itau",       name: "Banco Itau",       color: "#FF6600", textColor: "#FFFFFF", initials: "itu",available: false },
+  { code: "scotiabank", name: "Scotiabank",        color: "#EC111A", textColor: "#FFFFFF", initials: "Sb",  available: false },
+  { code: "bice",       name: "Banco BICE",        color: "#1B3A6B", textColor: "#FFFFFF", initials: "BI",  available: false },
+  { code: "falabella",  name: "Banco Falabella",   color: "#8BC540", textColor: "#FFFFFF", initials: "BF",  available: false },
+  { code: "edwards",    name: "Banco Edwards",     color: "#00529B", textColor: "#FFFFFF", initials: "Ed",  available: false },
+];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Shared components
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function BankIcon({ bank, size = 40 }: { bank: BankDef; size?: number }) {
+  const fontSize = size < 36 ? 11 : bank.initials.length > 2 ? 11 : 14;
+  return (
+    <div
+      className="rounded-lg flex items-center justify-center font-bold flex-shrink-0 shadow-sm"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: bank.color,
+        color: bank.textColor,
+        fontSize,
+        letterSpacing: "-0.02em",
+      }}
+    >
+      {bank.initials}
+    </div>
+  );
+}
+
+function ChevronRight({ className = "" }: { className?: string }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className={className}>
+      <path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ShieldCheck() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-luka-primary">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-luka-primary">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0110 0v4" />
+    </svg>
+  );
+}
+
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute top-0 left-0 p-2 text-white/60 hover:text-white transition-colors"
+      aria-label="Volver"
+    >
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Main page component
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+type Screen = "intro" | "select" | "credentials" | "waiting" | "success";
 
 const COUNTDOWN_SECONDS = 120;
 
 export default function ConnectBankPage() {
   const router = useRouter();
 
-  const [screen, setScreen] = useState<Screen>("form");
+  const [screen, setScreen] = useState<Screen>("intro");
+  const [selectedBank, setSelectedBank] = useState<BankDef | null>(null);
   const [rut, setRut] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,7 +117,6 @@ export default function ConnectBankPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Cleanup intervals on unmount
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -42,7 +134,6 @@ export default function ConnectBankPage() {
     setCountdown(COUNTDOWN_SECONDS);
     setError(null);
 
-    // Countdown timer
     timerRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -54,10 +145,9 @@ export default function ConnectBankPage() {
       });
     }, 1000);
 
-    // Poll sync status every 3 seconds
     pollRef.current = setInterval(async () => {
       try {
-        const status = await api.getSyncStatus("bchile");
+        const status = await api.getSyncStatus(selectedBank!.code);
         if (status.last_sync_status === "success") {
           stopPolling();
           setScreen("success");
@@ -66,20 +156,20 @@ export default function ConnectBankPage() {
           setError("failed");
         }
       } catch {
-        // ignore transient network errors while polling
+        // ignore transient errors
       }
     }, 3000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rut.trim() || !password.trim()) return;
+    if (!rut.trim() || !password.trim() || !selectedBank) return;
 
     setError(null);
     setIsSubmitting(true);
 
     try {
-      await api.connectBank({ bank_code: "bchile", rut: rut.trim(), password });
+      await api.connectBank({ bank_code: selectedBank.code, rut: rut.trim(), password });
       startWaiting();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Error al conectar";
@@ -92,17 +182,12 @@ export default function ConnectBankPage() {
   const handleRetry = () => {
     stopPolling();
     setError(null);
-    setScreen("form");
+    setScreen("credentials");
     setPassword("");
   };
 
-  const handleSkip = () => {
-    router.push("/");
-  };
-
-  const handleContinue = () => {
-    router.push("/");
-  };
+  const handleSkip = () => router.push("/");
+  const handleContinue = () => router.push("/");
 
   const formatCountdown = (seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -110,201 +195,289 @@ export default function ConnectBankPage() {
     return `${m}:${s}`;
   };
 
-  // ── Screen 1: Credential Entry Form ─────────────────────────────────────────
+  /* ── Screen 0: Intro ──────────────────────────────────────────────────── */
 
-  if (screen === "form") {
+  if (screen === "intro") {
     return (
-      <Card className="w-full shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-luka-dark">Conecta tu banco</CardTitle>
-          <CardDescription className="text-luka-muted">
-            Ingresa tus credenciales de banca en línea para importar tus movimientos.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Bank selector */}
-            <div className="space-y-1.5">
-              <label htmlFor="bank" className="text-luka-dark text-sm font-medium">
-                Banco
-              </label>
-              <select
-                id="bank"
-                disabled
-                className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm text-luka-dark focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <option value="bchile">Banco de Chile</option>
-              </select>
+      <div className="space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-xl font-bold text-white">
+            <span className="text-luka-sky">Luka</span> se conectara con tu banco
+          </h2>
+          <p className="text-sm text-white/70">
+            Importaremos tus movimientos de forma segura
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 bg-white/10 rounded-xl p-4 border border-white/10">
+            <div className="mt-0.5 flex-shrink-0">
+              <ShieldCheck />
             </div>
-
-            {/* RUT input */}
-            <div className="space-y-1.5">
-              <label htmlFor="rut" className="text-luka-dark text-sm font-medium">
-                RUT
-              </label>
-              <Input
-                id="rut"
-                type="text"
-                placeholder="12.345.678-9"
-                value={rut}
-                onChange={(e) => { setRut(e.target.value); setError(null); }}
-                disabled={isSubmitting}
-                className="rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                autoComplete="username"
-              />
-            </div>
-
-            {/* Password input */}
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-luka-dark text-sm font-medium">
-                Clave Internet
-              </label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Clave Internet"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                disabled={isSubmitting}
-                className="rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                autoComplete="current-password"
-              />
-            </div>
-
-            {/* Error message */}
-            {error && (
-              <p className="text-sm text-red-500 font-medium">{error}</p>
-            )}
-
-            {/* Submit button */}
-            <Button
-              type="submit"
-              disabled={isSubmitting || !rut.trim() || !password.trim()}
-              className="w-full bg-luka-primary text-white hover:bg-blue-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-            >
-              {isSubmitting ? "Conectando..." : "Conectar"}
-            </Button>
-
-            {/* Trust / encryption message */}
-            <div className="flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-100 p-3">
-              {/* Lock icon */}
-              <svg
-                className="w-4 h-4 text-luka-primary mt-0.5 flex-shrink-0"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              <p className="text-xs text-luka-muted leading-relaxed">
-                Tus datos están encriptados y solo se usan para sincronizar tus movimientos.
+            <div>
+              <p className="text-sm font-semibold text-white">Seguro</p>
+              <p className="text-xs text-white/60 leading-relaxed">
+                Tus credenciales se encriptan con AES-256 y nunca se comparten con terceros.
               </p>
             </div>
+          </div>
 
-            {/* Skip link */}
-            <button
-              type="button"
-              onClick={handleSkip}
-              className="w-full text-sm text-luka-muted hover:text-luka-dark text-center py-1"
-            >
-              Omitir
-            </button>
-          </form>
-        </CardContent>
-      </Card>
+          <div className="flex items-start gap-3 bg-white/10 rounded-xl p-4 border border-white/10">
+            <div className="mt-0.5 flex-shrink-0">
+              <LockIcon />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Privado</p>
+              <p className="text-xs text-white/60 leading-relaxed">
+                Solo tu puedes ver tus datos. Puedes desconectar tu banco en cualquier momento.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 pt-2">
+          <Button
+            onClick={() => setScreen("select")}
+            className="w-full bg-luka-primary text-white hover:bg-luka-primary-dark rounded-xl h-12 text-base font-semibold shadow-lg shadow-blue-500/20"
+          >
+            Continuar
+          </Button>
+
+          <button
+            type="button"
+            onClick={handleSkip}
+            className="w-full text-sm text-white/50 hover:text-white/80 text-center py-1 transition-colors"
+          >
+            Omitir por ahora
+          </button>
+        </div>
+      </div>
     );
   }
 
-  // ── Screen 2: Waiting / 2FA ──────────────────────────────────────────────────
+  /* ── Screen 1: Bank selector ──────────────────────────────────────────── */
 
-  if (screen === "waiting") {
+  if (screen === "select") {
+    return (
+      <div className="space-y-4 relative">
+        <BackButton onClick={() => setScreen("intro")} />
+
+        <div className="text-center pt-2">
+          <h2 className="text-xl font-bold text-white">Selecciona tu banco</h2>
+        </div>
+
+        <div className="space-y-1">
+          {BANKS.map((bank) => (
+            <button
+              key={bank.code}
+              type="button"
+              disabled={!bank.available}
+              onClick={() => {
+                if (bank.available) {
+                  setSelectedBank(bank);
+                  setScreen("credentials");
+                }
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${
+                bank.available
+                  ? "hover:bg-white/15 active:bg-white/20 cursor-pointer"
+                  : "opacity-40 cursor-not-allowed"
+              }`}
+            >
+              <BankIcon bank={bank} />
+              <span className="flex-1 text-left text-sm font-medium text-white">
+                {bank.name}
+              </span>
+              {bank.available ? (
+                <ChevronRight className="text-white/40" />
+              ) : (
+                <span className="text-[10px] text-white/30 font-medium uppercase tracking-wider">
+                  Pronto
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSkip}
+          className="w-full text-sm text-white/50 hover:text-white/80 text-center py-1 transition-colors"
+        >
+          Omitir por ahora
+        </button>
+      </div>
+    );
+  }
+
+  /* ── Screen 2: Credentials ────────────────────────────────────────────── */
+
+  if (screen === "credentials" && selectedBank) {
+    return (
+      <div className="space-y-5 relative">
+        <BackButton onClick={() => setScreen("select")} />
+
+        <div className="flex flex-col items-center gap-3 pt-2">
+          <BankIcon bank={selectedBank} size={52} />
+          <h2 className="text-lg font-bold text-white">{selectedBank.name}</h2>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="rut" className="text-white/80 text-sm font-medium">
+              RUT
+            </label>
+            <Input
+              id="rut"
+              type="text"
+              placeholder="12.345.678-9"
+              value={rut}
+              onChange={(e) => { setRut(e.target.value); setError(null); }}
+              disabled={isSubmitting}
+              className="rounded-xl h-11 bg-white/10 border-white/20 text-white placeholder:text-white/30 focus:ring-2 focus:ring-luka-primary/50 focus:border-luka-primary"
+              autoComplete="username"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="password" className="text-white/80 text-sm font-medium">
+              Clave Internet
+            </label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="Tu clave de acceso"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setError(null); }}
+              disabled={isSubmitting}
+              className="rounded-xl h-11 bg-white/10 border-white/20 text-white placeholder:text-white/30 focus:ring-2 focus:ring-luka-primary/50 focus:border-luka-primary"
+              autoComplete="current-password"
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-400 font-medium text-center">{error}</p>
+          )}
+
+          <Button
+            type="submit"
+            disabled={isSubmitting || !rut.trim() || !password.trim()}
+            className="w-full bg-luka-primary text-white hover:bg-luka-primary-dark rounded-xl h-12 text-base font-semibold shadow-lg shadow-blue-500/20 disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Conectando...
+              </span>
+            ) : (
+              "Conectar"
+            )}
+          </Button>
+
+          <div className="flex items-center justify-center gap-1.5 text-white/40">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0110 0v4" />
+            </svg>
+            <span className="text-[11px]">Encriptado con AES-256</span>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  /* ── Screen 3: Waiting / 2FA ──────────────────────────────────────────── */
+
+  if (screen === "waiting" && selectedBank) {
     const isTimeout = error === "timeout";
     const isFailed = error === "failed";
     const hasError = isTimeout || isFailed;
 
     return (
-      <Card className="w-full shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-luka-dark">
-            {hasError ? "No se pudo conectar" : "Conectando con Banco de Chile..."}
-          </CardTitle>
-          <CardDescription className="text-luka-muted">
+      <div className="space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-xl font-bold text-white">
+            {hasError ? "No se pudo conectar" : `Conectando con ${selectedBank.name}`}
+          </h2>
+          <p className="text-sm text-white/60">
             {isTimeout
-              ? "Se agotó el tiempo de espera. Inténtalo de nuevo."
+              ? "Se agoto el tiempo de espera."
               : isFailed
-              ? "Ocurrió un error al conectar. Verifica tus credenciales e inténtalo de nuevo."
-              : "Aprueba la Clave Dinámica en tu app del banco"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {!hasError ? (
-            <>
-              {/* Spinner */}
-              <div className="flex justify-center py-4">
-                <div className="w-12 h-12 rounded-full border-4 border-blue-100 border-t-luka-primary animate-spin" />
-              </div>
+              ? "Verifica tus credenciales e intentalo de nuevo."
+              : "Aprueba la Clave Dinamica en tu app del banco"}
+          </p>
+        </div>
 
-              {/* Instructions */}
-              <div className="rounded-lg bg-blue-50 border border-blue-100 p-4 text-center space-y-1">
-                <p className="text-sm text-luka-dark font-medium">
-                  Revisa la app de tu banco
-                </p>
-                <p className="text-xs text-luka-muted">
-                  Banco de Chile enviará una Clave Dinámica. Apruébala para completar la conexión.
-                </p>
+        {!hasError ? (
+          <>
+            {/* Animated spinner with bank icon */}
+            <div className="flex justify-center py-4">
+              <div className="relative">
+                <div className="w-20 h-20 rounded-full border-[3px] border-white/10 border-t-luka-primary animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <BankIcon bank={selectedBank} size={36} />
+                </div>
               </div>
+            </div>
 
-              {/* Countdown */}
-              <div className="text-center">
-                <p className="text-xs text-luka-muted mb-1">Tiempo restante</p>
-                <p className="text-2xl font-bold text-luka-primary tabular-nums">
-                  {formatCountdown(countdown)}
-                </p>
-              </div>
-            </>
-          ) : (
+            {/* Instructions card */}
+            <div className="bg-white/10 rounded-xl p-4 border border-white/10 text-center space-y-1.5">
+              <p className="text-sm text-white font-medium">
+                Revisa la app de tu banco
+              </p>
+              <p className="text-xs text-white/50 leading-relaxed">
+                {selectedBank.name} enviara una Clave Dinamica.<br />
+                Apruebala para completar la conexion.
+              </p>
+            </div>
+
+            {/* Countdown */}
+            <div className="text-center">
+              <p className="text-[11px] text-white/40 mb-1 uppercase tracking-wider">Tiempo restante</p>
+              <p className="text-3xl font-bold text-white tabular-nums">
+                {formatCountdown(countdown)}
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-4 pt-4">
             <Button
               onClick={handleRetry}
-              className="w-full bg-luka-primary text-white hover:bg-blue-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              className="w-full bg-luka-primary text-white hover:bg-luka-primary-dark rounded-xl h-12 text-base font-semibold"
             >
               Intentar de nuevo
             </Button>
-          )}
+          </div>
+        )}
 
-          <button
-            type="button"
-            onClick={handleSkip}
-            className="w-full text-sm text-luka-muted hover:text-luka-dark text-center py-1"
-          >
-            Omitir
-          </button>
-        </CardContent>
-      </Card>
+        <button
+          type="button"
+          onClick={handleSkip}
+          className="w-full text-sm text-white/50 hover:text-white/80 text-center py-1 transition-colors"
+        >
+          Omitir por ahora
+        </button>
+      </div>
     );
   }
 
-  // ── Screen 3: Success ────────────────────────────────────────────────────────
+  /* ── Screen 4: Success ────────────────────────────────────────────────── */
 
   return (
-    <Card className="w-full shadow-sm">
-      <CardHeader>
-        <CardTitle className="text-luka-dark">Banco conectado</CardTitle>
-        <CardDescription className="text-luka-muted">
-          Se importaron tus movimientos correctamente.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Checkmark */}
-        <div className="flex justify-center py-4">
-          <div className="w-16 h-16 rounded-full bg-blue-50 border-2 border-luka-primary flex items-center justify-center">
+    <div className="space-y-6">
+      <div className="text-center space-y-2">
+        <h2 className="text-xl font-bold text-white">Banco conectado</h2>
+        <p className="text-sm text-white/60">
+          Tus movimientos se importaron correctamente.
+        </p>
+      </div>
+
+      {/* Success animation */}
+      <div className="flex justify-center py-6">
+        <div className="relative">
+          <div className="w-20 h-20 rounded-full bg-luka-success/20 flex items-center justify-center">
             <svg
-              className="w-8 h-8 text-luka-primary"
-              xmlns="http://www.w3.org/2000/svg"
+              className="w-10 h-10 text-luka-success"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -315,15 +488,20 @@ export default function ConnectBankPage() {
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
+          {selectedBank && (
+            <div className="absolute -bottom-1 -right-1 shadow-lg rounded-lg">
+              <BankIcon bank={selectedBank} size={28} />
+            </div>
+          )}
         </div>
+      </div>
 
-        <Button
-          onClick={handleContinue}
-          className="w-full bg-luka-primary text-white hover:bg-blue-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-        >
-          Continuar →
-        </Button>
-      </CardContent>
-    </Card>
+      <Button
+        onClick={handleContinue}
+        className="w-full bg-luka-primary text-white hover:bg-luka-primary-dark rounded-xl h-12 text-base font-semibold shadow-lg shadow-blue-500/20"
+      >
+        Continuar
+      </Button>
+    </div>
   );
 }
