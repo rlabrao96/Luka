@@ -272,10 +272,13 @@ Checklist before sharing Luka with anyone:
 - [x] Dashboard loads (no infinite spinner)
 - [x] Auth middleware redirects logged-out users
 - [x] User row auto-created on first login (no more 401 "User not found")
-- [ ] Luka Connect deployed to Railway and /health verified
-- [ ] Migration 017 run on production Supabase
-- [ ] Backend env vars set (LUKA_CONNECT_URL, LUKA_CONNECT_API_KEY, CONNECT_ENCRYPTION_KEY, BACKEND_PUBLIC_URL)
-- [ ] Bank connect onboarding flow tested end-to-end (enter creds → 2FA → transactions imported)
+- [x] Luka Connect deployed to Railway and /health verified ✅ (2026-03-26)
+- [x] Migration 017 run on production Supabase ✅ (2026-03-26)
+- [x] Backend env vars set ✅ (2026-03-26)
+- [x] Bank connect tested end-to-end: 291 transactions imported from Banco de Chile ✅ (2026-03-26)
+- [ ] Auto-create bank accounts from scraped data (accountNumber/accountName/currency)
+- [ ] Store balances and credit card cupos from scrape data
+- [ ] Show bank/account info on transaction rows
 - [x] WhatsApp sends test message successfully (verified 2026-03-20)
 - [x] Legal pages live and accessible (verified 2026-03-20)
 - [x] Gmail webhook receives email and sends WhatsApp notification ✅ (tested 2026-03-24)
@@ -329,12 +332,19 @@ Checklist before sharing Luka with anyone:
   → Frontend: credential entry modal (onboarding), sync status UI (settings)
   → 109 backend tests passing, frontend build clean
 
-Next: Deploy Luka Connect
-  → Create Railway project for luka-connect (separate from Luka)
-  → Set ALLOWED_API_KEYS env var
-  → Set backend env vars: LUKA_CONNECT_URL, LUKA_CONNECT_API_KEY, CONNECT_ENCRYPTION_KEY, BACKEND_PUBLIC_URL
-  → Run migration 017 on production Supabase
-  → Test full flow end-to-end
+  → Deployed to Railway, all env vars set, migration 017 applied
+  → Fintoc-style multi-step bank selector with bank logos
+  → Connecting flow: polls sync-status → confirms session started → success screen
+  → 291 real Banco de Chile transactions imported successfully
+  → Fixed: date parser (multi-format), webhook processing (skip invalid dates, pre-fetch lookups)
+  → Fixed: 2FA conditional per bank, unified settings card, no user waiting for scrape
+
+Next: Auto-create bank accounts + balances from scrape data
+  → See docs/luka-connect-next-session.md for full requirements
+  → Scraper returns accountNumber, accountName, currency, balance per movement
+  → Need: auto-create bank_account rows, link transactions, store balances, show in frontend
+  → Need: credit card cupos (nacional/internacional used/available/total)
+  → Priority: this unlocks meaningful dashboard data (balances, account filtering)
 
 Next: Multi-bank parser support
   → Each bank has different email formats — need per-bank parser patterns

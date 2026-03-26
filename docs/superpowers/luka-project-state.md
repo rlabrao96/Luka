@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-26 (session 8)
-**Status:** **Luka Connect built + Fintoc removed.** New standalone bank scraping service (`luka-connect` repo) replaces Fintoc. Backend: new `bank_connect` module (encryption, service, mapper, router, ARQ jobs). Frontend: credential entry modal, sync status UI. Email pipeline unchanged and still primary for real-time alerts.
+**Date:** 2026-03-26 (session 8 — end)
+**Status:** **Luka Connect LIVE in production.** 291 real Banco de Chile transactions imported successfully. Scraper (luka-connect repo) deployed on Railway, scrapes 301 movements in ~4 min. Backend processes webhook callback, creates transactions. Frontend: Fintoc-style multi-step bank selector with logos, sync status polling, connecting/success flow. Next: auto-create bank accounts from scraped data, show balances, enrich transactions with account info.
 
 ---
 
@@ -410,9 +410,13 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Email-only users | ✅ DONE | Bank account not required — household resolved from HouseholdMember |
 | Transaction dedup | ✅ DONE | Per-email Redis key `txn_processed:{message_id}` (24h TTL) |
 | Merchant race condition | ✅ DONE | IntegrityError on duplicate insert → rollback + re-query existing row |
-| Luka Connect deployment | ⚠️ PENDING | Code built, Docker ready. Needs: Railway project creation, env vars, deploy, verify /health |
-| Migration 017 on production | ⚠️ PENDING | `alembic upgrade head` — drops Fintoc columns, creates bank_credentials table |
-| Luka Connect backend env vars | ⚠️ PENDING | LUKA_CONNECT_URL, LUKA_CONNECT_API_KEY, CONNECT_ENCRYPTION_KEY, BACKEND_PUBLIC_URL |
+| Luka Connect deployment | ✅ DONE | Deployed on Railway, scraping 301 movements in ~4 min, 291 transactions imported |
+| Migration 017 on production | ✅ DONE | Fintoc columns dropped, bank_credentials + source_type added |
+| Luka Connect backend env vars | ✅ DONE | All 4 env vars set on Railway |
+| Auto-create bank accounts from scrape | ❌ TODO | Scraper returns accountNumber/accountName/currency per movement — need to auto-create bank_account rows |
+| Store balances from scrape | ❌ TODO | Scraper returns allBalances{} and creditCards[] — need to store in DB and show in frontend |
+| Link transactions to bank accounts | ❌ TODO | Transactions currently have bank_account_id=NULL — need to match to auto-created accounts |
+| Show bank/account on transaction rows | ❌ TODO | Frontend transaction list doesn't show which bank/account each transaction belongs to |
 | Multi-bank parser | ❌ TODO | Only Banco de Chile compra/comprobante formats handled. Santander, BCI, Falabella, Estado need email samples |
 | Transaction dedup (cross-sender) | ✅ DONE | 5-min window dedup by amount+user prevents BChile compra+comprobante double entry |
 | PendingBlock UI | ✅ DONE | 2-bucket pending block (awaiting reconciliation + unmatched email) with inline delete, inline category dropdown, merchant training, prefetched at init |
@@ -439,13 +443,14 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - Environment vars set: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - Supabase redirect URL configured: `https://luka-lovat.vercel.app/auth/callback`
 
-**Luka Connect (Railway):** ⚠️ NOT YET DEPLOYED
+**Luka Connect (Railway):** ✅ LIVE
+- URL: `https://luka-connect-production.up.railway.app`
 - Repo: `rlabrao96/luka-connect` (GitHub, private)
-- Needs: new Railway project, Dockerfile auto-detected, env vars (PORT, ALLOWED_API_KEYS)
-- See `luka-connect/docs/implementation-status.md` for full deployment steps
+- Dockerfile with Chromium + Xvfb, auto-deploy on push
+- `/health` returns `{"status":"ok","chromium":true}`
 
-**Database (Supabase):** ✅ LIVE (migration 017 pending)
-- 16 migrations applied (`016 head`), migration 017 ready to run
+**Database (Supabase):** ✅ LIVE
+- All 17 migrations applied (`017 head`)
 - Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
 - Migration 010 adds bank account settings overhaul columns
 - Migration 011 adds `transaction_type`, `transfer_to_account_id`, `household_budget_allocations`
