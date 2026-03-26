@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -23,7 +23,7 @@ from modules.bank_connect.service import (
     trigger_sync,
     _random_next_sync,
 )
-from modules.households.models import HouseholdMember
+from modules.households.models import BankAccount, HouseholdMember
 from modules.transactions.models import Transaction
 
 router = APIRouter(prefix="/bank-connect", tags=["bank-connect"])
@@ -78,7 +78,45 @@ async def disconnect_bank(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Hard delete credentials and stop scheduling."""
+    """Hard delete credentials, auto-created accounts, and their transactions."""
+    from modules.bank_connect.accounts import BANK_NAMES
+
+    bank_name = BANK_NAMES.get(bank_code, bank_code)
+
+    # Find auto-created accounts for this bank (have account_name set)
+    acct_result = await db.execute(
+        select(BankAccount.id).where(
+            BankAccount.user_id == user.id,
+            BankAccount.bank_name == bank_name,
+            BankAccount.account_name.isnot(None),
+        )
+    )
+    acct_ids = [row[0] for row in acct_result.fetchall()]
+
+    if acct_ids:
+        # Delete splits → transactions → accounts (respect FK order)
+        from modules.transactions.models import TransactionSplit
+
+        txn_result = await db.execute(
+            select(Transaction.id).where(Transaction.bank_account_id.in_(acct_ids))
+        )
+        txn_ids = [row[0] for row in txn_result.fetchall()]
+        if txn_ids:
+            await db.execute(
+                delete(TransactionSplit).where(TransactionSplit.transaction_id.in_(txn_ids))
+            )
+            await db.execute(delete(Transaction).where(Transaction.id.in_(txn_ids)))
+        await db.execute(delete(BankAccount).where(BankAccount.id.in_(acct_ids)))
+
+    # Also delete any connect transactions not linked to an account
+    await db.execute(
+        delete(Transaction).where(
+            Transaction.user_id == user.id,
+            Transaction.source_type == "connect",
+            Transaction.bank_account_id.is_(None),
+        )
+    )
+
     await delete_credentials(db=db, user_id=str(user.id), bank_code=bank_code)
     return {"status": "disconnected"}
 
