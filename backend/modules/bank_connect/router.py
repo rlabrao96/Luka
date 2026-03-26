@@ -227,8 +227,27 @@ async def handle_connect_callback(
     return {"status": "ack"}
 
 
-def _find_cc_account(ba_map: dict[tuple[str, str], uuid.UUID], currency: str) -> uuid.UUID | None:
-    """Find the first credit card account for a given currency."""
+def _resolve_account(mov: dict, ba_map: dict[tuple[str, str], uuid.UUID]) -> uuid.UUID | None:
+    """Resolve bank_account_id for any movement."""
+    source = mov.get("source", "")
+    if source in ("credit_card_billed", "credit_card_unbilled"):
+        return _resolve_cc_account(mov, ba_map)
+    return ba_map.get((mov.get("accountName", ""), mov.get("currency", "CLP")))
+
+
+def _resolve_cc_account(mov: dict, ba_map: dict[tuple[str, str], uuid.UUID]) -> uuid.UUID | None:
+    """Resolve CC movement to card account using cardLabel (precise) or fallback (first match)."""
+    currency = mov.get("currency", "CLP")
+    card_label = mov.get("cardLabel")
+
+    if card_label:
+        # Precise match: "Visa Signature ****5032" + "Nacional"/"Internacional"
+        suffix = "Internacional" if currency == "USD" else "Nacional"
+        ba_id = ba_map.get((f"{card_label} {suffix}", currency))
+        if ba_id:
+            return ba_id
+
+    # Fallback: first CC account for this currency
     for (name, curr), acct_id in ba_map.items():
         if curr == currency and ("Nacional" in name or "Internacional" in name):
             return acct_id
@@ -299,18 +318,16 @@ async def _process_movements(
         if email_txn:
             email_txn.transaction_date = mov_date
             # Also link to bank account
-            email_txn.bank_account_id = ba_map.get(
-                (mov.get("accountName", ""), mov.get("currency", "CLP"))
-            )
+            ba_id_for_email = _resolve_account(mov, ba_map)
+            email_txn.bank_account_id = ba_id_for_email
             enriched += 1
         else:
-            # For CC movements, fall back to first CC account for that currency
             acct_name = mov.get("accountName", "")
             currency = mov.get("currency", "CLP")
             source = mov.get("source", "")
 
             if source in ("credit_card_billed", "credit_card_unbilled"):
-                ba_id = _find_cc_account(ba_map, currency)
+                ba_id = _resolve_cc_account(mov, ba_map)
             else:
                 ba_id = ba_map.get((acct_name, currency))
 
