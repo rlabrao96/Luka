@@ -10,6 +10,7 @@ from jobs.tasks import (
     send_invite_email,
     schedule_connect_syncs,
     run_connect_sync,
+    refresh_subscriptions_cache,
 )
 
 
@@ -28,6 +29,7 @@ class WorkerSettings:
         cron(purge_raw_emails, minute=0),  # every hour
         cron(cleanup_processed_webhooks, hour=4, minute=0),  # 4am daily
         cron(schedule_connect_syncs, minute=0),  # Every hour, check for due syncs
+        cron(refresh_subscriptions_cache, hour=5, minute=30),  # 5:30am daily
     ]
     on_startup = startup
     on_shutdown = shutdown

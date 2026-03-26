@@ -492,3 +492,18 @@ async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> No
     """Helper to log failed job to database."""
     db.add(FailedJob(job_name=job_name, payload=payload, error_message=error))
     await db.commit()
+
+
+async def refresh_subscriptions_cache(ctx: dict) -> None:
+    """Daily cron: recompute subscription detection for all active users."""
+    from modules.subscriptions.service import _compute_and_cache
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User.id))
+        user_ids = [row[0] for row in result.all()]
+        logger.info("Refreshing subscriptions cache for %d users", len(user_ids))
+        for uid in user_ids:
+            try:
+                await _compute_and_cache(db, uid)
+            except Exception:
+                logger.warning("Failed to refresh subscriptions for user %s", uid, exc_info=True)

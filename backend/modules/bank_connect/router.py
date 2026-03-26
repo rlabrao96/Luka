@@ -222,6 +222,12 @@ async def handle_connect_callback(
         cred.current_job_id = None
         cred.next_sync_at = _random_next_sync()
         await db.commit()
+
+        # Bust subscriptions cache so next visit recomputes with new data
+        from modules.subscriptions.service import invalidate_subscriptions_cache
+
+        await invalidate_subscriptions_cache(cred.user_id)
+
         return {"status": "ok", "created": created, "enriched": enriched, "skipped": skipped}
 
     return {"status": "ack"}

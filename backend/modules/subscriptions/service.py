@@ -5,8 +5,16 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
+import logging
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.cache import cache_get, cache_set, cache_delete
+
+logger = logging.getLogger(__name__)
+
+CACHE_TTL = 3 * 24 * 3600  # 3 days
 
 
 def predict_next_date(last_date: date) -> date:
@@ -110,8 +118,26 @@ def detect_from_rows(rows: list[dict]) -> list[dict]:
     return results
 
 
+def _cache_key(user_id) -> str:
+    return f"subscriptions:{user_id}"
+
+
 async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int = 6) -> dict:
-    """Query transactions, detect recurring patterns, and return summary + items."""
+    """Return cached subscriptions, or compute and cache if miss."""
+    cached = await cache_get(_cache_key(user_id))
+    if cached:
+        return cached
+
+    return await _compute_and_cache(db, user_id, months_back)
+
+
+async def invalidate_subscriptions_cache(user_id) -> None:
+    """Call this when new transactions arrive (webhook, sync) to bust the cache."""
+    await cache_delete(_cache_key(user_id))
+
+
+async def _compute_and_cache(db: AsyncSession, user_id, months_back: int = 6) -> dict:
+    """Heavy computation: query transactions, detect patterns, cache result."""
     sql = text("""
         SELECT
             COALESCE(m.normalized_name, t.raw_merchant_name) AS merchant_key,
@@ -149,7 +175,7 @@ async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int
         round(float(total_recurring) / float(monthly_total) * 100, 1) if monthly_total > 0 else 0
     )
 
-    return {
+    result = {
         "items": items,
         "summary": {
             "total_recurring": total_recurring,
@@ -158,3 +184,5 @@ async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int
             "count": len(items),
         },
     }
+    await cache_set(_cache_key(user_id), result, CACHE_TTL)
+    return result
