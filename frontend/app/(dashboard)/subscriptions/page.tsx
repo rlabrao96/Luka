@@ -3,7 +3,6 @@
 import { AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useSubscriptions } from "@/app/lib/hooks/useSubscriptions";
-import { useMyTransactions } from "@/app/lib/hooks/useTransactions";
 import type { RecurringExpense } from "@/app/lib/api";
 
 function fmt(n: number) {
@@ -34,18 +33,10 @@ function trendText(sub: RecurringExpense) {
 }
 
 export default function SubscriptionsPage() {
-  const { data: subscriptions = [], isLoading } = useSubscriptions();
-  const { data: allTxns = [] } = useMyTransactions();
+  const { data, isLoading } = useSubscriptions();
 
-  // Monthly spending for % KPI
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const monthlyTotal = allTxns
-    .filter((t) => t.transaction_date.startsWith(currentMonth) && t.amount < 0)
-    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-  const totalRecurring = subscriptions.reduce((s, sub) => s + sub.last_amount, 0);
-  const pct = monthlyTotal > 0 ? (totalRecurring / monthlyTotal) * 100 : 0;
+  const subscriptions = data?.items ?? [];
+  const summary = data?.summary;
 
   // Sorted for timeline
   const sorted = [...subscriptions].sort(
@@ -93,10 +84,10 @@ export default function SubscriptionsPage() {
               Total mensual recurrente
             </p>
             <p className="text-[22px] font-bold text-gray-900 mt-1 tabular-nums">
-              {fmt(totalRecurring)}
+              {fmt(summary?.total_recurring ?? 0)}
             </p>
             <p className="text-xs text-slate-400 mt-0.5">
-              {subscriptions.length} suscripciones activas
+              {summary?.count ?? 0} suscripciones activas
             </p>
           </CardContent>
         </Card>
@@ -107,10 +98,10 @@ export default function SubscriptionsPage() {
               % de gastos totales
             </p>
             <p className="text-[22px] font-bold text-blue-600 mt-1 tabular-nums">
-              {Math.round(pct)}%
+              {Math.round(summary?.pct_of_total ?? 0)}%
             </p>
             <p className="text-xs text-slate-400 mt-0.5">
-              de {fmt(monthlyTotal)} este mes
+              de {fmt(summary?.monthly_total ?? 0)} este mes
             </p>
           </CardContent>
         </Card>

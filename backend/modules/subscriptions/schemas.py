@@ -5,7 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 
 
-class RecurringExpenseResponse(BaseModel):
+class RecurringExpenseItem(BaseModel):
     merchant_name: str
     category: str | None
     average_amount: Decimal
@@ -18,3 +18,15 @@ class RecurringExpenseResponse(BaseModel):
     trend_pct: float | None
     months_seen: int
     split_type: str
+
+
+class SubscriptionsSummary(BaseModel):
+    total_recurring: Decimal
+    monthly_total: Decimal
+    pct_of_total: float
+    count: int
+
+
+class SubscriptionsResponse(BaseModel):
+    items: list[RecurringExpenseItem]
+    summary: SubscriptionsSummary

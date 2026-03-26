@@ -232,6 +232,18 @@ export interface RecurringExpense {
   split_type: string;
 }
 
+export interface SubscriptionsSummary {
+  total_recurring: number;
+  monthly_total: number;
+  pct_of_total: number;
+  count: number;
+}
+
+export interface SubscriptionsResponse {
+  items: RecurringExpense[];
+  summary: SubscriptionsSummary;
+}
+
 // --- Luka Connect ---
 
 export interface ConnectBankPayload {
@@ -449,7 +461,7 @@ export const api = {
     }),
 
   getSubscriptions: (monthsBack?: number) =>
-    apiFetch<RecurringExpense[]>(`/subscriptions/detected${monthsBack ? `?months_back=${monthsBack}` : ""}`),
+    apiFetch<SubscriptionsResponse>(`/subscriptions/detected${monthsBack ? `?months_back=${monthsBack}` : ""}`),
 
   // --- Delete Account ---
   async deleteAccount() {

@@ -110,11 +110,11 @@ def detect_from_rows(rows: list[dict]) -> list[dict]:
     return results
 
 
-async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int = 6) -> list[dict]:
-    """Query transactions and detect recurring patterns."""
+async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int = 6) -> dict:
+    """Query transactions, detect recurring patterns, and return summary + items."""
     sql = text("""
         SELECT
-            COALESCE(m.name, t.raw_merchant_name) AS merchant_key,
+            COALESCE(m.normalized_name, t.raw_merchant_name) AS merchant_key,
             t.category,
             ABS(t.amount) AS amount,
             t.transaction_date AS tx_date,
@@ -130,4 +130,31 @@ async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int
     """)
     result = await db.execute(sql, {"user_id": str(user_id), "months_back": months_back})
     rows = [dict(r._mapping) for r in result.all()]
-    return detect_from_rows(rows)
+    items = detect_from_rows(rows)
+
+    # Calculate summary in backend so frontend doesn't need all transactions
+    total_recurring = sum(i["last_amount"] for i in items)
+
+    monthly_total_sql = text("""
+        SELECT COALESCE(SUM(ABS(t.amount)), 0) AS total
+        FROM transactions t
+        WHERE t.user_id = :user_id
+          AND t.transaction_type = 'expense'
+          AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
+    """)
+    monthly_result = await db.execute(monthly_total_sql, {"user_id": str(user_id)})
+    monthly_total = monthly_result.scalar() or Decimal("0")
+
+    pct_of_total = (
+        round(float(total_recurring) / float(monthly_total) * 100, 1) if monthly_total > 0 else 0
+    )
+
+    return {
+        "items": items,
+        "summary": {
+            "total_recurring": total_recurring,
+            "monthly_total": monthly_total,
+            "pct_of_total": pct_of_total,
+            "count": len(items),
+        },
+    }
