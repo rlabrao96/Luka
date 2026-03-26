@@ -36,10 +36,12 @@ Two parallel features for the Luka dashboard:
 
 **Enhanced endpoint — `GET /households/{id}/summary`:**
 - Add `by_category` field: array of `{category, member_totals: [{user_id, name, amount, pct}], total, pct_of_overall}`
+- **Scope: only `split_type = 'shared'` transactions** — matches settlement scope so numbers reconcile
 - Add `month` query parameter (default: current month)
 
 **New endpoint — `GET /households/{id}/settlement`:**
 - Input: household_id, month (optional, default current)
+- **Scope: only transactions where `split_type = 'shared'`.** Personal and partner-tagged transactions are excluded from the settlement calculation.
 - Calculates: total shared per member, expected share based on ratio, difference
 - Returns: `{from_user: {id, name}, to_user: {id, name}, amount, split_ratio: [int, int], month}`
 
@@ -72,7 +74,8 @@ Query existing transactions to find recurring patterns:
 2. For each merchant, check if charges appear in 2+ consecutive months
 3. Amount tolerance: within 20% between months (handles price changes, variable bills)
 4. Calculate: average amount, frequency (monthly), last charge date, predicted next charge date
-5. Price trend: compare latest charge to previous — flag as stable / increased / decreased
+5. **Predicted next date:** Take the day-of-month from the last charge date and project to the next calendar month. If that day doesn't exist in the target month (e.g., Jan 31 → Feb), use the last day of that month.
+6. Price trend: compare latest charge to previous — flag as stable / increased / decreased
 
 **No new database tables** — subscriptions are a computed view over `transactions`.
 
@@ -81,7 +84,8 @@ Query existing transactions to find recurring patterns:
 **New module:** `modules/subscriptions/`
 
 **New endpoint — `GET /subscriptions/detected`:**
-- Query parameter: `months_back` (default: 6, how far back to look)
+- **Auth:** Filters by `user_id` from auth token. No household_id required.
+- Query parameter: `months_back` (default: 6, how far back to look). Gracefully handles users with less history.
 - Returns array of:
   ```
   {
