@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-26 (session 8)
+**Date:** 2026-03-26 (session 9)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -375,9 +375,17 @@ Next: Microsoft Azure / Outlook support
   → Enable Microsoft OAuth in Supabase Auth
   → Wire OutlookProvider token storage (same pattern as Gmail)
 
+✅ Session 9 (2026-03-26): Household Enhancement + Subscriptions Tab — COMPLETE
+  → Household page rewrite: hero card, per-category breakdown table, settlement card
+  → Settlement: "X debe transferir $Y a Z" based on configurable split ratio (50/50 default)
+  → Split ratio: PATCH endpoint + modal UI, migration 019 (households.split_ratio JSONB)
+  → New subscriptions module: auto-detects recurring merchants (2+ consecutive months, 20% tolerance)
+  → Subscriptions page: KPI cards + vertical timeline + price change alerts
+  → Nav: "Suscripciones" added to sidebar + "Suscrip." in mobile bottom nav
+  → 10 new unit tests, 12 commits, frontend build clean
+
 Next: P0 Features (see docs/roadmap.md)
-  → Category budget alerts via WhatsApp (1-2 days)
-  → Recurring transaction detection (2-3 days)
+  → Category budget alerts via WhatsApp
 ```
 
 ---

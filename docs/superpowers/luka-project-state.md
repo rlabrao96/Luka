@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-26 (session 8 — end)
-**Status:** **Luka Connect LIVE in production.** 291 real Banco de Chile transactions imported successfully. Scraper (luka-connect repo) deployed on Railway, scrapes 301 movements in ~4 min. Backend processes webhook callback, creates transactions. Frontend: Fintoc-style multi-step bank selector with logos, sync status polling, connecting/success flow. Next: auto-create bank accounts from scraped data, show balances, enrich transactions with account info.
+**Date:** 2026-03-26 (session 9 — end)
+**Status:** **Household enhancement + Subscriptions tab shipped.** Household page rewritten with per-category breakdown table, settlement suggestions ("X debe transferir $Y a Z"), and configurable split ratio. New Subscriptions tab auto-detects recurring expenses (2+ consecutive months, 20% tolerance) with timeline view and price change alerts. 10 new unit tests, 12 commits, migration 019 applied.
 
 ---
 
@@ -41,6 +41,9 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   ├── auth/                   ← User model + GET/PATCH/DELETE /auth/me
 │   │   ├── households/             ← Household, Member, Invite, BankAccount, Budget models
 │   │   │                             POST /, POST /{id}/invite, GET /{id}/summary, GET /{id}/partner-stats
+│   │   │                             GET /{id}/category-breakdown, GET /{id}/settlement, GET/PATCH /{id}/split-ratio
+│   │   ├── subscriptions/          ← Recurring expense detection (computed view, no DB tables)
+│   │   │                             GET /subscriptions/detected
 │   │   ├── transactions/           ← Transaction, TransactionSplit, ProcessedWebhook, FailedJob models
 │   │   │                             GET /transactions/mine, GET /transactions/shared
 │   │   ├── merchants/              ← Merchant, MerchantCategorySelection models
@@ -87,7 +90,8 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   │   ├── store.ts            ← Zustand: householdId, userId, userFullName, reset()
 │   │   │   ├── hooks/
 │   │   │   │   ├── useTransactions.ts  ← useMyTransactions, useSharedTransactions, useMonthlySpending
-│   │   │   │   ├── useHousehold.ts     ← useHouseholdSummary, usePartnerStats
+│   │   │   │   ├── useHousehold.ts     ← useHouseholdSummary, usePartnerStats, useCategoryBreakdown, useSettlement, useSplitRatio, useUpdateSplitRatio
+│   │   │   │   ├── useSubscriptions.ts ← useSubscriptions
 │   │   │   │   └── useBudget.ts        ← useBudgetStatus, useSetBudget, usePersonalBudget, useAllocation, useSaveAllocation
 │   │   │   └── supabase/
 │   │   │       ├── client.ts       ← Supabase browser client
@@ -110,7 +114,10 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │       ├── layout.tsx          ← Sidebar (lg) + BottomNav (mobile) + <main>
 │   │       ├── page.tsx            ← /  — Home: KPIs + SpendingChart + CategoryDonut + RecentTransactions
 │   │       ├── transactions/page.tsx  ← /transactions — tabs (mine/shared) + search
-│   │       ├── household/page.tsx     ← /household — contribution bars + partner stats
+│   │       ├── household/             ← /household — hero card + category breakdown + settlement
+│   │       │   ├── page.tsx
+│   │       │   └── SplitRatioModal.tsx
+│   │       ├── subscriptions/page.tsx ← /subscriptions — KPI cards + timeline + price alerts
 │   │       ├── budgets/page.tsx       ← /budgets — pace chart, allocation editor, waterfall cards
 │   │       ├── settings/
 │   │       │   ├── page.tsx              ← /settings — profile, bank accounts, hogar, notifications, categories, privacy, delete
@@ -148,7 +155,7 @@ users              — id, email, full_name, phone_whatsapp, whatsapp_verified, 
                      mail_watch_subscription_id (Outlook), mail_watch_expiry,
                      google_access_token_enc, google_refresh_token_enc
 
-households         — id, name, type ('individual'|'couple')
+households         — id, name, type ('individual'|'couple'), split_ratio (JSONB, default [50,50])
 
 household_members  — id, household_id, user_id, role ('owner'|'member')
 
@@ -421,6 +428,12 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Transaction dedup (cross-sender) | ✅ DONE | 5-min window dedup by amount+user prevents BChile compra+comprobante double entry |
 | PendingBlock UI | ✅ DONE | 2-bucket pending block (awaiting reconciliation + unmatched email) with inline delete, inline category dropdown, merchant training, prefetched at init |
 | WhatsApp labels aligned | ✅ DONE | Split buttons now say Personal/Hogar matching dashboard; LLM constrained to fixed category list |
+| Household category breakdown | ✅ DONE | Per-category spending table with mini proportion bars, member amounts + %, sorted by total |
+| Settlement suggestions | ✅ DONE | "X debe transferir $Y a Z" based on configurable split ratio (default 50/50) |
+| Split ratio config | ✅ DONE | PATCH endpoint + modal UI, stores in households.split_ratio JSONB column (migration 019) |
+| Subscriptions auto-detection | ✅ DONE | Groups by merchant, 2+ consecutive months, 20% amount tolerance, predicts next charge date |
+| Subscriptions timeline UI | ✅ DONE | KPI cards + vertical timeline with predicted dates + price change alerts (yellow banners) |
+| Subscriptions nav item | ✅ DONE | "Suscripciones" in sidebar (after Presupuesto) + "Suscrip." in mobile bottom nav |
 | Email domain for Resend | Low | Currently sends from onboarding@resend.dev — custom domain needed for production emails |
 | Alembic auto-run on Railway | Low | Run manually: `cd backend && python3 -m alembic upgrade head` |
 
@@ -450,7 +463,7 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - `/health` returns `{"status":"ok","chromium":true}`
 
 **Database (Supabase):** ✅ LIVE
-- All 17 migrations applied (`017 head`)
+- All 19 migrations applied (`019 head`)
 - Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
 - Migration 010 adds bank account settings overhaul columns
 - Migration 011 adds `transaction_type`, `transfer_to_account_id`, `household_budget_allocations`
