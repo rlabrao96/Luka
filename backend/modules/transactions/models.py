@@ -21,9 +21,11 @@ class Transaction(Base):
     currency: Mapped[str] = mapped_column(String, default="CLP")
     transaction_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     category: Mapped[str | None] = mapped_column(String, nullable=True)  # denormalized
-    source: Mapped[str] = mapped_column(String, nullable=False)  # gmail|outlook|fintoc|manual
+    source: Mapped[str] = mapped_column(String, nullable=False)  # gmail|outlook|connect|manual
+    source_type: Mapped[str] = mapped_column(
+        String, nullable=False, default="email", server_default="email"
+    )
     status: Mapped[str] = mapped_column(String, default="pending")
-    fintoc_id: Mapped[str | None] = mapped_column(String, nullable=True)
     transaction_type: Mapped[str] = mapped_column(String(10), nullable=False, default="expense")
     transfer_to_account_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("bank_accounts.id", ondelete="SET NULL"), nullable=True

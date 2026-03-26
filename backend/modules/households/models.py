@@ -50,23 +50,12 @@ class BankAccount(Base):
     )  # 'personal' | 'partner' | 'joint'
     cardholder_name: Mapped[str | None] = mapped_column(String, nullable=True)
     email_sender_pattern: Mapped[str | None] = mapped_column(String, nullable=True)
-    fintoc_link_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    fintoc_account_id: Mapped[str | None] = mapped_column(String, nullable=True)
     account_kind: Mapped[str | None] = mapped_column(
         String, nullable=True
     )  # 'checking_account' | 'credit_card' | etc
     account_number: Mapped[str | None] = mapped_column(String, nullable=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    import_status: Mapped[str] = mapped_column(
-        String, nullable=False, default="done", server_default="done"
-    )  # 'pending'|'importing'|'done'|'failed'
-    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    import_started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    balance_available: Mapped[int | None] = mapped_column(nullable=True)
-    balance_current: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

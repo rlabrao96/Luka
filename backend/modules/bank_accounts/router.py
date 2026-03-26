@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -32,18 +31,6 @@ async def list_bank_accounts(
     )
     accounts = result.scalars().all()
 
-    # Stale guard: if import has been "importing" for >15 min, write "failed" to DB
-    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
-    for a in accounts:
-        if (
-            a.import_status == "importing"
-            and a.import_started_at
-            and a.import_started_at < stale_cutoff
-        ):
-            a.import_status = "failed"
-    if any(a.import_status == "failed" for a in accounts):
-        await db.commit()
-
     return [
         {
             "id": str(a.id),
@@ -55,11 +42,6 @@ async def list_bank_accounts(
             "currency": a.currency,
             "is_active": a.is_active,
             "user_id": str(a.user_id),
-            "import_status": a.import_status,
-            "fintoc_account_id": a.fintoc_account_id,
-            "last_synced_at": a.last_synced_at.isoformat() if a.last_synced_at else None,
-            "balance_available": a.balance_available,
-            "balance_current": a.balance_current,
         }
         for a in accounts
     ]
@@ -93,7 +75,6 @@ async def create_bank_account(
         account_number=body.account_number,
         cardholder_name=body.cardholder_name,
         currency=body.currency,
-        import_status="done",
     )
     db.add(bank_account)
     await db.commit()
@@ -135,13 +116,6 @@ async def update_bank_account(
         raise HTTPException(status_code=404, detail="Account not found")
     if account.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the account owner can edit it")
-
-    # Guard: cannot disable while import is in progress
-    if body.is_active is False and account.import_status in ("pending", "importing"):
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot disable an account while its history import is in progress",
-        )
 
     if body.account_type is not None and body.account_type != account.account_type:
         account.account_type = body.account_type
@@ -204,22 +178,3 @@ async def delete_bank_account(
     await db.delete(account)
     await db.commit()
     return {"ok": True}
-
-
-@router.get("/import-status")
-async def get_import_status(
-    household_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Poll whether any account in this household is still importing history."""
-    await require_membership(household_id, current_user.id, db)
-
-    result = await db.execute(
-        select(BankAccount).where(
-            BankAccount.household_id == household_id,
-            BankAccount.import_status.in_(["pending", "importing"]),
-        )
-    )
-    importing = result.scalars().first() is not None
-    return {"importing": importing}

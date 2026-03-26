@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.asyncio
 async def test_email_txn_before_sync_is_awaiting():
-    """Email transaction created before any Fintoc sync → awaiting_reconciliation."""
+    """Email transaction with no prior connect sync → awaiting_reconciliation."""
     from modules.transactions.service import get_pending_transactions
 
     user_id = uuid.uuid4()

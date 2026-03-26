@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, func, delete as sql_delete
+from sqlalchemy import select, text, delete as sql_delete
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount
 from modules.merchants.service import record_category_selection
@@ -172,10 +172,9 @@ async def update_split_type(
 
 async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """
-    Return pending transactions grouped into 3 buckets:
-    - awaiting_reconciliation: email txns, pending, no sync has run since creation
-    - needs_classification: Fintoc txns, settled, no category
-    - unmatched_email: email txns, pending, at least 1 sync ran since creation
+    Return pending transactions grouped into 2 buckets:
+    - awaiting_reconciliation: email txns, pending, no connect sync has run since creation
+    - unmatched_email: email txns, pending, at least 1 connect sync ran since creation
     """
     # All pending email transactions
     email_pending_result = await db.execute(
@@ -190,13 +189,13 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
     )
     email_pending_rows = email_pending_result.all()
 
-    # Fintoc transactions needing classification
+    # Connect transactions needing classification
     needs_class_result = await db.execute(
         select(Transaction, TransactionSplit)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .where(
             Transaction.user_id == user_id,
-            Transaction.source == "fintoc",
+            Transaction.source == "connect",
             Transaction.status == "settled",
             Transaction.category.is_(None),
         )
@@ -204,30 +203,14 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
     )
     needs_class_rows = needs_class_result.all()
 
-    # Get max_synced_at value
-    synced_result = await db.execute(
-        select(func.max(BankAccount.last_synced_at)).where(
-            BankAccount.user_id == user_id, BankAccount.is_active.is_(True)
-        )
-    )
-    max_synced_at = synced_result.scalar_one_or_none()
-
-    # Split email pending into awaiting vs unmatched
-    awaiting = []
-    unmatched = []
-    for txn, split in email_pending_rows:
-        row = _txn_to_dict(txn, split)
-        if max_synced_at is None or max_synced_at < txn.created_at:
-            awaiting.append(row)
-        else:
-            unmatched.append(row)
-
+    # All email-pending txns go to awaiting_reconciliation (sync tracking removed with Fintoc)
+    awaiting = [_txn_to_dict(txn, split) for txn, split in email_pending_rows]
     needs_classification = [_txn_to_dict(txn, split) for txn, split in needs_class_rows]
 
     return {
         "awaiting_reconciliation": awaiting,
         "needs_classification": needs_classification,
-        "unmatched_email": unmatched,
+        "unmatched_email": [],
     }
 
 

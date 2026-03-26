@@ -32,8 +32,8 @@ async def test_delete_pending_email_transaction():
 
 
 @pytest.mark.asyncio
-async def test_delete_rejects_fintoc_transaction():
-    """Cannot delete a Fintoc-sourced transaction."""
+async def test_delete_rejects_connect_transaction():
+    """Cannot delete a connect-sourced (scraped) transaction."""
     from modules.transactions.service import delete_transaction
 
     user_id = uuid.uuid4()
@@ -42,7 +42,7 @@ async def test_delete_rejects_fintoc_transaction():
     mock_txn = MagicMock()
     mock_txn.id = txn_id
     mock_txn.user_id = user_id
-    mock_txn.source = "fintoc"
+    mock_txn.source = "connect"
     mock_txn.status = "settled"
 
     mock_result = MagicMock()
