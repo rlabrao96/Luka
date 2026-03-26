@@ -37,11 +37,15 @@ async def list_bank_accounts(
             "bank_name": a.bank_name,
             "account_type": a.account_type,
             "account_kind": a.account_kind,
+            "account_name": a.account_name,
             "account_number": a.account_number,
             "cardholder_name": a.cardholder_name,
             "currency": a.currency,
             "is_active": a.is_active,
             "user_id": str(a.user_id),
+            "balance_current": a.balance_current,
+            "balance_limit": a.balance_limit,
+            "last_synced_at": a.last_synced_at.isoformat() if a.last_synced_at else None,
         }
         for a in accounts
     ]
