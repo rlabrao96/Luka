@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -89,6 +90,73 @@ async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) ->
         {"household_id": str(household_id)},
     )
     return [dict(row._mapping) for row in result.all()]
+
+
+def build_category_breakdown(rows: list[dict]) -> list[dict]:
+    """Pure function: groups SQL rows into category breakdown with percentages."""
+    if not rows:
+        return []
+
+    cats: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        cats[row["category"]].append(row)
+
+    grand_total = sum(r["amount"] for r in rows)
+    result = []
+    for category, members in sorted(
+        cats.items(), key=lambda x: sum(m["amount"] for m in x[1]), reverse=True
+    ):
+        cat_total = sum(m["amount"] for m in members)
+        member_totals = [
+            {
+                "user_id": str(m["user_id"]),
+                "full_name": m["full_name"],
+                "amount": m["amount"],
+                "pct": round(float(m["amount"]) / float(cat_total) * 100, 1) if cat_total else 0,
+            }
+            for m in members
+        ]
+        result.append(
+            {
+                "category": category,
+                "member_totals": member_totals,
+                "total": cat_total,
+                "pct_of_overall": round(float(cat_total) / float(grand_total) * 100, 1)
+                if grand_total
+                else 0,
+            }
+        )
+    return result
+
+
+async def get_category_breakdown(db: AsyncSession, household_id, month: str | None = None):
+    """Returns per-category spending breakdown for shared transactions."""
+    params: dict = {"household_id": str(household_id)}
+    if month:
+        month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = :month_start"
+        params["month_start"] = f"{month}-01"
+    else:
+        month_clause = (
+            "DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)"
+        )
+
+    sql = text(f"""
+        SELECT u.id AS user_id, u.full_name,
+               COALESCE(t.category, 'Sin categoría') AS category,
+               COALESCE(SUM(ABS(t.amount)), 0) AS amount
+        FROM transactions t
+        JOIN transaction_splits ts ON ts.transaction_id = t.id
+        JOIN users u ON u.id = t.user_id
+        WHERE t.household_id = :household_id
+          AND ts.split_type = 'shared'
+          AND t.transaction_type = 'expense'
+          AND {month_clause}
+        GROUP BY u.id, u.full_name, COALESCE(t.category, 'Sin categoría')
+        ORDER BY amount DESC
+    """)
+    result = await db.execute(sql, params)
+    rows = [dict(r._mapping) for r in result.all()]
+    return build_category_breakdown(rows)
 
 
 async def get_partner_stats(

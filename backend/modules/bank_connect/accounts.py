@@ -8,12 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.households.models import BankAccount, HouseholdMember
 
-# Map bank codes to display names
+# Map bank codes to display names (keys are lowercase to match Luka Connect codes)
 BANK_NAMES = {
-    "BANCO_CHILE": "Banco de Chile",
-    "BANCO_ESTADO": "BancoEstado",
-    "BCI": "BCI",
-    "SANTANDER": "Santander",
+    "bchile": "Banco de Chile",
+    "banco_chile": "Banco de Chile",
+    "banco_estado": "BancoEstado",
+    "bci": "BCI",
+    "santander": "Santander",
 }
 
 # Map allBalances keys to (account_name, account_kind, currency)
