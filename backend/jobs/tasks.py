@@ -458,17 +458,30 @@ async def run_connect_sync(ctx: dict, credential_id: str) -> None:
         if not cred:
             return
 
-        # Send WhatsApp 2FA nudge to user
-        user_result = await db.execute(select(User).where(User.id == cred.user_id))
-        user = user_result.scalar_one_or_none()
-        if user and user.phone_whatsapp:
-            await send_text(
-                to=user.phone_whatsapp,
-                body=(
-                    "Luka está sincronizando tu banco. "
-                    "Aprueba la Clave Dinámica en tu app del banco."
-                ),
-            )
+        # Banks that require 2FA approval during scrape
+        BANKS_WITH_2FA = {
+            "bestado",
+            "bci",
+            "santander",
+            "itau",
+            "scotiabank",
+            "bice",
+            "falabella",
+            "edwards",
+        }
+
+        # Send WhatsApp 2FA nudge only for banks that require it
+        if cred.bank_code in BANKS_WITH_2FA:
+            user_result = await db.execute(select(User).where(User.id == cred.user_id))
+            user = user_result.scalar_one_or_none()
+            if user and user.phone_whatsapp:
+                await send_text(
+                    to=user.phone_whatsapp,
+                    body=(
+                        "Luka está sincronizando tu banco. "
+                        "Aprueba la Clave Dinámica en tu app del banco."
+                    ),
+                )
 
         # Trigger async scrape with callback
         callback_url = f"{settings.backend_public_url}/bank-connect/webhooks/luka-connect"

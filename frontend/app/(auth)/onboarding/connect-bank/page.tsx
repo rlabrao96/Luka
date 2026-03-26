@@ -17,18 +17,19 @@ interface BankDef {
   textColor: string;
   initials: string;
   available: boolean;
+  requires2FA: boolean;
 }
 
 const BANKS: BankDef[] = [
-  { code: "bchile",     name: "Banco de Chile",   color: "#003B71", textColor: "#FFFFFF", initials: "BC",  available: true },
-  { code: "bestado",    name: "Banco Estado",      color: "#D52B1E", textColor: "#FFFFFF", initials: "BE",  available: false },
-  { code: "bci",        name: "BCI",               color: "#E63027", textColor: "#FFFFFF", initials: "BCI", available: false },
-  { code: "santander",  name: "Banco Santander",   color: "#EC0000", textColor: "#FFFFFF", initials: "S",   available: false },
-  { code: "itau",       name: "Banco Itau",       color: "#FF6600", textColor: "#FFFFFF", initials: "itu",available: false },
-  { code: "scotiabank", name: "Scotiabank",        color: "#EC111A", textColor: "#FFFFFF", initials: "Sb",  available: false },
-  { code: "bice",       name: "Banco BICE",        color: "#1B3A6B", textColor: "#FFFFFF", initials: "BI",  available: false },
-  { code: "falabella",  name: "Banco Falabella",   color: "#8BC540", textColor: "#FFFFFF", initials: "BF",  available: false },
-  { code: "edwards",    name: "Banco Edwards",     color: "#00529B", textColor: "#FFFFFF", initials: "Ed",  available: false },
+  { code: "bchile",     name: "Banco de Chile",   color: "#003B71", textColor: "#FFFFFF", initials: "BC",  available: true,  requires2FA: false },
+  { code: "bestado",    name: "Banco Estado",      color: "#D52B1E", textColor: "#FFFFFF", initials: "BE",  available: false, requires2FA: true },
+  { code: "bci",        name: "BCI",               color: "#E63027", textColor: "#FFFFFF", initials: "BCI", available: false, requires2FA: true },
+  { code: "santander",  name: "Banco Santander",   color: "#EC0000", textColor: "#FFFFFF", initials: "S",   available: false, requires2FA: true },
+  { code: "itau",       name: "Banco Itau",       color: "#FF6600", textColor: "#FFFFFF", initials: "itu",available: false, requires2FA: true },
+  { code: "scotiabank", name: "Scotiabank",        color: "#EC111A", textColor: "#FFFFFF", initials: "Sb",  available: false, requires2FA: true },
+  { code: "bice",       name: "Banco BICE",        color: "#1B3A6B", textColor: "#FFFFFF", initials: "BI",  available: false, requires2FA: true },
+  { code: "falabella",  name: "Banco Falabella",   color: "#8BC540", textColor: "#FFFFFF", initials: "BF",  available: false, requires2FA: true },
+  { code: "edwards",    name: "Banco Edwards",     color: "#00529B", textColor: "#FFFFFF", initials: "Ed",  available: false, requires2FA: true },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -404,7 +405,9 @@ export default function ConnectBankPage() {
               ? "Se agoto el tiempo de espera."
               : isFailed
               ? "Verifica tus credenciales e intentalo de nuevo."
-              : "Aprueba la Clave Dinamica en tu app del banco"}
+              : selectedBank.requires2FA
+              ? "Aprueba la Clave Dinamica en tu app del banco"
+              : "Estamos importando tus movimientos"}
           </p>
         </div>
 
@@ -420,15 +423,29 @@ export default function ConnectBankPage() {
               </div>
             </div>
 
-            {/* Instructions card */}
+            {/* Instructions card — different message based on 2FA requirement */}
             <div className="bg-white/10 rounded-xl p-4 border border-white/10 text-center space-y-1.5">
-              <p className="text-sm text-white font-medium">
-                Revisa la app de tu banco
-              </p>
-              <p className="text-xs text-white/50 leading-relaxed">
-                {selectedBank.name} enviara una Clave Dinamica.<br />
-                Apruebala para completar la conexion.
-              </p>
+              {selectedBank.requires2FA ? (
+                <>
+                  <p className="text-sm text-white font-medium">
+                    Revisa la app de tu banco
+                  </p>
+                  <p className="text-xs text-white/50 leading-relaxed">
+                    {selectedBank.name} enviara una Clave Dinamica.<br />
+                    Apruebala para completar la conexion.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-white font-medium">
+                    Importando movimientos
+                  </p>
+                  <p className="text-xs text-white/50 leading-relaxed">
+                    Esto puede tomar un par de minutos.<br />
+                    No cierres esta ventana.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Countdown */}
