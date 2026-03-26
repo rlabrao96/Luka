@@ -182,22 +182,50 @@ async def _process_movements(
     enriched = 0
     skipped = 0
 
+    # Pre-fetch household_id and bank_accounts once (not per movement)
+    hm_result = await db.execute(
+        select(HouseholdMember.household_id).where(HouseholdMember.user_id == cred.user_id)
+    )
+    household_id = hm_result.scalar_one_or_none()
+    if not household_id:
+        return 0, 0, len(movements)
+
+    ba_result = await db.execute(
+        select(BankAccount.id, BankAccount.account_number).where(
+            BankAccount.user_id == cred.user_id
+        )
+    )
+    ba_map = {row[1]: row[0] for row in ba_result.fetchall() if row[1]}
+
     for mov in movements:
+        # Skip movements with missing or invalid dates
+        if not mov.get("date") or not isinstance(mov["date"], str) or len(mov["date"]) < 8:
+            skipped += 1
+            continue
+
+        try:
+            mov_date = parse_movement_date(mov["date"], mov.get("time"))
+        except Exception:
+            skipped += 1
+            continue
+
         # Check for exact duplicate (same movement already imported via connect)
         existing = await db.execute(
-            select(Transaction).where(
+            select(Transaction.id)
+            .where(
                 Transaction.user_id == cred.user_id,
                 Transaction.source_type == "connect",
                 Transaction.raw_merchant_name == mov["description"],
                 Transaction.amount == mov["amount"],
+                Transaction.transaction_date == mov_date,
             )
+            .limit(1)
         )
         if existing.scalar_one_or_none():
             skipped += 1
             continue
 
         # Check for email match (amount exact + date ±1 day)
-        mov_date = parse_movement_date(mov["date"], mov.get("time"))
         email_match = await db.execute(
             select(Transaction)
             .where(
@@ -215,25 +243,7 @@ async def _process_movements(
             email_txn.transaction_date = mov_date
             enriched += 1
         else:
-            # Resolve household_id from user's household membership
-            hm_result = await db.execute(
-                select(HouseholdMember.household_id).where(HouseholdMember.user_id == cred.user_id)
-            )
-            household_id = hm_result.scalar_one_or_none()
-            if not household_id:
-                skipped += 1
-                continue
-
-            # Match accountNumber to existing bank_accounts
-            ba_id = None
-            if mov.get("accountNumber"):
-                ba_result = await db.execute(
-                    select(BankAccount.id).where(
-                        BankAccount.user_id == cred.user_id,
-                        BankAccount.account_number == mov["accountNumber"],
-                    )
-                )
-                ba_id = ba_result.scalar_one_or_none()
+            ba_id = ba_map.get(mov.get("accountNumber"))
 
             txn_data = map_movement_to_transaction(
                 movement=mov,
