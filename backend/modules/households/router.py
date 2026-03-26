@@ -1,13 +1,21 @@
+import json
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import get_current_user
 from modules.auth.models import User
 from modules.households import service
 from modules.households.models import Household, HouseholdMember
-from modules.households.schemas import CreateHouseholdRequest, HouseholdResponse, InviteRequest
+from modules.households.schemas import (
+    CreateHouseholdRequest,
+    HouseholdResponse,
+    InviteRequest,
+    SplitRatioRequest,
+    SplitRatioResponse,
+    SettlementResponse,
+)
 from modules.households.auth import require_membership
 
 # Two routers: one under /households, one at root for the invite accept link
@@ -89,3 +97,59 @@ async def partner_stats(
 ):
     await require_membership(household_id, current_user.id, db)
     return await service.get_partner_stats(db, household_id, current_user.id)
+
+
+@router.get("/{household_id}/category-breakdown")
+async def category_breakdown(
+    household_id: uuid.UUID,
+    month: str = Query(default=None, description="YYYY-MM format"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_membership(household_id, current_user.id, db)
+    data = await service.get_category_breakdown(db, household_id, month)
+    return data
+
+
+@router.get("/{household_id}/settlement", response_model=SettlementResponse)
+async def settlement(
+    household_id: uuid.UUID,
+    month: str = Query(default=None, description="YYYY-MM format"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_membership(household_id, current_user.id, db)
+    return await service.get_settlement(db, household_id, month)
+
+
+@router.get("/{household_id}/split-ratio", response_model=SplitRatioResponse)
+async def get_split_ratio(
+    household_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_membership(household_id, current_user.id, db)
+    result = await db.execute(
+        text("SELECT split_ratio FROM households WHERE id = :id"),
+        {"id": str(household_id)},
+    )
+    ratio = result.scalar_one_or_none() or [50, 50]
+    return {"split_ratio": ratio}
+
+
+@router.patch("/{household_id}/split-ratio", response_model=SplitRatioResponse)
+async def update_split_ratio(
+    household_id: uuid.UUID,
+    body: SplitRatioRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_membership(household_id, current_user.id, db)
+    if len(body.ratio) != 2 or sum(body.ratio) != 100 or any(r < 0 for r in body.ratio):
+        raise HTTPException(400, "Ratio must be two non-negative integers summing to 100")
+    await db.execute(
+        text("UPDATE households SET split_ratio = :ratio WHERE id = :id"),
+        {"ratio": json.dumps(body.ratio), "id": str(household_id)},
+    )
+    await db.commit()
+    return {"split_ratio": body.ratio}
