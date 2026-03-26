@@ -1,16 +1,17 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
-import { ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Landmark, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { FilterPanel } from "../components/FilterPanel";
 import { PendingBlock } from "../components/PendingBlock";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 
-function formatCLP(n: number) {
+function formatAmount(n: number, currency: string) {
+  if (currency === "USD") return `US$${Math.round(n).toLocaleString("en-US")}`;
   return `$${Math.round(n).toLocaleString("es-CL")}`;
 }
 
@@ -26,115 +27,141 @@ function getMonthLabel(key: string) {
 }
 
 const CHECKING_KINDS = new Set(["checking_account", "savings_account", "sight_account"]);
-const CREDIT_KINDS = new Set(["credit_card", "line_of_credit"]);
-
-function isChecking(kind: string | null) {
-  return kind ? CHECKING_KINDS.has(kind) : false;
-}
-function isCredit(kind: string | null) {
-  return kind ? CREDIT_KINDS.has(kind) : false;
-}
+const CC_KIND = "credit_card";
+const LOC_KIND = "line_of_credit";
 
 interface SummaryBarProps {
   accounts: BankAccountRow[];
-  sharedTxns: Transaction[];
-  periodLabel: string;
-  userId: string | null;
-  householdId: string | null;
+  selectedCurrency: string;
+  onCurrencyChange: (c: string) => void;
 }
 
-function SummaryBar({ accounts, sharedTxns, periodLabel, userId, householdId }: SummaryBarProps) {
-  const [syncing, setSyncing] = useState(false);
-  const queryClient = useQueryClient();
+function SummaryBar({ accounts, selectedCurrency, onCurrencyChange }: SummaryBarProps) {
+  const currencies = useMemo(() => {
+    const set = new Set<string>();
+    accounts.forEach((a) => { if (a.currency) set.add(a.currency); });
+    return Array.from(set).sort();
+  }, [accounts]);
 
-  async function handleSync() {
-    if (!householdId || syncing) return;
-    setSyncing(true);
-    try {
-      await api.syncBalances(householdId);
-      await queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
-    } finally {
-      setSyncing(false);
-    }
-  }
-  const myAccounts = accounts.filter((a) => a.is_active && a.user_id === userId);
+  const hasUSD = currencies.includes("USD");
 
-  // Sum available balances by kind
-  const checkingBalance = myAccounts
-    .filter((a) => a.account_type !== "joint" && isChecking(a.account_kind))
-    .reduce((s, a) => s + (a.balance_available ?? 0), 0);
+  const filtered = accounts.filter(
+    (a) => a.is_active && a.currency === selectedCurrency
+  );
 
-  const creditBalance = myAccounts
-    .filter((a) => a.account_type !== "joint" && isCredit(a.account_kind))
-    .reduce((s, a) => s + (a.balance_available ?? 0), 0);
+  const checkingBalance = filtered
+    .filter((a) => a.account_kind && CHECKING_KINDS.has(a.account_kind))
+    .reduce((s, a) => s + (a.balance_current ?? 0), 0);
 
-  const sharedBalance = accounts
-    .filter((a) => a.is_active && (a.account_type === "joint" || a.account_type === "partner"))
-    .reduce((s, a) => s + (a.balance_available ?? 0), 0);
+  const ccUsed = filtered
+    .filter((a) => a.account_kind === CC_KIND)
+    .reduce((s, a) => s + (a.balance_current ?? 0), 0); // Already negative
 
-  const hasBalances = myAccounts.some((a) => a.balance_available !== null);
+  const ccLimit = filtered
+    .filter((a) => a.account_kind === CC_KIND)
+    .reduce((s, a) => s + (a.balance_limit ?? 0), 0);
 
-  // Fall back to summing expense transactions if no balance data yet
-  const sharedFallback = sharedTxns
-    .filter((t) => t.transaction_type === "expense")
-    .reduce((s, t) => s + Number(t.amount), 0);
+  const locBalance = filtered
+    .filter((a) => a.account_kind === LOC_KIND)
+    .reduce((s, a) => s + (a.balance_current ?? 0), 0);
+
+  const hasLOC = filtered.some((a) => a.account_kind === LOC_KIND);
+  const hasCC = filtered.some((a) => a.account_kind === CC_KIND);
+
+  const netPosition = checkingBalance + locBalance + ccUsed;
+
+  const hasAnyBalance = filtered.some((a) => a.balance_current !== null);
+
+  const gridClass = { 1: "lg:grid-cols-1", 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4" } as Record<number, string>;
+
+  const cards: Array<{
+    label: string;
+    value: string;
+    sublabel: string;
+    bg: string;
+    textColor: string;
+    show: boolean;
+  }> = [
+    {
+      label: "Cuenta Corriente",
+      value: hasAnyBalance ? formatAmount(checkingBalance, selectedCurrency) : "—",
+      sublabel: "",
+      bg: "bg-blue-50 border-blue-100",
+      textColor: "text-luka-dark",
+      show: true,
+    },
+    {
+      label: "Tarjeta de Crédito",
+      value: hasAnyBalance ? formatAmount(ccUsed, selectedCurrency) : "—",
+      sublabel: hasAnyBalance && ccLimit > 0
+        ? `gastado de ${formatAmount(ccLimit, selectedCurrency)}`
+        : "",
+      bg: "bg-red-50 border-red-100",
+      textColor: ccUsed < 0 ? "text-red-600" : "text-luka-dark",
+      show: hasCC,
+    },
+    {
+      label: "Línea de Crédito",
+      value: hasAnyBalance ? formatAmount(locBalance, selectedCurrency) : "—",
+      sublabel: "disponible",
+      bg: "bg-emerald-50 border-emerald-100",
+      textColor: "text-luka-dark",
+      show: hasLOC,
+    },
+    {
+      label: "Posición Neta",
+      value: hasAnyBalance ? formatAmount(netPosition, selectedCurrency) : "—",
+      sublabel: "líquido - deuda TC",
+      bg: netPosition >= 0
+        ? "bg-emerald-50 border-emerald-200"
+        : "bg-red-50 border-red-200",
+      textColor: netPosition >= 0 ? "text-emerald-700" : "text-red-600",
+      show: hasCC,
+    },
+  ];
+
+  const visibleCards = cards.filter((c) => c.show);
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Saldos disponibles</span>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="flex items-center gap-1 text-[10px] font-medium text-slate-400 hover:text-luka-primary transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={10} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Actualizando..." : "Actualizar saldos"}
-        </button>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+          Saldos disponibles
+        </span>
+        <div className="flex gap-1">
+          {["CLP", ...(hasUSD ? ["USD"] : [])].map((c) => (
+            <button
+              key={c}
+              onClick={() => onCurrencyChange(c)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                selectedCurrency === c
+                  ? "bg-luka-primary text-white"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
       </div>
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-      {[
-        {
-          label: `Cuenta corriente`,
-          sublabel: periodLabel,
-          value: hasBalances ? formatCLP(checkingBalance) : "—",
-          icon: Landmark,
-          iconClass: "text-luka-primary",
-          iconBg: "bg-blue-50",
-        },
-        {
-          label: `Tarjeta de crédito`,
-          sublabel: periodLabel,
-          value: hasBalances ? formatCLP(creditBalance) : "—",
-          icon: CreditCard,
-          iconClass: "text-purple-500",
-          iconBg: "bg-purple-50",
-        },
-        {
-          label: `Cuenta compartida`,
-          sublabel: periodLabel,
-          value: hasBalances ? formatCLP(sharedBalance) : formatCLP(sharedFallback),
-          icon: SlidersHorizontal,
-          iconClass: "text-emerald-500",
-          iconBg: "bg-emerald-50",
-        },
-      ].map(({ label, sublabel, value, icon: Icon, iconClass, iconBg }) => (
-        <div
-          key={label}
-          className="bg-white rounded-xl border border-slate-100 p-4 flex items-center gap-3"
-        >
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
-            <Icon size={15} className={iconClass} strokeWidth={2} />
-          </div>
-          <div className="min-w-0">
+      <div className={`grid grid-cols-1 ${gridClass[visibleCards.length] ?? "lg:grid-cols-4"} gap-3`}>
+        {visibleCards.map(({ label, value, sublabel, bg, textColor }) => (
+          <div
+            key={label}
+            className={`rounded-xl border p-4 ${bg}`}
+          >
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 leading-tight">
               {label}
             </p>
-            <p className="text-base font-bold text-luka-dark tabular-nums truncate">{value}</p>
+            <p className={`text-lg font-bold tabular-nums truncate ${textColor}`}>
+              {value}
+            </p>
+            {sublabel && (
+              <p className="text-[10px] text-slate-400 mt-0.5">{sublabel}</p>
+            )}
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -247,9 +274,9 @@ export default function TransactionsPage() {
   const [onlyUncategorized, setOnlyUncategorized] = useState(false);
   const [pageSize, setPageSize] = useState<10 | 30 | 100>(30);
   const [page, setPage] = useState(1);
+  const [selectedCurrency, setSelectedCurrency] = useState<string>("CLP");
 
   const householdId = useLukaStore((s) => s.householdId);
-  const userId = useLukaStore((s) => s.userId);
 
   const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions();
   const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions();
@@ -280,6 +307,8 @@ export default function TransactionsPage() {
 
   const applyFilters = (txns: Transaction[]) => {
     let result = txns;
+    // Currency filter
+    result = result.filter((t) => (t.currency ?? "CLP") === selectedCurrency);
     if (selectedMonth !== "all") result = result.filter((t) => getMonthKey(t.transaction_date) === selectedMonth);
     if (selectedBank !== "all") result = result.filter((t) => t.bank_name === selectedBank);
     if (onlyUncategorized) {
@@ -315,26 +344,17 @@ export default function TransactionsPage() {
     });
   }, [myTxns, accountTypeMap]);
 
-  useEffect(() => { setPage(1); }, [selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  useEffect(() => { setPage(1); }, [selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search, selectedCurrency]);
 
-  const filteredMine = useMemo(() => applyFilters(personalTxns), [personalTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
-  const filteredShared = useMemo(() => applyFilters(sharedTxns), [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
+  const filteredMine = useMemo(() => applyFilters(personalTxns), [personalTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search, selectedCurrency]);
+  const filteredShared = useMemo(() => applyFilters(sharedTxns), [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search, selectedCurrency]);
   const filteredAll = useMemo(() => {
     const combined = [...myTxns, ...sharedTxns];
     // dedupe by id
     const seen = new Set<string>();
     const unique = combined.filter((t) => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
     return applyFilters(unique).sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
-  }, [myTxns, sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search]);
-
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const periodLabel = selectedMonth === "all"
-    ? "este mes"
-    : getMonthLabel(selectedMonth);
-  const summaryShared = selectedMonth === "all"
-    ? sharedTxns.filter((t) => getMonthKey(t.transaction_date) === currentMonthKey)
-    : filteredShared;
+  }, [myTxns, sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search, selectedCurrency]);
 
   const selectClass =
     "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
@@ -418,10 +438,8 @@ export default function TransactionsPage() {
       {/* Summary cards — account balances */}
       <SummaryBar
         accounts={accounts}
-        sharedTxns={summaryShared}
-        periodLabel={periodLabel}
-        userId={userId}
-        householdId={householdId}
+        selectedCurrency={selectedCurrency}
+        onCurrencyChange={setSelectedCurrency}
       />
 
       {/* Pending transactions */}
