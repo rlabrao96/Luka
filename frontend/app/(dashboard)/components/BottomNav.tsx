@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CreditCard, Users, Wallet, Settings } from "lucide-react";
+import { LayoutDashboard, CreditCard, Users, Wallet, Repeat, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -9,6 +9,7 @@ const NAV = [
   { href: "/transactions", label: "Gastos",       icon: CreditCard      },
   { href: "/household",    label: "Hogar",         icon: Users           },
   { href: "/budgets",      label: "Presupuesto",  icon: Wallet          },
+  { href: "/subscriptions", label: "Suscrip.",     icon: Repeat          },
   { href: "/settings",     label: "Config",        icon: Settings        },
 ];
 
