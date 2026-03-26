@@ -178,14 +178,15 @@ export interface BankAccountRow {
   bank_name: string;
   account_type: "personal" | "partner" | "joint";
   account_kind: string | null;
+  account_name: string | null;
   account_number: string | null;
   cardholder_name: string | null;
   currency: string | null;
   is_active: boolean;
   user_id: string;
   last_synced_at: string | null;
-  balance_available: number | null;
   balance_current: number | null;
+  balance_limit: number | null;
 }
 
 // --- Luka Connect ---
@@ -331,8 +332,8 @@ export const api = {
   getSyncStatus: (bankCode: string): Promise<SyncStatus> =>
     apiFetch(`/bank-connect/sync-status?bank_code=${bankCode}`),
 
-  manualSync: (bankCode: string) =>
-    apiFetch(`/bank-connect/sync?bank_code=${bankCode}`, { method: "POST" }),
+  manualSync: (bankCode: string, daysBack: number = 4) =>
+    apiFetch(`/bank-connect/sync?bank_code=${bankCode}&days_back=${daysBack}`, { method: "POST" }),
 
   getBankConnections: (): Promise<BankConnection[]> =>
     apiFetch("/bank-connect/connections"),
