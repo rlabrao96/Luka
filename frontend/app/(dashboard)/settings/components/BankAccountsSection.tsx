@@ -501,8 +501,12 @@ function DetectedAccountCard({
 
   const formatBalance = (val: number | null, currency: string | null) => {
     if (val === null) return "—";
-    if (currency === "USD") return `US$${Math.round(val).toLocaleString("en-US")}`;
-    return `$${Math.round(val).toLocaleString("es-CL")}`;
+    const abs = Math.abs(Math.round(val));
+    const formatted =
+      currency === "USD"
+        ? `US$${abs.toLocaleString("en-US")}`
+        : `$${abs.toLocaleString("es-CL")}`;
+    return val < 0 ? `(${formatted})` : formatted;
   };
 
   return (
@@ -533,7 +537,7 @@ function DetectedAccountCard({
 
       <div className="flex items-center gap-3 shrink-0">
         <div className="text-right">
-          <p className="text-sm font-bold tabular-nums text-slate-800">
+          <p className={`text-sm font-bold tabular-nums ${account.balance_current !== null && account.balance_current < 0 ? "text-red-500" : "text-slate-800"}`}>
             {formatBalance(account.balance_current, account.currency)}
           </p>
           {account.last_synced_at && (
