@@ -1,6 +1,7 @@
 import re
 
 FINANCIAL_KEYWORDS = {
+    # Spanish (Chilean banks)
     "transferencia",
     "transaccion",
     "transacción",
@@ -28,6 +29,35 @@ FINANCIAL_KEYWORDS = {
     "comprobante",
     "saldo",
     "retiro",
+    # English (US banks)
+    "transaction",
+    "purchase",
+    "payment",
+    "transfer",
+    "debit",
+    "credit",
+    "deposit",
+    "withdrawal",
+    "charge",
+    "balance",
+    "statement",
+    "spending alert",
+    "unusual activity",
+    "account activity",
+    "your account",
+    "your card",
+    "was used",
+    "was charged",
+    "has been posted",
+    "available balance",
+    "low balance",
+    "payment due",
+    "payment received",
+    "direct deposit",
+    "overdraft",
+    "atm withdrawal",
+    "pending transaction",
+    "authorization",
 }
 
 # Domains used by Chilean banks and fintechs for transaction notifications.
@@ -51,7 +81,7 @@ BANK_SENDER_DOMAINS = {
     "bbva.com",
     "hsbc.cl",
     "hsbc.com",
-    # Fintechs / prepaid
+    # Fintechs / prepaid (Chile)
     "mercadopago.cl",
     "mercadopago.com",
     "mercadolibre.cl",
@@ -64,6 +94,47 @@ BANK_SENDER_DOMAINS = {
     "copec.cl",
     "copecpay.cl",
     "dale.cl",
+    # US major banks
+    "bankofamerica.com",
+    "chase.com",
+    "jpmorgan.com",
+    "citi.com",
+    "citibank.com",
+    "wellsfargo.com",
+    "capitalone.com",
+    "usbank.com",
+    "pnc.com",
+    "truist.com",
+    "td.com",
+    "tdbank.com",
+    "regions.com",
+    "53.com",  # Fifth Third Bank
+    "fifththird.com",
+    "key.com",
+    "keybank.com",
+    "citizensbank.com",
+    "ally.com",
+    "discover.com",
+    "americanexpress.com",
+    "aexp.com",
+    "gs.com",  # Goldman Sachs / Marcus
+    "marcus.com",
+    "schwab.com",
+    "fidelity.com",
+    "synchrony.com",
+    "navyfederal.org",
+    "usaa.com",
+    # US fintechs / neobanks
+    "sofi.com",
+    "chime.com",
+    "venmo.com",
+    "paypal.com",
+    "zellepay.com",
+    "cash.app",
+    "robinhood.com",
+    "wealthfront.com",
+    "betterment.com",
+    "coinbase.com",
 }
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@([\w.-]+)")
