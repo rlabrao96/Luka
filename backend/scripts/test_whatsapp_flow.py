@@ -89,12 +89,22 @@ async def main():
     parser.add_argument("--amount", type=int, default=None, help="Amount (CLP int or USD cents)")
     parser.add_argument("--usd", action="store_true", help="Use USD instead of CLP")
     parser.add_argument("--email", type=str, default=None, help="User email (default: first user)")
+    parser.add_argument(
+        "--redis-url",
+        type=str,
+        default=None,
+        help="Redis URL (default: from .env). Use Railway's Redis URL for production testing.",
+    )
     args = parser.parse_args()
 
     currency = "USD" if args.usd else "CLP"
     default_amount = 1599 if args.usd else 15990
 
-    redis = await aioredis.from_url(settings.redis_url)
+    redis_url = args.redis_url or settings.redis_url
+    if "localhost" in redis_url:
+        print("⚠️  Using localhost Redis. WhatsApp webhooks on Railway use a different Redis.")
+        print("   Pass --redis-url <RAILWAY_REDIS_URL> for end-to-end testing.\n")
+    redis = await aioredis.from_url(redis_url)
 
     async with AsyncSessionLocal() as db:
         if args.email:
