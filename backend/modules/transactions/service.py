@@ -25,7 +25,7 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
         {
             **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
             "split_type": split.split_type if split else None,
-            "bank_name": bank_name,
+            "bank_name": bank_name or txn.source_bank_name,
             "account_kind": account_kind,
         }
         for txn, split, bank_name, account_kind in rows
@@ -122,7 +122,7 @@ async def get_shared_transactions(
         {
             **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
             "split_type": split.split_type,
-            "bank_name": bank_name,
+            "bank_name": bank_name or txn.source_bank_name,
         }
         for txn, split, bank_name in rows
     ]
@@ -265,6 +265,6 @@ def _txn_to_dict(txn: Transaction, split: TransactionSplit | None) -> dict:
     return {
         **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
         "split_type": split.split_type if split else None,
-        "bank_name": None,
+        "bank_name": txn.source_bank_name,
         "account_kind": None,
     }

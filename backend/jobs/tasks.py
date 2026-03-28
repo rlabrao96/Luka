@@ -4,7 +4,7 @@ from core.config import settings
 from core.encryption import decrypt_token, encrypt_token
 from core.database import AsyncSessionLocal
 from modules.email.parser import parse_bank_email
-from modules.email.filter import is_financial_email, is_bank_sender
+from modules.email.filter import is_financial_email, is_bank_sender, get_bank_name
 from modules.merchants.service import lookup_merchant
 from modules.whatsapp.sender import send_expense_alert
 from modules.whatsapp.session import WhatsAppSession, save_session
@@ -247,16 +247,22 @@ async def process_email(
                 if not parsed:
                     continue
 
-                # Bank account is optional (not required for email-only users)
-                bank_result = await db.execute(
-                    select(BankAccount).where(
-                        and_(
-                            BankAccount.user_id == user.id,
-                            BankAccount.is_active,
+                # Infer bank name from email sender
+                inferred_bank = get_bank_name(raw_email.sender)
+
+                # Match bank account by inferred name (don't fall back to wrong bank)
+                bank_account = None
+                if inferred_bank:
+                    bank_result = await db.execute(
+                        select(BankAccount).where(
+                            and_(
+                                BankAccount.user_id == user.id,
+                                BankAccount.is_active,
+                                BankAccount.bank_name == inferred_bank,
+                            )
                         )
                     )
-                )
-                bank_account = bank_result.scalars().first()
+                    bank_account = bank_result.scalars().first()
 
                 # Get household — from bank account or user's membership
                 household_id = None
@@ -287,7 +293,7 @@ async def process_email(
                     )
                     continue
 
-                txn_status = "settled"
+                txn_status = "pending"
 
                 # Create pending transaction
                 txn = Transaction(
@@ -299,6 +305,7 @@ async def process_email(
                     currency=parsed.currency,
                     transaction_date=parsed.transaction_date,
                     source=provider,
+                    source_bank_name=inferred_bank,
                     status=txn_status,
                     raw_email_text=raw_email.body,
                 )
