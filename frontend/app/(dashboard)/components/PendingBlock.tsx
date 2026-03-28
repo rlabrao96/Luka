@@ -154,9 +154,9 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
               )}
             >
               <div className="flex items-center gap-3">
-                {/* Direction icon — matches TransactionCard */}
+                {/* Direction icon — hidden on mobile to save space */}
                 <div
-                  className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center shrink-0"
+                  className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0"
                   style={{
                     background: isOutflow
                       ? "linear-gradient(135deg, #fef2f2, #fecaca)"
@@ -180,18 +180,21 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
                     <span
                       className={cn(
                         "text-[15px] font-bold tabular-nums shrink-0",
-                        isOutflow ? "text-luka-dark" : "text-luka-success"
+                        isOutflow ? "text-red-500" : "text-luka-success"
                       )}
                     >
                       {formattedAmount}
                     </span>
                   </div>
 
-                  {/* Line 2: Bank name + Category | Split + Action */}
+                  {/* Line 2: Bank name + Email tag + Category | Split + Action */}
                   <div className="flex justify-between items-center mt-1">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="text-[10px] text-slate-400 shrink-0">
                         {bankName ? toTitleCase(bankName) : "—"}
+                      </span>
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-500 font-medium shrink-0">
+                        email
                       </span>
                       <PendingCategoryCell txn={txn} />
                     </div>
