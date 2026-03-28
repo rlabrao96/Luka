@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction, type PendingTransactions } from "@/app/lib/api";
-import { Trash2, ChevronDown } from "lucide-react";
+import { Trash2, ChevronDown, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const EXPENSE_CATEGORIES = [
@@ -28,22 +28,12 @@ function toTitleCase(str: string) {
   return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
-function formatCLP(amount: number) {
-  return `$${Math.round(amount).toLocaleString("es-CL")}`;
-}
-
-function SourceBadge({ source }: { source: string }) {
-  const isEmail = source === "gmail" || source === "outlook";
-  return (
-    <span
-      className={cn(
-        "text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0",
-        isEmail ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"
-      )}
-    >
-      {isEmail ? "Email" : "Banco"}
-    </span>
-  );
+function formatAmount(amount: number, currency: string) {
+  if (currency === "USD") {
+    const dollars = Math.abs(amount) / 100;
+    return `US$${dollars.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return `$${Math.round(Math.abs(amount)).toLocaleString("es-CL")}`;
 }
 
 /* ─── Inline category dropdown (matches CategoryCell in RecentTransactions) ─── */
@@ -144,55 +134,81 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
       <p className="text-[10px] uppercase tracking-wide font-semibold text-orange-800 mb-1.5 pl-1">
         {title}
       </p>
-      <div className="space-y-1">
+      <div className="space-y-2">
         {transactions.map((txn) => {
           const amount = Number(txn.amount);
-          const isOutflow = amount >= 0;
+          const isOutflow = txn.transaction_type !== "income";
+          const currency = txn.currency ?? "CLP";
           const formattedAmount = isOutflow
-            ? `(${formatCLP(Math.abs(amount))})`
-            : `+${formatCLP(Math.abs(amount))}`;
+            ? `(${formatAmount(amount, currency)})`
+            : `+${formatAmount(amount, currency)}`;
           const split = txn.split_type ? SPLIT_STYLES[txn.split_type] : null;
+          const bankName = txn.bank_name;
 
           return (
             <div
               key={txn.id}
               className={cn(
-                "bg-white rounded-lg px-3 py-2.5",
+                "bg-white rounded-xl p-3.5 border border-slate-100 shadow-[var(--shadow-card)]",
                 borderLeft ? "border-l-[3px] border-l-amber-400" : ""
               )}
             >
-              {/* Row 1: name + amount */}
-              <div className="flex justify-between items-baseline gap-2">
-                <p className="text-sm font-semibold text-slate-800 truncate">
-                  {toTitleCase(txn.raw_merchant_name)}
-                </p>
-                <span
-                  className={cn(
-                    "text-[15px] font-bold tabular-nums shrink-0",
-                    isOutflow ? "text-slate-800" : "text-emerald-600"
-                  )}
+              <div className="flex items-center gap-3">
+                {/* Direction icon — matches TransactionCard */}
+                <div
+                  className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center shrink-0"
+                  style={{
+                    background: isOutflow
+                      ? "linear-gradient(135deg, #fef2f2, #fecaca)"
+                      : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
+                  }}
                 >
-                  {formattedAmount}
-                </span>
-              </div>
-              {/* Row 2: source + category dropdown (left) | split badge + action (right) */}
-              <div className="flex justify-between items-center mt-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <SourceBadge source={txn.source} />
-                  <PendingCategoryCell txn={txn} />
+                  {isOutflow ? (
+                    <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
+                  ) : (
+                    <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
+                  )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {split && (
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  {/* Line 1: Merchant + Amount */}
+                  <div className="flex justify-between items-baseline gap-2">
+                    <p className="text-sm font-semibold text-luka-dark truncate">
+                      {toTitleCase(txn.raw_merchant_name)}
+                    </p>
                     <span
                       className={cn(
-                        "text-[10px] font-medium px-1.5 py-0.5 rounded w-[60px] text-center",
-                        split.className
+                        "text-[15px] font-bold tabular-nums shrink-0",
+                        isOutflow ? "text-luka-dark" : "text-luka-success"
                       )}
                     >
-                      {split.label}
+                      {formattedAmount}
                     </span>
-                  )}
-                  {renderAction?.(txn)}
+                  </div>
+
+                  {/* Line 2: Bank name + Category | Split + Action */}
+                  <div className="flex justify-between items-center mt-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[10px] text-slate-400 shrink-0">
+                        {bankName ? toTitleCase(bankName) : "—"}
+                      </span>
+                      <PendingCategoryCell txn={txn} />
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {split && (
+                        <span
+                          className={cn(
+                            "text-[10px] font-medium px-1.5 py-0.5 rounded w-[60px] text-center",
+                            split.className
+                          )}
+                        >
+                          {split.label}
+                        </span>
+                      )}
+                      {renderAction?.(txn)}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
