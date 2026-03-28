@@ -19,7 +19,7 @@ async def test_save_and_retrieve_session():
 
     session = WhatsAppSession(transaction_id="txn-123", step="awaiting_split")
     await save_session("+56912345678", session, mock_redis)
-    retrieved = await get_session("+56912345678", mock_redis)
+    retrieved = await get_session("+56912345678", "txn-123", mock_redis)
     assert retrieved.transaction_id == "txn-123"
     assert retrieved.step == "awaiting_split"
 
@@ -28,5 +28,5 @@ async def test_save_and_retrieve_session():
 async def test_get_session_returns_none_when_missing():
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
-    result = await get_session("+56999999999", mock_redis)
+    result = await get_session("+56999999999", "txn-missing", mock_redis)
     assert result is None

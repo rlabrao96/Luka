@@ -18,19 +18,23 @@ def _normalize_phone(phone: str) -> str:
     return phone.lstrip("+")
 
 
+def _session_key(phone: str, txn_id: str) -> str:
+    return f"wa_session:{_normalize_phone(phone)}:{txn_id}"
+
+
 async def save_session(phone: str, session: WhatsAppSession, redis: Redis) -> None:
     await redis.setex(
-        f"wa_session:{_normalize_phone(phone)}", _SESSION_TTL, json.dumps(asdict(session))
+        _session_key(phone, session.transaction_id), _SESSION_TTL, json.dumps(asdict(session))
     )
 
 
-async def get_session(phone: str, redis: Redis) -> WhatsAppSession | None:
-    raw = await redis.get(f"wa_session:{_normalize_phone(phone)}")
+async def get_session(phone: str, txn_id: str, redis: Redis) -> WhatsAppSession | None:
+    raw = await redis.get(_session_key(phone, txn_id))
     if not raw:
         return None
     data = json.loads(raw)
     return WhatsAppSession(**data)
 
 
-async def clear_session(phone: str, redis: Redis) -> None:
-    await redis.delete(f"wa_session:{_normalize_phone(phone)}")
+async def clear_session(phone: str, txn_id: str, redis: Redis) -> None:
+    await redis.delete(_session_key(phone, txn_id))

@@ -349,6 +349,7 @@ async def process_email(
                     categories=categories,
                     transaction_type=parsed.transaction_type,
                     currency=parsed.currency,
+                    transaction_id=str(txn.id),
                 )
             except Exception as e:
                 await _record_failed_job(
