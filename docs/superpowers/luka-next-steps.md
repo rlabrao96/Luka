@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-26 (session 9)
+**Date:** 2026-03-28 (session 10)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -346,29 +346,36 @@ Next: Auto-create bank accounts + balances from scrape data
   → Need: credit card cupos (nacional/internacional used/available/total)
   → Priority: this unlocks meaningful dashboard data (balances, account filtering)
 
-Next: Multi-bank parser support
-  → Each bank has different email formats — need per-bank parser patterns
-  → Banks to support (priority order):
-    1. Banco de Chile — ✅ compra + comprobante de pago working, transferencia needs recipient parsing
-    2. Banco Falabella — user already receiving emails, need email samples to build patterns
-    3. Banco Santander — existing test pattern, needs validation against real emails
-    4. BCI — existing test pattern, needs validation against real emails
-    5. Banco Estado — common in Chile, need email samples
-    6. Banco Itaú / Scotiabank — need email samples
-  → Approach: add bank-specific parser modules under backend/modules/email/parsers/
-  → Each module exports parse_<bank>_email() with bank-specific regex
-  → Router in parse_bank_email() tries all parsers, returns first match
-  → Reference templates in docs/email-templates/<bank-name>/
+✅ Session 10 (2026-03-28): US Bank Support + Email Pipeline Hardening — COMPLETE
+  → US bank sender domains: 21 banks + fintechs (BofA, Chase, Citi, Wells Fargo, etc.)
+  → English financial keywords (20 terms: transaction, purchase, balance, etc.)
+  → USD amount parsing: $17.08 → 1708 cents (distinguished from CLP $15.990)
+  → English date parsing: "March 28, 2026" format
+  → BofA "Where:" merchant pattern (fixed "DELETE IT" garbage extraction)
+  → Currency field end-to-end: ParsedEmail → Transaction → WhatsApp → frontend
+  → Transfer email parsing: Banco de Chile (outgoing), Edwards (incoming), Santander (outgoing)
+  → Bank name inference: 60+ sender domain → display name mappings
+  → Smart bank account matching: match by inferred bank name, no fallback to wrong bank
+  → source_bank_name column (migration 020) for email-only users
+  → Email transactions created as "pending" (was "settled")
+  → PendingBlock redesign: matches regular card style, USD formatting, bank name, email tag
+  → Inline split-type dropdown on pending cards (was static badge or missing)
+  → Hidden gradient icon on mobile (saves space)
+  → WhatsApp concurrent message fix: txn_id embedded in button/list IDs
+  → Sessions keyed by phone+txn_id (was phone-only, last transaction won)
+  → Test script: scripts/test_whatsapp_flow.py (--count N for concurrent testing)
+  → Email templates reorganized by country: chile/ and usa/
 
-Next: Deduplication
-  → Banco de Chile sends pairs: "Compra con TC" (enviodigital) + "Comprobante de Pago" (serviciodetransferencias) for the same purchase
-  → Deduplicate by (amount + merchant + date within 5-min window) before creating transaction
-  → Or: only process one sender per bank (e.g. prefer enviodigital, skip serviciodetransferencias comprobantes)
+Next: Multi-bank parser support
+  → Banks still needing email samples:
+    1. Banco Falabella — user already receiving emails, need samples
+    2. BCI — existing test pattern, needs validation against real emails
+    3. Banco Estado — common in Chile, need email samples
+    4. Banco Itaú / Scotiabank — need email samples
+  → Reference templates in docs/email-templates/chile/<bank-name>/ and docs/email-templates/usa/<bank-name>/
 
 Next: Complete transaction pipeline
-  → Test with real Chilean bank email → parsed transaction → WhatsApp alert with category options
   → Create WhatsApp message templates (verification_code, transaction_alert) for 24h window bypass
-  → Remove TEMP debug notification code
 
 Next: Microsoft Azure / Outlook support
   → 1.5 Azure app registration + Mail.Read permission

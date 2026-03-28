@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-26 (session 9 — end)
-**Status:** **Household enhancement + Subscriptions tab shipped.** Household page rewritten with per-category breakdown table, settlement suggestions ("X debe transferir $Y a Z"), and configurable split ratio. New Subscriptions tab auto-detects recurring expenses (2+ consecutive months, 20% tolerance) with timeline view and price change alerts. 10 new unit tests, 12 commits, migration 019 applied.
+**Date:** 2026-03-28 (session 10 — end)
+**Status:** **US bank support + email pipeline hardening.** Added comprehensive US bank domain filter (21 banks + fintechs) with English keywords. Parser now handles USD amounts ($17.08 → 1708 cents), English dates, and BofA "Where:" merchant patterns. Transfer email parsing for Banco de Chile, Edwards, and Santander (outgoing + incoming). Currency field flows end-to-end (ParsedEmail → Transaction → WhatsApp → frontend). Bank name inferred from email sender domain (60+ mappings). Email transactions now created as "pending" (not "settled"). PendingBlock redesigned to match regular transaction cards with bank name, USD formatting, email tag, and inline split-type dropdown. WhatsApp session bug fixed: txn_id embedded in button/list IDs so concurrent messages route independently. Migration 020 (source_bank_name), 11 commits.
 
 ---
 
@@ -183,6 +183,7 @@ transactions       — id, user_id, household_id, bank_account_id, merchant_id,
                      status ('pending'|'settled'), source, source_type ('email'|'connect'|'manual'),
                      transaction_type ('expense'|'income'|'transfer'),
                      transfer_to_account_id (FK bank_accounts, nullable),
+                     source_bank_name (inferred from email sender domain),
                      raw_email_text (purged after 24h)
 
 household_budget_allocations — id, household_id, month (DATE UNIQUE per household),
@@ -299,7 +300,7 @@ luka-danger   = #EF4444  (budget exceeded, sign-out button)
 
 2. **ARQ webhook ACK pattern** — Webhooks acknowledge in <200ms, enqueue `process_email` job to ARQ; all heavy work is async in the worker process.
 
-3. **WhatsApp session state** — Redis key `whatsapp:session:{phone}` holds multi-turn conversation state (pending transaction, which step the user is on).
+3. **WhatsApp session state** — Redis key `wa_session:{phone}:{txn_id}` holds multi-turn conversation state. Txn ID embedded in button/list IDs for concurrent message support.
 
 4. **Joint account auto-split** — `bank_accounts.account_type == 'joint'` → transaction auto-classified as `shared`, skip WhatsApp split question.
 
@@ -410,11 +411,11 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Email watch setup | ✅ DONE | Gmail Pub/Sub watch live, OIDC auth working, fallback fetch when History API empty |
 | WhatsApp PIN verification | ✅ DONE | Send/verify PIN via Redis (5-min TTL), brute-force protection (5 attempts) |
 | Email pipeline end-to-end | ✅ DONE | Gmail → Pub/Sub → webhook → ARQ worker → fetch email → WhatsApp notification |
-| Email pre-filter | ✅ DONE | 27 Spanish financial keywords, bank-agnostic, runs before parser |
-| Email parser HTML support | ✅ DONE | Strips HTML before regex, handles Banco de Chile compra/comprobante/transferencia formats |
+| Email pre-filter | ✅ DONE | 27 Spanish + 20 English financial keywords, 60+ bank sender domains (Chile + US), bank name inference from sender |
+| Email parser HTML support | ✅ DONE | Strips HTML before regex. CLP + USD amount parsing, English date formats, transfer recipient extraction, "Where:" merchant patterns |
 | Gemini LLM classification | ✅ DONE | Gemini 2.5 Flash-Lite (replaced OpenAI gpt-4o-mini). 3 categories for new merchants, 1 for known. Lazy client init, code-fence stripping |
-| WhatsApp transaction flow | ✅ DONE | Split question → category picker → ✅ confirmation. All split types ask for category. Phone normalization fixed. |
-| Email-only users | ✅ DONE | Bank account not required — household resolved from HouseholdMember |
+| WhatsApp transaction flow | ✅ DONE | Split question → category picker → ✅ confirmation. Txn ID embedded in button/list IDs for concurrent message support. |
+| Email-only users | ✅ DONE | Bank account not required — household resolved from HouseholdMember. Bank name inferred from sender domain (source_bank_name column). |
 | Transaction dedup | ✅ DONE | Per-email Redis key `txn_processed:{message_id}` (24h TTL) |
 | Merchant race condition | ✅ DONE | IntegrityError on duplicate insert → rollback + re-query existing row |
 | Luka Connect deployment | ✅ DONE | Deployed on Railway, scraping 301 movements in ~4 min, 291 transactions imported |
@@ -424,9 +425,9 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Store balances from scrape | ❌ TODO | Scraper returns allBalances{} and creditCards[] — need to store in DB and show in frontend |
 | Link transactions to bank accounts | ❌ TODO | Transactions currently have bank_account_id=NULL — need to match to auto-created accounts |
 | Show bank/account on transaction rows | ❌ TODO | Frontend transaction list doesn't show which bank/account each transaction belongs to |
-| Multi-bank parser | ❌ TODO | Only Banco de Chile compra/comprobante formats handled. Santander, BCI, Falabella, Estado need email samples |
+| Multi-bank parser | ⚠️ PARTIAL | Banco de Chile (compra+comprobante+transfer), Edwards (incoming transfer), Santander (outgoing transfer), BofA (credit card alert). Falabella, BCI, Estado still need email samples |
 | Transaction dedup (cross-sender) | ✅ DONE | 5-min window dedup by amount+user prevents BChile compra+comprobante double entry |
-| PendingBlock UI | ✅ DONE | 2-bucket pending block (awaiting reconciliation + unmatched email) with inline delete, inline category dropdown, merchant training, prefetched at init |
+| PendingBlock UI | ✅ DONE | Matches regular card style (gradient icon, bank name, email tag). USD formatting (US$17.08). Inline category + split-type dropdowns. Hidden icon on mobile. |
 | WhatsApp labels aligned | ✅ DONE | Split buttons now say Personal/Hogar matching dashboard; LLM constrained to fixed category list |
 | Household category breakdown | ✅ DONE | Per-category spending table with mini proportion bars, member amounts + %, sorted by total |
 | Settlement suggestions | ✅ DONE | "X debe transferir $Y a Z" based on configurable split ratio (default 50/50) |
@@ -463,7 +464,7 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - `/health` returns `{"status":"ok","chromium":true}`
 
 **Database (Supabase):** ✅ LIVE
-- All 19 migrations applied (`019 head`)
+- All 20 migrations applied (`020 head`)
 - Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
 - Migration 010 adds bank account settings overhaul columns
 - Migration 011 adds `transaction_type`, `transfer_to_account_id`, `household_budget_allocations`
