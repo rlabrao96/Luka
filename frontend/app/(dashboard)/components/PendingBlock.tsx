@@ -18,12 +18,6 @@ const INCOME_CATEGORIES = [
   "Bono", "Transferencia de terceros", "Deuda pendiente", "Otros ingresos",
 ];
 
-const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
-  personal: { label: "Personal", className: "bg-blue-50 text-blue-600" },
-  partner: { label: "Personal", className: "bg-blue-50 text-blue-600" },
-  shared: { label: "Hogar", className: "bg-emerald-50 text-emerald-600" },
-};
-
 function toTitleCase(str: string) {
   return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
@@ -118,6 +112,81 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
   );
 }
 
+/* ─── Inline split-type dropdown (same UX as category dropdown) ─── */
+
+const SPLIT_OPTIONS = [
+  { value: "personal", label: "Personal", className: "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" },
+  { value: "shared", label: "Hogar", className: "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100" },
+];
+
+function PendingSplitCell({ txn }: { txn: Transaction }) {
+  const [open, setOpen] = useState(false);
+  const [localSplit, setLocalSplit] = useState(txn.split_type);
+  const queryClient = useQueryClient();
+
+  useEffect(() => { setLocalSplit(txn.split_type); }, [txn.split_type]);
+
+  const current = SPLIT_OPTIONS.find((o) => o.value === localSplit);
+
+  async function handleSelect(value: string) {
+    setOpen(false);
+    setLocalSplit(value);
+    const queryKey = ["transactions", "pending"];
+    const previous = queryClient.getQueryData(queryKey);
+    queryClient.setQueryData(queryKey, (old: PendingTransactions | undefined) => {
+      if (!old) return old;
+      const patch = (list: Transaction[]) =>
+        list.map((t) => (t.id === txn.id ? { ...t, split_type: value } : t));
+      return {
+        ...old,
+        awaiting_reconciliation: patch(old.awaiting_reconciliation),
+        unmatched_email: patch(old.unmatched_email),
+      };
+    });
+    try {
+      await api.updateTransactionSplitType(txn.id, value);
+    } catch {
+      queryClient.setQueryData(queryKey, previous);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center justify-between gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border transition-colors w-[80px]",
+          current
+            ? current.className
+            : "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100"
+        )}
+      >
+        <span className="truncate">{current?.label ?? "Asignar"}</span>
+        <ChevronDown size={9} className="shrink-0" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[110px]">
+            {SPLIT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => handleSelect(opt.value)}
+                className={cn(
+                  "w-full text-left px-3 py-1.5 text-[11px] hover:bg-blue-50 hover:text-luka-primary transition-colors",
+                  localSplit === opt.value ? "text-luka-primary font-semibold bg-blue-50" : "text-slate-700"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── PendingSection ─── */
 
 interface PendingSectionProps {
@@ -142,7 +211,6 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
           const formattedAmount = isOutflow
             ? `(${formatAmount(amount, currency)})`
             : `+${formatAmount(amount, currency)}`;
-          const split = txn.split_type ? SPLIT_STYLES[txn.split_type] : null;
           const bankName = txn.bank_name;
 
           return (
@@ -199,16 +267,7 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
                       <PendingCategoryCell txn={txn} />
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {split && (
-                        <span
-                          className={cn(
-                            "text-[10px] font-medium px-1.5 py-0.5 rounded w-[60px] text-center",
-                            split.className
-                          )}
-                        >
-                          {split.label}
-                        </span>
-                      )}
+                      <PendingSplitCell txn={txn} />
                       {renderAction?.(txn)}
                     </div>
                   </div>
