@@ -1,0 +1,33 @@
+Bank of America — Credit card transaction exceeds alert limit you set
+================================================================================
+
+Type: Credit card purchase alert
+Sender: onlinebanking@ealerts.bankofamerica.com
+
+--- Stripped text (after HTML removal) ---
+
+Credit card transaction exceeds alert limit you set
+
+Customized Cash Rewards Visa Signature ending in 5876
+
+Amount: $17.08
+Date: March 28, 2026
+Where: TARGET STORE- T3206
+
+View details
+
+If you made this purchase or payment but don't recognize the
+amount, wait until the final purchase amount has posted
+before filing a dispute claim.
+
+--- Second example (same format) ---
+
+Amount: $23.96
+Date: March 28, 2026
+Where: WINE AND SPIRITS 9101
+
+--- Key fields ---
+Amount format:  US decimal ($17.08 — dot is decimal separator)
+Date format:    English month name (March 28, 2026)
+Merchant field: "Where:" label
+Currency:       USD

@@ -16,6 +16,15 @@ def _url() -> str:
     return f"{_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
 
 
+def _format_amount(amount: int, currency: str = "CLP") -> str:
+    """Format amount for display: CLP integer ($15,990) or USD cents ($17.08)."""
+    if currency == "USD":
+        dollars = amount // 100
+        cents = amount % 100
+        return f"US${dollars:,}.{cents:02d}"
+    return f"${amount:,}"
+
+
 async def send_expense_alert(
     to: str,
     amount: int,
@@ -24,12 +33,14 @@ async def send_expense_alert(
     is_joint: bool,
     categories: list[str] | None = None,
     transaction_type: str = "expense",
+    currency: str = "CLP",
 ) -> str:
     """Send expense alert with split buttons (personal/partner/shared). Returns message ID."""
+    formatted = _format_amount(amount, currency)
     if transaction_type == "transfer":
-        desc = f"Transferencia de ${amount:,} a {merchant}"
+        desc = f"Transferencia de {formatted} a {merchant}"
     else:
-        desc = f"Gasto de ${amount:,} en {merchant}"
+        desc = f"Gasto de {formatted} en {merchant}"
 
     if is_joint:
         body_text = f"{desc}. ¿Qué categoría le asignamos?"

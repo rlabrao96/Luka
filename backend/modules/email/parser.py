@@ -15,11 +15,15 @@ def _strip_html(html: str) -> str:
     return text
 
 
-# Patterns ordered from most specific to least specific.
-# Tested against real Banco de Chile, Santander, BCI email formats.
-_AMOUNT_PATTERNS = [
+# --- Amount patterns ---
+# US format: $17.08 (dot = decimal, comma = thousands) → stored as cents (1708)
+# CLP format: $15.990 (dot = thousands, no decimals) → stored as integer (15990)
+_US_AMOUNT_PATTERNS = [
+    r"Amount:?\s*\$\s*([\d,]+\.\d{2})\b",  # Amount: $17.08 or Amount: $1,234.56
+]
+_CLP_AMOUNT_PATTERNS = [
     r"por\s+\$\s*([\d\.]+)",  # por $15.990
-    r"Monto:?\s*\$?\s*([\d\.]+)",  # Monto: 15.990 or Monto $15.990
+    r"Monto(?:\s+transferido)?:?\s*\$?\s*([\d\.]+)",  # Monto: 15.990 or Monto transferido $ 8.226
     r"\$\s*([\d\.]+)",  # $15.990 or $ 15.990
 ]
 
@@ -42,9 +46,13 @@ _TRANSFER_PATTERNS = [
     rf"Datos de destino\s+Nombre\s+({_NAME_ANY}?)\s+RUT",
 ]
 
-# Merchant patterns — order matters, most specific first.
-# "en MERCHANT CITY CL el" → stop before " CL " or before lowercase " el "
-_MERCHANT_PATTERNS = [
+# US merchant patterns — BofA uses "Where: MERCHANT_NAME"
+_US_MERCHANT_PATTERNS = [
+    r"Where:?\s+([A-Z][A-Z0-9 &\-/'.]{2,50}?)(?:\s+View|\s+If\b|\s*$)",  # Where: TARGET STORE- T3206
+]
+
+# Chilean merchant patterns — order matters, most specific first.
+_CLP_MERCHANT_PATTERNS = [
     r"Comercio\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 ]{2,40}?)(?:\s+Monto|\s*$)",  # Comercio SCOTIABANK CAE Monto
     r"Comercio:?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 ]{2,40})",  # Comercio: COPEC LAS CONDES
     r"en\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 ]{2,40}?)\s+(?:SANTIAGO|CL|el\b)",  # en MERCHANT SANTIAGO CL el
@@ -52,23 +60,43 @@ _MERCHANT_PATTERNS = [
     r"en\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 ]{2,40})",  # en LIDER PROVI (fallback)
 ]
 
+_MONTHS_EN = (
+    r"(?:January|February|March|April|May|June|" r"July|August|September|October|November|December)"
+)
+
 _DATE_PATTERNS = [
     r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})",  # 13/03/2026 09:45:03
     r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})",  # 10/03/2026 14:32
     r"(\d{2}/\d{2}/\d{4})",  # 10/03/2026
+    rf"({_MONTHS_EN}\s+\d{{1,2}},?\s+\d{{4}})",  # March 28, 2026
 ]
 
 
-def _parse_amount(text: str) -> int | None:
-    for pattern in _AMOUNT_PATTERNS:
+def _parse_amount(text: str) -> tuple[int, str] | tuple[None, None]:
+    """Parse amount, returning (amount_int, currency).
+
+    US format: $17.08 → (1708, "USD") — stored as cents
+    CLP format: $15.990 → (15990, "CLP") — stored as integer
+    """
+    # Try US format first (has exactly 2 decimal places)
+    for pattern in _US_AMOUNT_PATTERNS:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            raw = match.group(1).replace(",", "")
+            try:
+                return int(round(float(raw) * 100)), "USD"
+            except ValueError:
+                continue
+    # Fall back to CLP format (dot = thousands separator)
+    for pattern in _CLP_AMOUNT_PATTERNS:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             raw = match.group(1).replace(".", "").replace(",", "")
             try:
-                return int(raw)
+                return int(raw), "CLP"
             except ValueError:
                 continue
-    return None
+    return None, None
 
 
 def _parse_transfer_recipient(text: str) -> str | None:
@@ -81,11 +109,26 @@ def _parse_transfer_recipient(text: str) -> str | None:
 
 
 def _parse_merchant(text: str) -> str | None:
-    for pattern in _MERCHANT_PATTERNS:
+    # Try US patterns first (more specific labels like "Where:")
+    for pattern in _US_MERCHANT_PATTERNS:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip().upper()
+    # Fall back to Chilean patterns
+    for pattern in _CLP_MERCHANT_PATTERNS:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(1).strip().upper()
     return None
+
+
+_DATE_FORMATS = [
+    "%d/%m/%Y %H:%M:%S",  # 13/03/2026 09:45:03
+    "%d/%m/%Y %H:%M",  # 10/03/2026 14:32
+    "%d/%m/%Y",  # 10/03/2026
+    "%B %d, %Y",  # March 28, 2026
+    "%B %d %Y",  # March 28 2026
+]
 
 
 def _parse_date(text: str) -> datetime | None:
@@ -93,7 +136,7 @@ def _parse_date(text: str) -> datetime | None:
         match = re.search(pattern, text)
         if match:
             raw = match.group(1).strip()
-            for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y"):
+            for fmt in _DATE_FORMATS:
                 try:
                     return datetime.strptime(raw, fmt)
                 except ValueError:
@@ -102,14 +145,14 @@ def _parse_date(text: str) -> datetime | None:
 
 
 def parse_bank_email(raw_text: str) -> ParsedEmail | None:
-    """Parse a Chilean bank email alert. Returns None if not a transaction email."""
+    """Parse a bank email alert (Chilean or US). Returns None if not a transaction email."""
     # Strip HTML if the email body contains HTML tags
     if "<html" in raw_text.lower() or "<table" in raw_text.lower():
         text = _strip_html(raw_text)
     else:
         text = raw_text
 
-    amount = _parse_amount(text)
+    amount, currency = _parse_amount(text)
     if amount is None:
         return None
 
@@ -135,4 +178,5 @@ def parse_bank_email(raw_text: str) -> ParsedEmail | None:
         transaction_date=date,
         bank_name="unknown",
         transaction_type=transaction_type,
+        currency=currency,
     )

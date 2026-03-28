@@ -296,6 +296,7 @@ async def process_email(
                     bank_account_id=bank_account.id if bank_account else None,
                     raw_merchant_name=parsed.raw_merchant,
                     amount=parsed.amount,
+                    currency=parsed.currency,
                     transaction_date=parsed.transaction_date,
                     source=provider,
                     status=txn_status,
@@ -340,6 +341,7 @@ async def process_email(
                     is_joint=is_joint,
                     categories=categories,
                     transaction_type=parsed.transaction_type,
+                    currency=parsed.currency,
                 )
             except Exception as e:
                 await _record_failed_job(

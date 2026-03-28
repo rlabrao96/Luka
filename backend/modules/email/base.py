@@ -14,11 +14,12 @@ class RawEmail:
 
 @dataclass
 class ParsedEmail:
-    amount: int  # CLP, always integer
+    amount: int  # smallest unit: CLP integer or USD cents
     raw_merchant: str  # original string from email, e.g. "COMPRA LIDER PROVI"
     transaction_date: datetime
     bank_name: str  # inferred from sender/subject
     transaction_type: str = "expense"  # "expense" or "transfer"
+    currency: str = "CLP"  # ISO 4217: "CLP" or "USD"
 
 
 class EmailProvider(ABC):

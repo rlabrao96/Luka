@@ -183,3 +183,53 @@ def test_parse_santander_transfer_outgoing():
     assert result.transaction_type == "transfer"
     assert "Unired" in result.raw_merchant
     assert result.transaction_date.day == 3
+
+
+# --- Bank of America (US) ---
+
+BOFA_TARGET = (
+    "Credit card transaction exceeds alert limit you set "
+    "Customized Cash Rewards Visa Signature ending in 5876 "
+    "Amount: $17.08 "
+    "Date: March 28, 2026 "
+    "Where: TARGET STORE- T3206 "
+    "View details "
+    "If you made this purchase or payment but don't recognize the "
+    "amount, wait until the final purchase amount has posted "
+    "before filing a dispute claim."
+)
+
+BOFA_WINE = (
+    "Credit card transaction exceeds alert limit you set "
+    "Customized Cash Rewards Visa Signature ending in 5876 "
+    "Amount: $23.96 "
+    "Date: March 28, 2026 "
+    "Where: WINE AND SPIRITS 9101 "
+    "View details"
+)
+
+
+def test_parse_bofa_target():
+    result = parse_bank_email(BOFA_TARGET)
+    assert result is not None
+    assert result.amount == 1708  # $17.08 stored as cents
+    assert result.currency == "USD"
+    assert "TARGET STORE" in result.raw_merchant
+    assert result.transaction_date.day == 28
+    assert result.transaction_date.month == 3
+    assert result.transaction_type == "expense"
+
+
+def test_parse_bofa_wine():
+    result = parse_bank_email(BOFA_WINE)
+    assert result is not None
+    assert result.amount == 2396  # $23.96 stored as cents
+    assert result.currency == "USD"
+    assert "WINE AND SPIRITS" in result.raw_merchant
+
+
+def test_clp_currency_default():
+    result = parse_bank_email(SANTANDER_EMAIL)
+    assert result is not None
+    assert result.currency == "CLP"
+    assert result.amount == 15990
