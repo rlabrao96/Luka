@@ -22,10 +22,12 @@ def _parse_id(interactive_id: str) -> tuple[str, str]:
 async def handle_button_click(phone: str, button_id: str, db: AsyncSession, redis: Redis) -> None:
     """Route a WhatsApp button reply to the correct split action."""
     action, txn_id = _parse_id(button_id)
+    print(f"[WA_HANDLER] button action={action} txn_id={txn_id} phone={phone}", flush=True)
 
     session = await get_session(phone, txn_id, redis) if txn_id else None
     if not session:
-        return  # session expired or missing
+        print(f"[WA_HANDLER] session NOT FOUND for phone={phone} txn_id={txn_id}", flush=True)
+        return
 
     if action in ("split_personal", "split_partner", "split_shared"):
         split_type = {

@@ -49,21 +49,32 @@ async def whatsapp_webhook(request: Request):
                     try:
                         async with AsyncSessionLocal() as db:
                             if itype == "button_reply":
+                                btn_id = interactive["button_reply"]["id"]
+                                print(
+                                    f"[WA_WEBHOOK] button_reply from={phone} id={btn_id}",
+                                    flush=True,
+                                )
                                 from modules.whatsapp.handler import handle_button_click
 
                                 await handle_button_click(
                                     phone=phone,
-                                    button_id=interactive["button_reply"]["id"],
+                                    button_id=btn_id,
                                     db=db,
                                     redis=redis_client,
                                 )
                             elif itype == "list_reply":
+                                list_id = interactive["list_reply"]["id"]
+                                list_title = interactive["list_reply"]["title"]
+                                print(
+                                    f"[WA_WEBHOOK] list_reply from={phone} id={list_id} title={list_title}",
+                                    flush=True,
+                                )
                                 from modules.whatsapp.handler import handle_list_selection
 
                                 await handle_list_selection(
                                     phone=phone,
-                                    list_item_id=interactive["list_reply"]["id"],
-                                    list_item_title=interactive["list_reply"]["title"],
+                                    list_item_id=list_id,
+                                    list_item_title=list_title,
                                     db=db,
                                     redis=redis_client,
                                 )
