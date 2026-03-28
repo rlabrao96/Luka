@@ -1,0 +1,33 @@
+Banco Edwards — Comprobante de transferencia electrónica de fondos (incoming)
+================================================================================
+
+Type: Incoming transfer (someone sent money TO the user)
+Sender domain: bancoedwards.cl (subdomain of bci.cl group)
+
+--- Stripped text (after HTML removal) ---
+
+Comprobante de transferencia electrónica de fondos
+Estimado(a): Paula Valentina Correa Silva
+Te informamos que nuestro(a) cliente Catalina Sofia Jadranka Droppelmann
+ha efectuado una transferencia de fondos a tu cuenta con el siguiente detalle:
+
+Datos de cuenta
+Fecha                   20/03/2026
+Asunto                  Viatico iquiqie 3 días enero 2026
+
+Datos de destinatario
+Nombre y Apellido       Paula Valentina Correa Silva
+Rut                     19526537-2
+Email                   pcorreasilva97@gmail.com
+Banco                   Banco Santander
+Cuenta destino          Cuenta Corriente 00-007-74057-47
+
+Monto                   $180.000
+
+Número de comprobante   TEFMBCO26032016251239664723​10
+
+--- Key fields ---
+Direction:    incoming (to user)
+Sender name:  Catalina Sofia Jadranka Droppelmann (the person who sent money)
+Amount:       $180.000
+Date:         20/03/2026

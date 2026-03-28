@@ -23,6 +23,25 @@ _AMOUNT_PATTERNS = [
     r"\$\s*([\d\.]+)",  # $15.990 or $ 15.990
 ]
 
+# Transfer patterns — detect transfers and extract the counterparty name.
+# Outgoing: Banco de Chile "transferencia de fondos a {NAME}, el dia..."
+# Outgoing: Santander "Datos de destino Nombre {NAME} RUT"
+# Incoming: Edwards "cliente {NAME} ha efectuado una transferencia"
+_NAME_UPPER_START = r"[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{2,60}"  # must start uppercase
+_NAME_ANY = r"[A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{2,60}"
+_TRANSFER_PATTERNS = [
+    # Incoming — "cliente {NAME} ha efectuado una transferencia" (Edwards)
+    # Must be before outgoing prose patterns to avoid matching "a tu cuenta"
+    rf"cliente\s+({_NAME_ANY}?)\s+ha efectuado una transferencia",
+    # Outgoing — name in prose (uppercase start to skip "a tu cuenta con el")
+    rf"transferencia de fondos a\s+({_NAME_UPPER_START}?)(?:\s*,|\s+el\s)",
+    rf"transferencia a\s+({_NAME_UPPER_START}?)(?:\s*,|\s+el\s|\s+por\s)",
+    # Outgoing — name in "Datos del Destinatario" table (Banco de Chile)
+    rf"Datos del Destinatario\s+Nombre\s+({_NAME_ANY}?)\s+Rut",
+    # Outgoing — name in "Datos de destino" table (Santander)
+    rf"Datos de destino\s+Nombre\s+({_NAME_ANY}?)\s+RUT",
+]
+
 # Merchant patterns — order matters, most specific first.
 # "en MERCHANT CITY CL el" → stop before " CL " or before lowercase " el "
 _MERCHANT_PATTERNS = [
@@ -49,6 +68,15 @@ def _parse_amount(text: str) -> int | None:
                 return int(raw)
             except ValueError:
                 continue
+    return None
+
+
+def _parse_transfer_recipient(text: str) -> str | None:
+    """Extract recipient name from transfer emails (e.g. Banco de Chile fund transfers)."""
+    for pattern in _TRANSFER_PATTERNS:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip().title()
     return None
 
 
@@ -85,7 +113,15 @@ def parse_bank_email(raw_text: str) -> ParsedEmail | None:
     if amount is None:
         return None
 
-    merchant = _parse_merchant(text)
+    # Try transfer patterns first (e.g. "transferencia de fondos a Juan Jose Lamarca")
+    transfer_recipient = _parse_transfer_recipient(text)
+    if transfer_recipient:
+        merchant = transfer_recipient
+        transaction_type = "transfer"
+    else:
+        merchant = _parse_merchant(text)
+        transaction_type = "expense"
+
     if merchant is None:
         return None
 
@@ -98,4 +134,5 @@ def parse_bank_email(raw_text: str) -> ParsedEmail | None:
         raw_merchant=merchant,
         transaction_date=date,
         bank_name="unknown",
+        transaction_type=transaction_type,
     )

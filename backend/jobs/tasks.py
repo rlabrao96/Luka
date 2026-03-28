@@ -339,6 +339,7 @@ async def process_email(
                     partner_name="tu pareja",
                     is_joint=is_joint,
                     categories=categories,
+                    transaction_type=parsed.transaction_type,
                 )
             except Exception as e:
                 await _record_failed_job(

@@ -1,0 +1,34 @@
+Santander — Comprobante Transferencia de fondos (outgoing)
+================================================================================
+
+Type: Outgoing transfer (user sent money to someone)
+Sender domain: santander.cl
+
+--- Stripped text (after HTML removal) ---
+
+Comprobante Transferencia de fondos
+Estimado(a) PAULA VALENTINA CORREA SILVA:
+Te enviamos el detalle de la transferencia realizada el 03/03/2026.
+
+Monto transferido       $ 8.226
+
+Datos de origen
+Tipo de cuenta          Cuenta Corriente
+Nº de cuenta            0-000-77-40574-7
+RUT                     19.526.537-2
+Nombre                  PAULA VALENTINA CORREA SILVA
+Comentario              1FIN-pi_3ARsYnir5EmvnZ0xYZKaVuoli2h
+
+Datos de destino
+Nombre                  UNIRED
+RUT                     76.063.653-3
+Banco                   Banco BICE
+Tipo de cuenta          Cuenta Corriente
+Nº de cuenta            0-000-01-38661-1
+E-mail                  transferencias@fintoc.com
+
+--- Key fields ---
+Direction:    outgoing (from user)
+Recipient:    UNIRED
+Amount:       $8.226
+Date:         03/03/2026

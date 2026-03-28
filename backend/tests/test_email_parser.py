@@ -101,3 +101,85 @@ def test_html_stripping():
     assert result is not None
     assert result.amount == 5990
     assert "STARBUCKS" in result.raw_merchant
+
+
+# --- Banco de Chile transfer format ---
+
+BCHILE_TRANSFER = (
+    "Estimado(a) Rafael Andres Labra Oettinger "
+    "Le informamos que usted ha efectuado una transferencia de fondos "
+    "a Juan Jose Lamarca, el dia 28 de marzo de 2026, desde su "
+    "Cuenta Corriente 4420427502. El detalle puede revisarlo a continuación "
+    "Datos del Destinatario Nombre Juan Jose Lamarca Rut 19.686.463-6 "
+    "Cuenta 7031408002 Banco Banco Santander "
+    "Datos de la Transferencia Fecha 28/03/2026 "
+    "Cuenta 4420427502 Monto $95.600 ID TEF_IPE260328122512408087647"
+)
+
+
+def test_parse_bchile_transfer():
+    result = parse_bank_email(BCHILE_TRANSFER)
+    assert result is not None
+    assert result.amount == 95600
+    assert result.transaction_type == "transfer"
+    assert "Juan Jose Lamarca" in result.raw_merchant
+    assert result.transaction_date.day == 28
+
+
+def test_purchase_has_expense_type():
+    result = parse_bank_email(SANTANDER_EMAIL)
+    assert result is not None
+    assert result.transaction_type == "expense"
+
+
+# --- Banco Edwards incoming transfer ---
+
+EDWARDS_TRANSFER_INCOMING = (
+    "Comprobante de transferencia electrónica de fondos "
+    "Estimado(a): Paula Valentina Correa Silva "
+    "Te informamos que nuestro(a) cliente Catalina Sofia Jadranka Droppelmann "
+    "ha efectuado una transferencia de fondos a tu cuenta con el siguiente detalle: "
+    "Datos de cuenta Fecha 20/03/2026 "
+    "Asunto Viatico iquiqie 3 días enero 2026 "
+    "Datos de destinatario Nombre y Apellido Paula Valentina Correa Silva "
+    "Rut 19526537-2 Email pcorreasilva97@gmail.com "
+    "Banco Banco Santander Cuenta destino Cuenta Corriente 00-007-74057-47 "
+    "Monto $180.000 "
+    "Número de comprobante TEFMBCO2603201625123966472310"
+)
+
+
+def test_parse_edwards_transfer_incoming():
+    result = parse_bank_email(EDWARDS_TRANSFER_INCOMING)
+    assert result is not None
+    assert result.amount == 180000
+    assert result.transaction_type == "transfer"
+    assert "Catalina" in result.raw_merchant
+    assert "Droppelmann" in result.raw_merchant
+    assert result.transaction_date.day == 20
+
+
+# --- Santander outgoing transfer ---
+
+SANTANDER_TRANSFER_OUTGOING = (
+    "Comprobante Transferencia de fondos "
+    "Estimado(a) PAULA VALENTINA CORREA SILVA: "
+    "Te enviamos el detalle de la transferencia realizada el 03/03/2026. "
+    "Monto transferido $ 8.226 "
+    "Datos de origen Tipo de cuenta Cuenta Corriente "
+    "Nº de cuenta 0-000-77-40574-7 RUT 19.526.537-2 "
+    "Nombre PAULA VALENTINA CORREA SILVA "
+    "Comentario 1FIN-pi_3ARsYnir5EmvnZ0xYZKaVuoli2h "
+    "Datos de destino Nombre UNIRED RUT 76.063.653-3 "
+    "Banco Banco BICE Tipo de cuenta Cuenta Corriente "
+    "Nº de cuenta 0-000-01-38661-1 E-mail transferencias@fintoc.com"
+)
+
+
+def test_parse_santander_transfer_outgoing():
+    result = parse_bank_email(SANTANDER_TRANSFER_OUTGOING)
+    assert result is not None
+    assert result.amount == 8226
+    assert result.transaction_type == "transfer"
+    assert "Unired" in result.raw_merchant
+    assert result.transaction_date.day == 3

@@ -18,6 +18,7 @@ class ParsedEmail:
     raw_merchant: str  # original string from email, e.g. "COMPRA LIDER PROVI"
     transaction_date: datetime
     bank_name: str  # inferred from sender/subject
+    transaction_type: str = "expense"  # "expense" or "transfer"
 
 
 class EmailProvider(ABC):

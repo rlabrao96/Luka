@@ -23,14 +23,19 @@ async def send_expense_alert(
     partner_name: str,
     is_joint: bool,
     categories: list[str] | None = None,
+    transaction_type: str = "expense",
 ) -> str:
     """Send expense alert with split buttons (personal/partner/shared). Returns message ID."""
+    if transaction_type == "transfer":
+        desc = f"Transferencia de ${amount:,} a {merchant}"
+    else:
+        desc = f"Gasto de ${amount:,} en {merchant}"
+
     if is_joint:
-        # Joint account: skip split question, go straight to category
-        body_text = f"Gasto compartido de ${amount:,} en {merchant}. ¿Qué categoría le asignamos?"
+        body_text = f"{desc}. ¿Qué categoría le asignamos?"
         return await send_category_list(to=to, categories=categories or [], context_msg=body_text)
 
-    body_text = f"Gasto de ${amount:,} en {merchant}. ¿Cómo lo dividimos?"
+    body_text = f"{desc}. ¿Cómo lo dividimos?"
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
