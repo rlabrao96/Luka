@@ -4,10 +4,23 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
 import { useLukaStore } from "@/app/lib/store";
 
-const TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
+const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const LAST_ACTIVE_KEY = "luka_last_active";
+const FRESH_LOGIN_COOKIE = "luka-fresh-login";
 
-export function InactivityGuard() {
+function isFreshLogin(): boolean {
+  return document.cookie.split("; ").some((c) => c.startsWith(`${FRESH_LOGIN_COOKIE}=`));
+}
+
+function clearFreshLoginCookie(): void {
+  document.cookie = `${FRESH_LOGIN_COOKIE}=; max-age=0; path=/`;
+}
+
+function isPWA(): boolean {
+  return window.matchMedia("(display-mode: standalone)").matches;
+}
+
+export function SessionGuard() {
   const router = useRouter();
   const reset = useLukaStore((s) => s.reset);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -24,8 +37,34 @@ export function InactivityGuard() {
       router.push("/login");
     };
 
+    // Handle fresh login: clear stale timestamp, write fresh one
+    if (isFreshLogin()) {
+      localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+      clearFreshLoginCookie();
+    }
+
+    // --- PWA mode: persistent session, just refresh tokens on resume ---
+    if (isPWA()) {
+      let signingOut = false;
+      const onVisibilityChange = async () => {
+        if (document.visibilityState === "visible" && !signingOut) {
+          // getUser() hits Supabase auth server, triggering token auto-refresh.
+          // getSession() only reads cached/local state and would NOT refresh expired JWTs.
+          const { data: { user }, error } = await supabase.auth.getUser();
+          if (error || !user) {
+            signingOut = true;
+            await signOut();
+          }
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      return () => {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      };
+    }
+
+    // --- Browser mode: 30-minute inactivity timeout ---
     const resetTimer = () => {
-      // Throttle localStorage writes to once per second — mousemove fires 100+ times/sec
       const now = Date.now();
       if (now - lastWriteRef.current > 1000) {
         lastWriteRef.current = now;
@@ -35,7 +74,7 @@ export function InactivityGuard() {
       timerRef.current = setTimeout(signOut, TIMEOUT_MS);
     };
 
-    // On mount: check if already timed out (e.g. closed browser and came back)
+    // On mount: check if already timed out
     const lastActive = Number(localStorage.getItem(LAST_ACTIVE_KEY) ?? Date.now());
     if (Date.now() - lastActive > TIMEOUT_MS) {
       signOut();
@@ -44,14 +83,14 @@ export function InactivityGuard() {
 
     // Resume timer for remaining time
     const remaining = TIMEOUT_MS - (Date.now() - lastActive);
-    localStorage.setItem(LAST_ACTIVE_KEY, String(lastActive)); // preserve original
+    localStorage.setItem(LAST_ACTIVE_KEY, String(lastActive));
     timerRef.current = setTimeout(signOut, remaining);
 
     // Track user activity
     const events = ["mousemove", "keydown", "click", "touchstart", "scroll"];
     events.forEach((e) => window.addEventListener(e, resetTimer, { passive: true }));
 
-    // Check on tab re-focus — catches long-idle users returning from another tab
+    // Check on tab re-focus
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         const last = Number(localStorage.getItem(LAST_ACTIVE_KEY) ?? Date.now());

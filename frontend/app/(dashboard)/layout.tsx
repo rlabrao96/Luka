@@ -1,7 +1,7 @@
 import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
 import { StoreInitializer } from "./components/StoreInitializer";
-import { InactivityGuard } from "./components/InactivityGuard";
+import { SessionGuard } from "./components/SessionGuard";
 import { createClient } from "@/app/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -42,7 +42,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         householdId={userData?.household_id ?? null}
         userFullName={userData?.full_name ?? null}
       />
-      <InactivityGuard />
+      <SessionGuard />
       {/* Sidebar — desktop only */}
       <Sidebar />
       {/* Main scrolling area */}
