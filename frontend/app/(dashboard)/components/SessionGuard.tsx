@@ -25,6 +25,7 @@ export function SessionGuard() {
   const reset = useLukaStore((s) => s.reset);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastWriteRef = useRef(0);
+  const signingOutRef = useRef(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -45,14 +46,13 @@ export function SessionGuard() {
 
     // --- PWA mode: persistent session, just refresh tokens on resume ---
     if (isPWA()) {
-      let signingOut = false;
       const onVisibilityChange = async () => {
-        if (document.visibilityState === "visible" && !signingOut) {
+        if (document.visibilityState === "visible" && !signingOutRef.current) {
           // getUser() hits Supabase auth server, triggering token auto-refresh.
           // getSession() only reads cached/local state and would NOT refresh expired JWTs.
           const { data: { user }, error } = await supabase.auth.getUser();
           if (error || !user) {
-            signingOut = true;
+            signingOutRef.current = true;
             await signOut();
           }
         }
@@ -65,6 +65,7 @@ export function SessionGuard() {
 
     // --- Browser mode: 30-minute inactivity timeout ---
     const resetTimer = () => {
+      // Throttle localStorage writes to once per second — mousemove fires 100+ times/sec
       const now = Date.now();
       if (now - lastWriteRef.current > 1000) {
         lastWriteRef.current = now;
@@ -75,7 +76,8 @@ export function SessionGuard() {
     };
 
     // On mount: check if already timed out
-    const lastActive = Number(localStorage.getItem(LAST_ACTIVE_KEY) ?? Date.now());
+    const stored = localStorage.getItem(LAST_ACTIVE_KEY);
+    const lastActive = stored ? Number(stored) : Date.now();
     if (Date.now() - lastActive > TIMEOUT_MS) {
       signOut();
       return;
@@ -93,7 +95,8 @@ export function SessionGuard() {
     // Check on tab re-focus
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        const last = Number(localStorage.getItem(LAST_ACTIVE_KEY) ?? Date.now());
+        const lastStored = localStorage.getItem(LAST_ACTIVE_KEY);
+        const last = lastStored ? Number(lastStored) : Date.now();
         if (Date.now() - last > TIMEOUT_MS) {
           signOut();
         } else {
