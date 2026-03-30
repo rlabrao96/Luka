@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-28 (session 10)
+**Date:** 2026-03-30 (session 11)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -25,7 +25,8 @@ This document walks through every decision and credential that requires your inp
 - **Bug fix** — Worker healthcheck removed from railway.toml (worker no longer fails to start) ✅
 - **Bug fix** — job_timeout increased to 300s for Fintoc history import ✅
 - **Feature** — Fintoc history import working end-to-end (confirmed in production: 200 transactions saved) ✅
-- **Security** — Inactivity auto-logout after 1h ✅
+- **Security** — SessionGuard: PWA persistent sessions + 30min browser inactivity timeout (was 1h InactivityGuard) ✅
+- **Bug fix** — Double-login bug: fresh-login cookie prevents stale localStorage from triggering false sign-out after OAuth ✅
 - **Bug fix** — User auto-provisioning on first OAuth login (no more 401 "User not found") ✅
 - **Bug fix** — Token refresh before API calls (`getUser()` before `getSession()`) ✅
 - **Bug fix** — React hydration error #418 (dynamic SSR:false wrapper on client-only components) ✅
@@ -390,6 +391,15 @@ Next: Microsoft Azure / Outlook support
   → Subscriptions page: KPI cards + vertical timeline + price change alerts
   → Nav: "Suscripciones" added to sidebar + "Suscrip." in mobile bottom nav
   → 10 new unit tests, 12 commits, frontend build clean
+
+Session 11 (2026-03-30): Auth Session Management — COMPLETE
+  → Fixed double-login bug: stale luka_last_active in localStorage caused immediate sign-out after fresh OAuth
+  → Cookie-based fresh-login flag (luka-fresh-login, 60s TTL) bridges server callback → client SessionGuard
+  → Renamed InactivityGuard → SessionGuard with PWA-aware behavior
+  → PWA (homescreen): persistent session, token refresh via getUser() on visibilitychange resume
+  → Browser (desktop + mobile): 30-minute inactivity timeout (was 60 min)
+  → Code review fixes: useRef for StrictMode, defensive localStorage null check, throttle comment
+  → Spec: docs/superpowers/specs/2026-03-30-auth-session-management-design.md
 
 Next: P0 Features (see docs/roadmap.md)
   → Category budget alerts via WhatsApp

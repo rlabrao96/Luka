@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-28 (session 10 — end)
-**Status:** **US bank support + email pipeline hardening.** Added comprehensive US bank domain filter (21 banks + fintechs) with English keywords. Parser now handles USD amounts ($17.08 → 1708 cents), English dates, and BofA "Where:" merchant patterns. Transfer email parsing for Banco de Chile, Edwards, and Santander (outgoing + incoming). Currency field flows end-to-end (ParsedEmail → Transaction → WhatsApp → frontend). Bank name inferred from email sender domain (60+ mappings). Email transactions now created as "pending" (not "settled"). PendingBlock redesigned to match regular transaction cards with bank name, USD formatting, email tag, and inline split-type dropdown. WhatsApp session bug fixed: txn_id embedded in button/list IDs so concurrent messages route independently. Migration 020 (source_bank_name), 11 commits.
+**Date:** 2026-03-30 (session 11 — end)
+**Status:** **Auth session management fix.** Fixed double-login bug (stale localStorage timestamp caused immediate sign-out after fresh OAuth login). Renamed InactivityGuard → SessionGuard with PWA-aware session management: PWA (homescreen) gets persistent sessions with token refresh on resume via getUser(); browser gets 30-minute inactivity timeout (was 60 min). Cookie-based fresh-login flag bridges server callback → client component. 3 commits.
 
 ---
 
@@ -133,7 +133,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │           ├── AllocationCard.tsx         ← Dual sliders (Hogar/Ahorro), Personal read-only, suggestion pills
 │   │           ├── WaterfallCards.tsx         ← Household + Personal budget cards with progress bars
 │   │           ├── StoreInitializer.tsx       ← Calls GET /auth/me on mount, populates Zustand
-│   │           └── InactivityGuard.tsx        ← Auto-logout after 1h inactivity
+│   │           └── SessionGuard.tsx            ← PWA: persistent session + token refresh; Browser: 30min inactivity timeout
 │   ├── components/ui/              ← shadcn/ui: badge, button, card, input, tabs, table, separator, avatar, bottom-sheet
 │   └── lib/utils.ts                ← cn() Tailwind class merger
 │
@@ -314,7 +314,7 @@ luka-danger   = #EF4444  (budget exceeded, sign-out button)
 
 9. **Store reset on sign-out** — Zustand `reset()` called in `finally` block so stale householdId/userId never persists across sessions.
 
-10. **Inactivity auto-logout** — `InactivityGuard` tracks activity events and signs out after 1h idle. Uses `localStorage` timestamp so closing and reopening the browser after 1h also triggers sign-out on return.
+10. **Session management (PWA-aware)** — `SessionGuard` detects PWA via `display-mode: standalone`. PWA mode: persistent session, token refresh via `getUser()` on app resume (visibilitychange). Browser mode: 30-minute inactivity timeout with activity tracking. Fresh-login cookie (`luka-fresh-login`, 60s TTL) prevents stale localStorage timestamp from triggering false sign-out after OAuth.
 
 11. **User auto-provisioning** — `get_current_user()` in `security.py` auto-creates the `users` row on first authenticated request using Supabase JWT metadata (name, email, OAuth provider). No separate signup endpoint needed.
 
