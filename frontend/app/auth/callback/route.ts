@@ -53,14 +53,30 @@ export async function GET(request: Request) {
       if (res.ok) {
         const user = await res.json();
         if (!user.household_id) {
-          return NextResponse.redirect(`${origin}/onboarding/setup-household`);
+          const onboardingResponse = NextResponse.redirect(`${origin}/onboarding/setup-household`);
+          onboardingResponse.cookies.set("luka-fresh-login", "1", {
+            maxAge: 60,
+            path: "/",
+            sameSite: "lax",
+            httpOnly: false,
+            secure: origin.startsWith("https"),
+          });
+          return onboardingResponse;
         }
       }
     } catch (err) {
       console.error("Failed to fetch user during callback", err);
     }
 
-    return NextResponse.redirect(`${origin}/`);
+    const response = NextResponse.redirect(`${origin}/`);
+    response.cookies.set("luka-fresh-login", "1", {
+      maxAge: 60,
+      path: "/",
+      sameSite: "lax",
+      httpOnly: false,
+      secure: origin.startsWith("https"),
+    });
+    return response;
   }
 
   // No code parameter — redirect to login
