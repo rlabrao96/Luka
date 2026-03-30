@@ -3,8 +3,41 @@ import { createClient } from "@/app/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+const PWA_SESSION_KEY = "luka_pwa_session";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [recovering, setRecovering] = useState(false);
+
+  // PWA session recovery: if iOS cleared cookies but localStorage has a saved session,
+  // restore it and redirect back to dashboard
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isPWA = window.matchMedia("(display-mode: standalone)").matches;
+    if (!isPWA) return;
+
+    const saved = localStorage.getItem(PWA_SESSION_KEY);
+    if (!saved) return;
+
+    setRecovering(true);
+    const { access_token, refresh_token } = JSON.parse(saved);
+    const supabase = createClient();
+
+    supabase.auth.setSession({ access_token, refresh_token }).then(({ data, error }) => {
+      if (error || !data.session) {
+        // Saved session is invalid — clear it and show login normally
+        localStorage.removeItem(PWA_SESSION_KEY);
+        setRecovering(false);
+        return;
+      }
+      // Session restored — redirect to dashboard
+      router.replace("/");
+    });
+  }, [router]);
+
   // Store redirect URL (e.g. from invite flow) as cookie so server-side callback can read it
   if (typeof window !== "undefined") {
     const params = new URLSearchParams(window.location.search);
@@ -12,6 +45,18 @@ export default function LoginPage() {
     if (redirect) {
       document.cookie = `luka-post-login-redirect=${encodeURIComponent(redirect)}; path=/; max-age=600; SameSite=Lax`;
     }
+  }
+
+  // While recovering PWA session, show minimal loading state
+  if (recovering) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <Image src="/logo.svg" alt="Luka" width={120} height={120} className="h-20 w-auto" priority />
+          <div className="w-6 h-6 border-2 border-luka-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    );
   }
 
   const signInWithGoogle = async () => {

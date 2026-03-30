@@ -7,6 +7,7 @@ import { useLukaStore } from "@/app/lib/store";
 const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const LAST_ACTIVE_KEY = "luka_last_active";
 const FRESH_LOGIN_COOKIE = "luka-fresh-login";
+const PWA_SESSION_KEY = "luka_pwa_session";
 
 function isFreshLogin(): boolean {
   return document.cookie.split("; ").some((c) => c.startsWith(`${FRESH_LOGIN_COOKIE}=`));
@@ -33,15 +34,30 @@ export function SessionGuard() {
     const signOut = async () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       localStorage.removeItem(LAST_ACTIVE_KEY);
+      localStorage.removeItem(PWA_SESSION_KEY);
       await supabase.auth.signOut();
       reset();
       router.push("/login");
+    };
+
+    // In PWA mode, persist session to localStorage as backup
+    // (iOS may not reliably persist cookies across PWA termination/relaunch)
+    const saveSessionForPWA = async () => {
+      if (!isPWA()) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.refresh_token) {
+        localStorage.setItem(PWA_SESSION_KEY, JSON.stringify({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        }));
+      }
     };
 
     // Handle fresh login: clear stale timestamp, write fresh one
     if (isFreshLogin()) {
       localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
       clearFreshLoginCookie();
+      saveSessionForPWA();
     }
 
     // --- PWA mode: persistent session, just refresh tokens on resume ---
@@ -54,6 +70,9 @@ export function SessionGuard() {
           if (error || !user) {
             signingOutRef.current = true;
             await signOut();
+          } else {
+            // Session is valid — update localStorage backup with fresh tokens
+            saveSessionForPWA();
           }
         }
       };
