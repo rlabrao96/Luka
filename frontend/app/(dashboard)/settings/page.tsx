@@ -46,6 +46,8 @@ export default function SettingsPage() {
           }}
         />
 
+        <TransactionsConfigSection preferredCurrency={me.preferred_currency ?? "CLP"} />
+
         <BankAccountsSection householdId={householdId} />
 
         <HogarSection />
@@ -53,8 +55,6 @@ export default function SettingsPage() {
         <NotificationsSection />
 
         <CategoriesSection />
-
-        <TransactionsConfigSection preferredCurrency={me.preferred_currency ?? "CLP"} />
 
         <PrivacySection />
 
