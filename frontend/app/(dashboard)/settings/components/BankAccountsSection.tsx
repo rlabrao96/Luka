@@ -133,13 +133,32 @@ function BankConnectionCard({ connection }: { connection: BankConnection }) {
         </Button>
         <div className="flex items-center gap-2">
           {!confirmDisconnect ? (
-            <button onClick={() => setConfirmDisconnect(true)} className="text-xs text-red-400 hover:text-red-600">Desconectar</button>
+            <Button
+              size="sm" variant="outline"
+              onClick={() => setConfirmDisconnect(true)}
+              className="text-xs text-red-400 border-red-200 hover:bg-red-50 hover:text-red-600 hover:border-red-300 h-7 px-3"
+            >
+              Desconectar
+            </Button>
           ) : (
-            <span className="flex items-center gap-1.5">
-              <span className="text-xs text-luka-muted">¿Seguro?</span>
-              <button onClick={() => disconnect()} disabled={disconnecting} className="text-xs text-red-500 font-medium hover:text-red-700 disabled:opacity-50">{disconnecting ? "..." : "Sí"}</button>
-              <button onClick={() => setConfirmDisconnect(false)} className="text-xs text-luka-muted hover:text-luka-dark">No</button>
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-luka-muted mr-1">¿Seguro?</span>
+              <Button
+                size="sm" variant="outline"
+                onClick={() => disconnect()}
+                disabled={disconnecting}
+                className="text-xs text-red-600 border-red-300 bg-red-50 hover:bg-red-100 h-7 px-3 disabled:opacity-50"
+              >
+                {disconnecting ? "..." : "Sí, desconectar"}
+              </Button>
+              <Button
+                size="sm" variant="outline"
+                onClick={() => setConfirmDisconnect(false)}
+                className="text-xs text-slate-500 border-slate-200 hover:bg-slate-50 h-7 px-3"
+              >
+                Cancelar
+              </Button>
+            </div>
           )}
         </div>
       </div>
