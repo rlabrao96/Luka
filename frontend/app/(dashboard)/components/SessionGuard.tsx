@@ -62,6 +62,9 @@ export function SessionGuard() {
 
     // --- PWA mode: persistent session, just refresh tokens on resume ---
     if (isPWA()) {
+      // Always save session on mount — not just on fresh login
+      saveSessionForPWA();
+
       const onVisibilityChange = async () => {
         if (document.visibilityState === "visible" && !signingOutRef.current) {
           // getUser() hits Supabase auth server, triggering token auto-refresh.

@@ -23,18 +23,24 @@ export default function LoginPage() {
     if (!saved) return;
 
     setRecovering(true);
-    const { access_token, refresh_token } = JSON.parse(saved);
+    const { refresh_token } = JSON.parse(saved);
     const supabase = createClient();
 
-    supabase.auth.setSession({ access_token, refresh_token }).then(({ data, error }) => {
+    // Use refreshSession (not setSession) — works even if access token is expired
+    supabase.auth.refreshSession({ refresh_token }).then(({ data, error }) => {
       if (error || !data.session) {
-        // Saved session is invalid — clear it and show login normally
+        // Refresh token is invalid/expired — clear it and show login normally
         localStorage.removeItem(PWA_SESSION_KEY);
         setRecovering(false);
         return;
       }
-      // Session restored — redirect to dashboard
-      router.replace("/");
+      // Update localStorage with fresh tokens
+      localStorage.setItem(PWA_SESSION_KEY, JSON.stringify({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      }));
+      // Session restored — full page reload to ensure middleware sees cookies
+      window.location.replace("/");
     });
   }, [router]);
 
