@@ -15,6 +15,7 @@ BANK_NAMES = {
     "banco_estado": "BancoEstado",
     "bci": "BCI",
     "santander": "Santander",
+    "falabella": "Banco Falabella",
 }
 
 # Map allBalances keys to (account_name, account_kind, currency)

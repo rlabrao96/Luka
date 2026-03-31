@@ -28,7 +28,7 @@ const BANKS: BankDef[] = [
   { code: "itau",       name: "Banco Itau",       color: "#FF6600", textColor: "#FFFFFF", initials: "itu",available: false, requires2FA: true },
   { code: "scotiabank", name: "Scotiabank",        color: "#EC111A", textColor: "#FFFFFF", initials: "Sb",  available: false, requires2FA: true },
   { code: "bice",       name: "Banco BICE",        color: "#1B3A6B", textColor: "#FFFFFF", initials: "BI",  available: false, requires2FA: true },
-  { code: "falabella",  name: "Banco Falabella",   color: "#8BC540", textColor: "#FFFFFF", initials: "BF",  available: false, requires2FA: true },
+  { code: "falabella",  name: "Banco Falabella",   color: "#8BC540", textColor: "#FFFFFF", initials: "BF",  available: true,  requires2FA: true },
   { code: "edwards",    name: "Banco Edwards",     color: "#00529B", textColor: "#FFFFFF", initials: "Ed",  available: false, requires2FA: true },
 ];
 
