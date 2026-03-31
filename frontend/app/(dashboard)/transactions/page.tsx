@@ -274,9 +274,19 @@ export default function TransactionsPage() {
   const [onlyUncategorized, setOnlyUncategorized] = useState(false);
   const [pageSize, setPageSize] = useState<10 | 30 | 100>(30);
   const [page, setPage] = useState(1);
+  const householdId = useLukaStore((s) => s.householdId);
+
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.getMe(),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [selectedCurrency, setSelectedCurrency] = useState<string>("CLP");
 
-  const householdId = useLukaStore((s) => s.householdId);
+  useEffect(() => {
+    if (me?.preferred_currency) setSelectedCurrency(me.preferred_currency);
+  }, [me?.preferred_currency]);
 
   const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions();
   const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions();
