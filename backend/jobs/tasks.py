@@ -477,7 +477,6 @@ async def run_connect_sync(ctx: dict, credential_id: str) -> None:
             "itau",
             "scotiabank",
             "bice",
-            "falabella",
             "edwards",
         }
 
