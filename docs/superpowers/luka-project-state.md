@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-30 (session 11 — end)
-**Status:** **Auth session management fix.** Fixed double-login bug (stale localStorage timestamp caused immediate sign-out after fresh OAuth login). Renamed InactivityGuard → SessionGuard with PWA-aware session management: PWA (homescreen) gets persistent sessions with token refresh on resume via getUser(); browser gets 30-minute inactivity timeout (was 60 min). Cookie-based fresh-login flag bridges server callback → client component. 3 commits.
+**Date:** 2026-03-31 (session 11 — end)
+**Status:** **Auth session management + PWA persistence.** Fixed double-login bug (stale localStorage timestamp caused immediate sign-out after fresh OAuth login). Renamed InactivityGuard → SessionGuard with PWA-aware session management: PWA (homescreen) gets persistent sessions with token refresh on resume via getUser(); browser gets 30-minute inactivity timeout (was 60 min). Cookie-based fresh-login flag bridges server callback → client component. PWA session recovery: iOS doesn't reliably persist cookies across standalone app termination, so SessionGuard saves refresh token to localStorage on every PWA mount; login page auto-recovers via refreshSession() + full page reload. 7 commits.
 
 ---
 
@@ -314,7 +314,7 @@ luka-danger   = #EF4444  (budget exceeded, sign-out button)
 
 9. **Store reset on sign-out** — Zustand `reset()` called in `finally` block so stale householdId/userId never persists across sessions.
 
-10. **Session management (PWA-aware)** — `SessionGuard` detects PWA via `display-mode: standalone`. PWA mode: persistent session, token refresh via `getUser()` on app resume (visibilitychange). Browser mode: 30-minute inactivity timeout with activity tracking. Fresh-login cookie (`luka-fresh-login`, 60s TTL) prevents stale localStorage timestamp from triggering false sign-out after OAuth.
+10. **Session management (PWA-aware)** — `SessionGuard` detects PWA via `display-mode: standalone`. PWA mode: persistent session, token refresh via `getUser()` on app resume (visibilitychange), refresh token saved to localStorage on every mount as backup for iOS cookie eviction. Browser mode: 30-minute inactivity timeout with activity tracking. Fresh-login cookie (`luka-fresh-login`, 60s TTL) prevents stale localStorage timestamp from triggering false sign-out after OAuth. Login page auto-recovers PWA sessions via `refreshSession()` from localStorage backup.
 
 11. **User auto-provisioning** — `get_current_user()` in `security.py` auto-creates the `users` row on first authenticated request using Supabase JWT metadata (name, email, OAuth provider). No separate signup endpoint needed.
 

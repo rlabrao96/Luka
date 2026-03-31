@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-30 (session 11)
+**Date:** 2026-03-31 (session 11)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -392,13 +392,17 @@ Next: Microsoft Azure / Outlook support
   → Nav: "Suscripciones" added to sidebar + "Suscrip." in mobile bottom nav
   → 10 new unit tests, 12 commits, frontend build clean
 
-Session 11 (2026-03-30): Auth Session Management — COMPLETE
+Session 11 (2026-03-30/31): Auth Session Management + PWA Persistence — COMPLETE
   → Fixed double-login bug: stale luka_last_active in localStorage caused immediate sign-out after fresh OAuth
   → Cookie-based fresh-login flag (luka-fresh-login, 60s TTL) bridges server callback → client SessionGuard
   → Renamed InactivityGuard → SessionGuard with PWA-aware behavior
   → PWA (homescreen): persistent session, token refresh via getUser() on visibilitychange resume
   → Browser (desktop + mobile): 30-minute inactivity timeout (was 60 min)
   → Code review fixes: useRef for StrictMode, defensive localStorage null check, throttle comment
+  → PWA session recovery: iOS doesn't reliably persist cookies across standalone app termination
+  → SessionGuard saves refresh token to localStorage on every PWA mount
+  → Login page detects PWA mode, auto-recovers session via refreshSession() + full page reload
+  → Research: iOS WebKit bug #272325, OAuth redirect trap in standalone mode, localStorage as reliable fallback
   → Spec: docs/superpowers/specs/2026-03-30-auth-session-management-design.md
 
 Next: P0 Features (see docs/roadmap.md)
