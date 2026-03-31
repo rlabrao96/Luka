@@ -147,7 +147,7 @@ function BankConnectionCard({ connection }: { connection: BankConnection }) {
                 size="sm" variant="outline"
                 onClick={() => disconnect()}
                 disabled={disconnecting}
-                className="text-xs text-red-600 border-red-300 bg-red-50 hover:bg-red-100 h-7 px-3 disabled:opacity-50"
+                className="text-xs text-red-600 border-red-300 !bg-red-50 hover:!bg-red-100 h-7 px-3 disabled:opacity-50"
               >
                 {disconnecting ? "..." : "Sí, desconectar"}
               </Button>
