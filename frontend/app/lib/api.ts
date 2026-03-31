@@ -35,6 +35,7 @@ export interface UserMe {
   email_provider: string;
   whatsapp_verified: boolean;
   phone_whatsapp: string | null;
+  preferred_currency: string;
   household_id: string | null;
 }
 
@@ -410,7 +411,7 @@ export const api = {
     apiFetch("/bank-connect/connections"),
 
   // --- Profile ---
-  async updateProfile(payload: { full_name?: string; phone_whatsapp?: string }) {
+  async updateProfile(payload: { full_name?: string; phone_whatsapp?: string; preferred_currency?: string }) {
     return apiFetch<UserMe>("/auth/me", {
       method: "PATCH",
       body: JSON.stringify(payload),

@@ -12,6 +12,7 @@ from core.encryption import decrypt_token, encrypt_token
 from core.security import get_current_user
 from modules.auth.models import User
 from modules.auth.schemas import (
+    ALLOWED_CURRENCIES,
     SendWhatsAppPinRequest,
     StoreProviderTokensRequest,
     UpdateProfileRequest,
@@ -43,6 +44,7 @@ async def get_me(
         email_provider=current_user.email_provider,
         whatsapp_verified=current_user.whatsapp_verified,
         phone_whatsapp=current_user.phone_whatsapp,
+        preferred_currency=current_user.preferred_currency,
         household_id=household_id,
     )
 
@@ -61,6 +63,15 @@ async def update_profile(
 
     if body.full_name is not None:
         user.full_name = body.full_name
+    if body.phone_whatsapp is not None:
+        normalized = re.sub(r"[\s\-()]", "", body.phone_whatsapp)
+        if not re.fullmatch(r"\+\d{7,15}", normalized):
+            raise HTTPException(status_code=422, detail="Número de WhatsApp inválido")
+        user.phone_whatsapp = normalized
+    if body.preferred_currency is not None:
+        if body.preferred_currency not in ALLOWED_CURRENCIES:
+            raise HTTPException(status_code=422, detail="Moneda no soportada")
+        user.preferred_currency = body.preferred_currency
     await db.commit()
     await db.refresh(user)
 
@@ -77,6 +88,7 @@ async def update_profile(
         email_provider=user.email_provider,
         whatsapp_verified=user.whatsapp_verified,
         phone_whatsapp=user.phone_whatsapp,
+        preferred_currency=user.preferred_currency,
         household_id=household_id,
     )
 

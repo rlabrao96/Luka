@@ -8,6 +8,7 @@ import { BankAccountsSection } from "./components/BankAccountsSection";
 import { HogarSection } from "./components/HogarSection";
 import { NotificationsSection } from "./components/NotificationsSection";
 import { CategoriesSection } from "./components/CategoriesSection";
+import { TransactionsConfigSection } from "./components/TransactionsConfigSection";
 import { PrivacySection } from "./components/PrivacySection";
 import { DeleteAccountSection } from "./components/DeleteAccountSection";
 
@@ -52,6 +53,8 @@ export default function SettingsPage() {
         <NotificationsSection />
 
         <CategoriesSection />
+
+        <TransactionsConfigSection preferredCurrency={me.preferred_currency ?? "CLP"} />
 
         <PrivacySection />
 

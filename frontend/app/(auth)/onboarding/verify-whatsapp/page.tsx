@@ -45,11 +45,13 @@ export default function VerifyWhatsAppPage() {
     }
   };
 
+  const normalizePhone = (raw: string) => raw.replace(/[\s\-()]/g, "");
+
   const sendPin = async () => {
     setError(null);
     setIsSending(true);
     try {
-      await api.sendWhatsAppPin(phone);
+      await api.sendWhatsAppPin(normalizePhone(phone));
       setPinSent(true);
       setCooldown(60);
     } catch (e: any) {
@@ -63,7 +65,7 @@ export default function VerifyWhatsAppPage() {
     setError(null);
     setIsVerifying(true);
     try {
-      await api.verifyWhatsAppPin(phone, pin);
+      await api.verifyWhatsAppPin(normalizePhone(phone), pin);
       await finalizeOnboarding();
     } catch (e: any) {
       setError(e.message || "PIN incorrecto o expirado");

@@ -14,6 +14,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     phone_whatsapp: Mapped[str | None] = mapped_column(String, nullable=True)
     whatsapp_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    preferred_currency: Mapped[str] = mapped_column(String, server_default="CLP")
     email_provider: Mapped[str] = mapped_column(String, default="gmail")
     mail_watch_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
     mail_watch_expiry: Mapped[datetime | None] = mapped_column(

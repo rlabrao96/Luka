@@ -28,10 +28,16 @@ export function DeleteAccountSection() {
 
   return (
     <>
-      <div className="pt-6 border-t border-red-100">
+      <div className="bg-white rounded-xl border border-red-100 shadow-[0_1px_3px_rgba(0,0,0,0.03)] p-5">
+        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          Zona de peligro
+        </h3>
+        <p className="text-sm text-slate-500 mb-4">
+          Al eliminar tu cuenta se borrarán permanentemente todos tus datos, transacciones y configuración.
+        </p>
         <button
           onClick={() => setOpen(true)}
-          className="text-sm text-red-500 font-medium hover:text-red-600 transition-colors"
+          className="px-5 py-2 text-sm text-red-600 font-medium border border-red-200 rounded-xl hover:bg-red-50 hover:border-red-300 transition-colors"
         >
           Eliminar cuenta
         </button>

@@ -9,6 +9,7 @@ class UserResponse(BaseModel):
     email_provider: str
     whatsapp_verified: bool
     phone_whatsapp: str | None = None
+    preferred_currency: str = "CLP"
     household_id: uuid.UUID | None = None
     model_config = {"from_attributes": True}
 
@@ -18,8 +19,13 @@ class WhatsAppVerifyRequest(BaseModel):
     pin: str
 
 
+ALLOWED_CURRENCIES = {"CLP", "USD"}
+
+
 class UpdateProfileRequest(BaseModel):
     full_name: str | None = None
+    phone_whatsapp: str | None = None
+    preferred_currency: str | None = None
 
 
 class StoreProviderTokensRequest(BaseModel):

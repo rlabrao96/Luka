@@ -20,7 +20,7 @@ export function ProfileSection({
     mutationFn: () =>
       api.updateProfile({
         full_name: name,
-        phone_whatsapp: phone,
+        phone_whatsapp: phone.replace(/[\s\-()]/g, "") || undefined,
       }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["me"] });
