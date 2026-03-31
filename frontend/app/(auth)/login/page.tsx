@@ -11,20 +11,15 @@ const PWA_SESSION_KEY = "luka_pwa_session";
 export default function LoginPage() {
   const router = useRouter();
   const [recovering, setRecovering] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
   // PWA session recovery: if iOS cleared cookies but localStorage has a saved session,
   // restore it and redirect back to dashboard
   useEffect(() => {
     if (typeof window === "undefined") return;
     const isPWA = window.matchMedia("(display-mode: standalone)").matches;
-
-    // Temporary debug: show PWA state on login page
-    const saved = localStorage.getItem(PWA_SESSION_KEY);
-    const hasRefresh = saved ? !!JSON.parse(saved).refresh_token : false;
-    setDebugInfo(`PWA: ${isPWA} | Saved session: ${!!saved} | Has refresh: ${hasRefresh}`);
-
     if (!isPWA) return;
+
+    const saved = localStorage.getItem(PWA_SESSION_KEY);
     if (!saved) return;
 
     setRecovering(true);
@@ -36,7 +31,6 @@ export default function LoginPage() {
       if (error || !data.session) {
         // Refresh token is invalid/expired — clear it and show login normally
         localStorage.removeItem(PWA_SESSION_KEY);
-        setDebugInfo((prev) => `${prev} | Recovery FAILED: ${error?.message ?? "no session"}`);
         setRecovering(false);
         return;
       }
@@ -45,7 +39,6 @@ export default function LoginPage() {
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
       }));
-      setDebugInfo((prev) => `${prev} | Recovery OK, redirecting...`);
       // Session restored — full page reload to ensure middleware sees cookies
       window.location.replace("/");
     });
@@ -175,13 +168,6 @@ export default function LoginPage() {
               Continuar con Microsoft
             </Button>
           </div>
-
-          {/* Temporary debug banner — remove after fixing PWA session */}
-          {debugInfo && (
-            <p className="text-[10px] text-slate-400 text-center mt-4 px-2 font-mono break-all">
-              {debugInfo}
-            </p>
-          )}
 
           <p className="text-xs text-slate-400 lg:text-luka-muted text-center mt-8 px-2">
             Al continuar, aceptas nuestros{" "}
