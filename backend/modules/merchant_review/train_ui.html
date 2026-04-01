@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luka — Merchant Training</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; }
+
+  .header { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .stats { display: flex; gap: 16px; font-size: 13px; color: #64748b; }
+  .stats span { background: #f1f5f9; padding: 4px 10px; border-radius: 8px; }
+  .stats .verified { color: #16a34a; background: #f0fdf4; }
+
+  .toolbar { padding: 12px 24px; display: flex; gap: 12px; align-items: center; background: #fff; border-bottom: 1px solid #f1f5f9; }
+  .toolbar input { flex: 1; padding: 8px 14px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 14px; outline: none; }
+  .toolbar input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  .toolbar select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 13px; background: #fff; cursor: pointer; }
+  .toolbar button { padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+  .btn-approve-all { background: #16a34a; color: #fff; }
+  .btn-approve-all:hover { background: #15803d; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; padding: 20px 24px; }
+
+  .card { background: #fff; border-radius: 16px; border: 1px solid #e2e8f0; padding: 20px; transition: all 0.15s; position: relative; }
+  .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+  .card.verified { opacity: 0.5; border-color: #bbf7d0; }
+  .card .badge { position: absolute; top: 12px; right: 12px; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; }
+  .badge.unverified { background: #fef3c7; color: #92400e; }
+  .badge.verified-badge { background: #dcfce7; color: #166534; }
+
+  .card h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .card .category { font-size: 12px; color: #2563eb; background: #eff6ff; padding: 2px 10px; border-radius: 20px; display: inline-block; margin-bottom: 10px; }
+  .card .category.none { color: #94a3b8; background: #f8fafc; }
+
+  .raw-names { background: #f8fafc; border-radius: 10px; padding: 10px; margin: 10px 0; }
+  .raw-names p { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; }
+  .raw-names .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .raw-names .tag { background: #fff; border: 1px solid #e2e8f0; padding: 2px 8px; border-radius: 6px; font-size: 11px; color: #64748b; }
+
+  .card-stats { display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; margin: 10px 0; }
+
+  .card-actions { display: flex; gap: 6px; margin-top: 12px; }
+  .card-actions button { flex: 1; padding: 8px 0; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #e2e8f0; background: #fff; color: #64748b; transition: all 0.15s; }
+  .card-actions .btn-approve { background: #16a34a; color: #fff; border-color: #16a34a; }
+  .card-actions .btn-approve:hover { background: #15803d; }
+  .card-actions .btn-edit { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .card-actions .btn-edit:hover { background: #1d4ed8; }
+  .card-actions .btn-delete { color: #ef4444; border-color: #fecaca; }
+  .card-actions .btn-delete:hover { background: #fef2f2; }
+  .card-actions .btn-merge { color: #8b5cf6; border-color: #ddd6fe; }
+  .card-actions .btn-merge:hover { background: #f5f3ff; }
+
+  .edit-form { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .edit-form input, .edit-form select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; }
+  .edit-form input:focus { border-color: #2563eb; outline: none; }
+  .edit-form .edit-actions { display: flex; gap: 6px; }
+  .edit-form .edit-actions button { flex: 1; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; }
+
+  .cat-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .cat-chip { padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid #e2e8f0; background: #fff; color: #64748b; transition: all 0.1s; }
+  .cat-chip:hover { background: #f1f5f9; }
+  .cat-chip.selected { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+  .empty { text-align: center; padding: 60px; color: #94a3b8; font-size: 16px; }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 100; animation: slideIn 0.3s; }
+  .toast.success { background: #16a34a; color: #fff; }
+  .toast.error { background: #ef4444; color: #fff; }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Merchant Training</h1>
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="search" placeholder="Search merchants..." oninput="debounceLoad()">
+  <select id="filter" onchange="loadMerchants()">
+    <option value="unverified">Unverified</option>
+    <option value="verified">Verified</option>
+    <option value="all">All</option>
+  </select>
+  <button class="btn-approve-all" onclick="approveAll()">Approve All Visible</button>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const CATEGORIES = [
+  "Alimentacion","Supermercado","Transporte","Combustible","Entretenimiento",
+  "Salud","Farmacia","Hogar","Ropa","Tecnologia","Educacion","Viajes",
+  "Cafeteria","Servicios","Transferencia","Otros"
+];
+
+let merchants = [];
+let debounceTimer;
+
+function debounceLoad() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(loadMerchants, 300);
+}
+
+async function loadMerchants() {
+  const filter = document.getElementById('filter').value;
+  const search = document.getElementById('search').value;
+  const params = new URLSearchParams({ filter, search });
+  const res = await fetch(`/train/merchants?${params}`);
+  merchants = await res.json();
+  render();
+  loadStats();
+}
+
+async function loadStats() {
+  const res = await fetch('/train/stats');
+  const s = await res.json();
+  document.getElementById('stats').innerHTML = `
+    <span>${s.total} total</span>
+    <span class="verified">${s.verified} verified</span>
+    <span>${s.unverified} unverified</span>
+    <span>${s.linked} linked / ${s.unlinked} unlinked</span>
+  `;
+}
+
+function render() {
+  const grid = document.getElementById('grid');
+  if (!merchants.length) {
+    grid.innerHTML = '<div class="empty">No merchants found</div>';
+    return;
+  }
+  grid.innerHTML = merchants.map(m => cardHTML(m)).join('');
+}
+
+function cardHTML(m) {
+  const badgeClass = m.is_verified ? 'verified-badge' : 'unverified';
+  const badgeText = m.is_verified ? 'VERIFIED' : 'UNVERIFIED';
+  const catClass = m.default_category ? '' : 'none';
+  const catText = m.default_category || 'No category';
+  const amount = new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(Math.abs(m.total_amount));
+
+  return `
+    <div class="card ${m.is_verified ? 'verified' : ''}" id="card-${m.id}">
+      <span class="badge ${badgeClass}">${badgeText}</span>
+      <h3>${esc(m.display_name)}</h3>
+      <span class="category ${catClass}">${esc(catText)}</span>
+      <div class="raw-names">
+        <p>Raw names (${m.raw_names.length})</p>
+        <div class="tags">${m.raw_names.map(n => `<span class="tag">${esc(n)}</span>`).join('')}</div>
+      </div>
+      <div class="card-stats">
+        <span>${m.transaction_count} txns</span>
+        <span>${amount}</span>
+      </div>
+      <div class="card-actions">
+        <button class="btn-approve" onclick="approve('${m.id}')">Approve</button>
+        <button class="btn-edit" onclick="showEdit('${m.id}')">Edit</button>
+        <button class="btn-merge" onclick="promptMerge('${m.id}')">Merge</button>
+        <button class="btn-delete" onclick="del('${m.id}')">Delete</button>
+      </div>
+      <div class="edit-form" id="edit-${m.id}" style="display:none;">
+        <input type="text" id="name-${m.id}" value="${esc(m.display_name)}" placeholder="Display name">
+        <div class="cat-chips" id="cats-${m.id}">
+          ${CATEGORIES.map(c => `<span class="cat-chip ${c === m.default_category ? 'selected' : ''}" onclick="pickCat('${m.id}','${c}',this)">${c}</span>`).join('')}
+        </div>
+        <input type="hidden" id="cat-${m.id}" value="${m.default_category || ''}">
+        <div class="edit-actions">
+          <button style="background:#e2e8f0;color:#64748b;" onclick="hideEdit('${m.id}')">Cancel</button>
+          <button style="background:#2563eb;color:#fff;" onclick="saveEdit('${m.id}')">Save & Approve</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function showEdit(id) { document.getElementById('edit-'+id).style.display = 'flex'; }
+function hideEdit(id) { document.getElementById('edit-'+id).style.display = 'none'; }
+
+function pickCat(id, cat, el) {
+  document.querySelectorAll(`#cats-${id} .cat-chip`).forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('cat-'+id).value = cat;
+}
+
+async function approve(id) {
+  const m = merchants.find(m => m.id === id);
+  await fetch(`/train/merchants/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ category: m.default_category }),
+  });
+  toast('Approved: ' + m.display_name);
+  removeCard(id);
+}
+
+async function saveEdit(id) {
+  const name = document.getElementById('name-'+id).value;
+  const cat = document.getElementById('cat-'+id).value;
+  await fetch(`/train/merchants/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ display_name: name, category: cat || null }),
+  });
+  toast('Saved: ' + name);
+  removeCard(id);
+}
+
+async function del(id) {
+  const m = merchants.find(m => m.id === id);
+  if (!confirm(`Delete "${m.display_name}"? This will unlink its raw names.`)) return;
+  await fetch(`/train/merchants/${id}`, { method: 'DELETE' });
+  toast('Deleted: ' + m.display_name);
+  removeCard(id);
+}
+
+async function promptMerge(id) {
+  const m = merchants.find(m => m.id === id);
+  const target = prompt(`Merge "${m.display_name}" into which merchant?\n\nType the exact display name:`);
+  if (!target) return;
+  const match = merchants.find(x => x.display_name.toLowerCase() === target.toLowerCase());
+  if (!match) { toast('Not found: ' + target, 'error'); return; }
+  if (!confirm(`Merge "${m.display_name}" into "${match.display_name}"?`)) return;
+  await fetch(`/train/merchants/${id}/merge`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ target_id: match.id }),
+  });
+  toast(`Merged into ${match.display_name}`);
+  loadMerchants();
+}
+
+async function approveAll() {
+  const unverified = merchants.filter(m => !m.is_verified);
+  if (!confirm(`Approve all ${unverified.length} visible merchants?`)) return;
+  for (const m of unverified) {
+    await fetch(`/train/merchants/${m.id}`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ category: m.default_category }),
+    });
+  }
+  toast(`Approved ${unverified.length} merchants`);
+  loadMerchants();
+}
+
+function removeCard(id) {
+  const el = document.getElementById('card-'+id);
+  if (el) { el.style.opacity = '0'; setTimeout(() => { merchants = merchants.filter(m=>m.id!==id); render(); loadStats(); }, 200); }
+}
+
+function toast(msg, type='success') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+loadMerchants();
+</script>
+</body>
+</html>
