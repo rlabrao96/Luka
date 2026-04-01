@@ -504,14 +504,15 @@ function DetectedAccountCard({
     }
   }
 
-  async function toggleType() {
-    const newType = account.account_type === "joint" ? "personal" : "joint";
+  async function changeType(newType: string) {
+    if (newType === account.account_type) return;
     setUpdating(true);
     try {
       await api.updateBankAccount(account.id, householdId, {
         account_type: newType,
       });
       await queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
+      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
     } finally {
       setUpdating(false);
     }
@@ -565,17 +566,20 @@ function DetectedAccountCard({
           )}
         </div>
 
-        <button
-          onClick={toggleType}
+        <select
+          value={account.account_type}
+          onChange={(e) => changeType(e.target.value)}
           disabled={updating}
-          className={`text-[10px] font-medium px-2 py-1 rounded-md border transition-colors ${
+          className={`text-[10px] font-medium px-2 py-1 rounded-md border cursor-pointer appearance-none pr-5 disabled:opacity-50 transition-colors ${
             account.account_type === "joint"
               ? "bg-emerald-50 border-emerald-200 text-emerald-700"
               : "bg-blue-50 border-blue-200 text-blue-700"
           }`}
+          style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 4px center" }}
         >
-          {account.account_type === "joint" ? "Compartida" : "Personal"}
-        </button>
+          <option value="personal">Personal</option>
+          <option value="joint">Compartida</option>
+        </select>
 
         <button
           onClick={toggleActive}
