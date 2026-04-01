@@ -2,7 +2,7 @@ import uuid
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -130,11 +130,25 @@ async def update_bank_account(
         )
         txn_ids = [row[0] for row in txn_ids_result.fetchall()]
         if txn_ids:
+            # Update existing splits
             await db.execute(
                 update(TransactionSplit)
                 .where(TransactionSplit.transaction_id.in_(txn_ids))
                 .values(split_type=new_split_type)
             )
+            # Create splits for transactions that don't have one yet
+            existing_result = await db.execute(
+                select(TransactionSplit.transaction_id).where(
+                    TransactionSplit.transaction_id.in_(txn_ids)
+                )
+            )
+            existing_ids = {row[0] for row in existing_result.fetchall()}
+            missing_ids = [tid for tid in txn_ids if tid not in existing_ids]
+            if missing_ids:
+                await db.execute(
+                    insert(TransactionSplit),
+                    [{"transaction_id": tid, "split_type": new_split_type} for tid in missing_ids],
+                )
     if body.is_active is not None:
         account.is_active = body.is_active
 
