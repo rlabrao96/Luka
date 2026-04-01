@@ -33,10 +33,11 @@ const LOC_KIND = "line_of_credit";
 interface SummaryBarProps {
   accounts: BankAccountRow[];
   selectedCurrency: string;
+  selectedBank: string;
   onCurrencyChange: (c: string) => void;
 }
 
-function SummaryBar({ accounts, selectedCurrency, onCurrencyChange }: SummaryBarProps) {
+function SummaryBar({ accounts, selectedCurrency, selectedBank, onCurrencyChange }: SummaryBarProps) {
   const currencies = useMemo(() => {
     const set = new Set<string>();
     accounts.forEach((a) => { if (a.currency) set.add(a.currency); });
@@ -47,6 +48,7 @@ function SummaryBar({ accounts, selectedCurrency, onCurrencyChange }: SummaryBar
 
   const filtered = accounts.filter(
     (a) => a.is_active && a.currency === selectedCurrency
+      && (selectedBank === "all" || a.bank_name === selectedBank)
   );
 
   const checkingBalance = filtered
@@ -449,6 +451,7 @@ export default function TransactionsPage() {
       <SummaryBar
         accounts={accounts}
         selectedCurrency={selectedCurrency}
+        selectedBank={selectedBank}
         onCurrencyChange={setSelectedCurrency}
       />
 
