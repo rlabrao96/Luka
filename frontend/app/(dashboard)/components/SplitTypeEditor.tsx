@@ -8,7 +8,7 @@ import { api, type Transaction } from "@/app/lib/api";
 
 const SPLIT_OPTIONS = [
   { value: "personal", label: "Personal", className: "bg-blue-50 text-blue-600" },
-  { value: "shared", label: "Hogar", className: "bg-emerald-50 text-emerald-600" },
+  { value: "shared", label: "Compartido", className: "bg-emerald-50 text-emerald-600" },
 ];
 
 interface SplitTypeEditorProps {

@@ -6,7 +6,7 @@ import type { Transaction } from "@/app/lib/api";
 const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
   personal: { label: "Personal", className: "bg-blue-50 text-blue-600" },
   partner: { label: "Personal", className: "bg-blue-50 text-blue-600" },
-  shared: { label: "Hogar", className: "bg-emerald-50 text-emerald-600" },
+  shared: { label: "Compartido", className: "bg-emerald-50 text-emerald-600" },
 };
 
 function toTitleCase(str: string) {
