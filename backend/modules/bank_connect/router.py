@@ -24,7 +24,7 @@ from modules.bank_connect.service import (
     _random_next_sync,
 )
 from modules.households.models import BankAccount, HouseholdMember
-from modules.transactions.models import Transaction
+from modules.transactions.models import Transaction, TransactionSplit
 
 router = APIRouter(prefix="/bank-connect", tags=["bank-connect"])
 
@@ -345,6 +345,8 @@ async def _process_movements(
             )
             txn = Transaction(**txn_data)
             db.add(txn)
+            await db.flush()
+            db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
             created += 1
 
     return created, enriched, skipped
