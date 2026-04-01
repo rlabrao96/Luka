@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-04-01 (session 12)
+**Date:** 2026-04-01 (session 13)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -425,6 +425,24 @@ Session 12 (2026-03-31/04-01): Settings UX + Banco Falabella + Transaction Split
   → Balance summary cards: now filter by selected bank (was currency-only)
   → 19 commits, migration 021 applied to production
 
+Session 13 (2026-04-01): Merchant Cleaning & Review Pipeline — COMPLETE
+  → Migration 022: canonical_merchants, notifications, merchant_review_jobs tables
+  → LLM grouping: Gemini batched (50/call), trailing comma fix, fallback per-batch
+  → Two-phase pipeline: Phase 1 group+name, Phase 2 categorize via existing lookup_merchant
+  → Notifications API: CRUD endpoints, unread badge polling (30s)
+  → Merchant review API: cards, approve/edit, skip, webhook trigger from bank connect
+  → ARQ job: process_merchant_review (auto-triggered on created > 0 from sync)
+  → Transaction display_name: canonical merchant join with raw_merchant_name fallback
+  → Frontend: NotificationBadge, notifications page, ProcessingBanner, MerchantCard, review page
+  → CLI: train_merchants.py (seed --from-db/--from-file, review, merge, stats, regroup)
+  → Local training web UI at /train (card grid, edit, merge, delete, approve all)
+  → Training UI: single-query aggregation, per-raw-name last date (DD-MMM-YYYY)
+  → SAVEPOINT fix for duplicate canonical merchants across LLM batches
+  → 11 new tests, 22 commits, migration 022 applied to DB
+  → Initial seed: 161 canonical merchants from 229 raw names, ~170 linked
+
+Next: Merchant training curation (use /train UI to verify/merge/fix categories)
+Next: Deploy migration 022 + new code to Railway production
 Next: P0 Features (see docs/roadmap.md)
   → Category budget alerts via WhatsApp
 ```

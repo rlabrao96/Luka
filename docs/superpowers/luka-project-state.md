@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-04-01 (session 12 — end)
-**Status:** **Settings UX overhaul + Banco Falabella + transaction splits fix.** WhatsApp phone normalization (strips spaces/dashes). Settings profile editor now saves phone. Currency preference setting (migration 021). Banco Falabella enabled in Luka Connect (no 2FA). Disconnect button redesigned with pill buttons. Account type changed from hidden toggle to inline dropdown. Transaction splits auto-created on Luka Connect scraping + backfilled on account type change. Split label "Hogar" → "Compartido". Donut chart fixed (negative values + expenses-only filter). Pending block collapsible. Balance cards filter by selected bank. Delete account section in proper card. 19 commits.
+**Date:** 2026-04-01 (session 13 — end)
+**Status:** **Merchant cleaning & review pipeline.** New canonical_merchants + notifications + merchant_review_jobs tables (migration 022). LLM grouping via Gemini (batched, 50/call). Two-phase pipeline: Phase 1 groups raw names → canonical merchants, Phase 2 categorizes. Notifications API (list, unread count, mark read). Merchant review API (cards, approve, skip). ARQ job triggers from bank connect webhook. Frontend: notification badge in sidebar/bottom nav, notifications page, processing banner, Tinder-style review cards. Transaction display_name via canonical merchant join. CLI: train_merchants.py (seed, review, merge, stats, regroup). Local training web UI at /train (card grid, edit, merge, delete, approve). 22 commits.
 
 ---
 
@@ -48,6 +48,11 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   │                             GET /transactions/mine, GET /transactions/shared
 │   │   ├── merchants/              ← Merchant, MerchantCategorySelection models
 │   │   │                             lookup_merchant() → DB cache → LLM fallback
+│   │   ├── merchant_review/        ← CanonicalMerchant, MerchantReviewJob models
+│   │   │                             LLM grouping (batched), review service, review API
+│   │   │                             Training web UI at /train (local dev tool)
+│   │   ├── notifications/          ← Notification model, CRUD service + router
+│   │   │                             GET/PATCH /notifications, GET /notifications/unread-count
 │   │   ├── email/                  ← EmailProvider abstraction (Gmail + Outlook)
 │   │   │                             POST /webhooks/gmail, POST /webhooks/outlook
 │   │   ├── whatsapp/               ← WhatsApp Cloud API sender + session state + webhook handler
@@ -89,10 +94,12 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   │   ├── api.ts              ← apiFetch<T> + all 8 API methods + TypeScript interfaces
 │   │   │   ├── store.ts            ← Zustand: householdId, userId, userFullName, reset()
 │   │   │   ├── hooks/
-│   │   │   │   ├── useTransactions.ts  ← useMyTransactions, useSharedTransactions, useMonthlySpending
-│   │   │   │   ├── useHousehold.ts     ← useHouseholdSummary, usePartnerStats, useCategoryBreakdown, useSettlement, useSplitRatio, useUpdateSplitRatio
-│   │   │   │   ├── useSubscriptions.ts ← useSubscriptions
-│   │   │   │   └── useBudget.ts        ← useBudgetStatus, useSetBudget, usePersonalBudget, useAllocation, useSaveAllocation
+│   │   │   │   │   ├── useTransactions.ts      ← useMyTransactions, useSharedTransactions, useMonthlySpending
+│   │   │   │   ├── useHousehold.ts         ← useHouseholdSummary, usePartnerStats, useCategoryBreakdown, useSettlement, useSplitRatio, useUpdateSplitRatio
+│   │   │   │   ├── useSubscriptions.ts     ← useSubscriptions
+│   │   │   │   ├── useNotifications.ts     ← useNotifications, useUnreadCount, useUpdateNotification
+│   │   │   │   ├── useMerchantReview.ts    ← useMerchantReview, useReviewStatus, useApproveMerchant, useSkipReview
+│   │   │   │   └── useBudget.ts            ← useBudgetStatus, useSetBudget, usePersonalBudget, useAllocation, useSaveAllocation
 │   │   │   └── supabase/
 │   │   │       ├── client.ts       ← Supabase browser client
 │   │   │       └── server.ts       ← Supabase SSR client
@@ -113,7 +120,10 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   └── (dashboard)/            ← Route group (no URL prefix)
 │   │       ├── layout.tsx          ← Sidebar (lg) + BottomNav (mobile) + <main>
 │   │       ├── page.tsx            ← /  — Home: KPIs + SpendingChart + CategoryDonut + RecentTransactions
-│   │       ├── transactions/page.tsx  ← /transactions — tabs (mine/shared) + search
+│   │       ├── transactions/
+│   │       │   ├── page.tsx              ← /transactions — tabs (mine/shared) + search + ProcessingBanner
+│   │       │   └── review/[jobId]/page.tsx ← Tinder-style merchant review cards
+│   │       ├── notifications/page.tsx ← /notifications — review/dismiss actions
 │   │       ├── household/             ← /household — hero card + category breakdown + settlement
 │   │       │   ├── page.tsx
 │   │       │   └── SplitRatioModal.tsx
@@ -148,7 +158,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 
 ---
 
-## Database Schema (12 tables)
+## Database Schema (15 tables)
 
 ```sql
 users              — id, email, full_name, phone_whatsapp, whatsapp_verified, preferred_currency,
@@ -174,7 +184,18 @@ household_budgets  — id, household_id, bank_account_id, month (DATE),
                      budgeted (Numeric), source
 
 merchants          — id, raw_name (UNIQUE), normalized_name,
-                     llm_suggested_categories (JSON), total_selections
+                     llm_suggested_categories (JSON), total_selections,
+                     canonical_merchant_id (FK canonical_merchants, nullable)
+
+canonical_merchants — id, display_name (UNIQUE), default_category, logo_url,
+                     is_verified, review_job_id (FK merchant_review_jobs)
+
+notifications      — id, user_id (FK users), type, title, payload (JSONB),
+                     status ('unread'|'read'|'dismissed'|'actioned'), read_at
+
+merchant_review_jobs — id, user_id (FK users), bank_credential_id (FK bank_credentials),
+                     status ('processing'|'ready'|'completed'|'skipped'|'failed'),
+                     total_merchants, reviewed_count, notification_id (FK notifications)
 
 merchant_category_selections — id, merchant_id, category, count, last_used_at
 
@@ -375,7 +396,7 @@ ENVIRONMENT=production
 ## Test Coverage
 
 ```
-backend/tests/          109 passing, 7 skipped (require live DB)
+backend/tests/          138 passing, 7 skipped (require live DB)
 
 test_auth.py            ← Auth middleware
 test_budget_allocation_service.py ← Allocation suggestions (default, historical, rounding)
@@ -395,6 +416,10 @@ test_migrations.py      ← Alembic migration chain (1 skipped: live DB)
 test_transactions_api.py ← GET /mine, GET /shared
 test_whatsapp_sender.py ← Message generation
 test_whatsapp_webhook.py ← Webhook HMAC + flow handling
+test_notifications_api.py ← Notification CRUD endpoints (4 tests)
+test_llm_grouping.py     ← LLM grouping + fallback (3 tests)
+test_canonical_merchants.py ← Canonical merchant creation (1 test)
+test_merchant_review_api.py ← Review API endpoints (3 tests)
 ```
 
 ---
@@ -438,6 +463,9 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Subscriptions auto-detection | ✅ DONE | Groups by merchant, 2+ consecutive months, 20% amount tolerance, predicts next charge date |
 | Subscriptions timeline UI | ✅ DONE | KPI cards + vertical timeline with predicted dates + price change alerts (yellow banners) |
 | Subscriptions nav item | ✅ DONE | "Suscripciones" in sidebar (after Presupuesto) + "Suscrip." in mobile bottom nav |
+| Merchant cleaning & review pipeline | ✅ DONE | LLM groups raw names → canonical merchants → user review (Tinder cards). Notifications drive user to review. CLI + web training UI at /train |
+| Canonical merchant display_name | ✅ DONE | Transactions show clean display_name via canonical merchant join, fallback to raw_merchant_name |
+| Notification system | ✅ DONE | Backend CRUD, unread badge in sidebar/bottom nav, notifications page with review/dismiss |
 | Email domain for Resend | Low | Currently sends from onboarding@resend.dev — custom domain needed for production emails |
 | Alembic auto-run on Railway | Low | Run manually: `cd backend && python3 -m alembic upgrade head` |
 
