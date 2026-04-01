@@ -284,12 +284,17 @@ export interface NotificationItem {
   read_at: string | null;
 }
 
+export interface RawNameInfo {
+  name: string;
+  last_date: string | null;
+}
+
 export interface ReviewCard {
   canonical_merchant_id: string;
   display_name: string;
   default_category: string | null;
   llm_suggested_categories: string[];
-  raw_names: string[];
+  raw_names: RawNameInfo[];
   transaction_count: number;
   total_amount: number;
   is_verified: boolean;

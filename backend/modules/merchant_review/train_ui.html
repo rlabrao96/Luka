@@ -150,7 +150,7 @@ function cardHTML(m) {
       <span class="category ${catClass}">${esc(catText)}</span>
       <div class="raw-names">
         <p>Raw names (${m.raw_names.length})</p>
-        <div class="tags">${m.raw_names.map(n => `<span class="tag">${esc(n)}</span>`).join('')}</div>
+        <div class="tags">${m.raw_names.map(n => `<span class="tag">${esc(n.name)}${n.last_date ? ` <em style="color:#94a3b8;font-style:normal;margin-left:4px">${n.last_date}</em>` : ''}</span>`).join('')}</div>
       </div>
       <div class="card-stats">
         <span>${m.transaction_count} txns</span>

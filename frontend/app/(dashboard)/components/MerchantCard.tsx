@@ -121,9 +121,13 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
           <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">
             Grouped from ({card.transaction_count} txns)
           </p>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            {card.raw_names.join(", ")}
-          </p>
+          <div className="flex flex-wrap gap-1">
+            {card.raw_names.map((rn) => (
+              <span key={rn.name} className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] text-slate-500">
+                {rn.name}{rn.last_date && <span className="text-slate-400 ml-1">{rn.last_date}</span>}
+              </span>
+            ))}
+          </div>
         </div>
 
         <div className="flex gap-2">
@@ -163,9 +167,9 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
           Raw names found ({card.transaction_count} txns)
         </p>
         <div className="flex flex-wrap gap-1">
-          {card.raw_names.map((name) => (
-            <span key={name} className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] text-slate-500">
-              {name}
+          {card.raw_names.map((rn) => (
+            <span key={rn.name} className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] text-slate-500">
+              {rn.name}{rn.last_date && <span className="text-slate-400 ml-1">{rn.last_date}</span>}
             </span>
           ))}
         </div>

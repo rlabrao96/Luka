@@ -24,12 +24,17 @@ router = APIRouter(prefix="/train", tags=["training"])
 # ── Schemas ────────────────────────────────────────────────
 
 
+class RawNameInfo(BaseModel):
+    name: str
+    last_date: str | None = None  # ISO date string
+
+
 class TrainCard(BaseModel):
     id: str
     display_name: str
     default_category: str | None = None
     is_verified: bool = False
-    raw_names: list[str] = []
+    raw_names: list[RawNameInfo] = []
     transaction_count: int = 0
     total_amount: float = 0.0
 
@@ -60,14 +65,13 @@ async def list_merchants(
     db: AsyncSession = Depends(get_db),
 ):
     """List canonical merchants for training. Single query with aggregation."""
-    # Single query: canonical + aggregated raw_names + transaction stats
+    # Main query: canonical + transaction stats
     query = (
         select(
             CanonicalMerchant.id,
             CanonicalMerchant.display_name,
             CanonicalMerchant.default_category,
             CanonicalMerchant.is_verified,
-            func.array_agg(func.distinct(Merchant.raw_name)).label("raw_names"),
             func.count(func.distinct(Transaction.id)).label("txn_count"),
             func.coalesce(func.sum(Transaction.amount), 0).label("total_amount"),
         )
@@ -88,13 +92,34 @@ async def list_merchants(
     result = await db.execute(query)
     rows = result.all()
 
+    # Batch-fetch raw names with last transaction date (single query for all)
+    canonical_ids = [row.id for row in rows]
+    raw_info: dict[str, list[RawNameInfo]] = {str(cid): [] for cid in canonical_ids}
+
+    if canonical_ids:
+        raw_q = await db.execute(
+            select(
+                Merchant.canonical_merchant_id,
+                Merchant.raw_name,
+                func.max(Transaction.transaction_date).label("last_date"),
+            )
+            .outerjoin(Transaction, Transaction.raw_merchant_name == Merchant.raw_name)
+            .where(Merchant.canonical_merchant_id.in_(canonical_ids))
+            .group_by(Merchant.canonical_merchant_id, Merchant.raw_name)
+            .order_by(Merchant.raw_name)
+        )
+        for r in raw_q.all():
+            cid = str(r.canonical_merchant_id)
+            last = r.last_date.strftime("%Y-%m-%d") if r.last_date else None
+            raw_info[cid].append(RawNameInfo(name=r.raw_name, last_date=last))
+
     return [
         TrainCard(
             id=str(row.id),
             display_name=row.display_name,
             default_category=row.default_category,
             is_verified=row.is_verified,
-            raw_names=[n for n in (row.raw_names or []) if n is not None],
+            raw_names=raw_info.get(str(row.id), []),
             transaction_count=row.txn_count or 0,
             total_amount=float(row.total_amount or 0),
         )

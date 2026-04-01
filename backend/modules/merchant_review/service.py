@@ -96,6 +96,8 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
 
     cards = []
     for row in rows:
+        unique_names = list(set(row.raw_names))
+
         # Get transaction stats for this canonical merchant
         stats = await db.execute(
             select(
@@ -103,14 +105,36 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 func.sum(Transaction.amount).label("total"),
             ).where(
                 Transaction.user_id == user_id,
-                Transaction.raw_merchant_name.in_(row.raw_names),
+                Transaction.raw_merchant_name.in_(unique_names),
             )
         )
         stat = stats.one()
 
+        # Get per-raw-name last date
+        date_q = await db.execute(
+            select(
+                Transaction.raw_merchant_name,
+                func.max(Transaction.transaction_date).label("last_date"),
+            )
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.raw_merchant_name.in_(unique_names),
+            )
+            .group_by(Transaction.raw_merchant_name)
+        )
+        date_map = {r.raw_merchant_name: r.last_date for r in date_q.all()}
+
+        raw_names_info = [
+            {
+                "name": n,
+                "last_date": date_map[n].strftime("%Y-%m-%d") if date_map.get(n) else None,
+            }
+            for n in unique_names
+        ]
+
         # Get LLM suggestions from the first linked merchant
         merchant_result = await db.execute(
-            select(Merchant).where(Merchant.raw_name == row.raw_names[0])
+            select(Merchant).where(Merchant.raw_name == unique_names[0])
         )
         merchant = merchant_result.scalar_one_or_none()
 
@@ -122,7 +146,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 "llm_suggested_categories": merchant.llm_suggested_categories or []
                 if merchant
                 else [],
-                "raw_names": list(set(row.raw_names)),
+                "raw_names": raw_names_info,
                 "transaction_count": stat.count,
                 "total_amount": float(stat.total or 0),
                 "is_verified": row.is_verified,
