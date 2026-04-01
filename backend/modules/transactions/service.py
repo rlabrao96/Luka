@@ -184,7 +184,25 @@ async def update_split_type(
     txn = result.scalar_one_or_none()
     if not txn:
         return False
-    txn.split_type = split_type
+
+    # split_type lives on TransactionSplit, not Transaction — upsert the row
+    split_result = await db.execute(
+        select(TransactionSplit).where(TransactionSplit.transaction_id == transaction_id)
+    )
+    split = split_result.scalar_one_or_none()
+    if split:
+        split.split_type = split_type
+        split.decided_by_user_id = user_id
+        split.decided_at = datetime.now(timezone.utc)
+    else:
+        db.add(
+            TransactionSplit(
+                transaction_id=transaction_id,
+                split_type=split_type,
+                decided_by_user_id=user_id,
+                decided_at=datetime.now(timezone.utc),
+            )
+        )
     await db.commit()
     return True
 

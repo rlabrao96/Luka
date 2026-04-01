@@ -1,0 +1,29 @@
+Bank of America — Zelle payment sent
+================================================================================
+
+Type: Zelle outgoing payment
+Sender: onlinebanking@ealerts.bankofamerica.com
+
+--- Stripped text (after HTML removal) ---
+
+Zelle® payment of $2,000.00 to BENJAMIN BRAITHWAITE has been sent
+
+Sent from account    ending in 7422
+To                   646-215-0024
+Your message         Security deposit
+
+View your balance
+
+Confirmation         jnbsadfl3
+
+If you didn't make this payment, contact us
+
+--- Key fields ---
+Amount format:     US decimal ($2,000.00 — dot is decimal separator, comma is thousands)
+Date format:       Not in body — use email received timestamp
+Recipient field:   Extracted from subject line pattern "to {NAME}"
+Account field:     "Sent from account" → "ending in XXXX"
+Merchant/Payee:    Recipient name (BENJAMIN BRAITHWAITE)
+Confirmation:      Alphanumeric code
+Currency:          USD
+Direction:         Outflow (payment sent)

@@ -233,3 +233,43 @@ def test_clp_currency_default():
     assert result is not None
     assert result.currency == "CLP"
     assert result.amount == 15990
+
+
+# --- Bank of America Zelle ---
+
+BOFA_ZELLE = (
+    "Zelle® payment of $2,000.00 to BENJAMIN BRAITHWAITE has been sent "
+    "Sent from account ending in 7422 "
+    "To 646-215-0024 "
+    "Your message Security deposit "
+    "View your balance "
+    "Confirmation jnbsadfl3 "
+    "If you didn't make this payment, contact us"
+)
+
+
+def test_parse_bofa_zelle():
+    result = parse_bank_email(BOFA_ZELLE)
+    assert result is not None
+    assert result.amount == 200000  # $2,000.00 stored as cents
+    assert result.currency == "USD"
+    assert result.transaction_type == "transfer"
+    assert "Benjamin Braithwaite" in result.raw_merchant
+
+
+BOFA_ZELLE_SMALL = (
+    "Zelle® payment of $50.00 to JANE DOE has been sent "
+    "Sent from account ending in 7422 "
+    "To 555-123-4567 "
+    "View your balance "
+    "Confirmation abc123"
+)
+
+
+def test_parse_bofa_zelle_small_amount():
+    result = parse_bank_email(BOFA_ZELLE_SMALL)
+    assert result is not None
+    assert result.amount == 5000  # $50.00 stored as cents
+    assert result.currency == "USD"
+    assert result.transaction_type == "transfer"
+    assert "Jane Doe" in result.raw_merchant

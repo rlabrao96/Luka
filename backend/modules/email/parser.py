@@ -20,6 +20,7 @@ def _strip_html(html: str) -> str:
 # CLP format: $15.990 (dot = thousands, no decimals) → stored as integer (15990)
 _US_AMOUNT_PATTERNS = [
     r"Amount:?\s*\$\s*([\d,]+\.\d{2})\b",  # Amount: $17.08 or Amount: $1,234.56
+    r"payment of \$\s*([\d,]+\.\d{2})\b",  # Zelle® payment of $2,000.00
 ]
 _CLP_AMOUNT_PATTERNS = [
     r"por\s+\$\s*([\d\.]+)",  # por $15.990
@@ -34,6 +35,8 @@ _CLP_AMOUNT_PATTERNS = [
 _NAME_UPPER_START = r"[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{2,60}"  # must start uppercase
 _NAME_ANY = r"[A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{2,60}"
 _TRANSFER_PATTERNS = [
+    # US — Zelle: "payment of $... to BENJAMIN BRAITHWAITE has been sent"
+    r"payment of \$[\d,]+\.\d{2} to\s+([A-Z][A-Z ]{2,60}?)\s+has been sent",
     # Incoming — "cliente {NAME} ha efectuado una transferencia" (Edwards)
     # Must be before outgoing prose patterns to avoid matching "a tu cuenta"
     rf"cliente\s+({_NAME_ANY}?)\s+ha efectuado una transferencia",
