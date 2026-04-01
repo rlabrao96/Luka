@@ -262,6 +262,8 @@ function toast(msg, type='success') {
   setTimeout(() => t.remove(), 2500);
 }
 
+// Force select to default on page load (browser caches previous value)
+document.getElementById('filter').value = 'unverified';
 loadMerchants();
 </script>
 </body>

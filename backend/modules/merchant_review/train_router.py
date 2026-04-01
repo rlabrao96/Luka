@@ -59,8 +59,22 @@ async def list_merchants(
     search: str = "",
     db: AsyncSession = Depends(get_db),
 ):
-    """List canonical merchants for training."""
-    query = select(CanonicalMerchant)
+    """List canonical merchants for training. Single query with aggregation."""
+    # Single query: canonical + aggregated raw_names + transaction stats
+    query = (
+        select(
+            CanonicalMerchant.id,
+            CanonicalMerchant.display_name,
+            CanonicalMerchant.default_category,
+            CanonicalMerchant.is_verified,
+            func.array_agg(func.distinct(Merchant.raw_name)).label("raw_names"),
+            func.count(func.distinct(Transaction.id)).label("txn_count"),
+            func.coalesce(func.sum(Transaction.amount), 0).label("total_amount"),
+        )
+        .outerjoin(Merchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
+        .outerjoin(Transaction, Transaction.raw_merchant_name == Merchant.raw_name)
+        .group_by(CanonicalMerchant.id)
+    )
 
     if filter == "unverified":
         query = query.where(CanonicalMerchant.is_verified == False)  # noqa: E712
@@ -72,35 +86,20 @@ async def list_merchants(
 
     query = query.order_by(CanonicalMerchant.display_name)
     result = await db.execute(query)
-    canonicals = list(result.scalars().all())
+    rows = result.all()
 
-    cards = []
-    for cm in canonicals:
-        mr = await db.execute(
-            select(Merchant.raw_name).where(Merchant.canonical_merchant_id == cm.id)
+    return [
+        TrainCard(
+            id=str(row.id),
+            display_name=row.display_name,
+            default_category=row.default_category,
+            is_verified=row.is_verified,
+            raw_names=[n for n in (row.raw_names or []) if n is not None],
+            transaction_count=row.txn_count or 0,
+            total_amount=float(row.total_amount or 0),
         )
-        raw_names = [r[0] for r in mr.all()]
-
-        stats = await db.execute(
-            select(func.count(), func.sum(Transaction.amount)).where(
-                Transaction.raw_merchant_name.in_(raw_names) if raw_names else False
-            )
-        )
-        count, total = stats.one()
-
-        cards.append(
-            TrainCard(
-                id=str(cm.id),
-                display_name=cm.display_name,
-                default_category=cm.default_category,
-                is_verified=cm.is_verified,
-                raw_names=raw_names,
-                transaction_count=count or 0,
-                total_amount=float(total or 0),
-            )
-        )
-
-    return cards
+        for row in rows
+    ]
 
 
 @router.patch("/merchants/{merchant_id}")
