@@ -1703,12 +1703,15 @@ Add `<NotificationBadge />` after the nav map loop (before the closing `</nav>` 
 
 In `frontend/app/(dashboard)/components/BottomNav.tsx`, add a notification entry to the mobile bottom navigation. Import `Bell` from lucide-react and `useUnreadCount` hook. Add a nav item with the badge dot.
 
-- [ ] **Step 4: Verify in browser**
+- [ ] **Step 4: Verify with browser-use**
 
-```bash
-cd frontend && npm run dev
-```
-Open `http://localhost:3000` — the sidebar should show "Notificaciones" below the menu with no badge (0 unread). The item should link to `/notifications`.
+Use `/browser-use` to verify the sidebar. Auth: navigate to `http://localhost:3000` and sign in with Google OAuth using `rafaellabra96@gmail.com` (pre-authorized, no password needed — just click the account).
+
+Verify:
+1. Sidebar shows "Notificaciones" menu item below "Configuracion"
+2. The item has a bell icon and no badge count (0 unread)
+3. Clicking "Notificaciones" navigates to `/notifications`
+4. Take a screenshot of the sidebar for the record
 
 - [ ] **Step 5: Commit**
 
@@ -1873,9 +1876,15 @@ export default function NotificationsPage() {
 }
 ```
 
-- [ ] **Step 2: Verify in browser**
+- [ ] **Step 2: Verify with browser-use**
 
-Navigate to `http://localhost:3000/notifications` — should show empty state "No tienes notificaciones".
+Use `/browser-use` to verify the notifications page. Navigate to `http://localhost:3000/notifications` (auth: `rafaellabra96@gmail.com` Google OAuth if not already signed in).
+
+Verify:
+1. Page renders with heading "Notificaciones"
+2. Shows empty state "No tienes notificaciones"
+3. No console errors
+4. Take a screenshot
 
 - [ ] **Step 3: Commit**
 
@@ -2314,9 +2323,15 @@ useEffect(() => { if (editRequested) setEditing(true); }, [editRequested]);
 
 And wire the Edit button: `onClick={() => setEditRequested(true)}`.
 
-- [ ] **Step 3: Verify in browser**
+- [ ] **Step 3: Verify with browser-use**
 
-Navigate to `http://localhost:3000/transactions/review/some-uuid` — should show "No merchants to review" (no data). The layout, progress bar, and action buttons should render correctly.
+Use `/browser-use` to verify the review page. Navigate to `http://localhost:3000/transactions/review/00000000-0000-0000-0000-000000000001` (auth: `rafaellabra96@gmail.com` Google OAuth if not already signed in).
+
+Verify:
+1. Page shows "No merchants to review" empty state (no data for fake UUID)
+2. "Back to transactions" link is visible and clickable
+3. No rendering errors or blank page
+4. Take a screenshot
 
 - [ ] **Step 4: Commit**
 
@@ -2342,9 +2357,15 @@ In `frontend/app/(dashboard)/components/RecentTransactions.tsx`, find where `raw
 
 Apply this wherever the merchant name is shown (transaction cards, pending blocks, etc.).
 
-- [ ] **Step 2: Verify in browser**
+- [ ] **Step 2: Verify with browser-use**
 
-Transactions should still show raw names (no canonical merchants linked yet). Once the pipeline runs, they'll switch to clean names.
+Use `/browser-use` to verify the transactions page. Navigate to `http://localhost:3000/transactions` (auth: `rafaellabra96@gmail.com` Google OAuth if not already signed in).
+
+Verify:
+1. Transactions page renders without errors
+2. Transactions still show raw merchant names (no canonical merchants linked yet)
+3. No visual regressions — layout, filters, tabs all work
+4. Take a screenshot
 
 - [ ] **Step 3: Commit**
 
@@ -2798,31 +2819,41 @@ cd frontend && npm run build
 ```
 Expected: Build succeeds with no TypeScript errors.
 
-- [ ] **Step 3: Manual E2E test checklist**
+- [ ] **Step 3: Browser-use E2E verification**
 
-Run both backend and frontend locally:
+Ensure both backend (`uvicorn main:app --reload`) and frontend (`npm run dev`) are running locally.
+
+Use `/browser-use` for a full walkthrough. Auth: `rafaellabra96@gmail.com` Google OAuth (pre-authorized).
+
+**Flow to verify:**
+
+1. Navigate to `http://localhost:3000` — Dashboard loads
+2. **Sidebar**: "Notificaciones" item visible below menu, no badge count
+3. Click "Notificaciones" → navigates to `/notifications`
+4. **Notifications page**: Shows "No tienes notificaciones" empty state
+5. Click "Transacciones" in sidebar → navigates to `/transactions`
+6. **Transactions page**: Renders correctly, no processing banner shown (no active jobs)
+7. Transactions show merchant names (raw or display_name, both acceptable)
+8. Navigate to `/transactions/review/00000000-0000-0000-0000-000000000001`
+9. **Review page**: Shows "No merchants to review" empty state with back link
+10. Take screenshots at each step for the record
+
+**If any step fails:** Fix the issue, re-run that specific verification.
+
+- [ ] **Step 4: CLI verification**
+
 ```bash
-# Terminal 1
-cd backend && uvicorn main:app --reload
-
-# Terminal 2
-cd frontend && npm run dev
+cd backend && python scripts/train_merchants.py stats
 ```
+Expected: Shows canonical merchant counts (may be zeros if no data seeded yet).
 
-Verify:
-1. Sidebar shows "Notificaciones" (no badge)
-2. `/notifications` page shows empty state
-3. `/transactions` page renders (no processing banner)
-4. CLI `python scripts/train_merchants.py stats` works against local DB
-5. No console errors in browser
-
-- [ ] **Step 4: Commit any fixes**
+- [ ] **Step 5: Commit any fixes**
 
 ```bash
 git add -A && git commit -m "fix: integration test fixes"
 ```
 
-- [ ] **Step 5: Final commit with all changes pushed**
+- [ ] **Step 6: Final push**
 
 ```bash
 git push
