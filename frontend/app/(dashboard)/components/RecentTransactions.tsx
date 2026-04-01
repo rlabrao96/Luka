@@ -269,7 +269,7 @@ export function RecentTransactions({
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline gap-2">
                           <p className="text-sm font-semibold text-luka-dark truncate">
-                            {toTitleCase(txn.raw_merchant_name)}
+                            {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
                           </p>
                           <span
                             className={cn(
@@ -331,7 +331,7 @@ export function RecentTransactions({
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline gap-2">
                       <p className="text-sm font-semibold text-luka-dark truncate">
-                        {toTitleCase(txn.raw_merchant_name)}
+                        {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
                       </p>
                       <span
                         className={cn(
