@@ -53,6 +53,7 @@ export interface Transaction {
   bank_account_id: string | null;
   account_kind: string | null;
   transaction_type: string | null;
+  display_name: string | null;
 }
 
 export interface PendingTransactions {
@@ -268,6 +269,39 @@ export interface BankConnection {
   next_sync_at: string | null;
 }
 
+export interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  status: string;
+  payload: {
+    bank_name?: string;
+    transaction_count?: number;
+    sync_job_id?: string;
+    merchant_count?: number;
+  } | null;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface ReviewCard {
+  canonical_merchant_id: string;
+  display_name: string;
+  default_category: string | null;
+  llm_suggested_categories: string[];
+  raw_names: string[];
+  transaction_count: number;
+  total_amount: number;
+  is_verified: boolean;
+}
+
+export interface ReviewStatus {
+  job_id: string;
+  status: "processing" | "ready" | "completed" | "skipped" | "failed";
+  total_merchants: number | null;
+  reviewed_count: number;
+}
+
 // ── API calls ──────────────────────────────────────────────
 
 export const api = {
@@ -463,6 +497,26 @@ export const api = {
 
   getSubscriptions: (monthsBack?: number) =>
     apiFetch<SubscriptionsResponse>(`/subscriptions/detected${monthsBack ? `?months_back=${monthsBack}` : ""}`),
+
+  // --- Notifications ---
+  getNotifications: () => apiFetch<NotificationItem[]>("/notifications"),
+  getUnreadCount: () => apiFetch<{ count: number }>("/notifications/unread-count"),
+  updateNotification: (id: string, status: string) =>
+    apiFetch<NotificationItem>(`/notifications/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  // --- Merchant Review ---
+  getReviewCards: (jobId: string) => apiFetch<ReviewCard[]>(`/merchant-review/${jobId}`),
+  getReviewStatus: (jobId: string) => apiFetch<ReviewStatus>(`/merchant-review/${jobId}/status`),
+  approveMerchant: (jobId: string, canonicalId: string, data: { display_name?: string; category?: string; action: string }) =>
+    apiFetch<{ ok: boolean }>(`/merchant-review/${jobId}/merchants/${canonicalId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  skipReview: (jobId: string) =>
+    apiFetch<{ ok: boolean }>(`/merchant-review/${jobId}/skip`, { method: "POST" }),
 
   // --- Delete Account ---
   async deleteAccount() {
