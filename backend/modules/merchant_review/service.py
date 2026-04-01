@@ -26,12 +26,13 @@ async def _get_or_create_canonical(
         return {"id": str(existing.id), "display_name": existing.display_name, "is_new": False}
 
     try:
+        nested = await db.begin_nested()  # SAVEPOINT — only rolls back this insert on conflict
         canonical = CanonicalMerchant(display_name=display_name, review_job_id=review_job_id)
         db.add(canonical)
         await db.flush()
         return {"id": str(canonical.id), "display_name": canonical.display_name, "is_new": True}
     except IntegrityError:
-        await db.rollback()
+        await nested.rollback()
         result = await db.execute(
             select(CanonicalMerchant).where(CanonicalMerchant.display_name == display_name)
         )
