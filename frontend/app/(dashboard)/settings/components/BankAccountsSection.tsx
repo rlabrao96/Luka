@@ -179,8 +179,6 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showNumber, setShowNumber] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editType, setEditType] = useState<"personal" | "joint">(account.account_type as "personal" | "joint");
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
 
@@ -200,14 +198,14 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
     finally { setToggling(false); }
   }
 
-  async function handleSaveType() {
-    if (!householdId) return;
+  async function handleTypeChange(newType: "personal" | "joint") {
+    if (!householdId || saving || newType === account.account_type) return;
     setSaving(true);
-    onUpdated(account.id, { account_type: editType });
+    onUpdated(account.id, { account_type: newType });
     try {
-      await api.updateBankAccount(account.id, householdId, { account_type: editType });
-      setEditing(false);
+      await api.updateBankAccount(account.id, householdId, { account_type: newType });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
     } catch { onUpdated(account.id, { account_type: account.account_type }); }
     finally { setSaving(false); }
   }
@@ -227,7 +225,24 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
           {account.currency && <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{account.currency}</span>}
           {kindLabel && <span className="text-xs text-luka-muted">{kindLabel}</span>}
         </div>
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
+        {isOwn ? (
+          <select
+            value={account.account_type}
+            onChange={(e) => handleTypeChange(e.target.value as "personal" | "joint")}
+            disabled={saving}
+            className={`text-xs font-medium px-2 py-1 rounded-full border appearance-none cursor-pointer pr-6 disabled:opacity-50 ${
+              account.account_type === "joint"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-blue-50 text-blue-700 border-blue-200"
+            }`}
+            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}
+          >
+            <option value="personal">Personal</option>
+            <option value="joint">Compartida</option>
+          </select>
+        ) : (
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
+        )}
       </div>
       <div className="px-4 pb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         {last4 && (
@@ -250,7 +265,6 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
             {account.is_active ? "Activa" : "Inactiva"}
           </button>
           <div className="flex items-center gap-3">
-            {!editing && <button onClick={() => setEditing(true)} className="text-xs text-luka-primary hover:text-blue-700 font-medium">Editar tipo</button>}
             {!confirmDelete ? (
               <button onClick={() => setConfirmDelete(true)} className="text-xs text-red-400 hover:text-red-600">Eliminar</button>
             ) : (
@@ -260,21 +274,6 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
                 <button onClick={() => setConfirmDelete(false)} className="text-xs text-luka-muted">No</button>
               </span>
             )}
-          </div>
-        </div>
-      )}
-      {editing && (
-        <div className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-3">
-          <div className="flex gap-2">
-            {(["personal", "joint"] as const).map((t) => (
-              <button key={t} onClick={() => setEditType(t)} className={`text-xs px-3 py-1 rounded-full border ${editType === t ? "bg-luka-primary text-white border-luka-primary" : "bg-white text-luka-muted border-gray-200"}`}>
-                {ACCOUNT_TYPE_LABEL[t]}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={handleSaveType} disabled={saving} className="text-xs px-4 py-1.5 rounded-md bg-luka-primary text-white font-medium disabled:opacity-50">{saving ? "..." : "Guardar"}</button>
-            <button onClick={() => setEditing(false)} className="text-xs text-luka-muted">Cancelar</button>
           </div>
         </div>
       )}
