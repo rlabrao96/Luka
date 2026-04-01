@@ -504,7 +504,7 @@ function DetectedAccountCard({
     }
   }
 
-  async function changeType(newType: string) {
+  async function changeType(newType: "personal" | "joint") {
     if (newType === account.account_type) return;
     setUpdating(true);
     try {
@@ -568,7 +568,7 @@ function DetectedAccountCard({
 
         <select
           value={account.account_type}
-          onChange={(e) => changeType(e.target.value)}
+          onChange={(e) => changeType(e.target.value as "personal" | "joint")}
           disabled={updating}
           className={`text-[10px] font-medium px-2 py-1 rounded-md border cursor-pointer appearance-none pr-5 disabled:opacity-50 transition-colors ${
             account.account_type === "joint"
