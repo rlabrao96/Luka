@@ -1,0 +1,180 @@
+"use client";
+import { useState, useEffect } from "react";
+import { ReviewCard } from "@/app/lib/api";
+import { cn } from "@/lib/utils";
+
+const EXPENSE_CATEGORIES = [
+  "Alimentacion", "Supermercado", "Transporte", "Combustible",
+  "Entretenimiento", "Salud", "Farmacia", "Hogar", "Ropa",
+  "Tecnologia", "Educacion", "Viajes", "Servicios", "Otros",
+];
+
+const CATEGORY_ICONS: Record<string, string> = {
+  Alimentacion: "🍽️", Supermercado: "🛒", Transporte: "🚗", Combustible: "⛽",
+  Entretenimiento: "🎬", Salud: "🏥", Farmacia: "💊", Hogar: "🏠", Ropa: "👕",
+  Tecnologia: "💻", Educacion: "📚", Viajes: "✈️", Servicios: "🔧", Otros: "📦",
+};
+
+function formatAmount(amount: number): string {
+  return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(Math.abs(amount));
+}
+
+interface Props {
+  card: ReviewCard;
+  onApprove: (displayName?: string, category?: string) => void;
+  onSkip: () => void;
+  editRequested?: boolean;
+}
+
+export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) {
+  const [editing, setEditing] = useState(false);
+  const [displayName, setDisplayName] = useState(card.display_name);
+  const [selectedCategory, setSelectedCategory] = useState(
+    card.default_category ?? card.llm_suggested_categories[0] ?? ""
+  );
+  const [showAllCategories, setShowAllCategories] = useState(false);
+
+  useEffect(() => {
+    if (editRequested) setEditing(true);
+  }, [editRequested]);
+
+  const icon = CATEGORY_ICONS[selectedCategory] ?? "📦";
+  const suggestions = card.llm_suggested_categories.length > 0
+    ? card.llm_suggested_categories
+    : [card.default_category].filter(Boolean) as string[];
+
+  const handleSaveApprove = () => {
+    const nameChanged = displayName !== card.display_name ? displayName : undefined;
+    const catChanged = selectedCategory !== (card.default_category ?? card.llm_suggested_categories[0]) ? selectedCategory : undefined;
+    onApprove(nameChanged, catChanged);
+  };
+
+  if (editing) {
+    return (
+      <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-[340px] border-2 border-luka-primary">
+        <span className="inline-block bg-blue-50 text-luka-primary text-[10px] font-semibold px-2.5 py-1 rounded-md mb-4">
+          EDITING
+        </span>
+
+        <div className="mb-4">
+          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            Display Name
+          </label>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            className="mt-1 w-full border-2 border-luka-primary rounded-xl px-4 py-2.5 text-lg font-bold text-luka-dark bg-slate-50 focus:outline-none"
+            autoFocus
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            Category
+          </label>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {suggestions.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => { setSelectedCategory(cat); setShowAllCategories(false); }}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                  selectedCategory === cat
+                    ? "bg-luka-primary text-white"
+                    : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+            {!showAllCategories && (
+              <button
+                onClick={() => setShowAllCategories(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
+              >
+                Otra...
+              </button>
+            )}
+          </div>
+          {showAllCategories && (
+            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-slate-100">
+              {EXPENSE_CATEGORIES.filter((c) => !suggestions.includes(c)).map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => { setSelectedCategory(cat); setShowAllCategories(false); }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                    selectedCategory === cat
+                      ? "bg-luka-primary text-white"
+                      : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
+                  )}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-slate-50 rounded-xl p-3 mb-4">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">
+            Grouped from ({card.transaction_count} txns)
+          </p>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            {card.raw_names.join(", ")}
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setEditing(false)}
+            className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-500 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSaveApprove}
+            className="flex-[1.5] py-2.5 bg-luka-primary text-white rounded-xl text-sm font-bold hover:bg-blue-700"
+          >
+            Save & Approve
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-[340px]">
+      <div className="text-center mb-5">
+        <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl">
+          {icon}
+        </div>
+        <h2 className="text-xl font-bold text-luka-dark">{card.display_name}</h2>
+        {selectedCategory && (
+          <span className="inline-block mt-1.5 bg-blue-50 text-luka-primary text-xs font-medium px-3 py-1 rounded-full">
+            {selectedCategory}
+          </span>
+        )}
+      </div>
+
+      <div className="bg-slate-50 rounded-xl p-3 mb-4">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">
+          Raw names found ({card.transaction_count} txns)
+        </p>
+        <div className="flex flex-wrap gap-1">
+          {card.raw_names.map((name) => (
+            <span key={name} className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] text-slate-500">
+              {name}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex justify-between text-xs text-slate-400 px-1">
+        <span>{card.transaction_count} transactions</span>
+        <span>Total: {formatAmount(card.total_amount)}</span>
+      </div>
+    </div>
+  );
+}
