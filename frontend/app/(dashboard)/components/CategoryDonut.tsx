@@ -20,7 +20,10 @@ const CLP = (v: number) => `$${Math.round(Number(v)).toLocaleString("es-CL")}`;
 export function CategoryDonut({ data }: CategoryDonutProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
+  // Recharts Pie requires positive values — use absolute amounts for rendering
+  const chartData = data.map((d) => ({ ...d, amount: Math.abs(Number(d.amount)) }));
   const total = data.reduce((s, d) => s + Number(d.amount), 0);
+  const absTotal = chartData.reduce((s, d) => s + d.amount, 0);
   const active = activeIndex !== null ? data[activeIndex] : null;
 
   return (
@@ -30,7 +33,7 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={data}
+              data={chartData}
               dataKey="amount"
               nameKey="category"
               cx="50%"
@@ -42,7 +45,7 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
               onMouseEnter={(_, index) => setActiveIndex(index)}
               onMouseLeave={() => setActiveIndex(null)}
             >
-              {data.map((_, i) => (
+              {chartData.map((_, i) => (
                 <Cell
                   key={i}
                   fill={COLORS[i % COLORS.length]}
@@ -88,7 +91,7 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
               {CLP(active ? Number(active.amount) : 0)}
             </p>
             <p className="text-[10px] text-slate-400">
-              {active ? ((Number(active.amount) / total) * 100).toFixed(1) : "0.0"}% del total
+              {active ? ((Math.abs(Number(active.amount)) / absTotal) * 100).toFixed(1) : "0.0"}% del total
             </p>
           </div>
         </div>
