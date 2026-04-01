@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useLukaStore } from "@/app/lib/store";
 import { createClient } from "@/app/lib/supabase/client";
+import { NotificationBadge } from "./NotificationBadge";
 
 const NAV = [
   { href: "/",             label: "Dashboard",      icon: LayoutDashboard },
@@ -87,6 +88,9 @@ export function Sidebar() {
             </Link>
           );
         })}
+        <div className="mt-2 pt-2 border-t border-slate-100">
+          <NotificationBadge />
+        </div>
       </nav>
 
       {/* User profile + sign-out */}
