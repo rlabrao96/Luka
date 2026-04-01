@@ -13,8 +13,13 @@ from modules.auth.models import User
 from modules.households.models import BankAccount
 from modules.email.factory import get_email_provider
 from modules.transactions.service import is_duplicate_transaction
+from modules.merchant_review.llm_grouping import group_raw_merchants
+from modules.merchant_review.service import create_canonicals_from_groups
+from modules.merchant_review.models import CanonicalMerchant, MerchantReviewJob
+from modules.notifications.models import Notification
 from sqlalchemy import select, and_, delete, update
 from datetime import datetime, timedelta, timezone
+import uuid
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -517,3 +522,134 @@ async def refresh_subscriptions_cache(ctx: dict) -> None:
                 await _compute_and_cache(db, uid)
             except Exception:
                 logger.warning("Failed to refresh subscriptions for user %s", uid, exc_info=True)
+
+
+async def process_merchant_review(ctx: dict, job_id: str) -> None:
+    """
+    ARQ job: Phase 1 (LLM group + name) → Phase 2 (categorize) → finalize.
+    """
+    from modules.merchants.models import Merchant
+
+    async with AsyncSessionLocal() as db:
+        redis = aioredis.from_url(settings.redis_url)
+        try:
+            # Load the review job
+            result = await db.execute(
+                select(MerchantReviewJob).where(MerchantReviewJob.id == uuid.UUID(job_id))
+            )
+            job = result.scalar_one_or_none()
+            if not job:
+                logger.error("Review job %s not found", job_id)
+                return
+
+            # Collect unique raw merchant names from user's uncategorized connect transactions
+            txn_result = await db.execute(
+                select(Transaction.raw_merchant_name)
+                .where(
+                    Transaction.user_id == job.user_id,
+                    Transaction.source_type == "connect",
+                    Transaction.category.is_(None),
+                )
+                .distinct()
+            )
+            raw_names = [r[0] for r in txn_result.all() if r[0]]
+
+            # Filter out names that already have a canonical merchant
+            names_to_process = []
+            for name in raw_names:
+                mr = await db.execute(select(Merchant).where(Merchant.raw_name == name))
+                merchant = mr.scalar_one_or_none()
+                if not merchant or not merchant.canonical_merchant_id:
+                    names_to_process.append(name)
+                    # Ensure merchant row exists
+                    if not merchant:
+                        db.add(Merchant(raw_name=name, normalized_name=name))
+                        await db.flush()
+
+            if not names_to_process:
+                job.status = "ready"
+                job.total_merchants = 0
+                await db.commit()
+                return
+
+            # Phase 1: LLM grouping
+            groups = await group_raw_merchants(names_to_process)
+
+            # Create canonical merchants and link (pass job.id to scope review cards)
+            canonicals = await create_canonicals_from_groups(db, groups, review_job_id=job.id)
+            await db.commit()
+
+            # Phase 2: Categorize each new canonical using existing lookup_merchant
+            new_count = 0
+            for i, group in enumerate(groups):
+                canonical_info = canonicals[i]
+                if not canonical_info.get("is_new"):
+                    continue
+
+                first_raw = group["raw_names"][0]
+                categories = await lookup_merchant(first_raw, db, redis)
+
+                if categories:
+                    canonical_result = await db.execute(
+                        select(CanonicalMerchant).where(
+                            CanonicalMerchant.id == uuid.UUID(canonical_info["id"])
+                        )
+                    )
+                    canonical = canonical_result.scalar_one_or_none()
+                    if canonical:
+                        canonical.default_category = categories[0]
+
+                    # Apply category to all linked transactions
+                    for raw_name in group["raw_names"]:
+                        await db.execute(
+                            Transaction.__table__.update()
+                            .where(
+                                Transaction.user_id == job.user_id,
+                                Transaction.raw_merchant_name == raw_name,
+                                Transaction.category.is_(None),
+                            )
+                            .values(category=categories[0])
+                        )
+
+                new_count += 1
+
+            # Finalize
+            job.status = "ready"
+            job.total_merchants = new_count
+            job.updated_at = datetime.now(timezone.utc)
+
+            # Update notification title
+            if job.notification_id:
+                notif_result = await db.execute(
+                    select(Notification).where(Notification.id == job.notification_id)
+                )
+                notif = notif_result.scalar_one_or_none()
+                if notif:
+                    notif.title = f"{new_count} merchants ready for review"
+                    notif.updated_at = datetime.now(timezone.utc)
+
+            await db.commit()
+            logger.info("Review job %s complete: %d canonical merchants created", job_id, new_count)
+
+        except Exception:
+            logger.exception("Review job %s failed", job_id)
+            # Use a fresh session — the original may be in a broken state
+            async with AsyncSessionLocal() as error_db:
+                result = await error_db.execute(
+                    select(MerchantReviewJob).where(MerchantReviewJob.id == uuid.UUID(job_id))
+                )
+                job = result.scalar_one_or_none()
+                if job:
+                    job.status = "failed"
+                    job.updated_at = datetime.now(timezone.utc)
+                    if job.notification_id:
+                        notif_result = await error_db.execute(
+                            select(Notification).where(Notification.id == job.notification_id)
+                        )
+                        notif = notif_result.scalar_one_or_none()
+                        if notif:
+                            notif.title = "Could not process merchants — transactions available with original names"
+                            notif.updated_at = datetime.now(timezone.utc)
+                    await error_db.commit()
+        finally:
+            await redis.aclose()
