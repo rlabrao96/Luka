@@ -6,6 +6,7 @@ import { PendingBlock } from "../components/PendingBlock";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
+import { ProcessingBanner } from "../components/ProcessingBanner";
 import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
@@ -373,6 +374,7 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
+      <ProcessingBanner />
       <div>
         <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Transacciones</h2>
         <p className="text-sm text-luka-muted mt-0.5">Historial de movimientos</p>
