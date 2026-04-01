@@ -11,6 +11,8 @@ import modules.transactions.models  # noqa: F401
 import modules.merchants.models  # noqa: F401
 import modules.settings.models  # noqa: F401
 import modules.bank_connect.models  # noqa: F401
+import modules.notifications.models  # noqa: F401
+import modules.merchant_review.models  # noqa: F401
 
 from modules.auth.router import router as auth_router
 from modules.bank_accounts.router import router as bank_accounts_router
