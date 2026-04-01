@@ -48,11 +48,11 @@ export default function DashboardPage() {
       .filter((t) => {
         // Use date string directly to avoid timezone shift (UTC midnight → previous day in Chile)
         const key = t.transaction_date.split("T")[0].slice(0, 7);
-        return key === currentMonth && t.transaction_type !== "income";
+        return key === currentMonth && Number(t.amount) < 0;
       })
       .forEach((t) => {
         const cat = t.category ?? "Otros";
-        map[cat] = (map[cat] ?? 0) + Number(t.amount);
+        map[cat] = (map[cat] ?? 0) + Math.abs(Number(t.amount));
       });
     const sorted = Object.entries(map)
       .map(([category, amount]) => ({ category, amount }))
