@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select
@@ -222,6 +223,41 @@ async def handle_connect_callback(
         cred.current_job_id = None
         cred.next_sync_at = _random_next_sync()
         await db.commit()
+
+        # Trigger merchant review pipeline if new transactions were created
+        if created > 0:
+            from modules.notifications.service import create_notification
+            from modules.merchant_review.models import MerchantReviewJob
+
+            notif = await create_notification(
+                db,
+                user_id=cred.user_id,
+                type="merchant_review",
+                title="Processing your transactions...",
+                payload={"bank_name": cred.bank_code, "transaction_count": created},
+            )
+            review_job = MerchantReviewJob(
+                user_id=cred.user_id,
+                bank_credential_id=cred.id,
+                notification_id=notif.id,
+            )
+            db.add(review_job)
+            await db.flush()
+            await db.refresh(review_job)
+
+            # Write sync_job_id back to notification payload so frontend can navigate to review
+            notif.payload = {**(notif.payload or {}), "sync_job_id": str(review_job.id)}
+            await db.commit()
+
+            # Enqueue ARQ job
+            from arq import ArqRedis
+
+            arq_redis = aioredis.from_url(settings.redis_url)
+            try:
+                pool = ArqRedis(arq_redis)
+                await pool.enqueue_job("process_merchant_review", str(review_job.id))
+            finally:
+                await arq_redis.aclose()
 
         # Bust subscriptions cache so next visit recomputes with new data
         from modules.subscriptions.service import invalidate_subscriptions_cache

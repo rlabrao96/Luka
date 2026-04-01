@@ -25,6 +25,7 @@ from modules.settings.router import router as settings_router
 from modules.bank_connect.router import router as bank_connect_router
 from modules.subscriptions.router import router as subscriptions_router
 from modules.notifications.router import router as notifications_router
+from modules.merchant_review.router import router as merchant_review_router
 
 # Paths that benefit from short private caching (browser-only, per-user data)
 _CACHEABLE_PREFIXES = ("/auth/me", "/transactions/", "/budgets/", "/households/", "/subscriptions/")
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(bank_connect_router)
     app.include_router(subscriptions_router)
     app.include_router(notifications_router)
+    app.include_router(merchant_review_router)
 
     return app
 
