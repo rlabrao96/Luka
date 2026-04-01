@@ -324,7 +324,8 @@ export function PendingBlock() {
         />
       </button>
 
-      {!collapsed && <PendingSection
+      {!collapsed && <>
+      <PendingSection
         title="Esperando confirmación bancaria"
         transactions={awaiting_reconciliation}
       />
@@ -360,7 +361,8 @@ export function PendingBlock() {
             </button>
           )
         }
-      />}
+      />
+      </>}
     </div>
   );
 }
