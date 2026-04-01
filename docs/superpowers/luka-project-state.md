@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-03-31 (session 11 — end)
-**Status:** **Auth session management + PWA persistence.** Fixed double-login bug (stale localStorage timestamp caused immediate sign-out after fresh OAuth login). Renamed InactivityGuard → SessionGuard with PWA-aware session management: PWA (homescreen) gets persistent sessions with token refresh on resume via getUser(); browser gets 30-minute inactivity timeout (was 60 min). Cookie-based fresh-login flag bridges server callback → client component. PWA session recovery: iOS doesn't reliably persist cookies across standalone app termination, so SessionGuard saves refresh token to localStorage on every PWA mount; login page auto-recovers via refreshSession() + full page reload. 7 commits.
+**Date:** 2026-04-01 (session 12 — end)
+**Status:** **Settings UX overhaul + Banco Falabella + transaction splits fix.** WhatsApp phone normalization (strips spaces/dashes). Settings profile editor now saves phone. Currency preference setting (migration 021). Banco Falabella enabled in Luka Connect (no 2FA). Disconnect button redesigned with pill buttons. Account type changed from hidden toggle to inline dropdown. Transaction splits auto-created on Luka Connect scraping + backfilled on account type change. Split label "Hogar" → "Compartido". Donut chart fixed (negative values + expenses-only filter). Pending block collapsible. Balance cards filter by selected bank. Delete account section in proper card. 19 commits.
 
 ---
 
@@ -121,7 +121,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │       ├── budgets/page.tsx       ← /budgets — pace chart, allocation editor, waterfall cards
 │   │       ├── settings/
 │   │       │   ├── page.tsx              ← /settings — profile, bank accounts, hogar, notifications, categories, privacy, delete
-│   │       │   └── components/           ← ProfileSection, BankAccountsSection, HogarSection, NotificationsSection, CategoriesSection, PrivacySection, DeleteAccountSection
+│   │       │   └── components/           ← ProfileSection, TransactionsConfigSection, BankAccountsSection, HogarSection, NotificationsSection, CategoriesSection, PrivacySection, DeleteAccountSection
 │   │       └── components/
 │   │           ├── Sidebar.tsx         ← Desktop nav (hidden on mobile)
 │   │           ├── BottomNav.tsx       ← Mobile bottom tabs (hidden on lg+)
@@ -151,8 +151,8 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 ## Database Schema (12 tables)
 
 ```sql
-users              — id, email, full_name, phone_whatsapp, whatsapp_verified, email_provider,
-                     mail_watch_subscription_id (Outlook), mail_watch_expiry,
+users              — id, email, full_name, phone_whatsapp, whatsapp_verified, preferred_currency,
+                     email_provider, mail_watch_subscription_id (Outlook), mail_watch_expiry,
                      google_access_token_enc, google_refresh_token_enc
 
 households         — id, name, type ('individual'|'couple'), split_ratio (JSONB, default [50,50])
@@ -215,7 +215,7 @@ failed_jobs        — id, job_name, payload (JSON), error_message, attempt_coun
 GET  /health                                → {"status":"ok","app":"luka"}
 
 GET  /auth/me                               → current user (includes phone_whatsapp)
-PATCH /auth/me                              → update profile (full_name, phone_whatsapp)
+PATCH /auth/me                              → update profile (full_name, phone_whatsapp, preferred_currency)
 DELETE /auth/me                             → delete account (requires X-Confirm-Delete: ELIMINAR)
 POST /auth/store-provider-tokens           → store encrypted Google OAuth tokens
 POST /auth/setup-email-watch              → activate Gmail Pub/Sub watch for current user
@@ -421,10 +421,13 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 | Luka Connect deployment | ✅ DONE | Deployed on Railway, scraping 301 movements in ~4 min, 291 transactions imported |
 | Migration 017 on production | ✅ DONE | Fintoc columns dropped, bank_credentials + source_type added |
 | Luka Connect backend env vars | ✅ DONE | All 4 env vars set on Railway |
-| Auto-create bank accounts from scrape | ❌ TODO | Scraper returns accountNumber/accountName/currency per movement — need to auto-create bank_account rows |
-| Store balances from scrape | ❌ TODO | Scraper returns allBalances{} and creditCards[] — need to store in DB and show in frontend |
-| Link transactions to bank accounts | ❌ TODO | Transactions currently have bank_account_id=NULL — need to match to auto-created accounts |
-| Show bank/account on transaction rows | ❌ TODO | Frontend transaction list doesn't show which bank/account each transaction belongs to |
+| Auto-create bank accounts from scrape | ✅ DONE | ensure_accounts() creates/updates accounts from movements, creditCards, allBalances |
+| Store balances from scrape | ✅ DONE | balance_current, balance_limit stored per account, updated on each sync |
+| Link transactions to bank accounts | ✅ DONE | Transactions linked via bank_account_id during scrape ingestion |
+| Show bank/account on transaction rows | ✅ DONE | Transaction cards show bank name |
+| Transaction splits for scraped txns | ✅ DONE | Luka Connect scraping now creates personal splits; account type change backfills missing splits |
+| Currency preference | ✅ DONE | Migration 021, PATCH /auth/me, TransactionsConfigSection in settings, tx page reads preference |
+| Banco Falabella | ✅ DONE | Enabled in frontend + backend BANK_NAMES, no 2FA |
 | Multi-bank parser | ⚠️ PARTIAL | Banco de Chile (compra+comprobante+transfer), Edwards (incoming transfer), Santander (outgoing transfer), BofA (credit card alert). Falabella, BCI, Estado still need email samples |
 | Transaction dedup (cross-sender) | ✅ DONE | 5-min window dedup by amount+user prevents BChile compra+comprobante double entry |
 | PendingBlock UI | ✅ DONE | Matches regular card style (gradient icon, bank name, email tag). USD formatting (US$17.08). Inline category + split-type dropdowns. Hidden icon on mobile. |
@@ -464,7 +467,7 @@ test_whatsapp_webhook.py ← Webhook HMAC + flow handling
 - `/health` returns `{"status":"ok","chromium":true}`
 
 **Database (Supabase):** ✅ LIVE
-- All 20 migrations applied (`020 head`)
+- All 21 migrations applied (`021 head`)
 - Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
 - Migration 010 adds bank account settings overhaul columns
 - Migration 011 adds `transaction_type`, `transfer_to_account_id`, `household_budget_allocations`

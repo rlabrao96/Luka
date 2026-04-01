@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-03-31 (session 11)
+**Date:** 2026-04-01 (session 12)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -277,9 +277,12 @@ Checklist before sharing Luka with anyone:
 - [x] Migration 017 run on production Supabase ✅ (2026-03-26)
 - [x] Backend env vars set ✅ (2026-03-26)
 - [x] Bank connect tested end-to-end: 291 transactions imported from Banco de Chile ✅ (2026-03-26)
-- [ ] Auto-create bank accounts from scraped data (accountNumber/accountName/currency)
-- [ ] Store balances and credit card cupos from scrape data
-- [ ] Show bank/account info on transaction rows
+- [x] Auto-create bank accounts from scraped data ✅ (2026-03-28)
+- [x] Store balances and credit card cupos from scrape data ✅ (2026-03-28)
+- [x] Show bank/account info on transaction rows ✅ (2026-03-28)
+- [x] Currency preference setting (migration 021, settings UI, tx page default) ✅ (2026-04-01)
+- [x] Banco Falabella enabled in Luka Connect ✅ (2026-04-01)
+- [x] Transaction splits auto-created on scraping + backfilled on account type change ✅ (2026-04-01)
 - [x] WhatsApp sends test message successfully (verified 2026-03-20)
 - [x] Legal pages live and accessible (verified 2026-03-20)
 - [x] Gmail webhook receives email and sends WhatsApp notification ✅ (tested 2026-03-24)
@@ -404,6 +407,23 @@ Session 11 (2026-03-30/31): Auth Session Management + PWA Persistence — COMPLE
   → Login page detects PWA mode, auto-recovers session via refreshSession() + full page reload
   → Research: iOS WebKit bug #272325, OAuth redirect trap in standalone mode, localStorage as reliable fallback
   → Spec: docs/superpowers/specs/2026-03-30-auth-session-management-design.md
+
+Session 12 (2026-03-31/04-01): Settings UX + Banco Falabella + Transaction Splits — COMPLETE
+  → WhatsApp phone normalization: strips spaces/dashes in onboarding + settings before API call
+  → Settings profile editor: added phone_whatsapp to UpdateProfileRequest (was silently ignored)
+  → Delete account section: wrapped in proper card with "Zona de peligro" header
+  → Currency preference: migration 021 (preferred_currency on users), TransactionsConfigSection in settings
+  → Transactions page initializes currency from user preference
+  → Banco Falabella: enabled in frontend (onboarding + settings), backend BANK_NAMES, no 2FA
+  → Disconnect button: redesigned as pill buttons with soft red background + clearer confirmation
+  → Account type: replaced hidden "Editar tipo" toggle with inline dropdown select (both card types)
+  → Account type change: backfills existing splits + creates missing splits for scraped txns
+  → Luka Connect scraping: new transactions now get personal split on creation
+  → Split label: "Hogar" → "Compartido" on tx page (TransactionCard, SplitTypeEditor, PendingBlock)
+  → Donut chart: fixed silent Recharts failure (negative values), now filters expenses only
+  → Pending block: collapsible with chevron arrow toggle
+  → Balance summary cards: now filter by selected bank (was currency-only)
+  → 19 commits, migration 021 applied to production
 
 Next: P0 Features (see docs/roadmap.md)
   → Category budget alerts via WhatsApp
