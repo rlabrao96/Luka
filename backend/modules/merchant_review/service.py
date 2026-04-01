@@ -127,7 +127,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
         raw_names_info = [
             {
                 "name": n,
-                "last_date": date_map[n].strftime("%Y-%m-%d") if date_map.get(n) else None,
+                "last_date": date_map[n].strftime("%d-%b-%Y") if date_map.get(n) else None,
             }
             for n in unique_names
         ]

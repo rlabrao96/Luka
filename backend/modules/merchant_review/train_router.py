@@ -110,7 +110,7 @@ async def list_merchants(
         )
         for r in raw_q.all():
             cid = str(r.canonical_merchant_id)
-            last = r.last_date.strftime("%Y-%m-%d") if r.last_date else None
+            last = r.last_date.strftime("%d-%b-%Y") if r.last_date else None
             raw_info[cid].append(RawNameInfo(name=r.raw_name, last_date=last))
 
     return [
