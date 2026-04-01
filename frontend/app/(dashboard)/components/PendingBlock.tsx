@@ -287,6 +287,7 @@ export function PendingBlock() {
   const { data, isLoading } = usePendingTransactions();
   const queryClient = useQueryClient();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   if (isLoading || !data) return null;
 
@@ -309,14 +310,21 @@ export function PendingBlock() {
 
   return (
     <div className="bg-orange-50 border border-orange-300 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-1">
+      <button
+        onClick={() => setCollapsed((v) => !v)}
+        className="flex items-center gap-2 mb-1 w-full"
+      >
         <span className="text-[15px] font-bold text-orange-700">Pendientes</span>
         <span className="bg-orange-400 text-white text-[11px] font-semibold rounded-full px-2 py-0.5">
           {total}
         </span>
-      </div>
+        <ChevronDown
+          size={16}
+          className={`ml-auto text-orange-400 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+        />
+      </button>
 
-      <PendingSection
+      {!collapsed && <PendingSection
         title="Esperando confirmación bancaria"
         transactions={awaiting_reconciliation}
       />
@@ -352,7 +360,7 @@ export function PendingBlock() {
             </button>
           )
         }
-      />
+      />}
     </div>
   );
 }
