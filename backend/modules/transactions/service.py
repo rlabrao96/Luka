@@ -4,15 +4,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, delete as sql_delete
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount
+from modules.merchants.models import Merchant
+from modules.merchant_review.models import CanonicalMerchant
 from modules.merchants.service import record_category_selection
 from core.cache import _get_redis
 
 
 async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date) -> list[dict]:
     result = await db.execute(
-        select(Transaction, TransactionSplit, BankAccount.bank_name, BankAccount.account_kind)
+        select(
+            Transaction,
+            TransactionSplit,
+            BankAccount.bank_name,
+            BankAccount.account_kind,
+            CanonicalMerchant.display_name.label("display_name"),
+        )
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+        .outerjoin(Merchant, Transaction.raw_merchant_name == Merchant.raw_name)
+        .outerjoin(CanonicalMerchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
         .where(
             Transaction.user_id == user_id,
             Transaction.transaction_date >= since,
@@ -27,8 +37,9 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
             "split_type": split.split_type if split else None,
             "bank_name": bank_name or txn.source_bank_name,
             "account_kind": account_kind,
+            "display_name": display_name,
         }
-        for txn, split, bank_name, account_kind in rows
+        for txn, split, bank_name, account_kind, display_name in rows
     ]
 
 
@@ -107,9 +118,16 @@ async def get_shared_transactions(
     db: AsyncSession, household_id: uuid.UUID, since: date
 ) -> list[dict]:
     result = await db.execute(
-        select(Transaction, TransactionSplit, BankAccount.bank_name)
+        select(
+            Transaction,
+            TransactionSplit,
+            BankAccount.bank_name,
+            CanonicalMerchant.display_name.label("display_name"),
+        )
         .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+        .outerjoin(Merchant, Transaction.raw_merchant_name == Merchant.raw_name)
+        .outerjoin(CanonicalMerchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
         .where(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
@@ -123,8 +141,9 @@ async def get_shared_transactions(
             **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
             "split_type": split.split_type,
             "bank_name": bank_name or txn.source_bank_name,
+            "display_name": display_name,
         }
-        for txn, split, bank_name in rows
+        for txn, split, bank_name, display_name in rows
     ]
 
 
@@ -267,4 +286,5 @@ def _txn_to_dict(txn: Transaction, split: TransactionSplit | None) -> dict:
         "split_type": split.split_type if split else None,
         "bank_name": txn.source_bank_name,
         "account_kind": None,
+        "display_name": None,
     }
