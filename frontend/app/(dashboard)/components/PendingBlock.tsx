@@ -155,7 +155,7 @@ function PendingSplitCell({ txn }: { txn: Transaction }) {
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex items-center justify-between gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border transition-colors w-[80px]",
+          "flex items-center justify-between gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border transition-colors w-[90px]",
           current
             ? current.className
             : "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100"

@@ -50,7 +50,7 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
           onClick={() => setOpen(true)}
           disabled={saving}
           className={cn(
-            "text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 cursor-pointer hover:opacity-80 w-[60px] text-center",
+            "text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 cursor-pointer hover:opacity-80 w-[80px] text-center",
             current.className,
             saving && "opacity-50"
           )}
@@ -85,7 +85,7 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
         onClick={() => setOpen((v) => !v)}
         disabled={saving}
         className={cn(
-          "flex items-center justify-between gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 w-[70px]",
+          "flex items-center justify-between gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 w-[90px]",
           current.className,
           saving && "opacity-50"
         )}
