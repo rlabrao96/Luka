@@ -3,7 +3,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -17,6 +17,7 @@ from modules.plaid.service import (
     remove_item,
 )
 from modules.households.models import BankAccount, HouseholdMember
+from modules.transactions.models import Transaction, TransactionSplit
 
 router = APIRouter(prefix="/plaid", tags=["plaid"])
 
@@ -119,10 +120,27 @@ async def disconnect_endpoint(
     except Exception:
         pass  # Best effort — item may already be removed
 
-    # Soft-delete bank accounts (preserve transaction history)
-    await session.execute(
-        update(BankAccount).where(BankAccount.plaid_item_id == item.id).values(is_active=False)
+    # Get all bank account IDs for this Plaid item
+    ba_result = await session.execute(
+        select(BankAccount.id).where(BankAccount.plaid_item_id == item.id)
     )
+    account_ids = [row[0] for row in ba_result.all()]
+
+    if account_ids:
+        # Delete transaction splits for those transactions
+        await session.execute(
+            delete(TransactionSplit).where(
+                TransactionSplit.transaction_id.in_(
+                    select(Transaction.id).where(Transaction.bank_account_id.in_(account_ids))
+                )
+            )
+        )
+        # Delete transactions
+        await session.execute(
+            delete(Transaction).where(Transaction.bank_account_id.in_(account_ids))
+        )
+        # Delete bank accounts
+        await session.execute(delete(BankAccount).where(BankAccount.id.in_(account_ids)))
 
     # Delete PlaidItem
     await session.delete(item)
