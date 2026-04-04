@@ -56,9 +56,11 @@ async def whatsapp_webhook(request: Request):
                                 )
                                 from modules.whatsapp.handler import handle_button_click
 
+                                context_msg_id = message.get("context", {}).get("id", "")
                                 await handle_button_click(
                                     phone=phone,
                                     button_id=btn_id,
+                                    context_msg_id=context_msg_id,
                                     db=db,
                                     redis=redis_client,
                                 )
@@ -71,10 +73,12 @@ async def whatsapp_webhook(request: Request):
                                 )
                                 from modules.whatsapp.handler import handle_list_selection
 
+                                context_msg_id = message.get("context", {}).get("id", "")
                                 await handle_list_selection(
                                     phone=phone,
                                     list_item_id=list_id,
                                     list_item_title=list_title,
+                                    context_msg_id=context_msg_id,
                                     db=db,
                                     redis=redis_client,
                                 )
