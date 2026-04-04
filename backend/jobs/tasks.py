@@ -544,6 +544,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 return
 
             # Extract values immediately to avoid lazy-load issues in async context
+            job_id_uuid = job.id
             job_user_id = job.user_id
             job_notification_id = job.notification_id
 
@@ -581,7 +582,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
             groups = await group_raw_merchants(names_to_process)
 
             # Create canonical merchants and link (pass job.id to scope review cards)
-            canonicals = await create_canonicals_from_groups(db, groups, review_job_id=job.id)
+            canonicals = await create_canonicals_from_groups(db, groups, review_job_id=job_id_uuid)
             await db.commit()
 
             # Phase 2: Categorize each new canonical using existing lookup_merchant
