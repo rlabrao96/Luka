@@ -38,8 +38,12 @@ async def handle_button_click(
         session.step = "awaiting_category"
         session.split_type = split_type
         await save_session(phone, session, redis)
+        txn_result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+        txn = txn_result.scalar_one_or_none()
+        amount_str = f"${txn.amount:,}" if txn else session.raw_merchant
         categories = await lookup_merchant(session.raw_merchant, db=db, redis=redis)
-        category_wamid = await send_category_list(to=phone, categories=categories)
+        context_msg = f"¿A qué categoría pertenece del gasto de {amount_str} en {session.raw_merchant}?"
+        category_wamid = await send_category_list(to=phone, categories=categories, context_msg=context_msg)
         await save_msgid(category_wamid, transaction_id, redis)
 
 
@@ -64,7 +68,8 @@ async def handle_list_selection(
     await _save_split(session.transaction_id, session.split_type or "shared", category, db)
     await record_category_selection(session.raw_merchant, category, db=db, redis=redis)
     await clear_session(phone, transaction_id, redis)
-    await send_text(to=phone, body=f"✅ Guardado: {session.raw_merchant} → {category}")
+    split_label = {"personal": "Personal", "shared": "Compartido"}.get(session.split_type or "shared", session.split_type)
+    await send_text(to=phone, body=f"✅ Guardado: {session.raw_merchant} → {category} ({split_label})")
 
 
 async def _save_split(
