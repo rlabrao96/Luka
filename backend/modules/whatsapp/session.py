@@ -38,3 +38,17 @@ async def get_session(phone: str, txn_id: str, redis: Redis) -> WhatsAppSession 
 
 async def clear_session(phone: str, txn_id: str, redis: Redis) -> None:
     await redis.delete(_session_key(phone, txn_id))
+
+
+async def save_msgid(wamid: str, transaction_id: str, redis: Redis) -> None:
+    """Map a WhatsApp message ID to a transaction ID so replies can find the right session."""
+    await redis.setex(f"wa_msgid:{wamid}", _SESSION_TTL, transaction_id)
+
+
+async def get_transaction_id_by_msgid(wamid: str, redis: Redis) -> str | None:
+    """Look up transaction ID from a WhatsApp message ID. Returns None if expired/unknown."""
+    value = await redis.get(f"wa_msgid:{wamid}")
+    if value is None:
+        return None
+    # redis.get() returns bytes when decode_responses=True is not set on the client
+    return value.decode() if isinstance(value, bytes) else value
