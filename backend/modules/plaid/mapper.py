@@ -8,8 +8,8 @@ ACCOUNT_KIND_MAP = {
 }
 
 
-def map_account_kind(plaid_type: str, plaid_subtype: str | None) -> str:
-    return ACCOUNT_KIND_MAP.get((plaid_type, plaid_subtype), "other")
+def map_account_kind(plaid_type, plaid_subtype) -> str:
+    return ACCOUNT_KIND_MAP.get((str(plaid_type), str(plaid_subtype)), "other")
 
 
 def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, household_id: str) -> dict:
