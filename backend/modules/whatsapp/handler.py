@@ -2,63 +2,68 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from redis.asyncio import Redis
-from modules.whatsapp.session import get_session, save_session, clear_session
+from modules.whatsapp.session import (
+    get_session,
+    save_session,
+    clear_session,
+    save_msgid,
+    get_transaction_id_by_msgid,
+)
 from modules.whatsapp.sender import send_category_list, send_text
 from modules.merchants.service import record_category_selection, lookup_merchant
 from modules.transactions.models import Transaction, TransactionSplit
 
 
-def _parse_id(interactive_id: str) -> tuple[str, str]:
-    """Parse 'action:txn-uuid' → ('action', 'txn-uuid').
-
-    Button IDs look like 'split_personal:abc-123'.
-    Category list IDs look like 'cat_0:abc-123'.
-    Legacy IDs without ':' return ('action', '').
-    """
-    parts = interactive_id.split(":", 1)
-    return (parts[0], parts[1]) if len(parts) == 2 else (interactive_id, "")
-
-
-async def handle_button_click(phone: str, button_id: str, db: AsyncSession, redis: Redis) -> None:
+async def handle_button_click(
+    phone: str, button_id: str, context_msg_id: str, db: AsyncSession, redis: Redis
+) -> None:
     """Route a WhatsApp button reply to the correct split action."""
-    action, txn_id = _parse_id(button_id)
-    print(f"[WA_HANDLER] button action={action} txn_id={txn_id} phone={phone}", flush=True)
+    transaction_id = await get_transaction_id_by_msgid(context_msg_id, redis)
+    if not transaction_id:
+        return  # message too old or unknown
 
-    session = await get_session(phone, txn_id, redis) if txn_id else None
+    session = await get_session(phone, transaction_id, redis)
     if not session:
-        print(f"[WA_HANDLER] session NOT FOUND for phone={phone} txn_id={txn_id}", flush=True)
+        return  # session expired
+
+    if button_id == "transaction_error":
+        await send_text(to=phone, body="🔧 Esta funcionalidad estará disponible pronto.")
         return
 
-    if action in ("split_personal", "split_partner", "split_shared"):
+    if button_id in ("split_personal", "split_shared"):
         split_type = {
             "split_personal": "personal",
-            "split_partner": "partner",
             "split_shared": "shared",
-        }[action]
-        # Save split type, then advance to category step
+        }[button_id]
         session.step = "awaiting_category"
         session.split_type = split_type
         await save_session(phone, session, redis)
         categories = await lookup_merchant(session.raw_merchant, db=db, redis=redis)
-        await send_category_list(
-            to=phone, categories=categories, transaction_id=session.transaction_id
-        )
+        category_wamid = await send_category_list(to=phone, categories=categories)
+        await save_msgid(category_wamid, transaction_id, redis)
 
 
 async def handle_list_selection(
-    phone: str, list_item_id: str, list_item_title: str, db: AsyncSession, redis: Redis
+    phone: str,
+    list_item_id: str,
+    list_item_title: str,
+    context_msg_id: str,
+    db: AsyncSession,
+    redis: Redis,
 ) -> None:
     """Route a WhatsApp list selection to category save."""
-    _, txn_id = _parse_id(list_item_id)
+    transaction_id = await get_transaction_id_by_msgid(context_msg_id, redis)
+    if not transaction_id:
+        return
 
-    session = await get_session(phone, txn_id, redis) if txn_id else None
+    session = await get_session(phone, transaction_id, redis)
     if not session:
         return
 
     category = list_item_title
     await _save_split(session.transaction_id, session.split_type or "shared", category, db)
     await record_category_selection(session.raw_merchant, category, db=db, redis=redis)
-    await clear_session(phone, txn_id, redis)
+    await clear_session(phone, transaction_id, redis)
     await send_text(to=phone, body=f"✅ Guardado: {session.raw_merchant} → {category}")
 
 
@@ -77,5 +82,5 @@ async def _save_split(
     )
     db.add(split)
     if category:
-        txn.category = category  # denormalize onto transaction
+        txn.category = category
     await db.commit()
