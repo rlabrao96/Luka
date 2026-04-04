@@ -11,6 +11,7 @@ async def test_send_personal_expense_alert_calls_meta_api():
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"messages": [{"id": "wamid.123"}]}
+        mock_response.status_code = 200
         mock_ctx.post = AsyncMock(return_value=mock_response)
         mock_http.return_value = mock_ctx
 
@@ -35,6 +36,7 @@ async def test_send_category_list_calls_meta_api():
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"messages": [{"id": "wamid.456"}]}
+        mock_response.status_code = 200
         mock_ctx.post = AsyncMock(return_value=mock_response)
         mock_http.return_value = mock_ctx
 
