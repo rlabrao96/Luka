@@ -7,7 +7,7 @@ from modules.email.parser import parse_bank_email
 from modules.email.filter import is_financial_email, is_bank_sender, get_bank_name
 from modules.merchants.service import lookup_merchant
 from modules.whatsapp.sender import send_expense_alert
-from modules.whatsapp.session import WhatsAppSession, save_session
+from modules.whatsapp.session import WhatsAppSession, save_session, save_msgid
 from modules.transactions.models import Transaction, TransactionSplit, ProcessedWebhook, FailedJob
 from modules.auth.models import User
 from modules.households.models import BankAccount
@@ -345,7 +345,7 @@ async def process_email(
                 await save_session(phone, session, redis_client)
 
                 # Send WhatsApp message
-                await send_expense_alert(
+                msg_id = await send_expense_alert(
                     to=phone,
                     amount=parsed.amount,
                     merchant=parsed.raw_merchant,
@@ -356,6 +356,7 @@ async def process_email(
                     currency=parsed.currency,
                     transaction_id=str(txn.id),
                 )
+                await save_msgid(msg_id, str(txn.id), redis_client)
             except Exception as e:
                 await _record_failed_job(
                     "process_email", {"email_address": email_address}, str(e), db
