@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass, asdict
 from redis.asyncio import Redis
 
-_SESSION_TTL = 1800  # 30 minutes
+_SESSION_TTL = 86400  # 24 hours
 
 
 @dataclass
