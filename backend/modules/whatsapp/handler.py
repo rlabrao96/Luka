@@ -8,8 +8,11 @@ from modules.whatsapp.session import (
     clear_session,
     save_msgid,
     get_transaction_id_by_msgid,
+    save_active_edit,
+    get_active_edit_transaction_id,
+    clear_active_edit,
 )
-from modules.whatsapp.sender import send_category_list, send_text
+from modules.whatsapp.sender import send_category_list, send_text, send_edit_options, send_expense_alert
 from modules.merchants.service import record_category_selection, lookup_merchant
 from modules.transactions.models import Transaction, TransactionSplit
 
@@ -27,7 +30,30 @@ async def handle_button_click(
         return  # session expired
 
     if button_id == "transaction_error":
-        await send_text(to=phone, body="🔧 Esta funcionalidad estará disponible pronto.")
+        transaction_id = await get_transaction_id_by_msgid(context_msg_id, redis)
+        if not transaction_id:
+            return
+        edit_wamid = await send_edit_options(to=phone)
+        await save_msgid(edit_wamid, transaction_id, redis)
+        return
+
+    if button_id in ("edit_merchant", "edit_amount"):
+        transaction_id = await get_transaction_id_by_msgid(context_msg_id, redis)
+        if not transaction_id:
+            return
+        session = await get_session(phone, transaction_id, redis)
+        if not session:
+            return
+        if button_id == "edit_merchant":
+            session.step = "awaiting_new_merchant"
+            await save_session(phone, session, redis)
+            await save_active_edit(phone, transaction_id, redis)
+            await send_text(to=phone, body="Escribe el nombre del comercio:")
+        else:
+            session.step = "awaiting_new_amount"
+            await save_session(phone, session, redis)
+            await save_active_edit(phone, transaction_id, redis)
+            await send_text(to=phone, body="Escribe el monto en CLP (solo números):")
         return
 
     if button_id in ("split_personal", "split_shared"):
@@ -89,3 +115,62 @@ async def _save_split(
     if category:
         txn.category = category
     await db.commit()
+
+
+async def handle_text_message(
+    phone: str, text: str, db: AsyncSession, redis: Redis
+) -> None:
+    """Handle a free-text reply during an active edit step."""
+    transaction_id = await get_active_edit_transaction_id(phone, redis)
+    if not transaction_id:
+        return  # no active edit — ignore
+
+    session = await get_session(phone, transaction_id, redis)
+    if not session:
+        await clear_active_edit(phone, redis)
+        return
+
+    txn_result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    txn = txn_result.scalar_one_or_none()
+    if not txn:
+        await clear_active_edit(phone, redis)
+        return
+
+    if session.step == "awaiting_new_merchant":
+        txn.raw_merchant_name = text.strip()
+        session.raw_merchant = text.strip()
+    elif session.step == "awaiting_new_amount":
+        cleaned = text.strip().replace(".", "").replace(",", "").replace("$", "")
+        if not cleaned.isdigit():
+            await send_text(to=phone, body="❌ Por favor escribe solo el número (ej: 15990).")
+            return
+        txn.amount = int(cleaned)
+    else:
+        return  # unexpected step
+
+    await db.commit()
+    await clear_active_edit(phone, redis)
+
+    # Determine is_joint from bank account type
+    is_joint = False
+    if txn.bank_account_id:
+        from modules.households.models import BankAccount
+        acct_result = await db.execute(select(BankAccount).where(BankAccount.id == txn.bank_account_id))
+        acct = acct_result.scalar_one_or_none()
+        is_joint = acct.account_type == "joint" if acct else False
+
+    # Re-send the expense alert with updated data
+    categories = await lookup_merchant(txn.raw_merchant_name, db=db, redis=redis)
+    new_msg_id = await send_expense_alert(
+        to=phone,
+        amount=txn.amount,
+        merchant=txn.raw_merchant_name,
+        partner_name="tu pareja",
+        is_joint=is_joint,
+        categories=categories,
+        currency=txn.currency or "CLP",
+    )
+    # Reset session step for the new message
+    session.step = "awaiting_category" if is_joint else "awaiting_split"
+    await save_session(phone, session, redis)
+    await save_msgid(new_msg_id, transaction_id, redis)
