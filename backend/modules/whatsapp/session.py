@@ -52,3 +52,25 @@ async def get_transaction_id_by_msgid(wamid: str, redis: Redis) -> str | None:
         return None
     # redis.get() returns bytes when decode_responses=True is not set on the client
     return value.decode() if isinstance(value, bytes) else value
+
+
+def _active_edit_key(phone: str) -> str:
+    return f"wa_active_edit:{_normalize_phone(phone)}"
+
+
+async def save_active_edit(phone: str, transaction_id: str, redis: Redis) -> None:
+    """Mark a phone as being in free-text edit mode for a given transaction."""
+    await redis.setex(_active_edit_key(phone), _SESSION_TTL, transaction_id)
+
+
+async def get_active_edit_transaction_id(phone: str, redis: Redis) -> str | None:
+    """Return the transaction_id currently awaiting a free-text edit reply, or None."""
+    value = await redis.get(_active_edit_key(phone))
+    if value is None:
+        return None
+    return value.decode() if isinstance(value, bytes) else value
+
+
+async def clear_active_edit(phone: str, redis: Redis) -> None:
+    """Remove active-edit marker after the edit is processed."""
+    await redis.delete(_active_edit_key(phone))
