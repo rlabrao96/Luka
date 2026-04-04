@@ -18,7 +18,7 @@ class PlaidItem(Base):
         ForeignKey("households.id", ondelete="CASCADE"), nullable=False
     )
     plaid_item_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    access_token: Mapped[str] = mapped_column(String, nullable=False)
+    access_token_enc: Mapped[str] = mapped_column("access_token", String, nullable=False)
     institution_id: Mapped[str] = mapped_column(String, nullable=False)
     institution_name: Mapped[str] = mapped_column(String, nullable=False)
     cursor: Mapped[str | None] = mapped_column(Text, nullable=True)

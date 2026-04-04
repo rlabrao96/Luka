@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from core.encryption import decrypt_token, encrypt_token
 from core.security import get_current_user
 from jobs.queue import enqueue_job
 from modules.plaid.models import PlaidItem
@@ -60,7 +61,7 @@ async def exchange_token_endpoint(
         user_id=user.id,
         household_id=household_id,
         plaid_item_id=item_id,
-        access_token=access_token,
+        access_token_enc=encrypt_token(access_token),
         institution_id=body.institution_id,
         institution_name=body.institution_name,
     )
@@ -92,7 +93,7 @@ async def disconnect_endpoint(
 
     # Remove from Plaid (stops billing)
     try:
-        remove_item(item.access_token)
+        remove_item(decrypt_token(item.access_token_enc))
     except Exception:
         pass  # Best effort — item may already be removed
 

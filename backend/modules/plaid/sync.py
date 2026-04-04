@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.encryption import decrypt_token
 from modules.plaid.models import PlaidItem
 from modules.plaid.mapper import map_plaid_transaction, map_account_kind, is_plaid_transfer
 from modules.plaid.service import sync_transactions
@@ -26,6 +27,7 @@ async def run_plaid_sync(
     if item.error_code:
         return {"error": f"Item has error: {item.error_code}"}
 
+    access_token = decrypt_token(item.access_token_enc)
     cursor = item.cursor
     all_added = []
     all_modified = []
@@ -36,7 +38,7 @@ async def run_plaid_sync(
         # Paginate through all updates
         has_more = True
         while has_more:
-            kwargs = {"access_token": item.access_token, "cursor": cursor}
+            kwargs = {"access_token": access_token, "cursor": cursor}
             if initial and not cursor:
                 kwargs["count"] = 500
             response = sync_transactions(**kwargs)

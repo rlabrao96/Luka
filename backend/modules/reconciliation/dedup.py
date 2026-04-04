@@ -136,7 +136,9 @@ async def _find_single_match(
         Transaction.source_type == "email",
         Transaction.transaction_date >= date_min,
         Transaction.transaction_date <= date_max,
-        Transaction.raw_merchant_name.ilike(f"%{raw_merchant_name[:10]}%")
+        Transaction.raw_merchant_name.ilike(
+            f"%{raw_merchant_name.replace('%', r'\%').replace('_', r'\_')}%"
+        )
         if raw_merchant_name
         else True,
     ]
@@ -174,6 +176,13 @@ async def _find_sum_match(
     date_min = tx_date - timedelta(days=day_window)
     date_max = tx_date + timedelta(days=day_window)
 
+    merchant_condition = (
+        Transaction.raw_merchant_name.ilike(
+            f"%{raw_merchant_name.replace('%', r'\%').replace('_', r'\_')}%"
+        )
+        if raw_merchant_name
+        else True
+    )
     result = await session.execute(
         select(Transaction)
         .where(
@@ -181,6 +190,7 @@ async def _find_sum_match(
             Transaction.source_type == "email",
             Transaction.transaction_date >= date_min,
             Transaction.transaction_date <= date_max,
+            merchant_condition,
         )
         .order_by(Transaction.amount.desc())
     )
