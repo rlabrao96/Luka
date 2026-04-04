@@ -68,6 +68,11 @@ async def handle_button_click(
         txn = txn_result.scalar_one_or_none()
         amount_str = f"${txn.amount:,}" if txn else session.raw_merchant
         categories = await lookup_merchant(session.raw_merchant, db=db, redis=redis)
+        if not categories:
+            categories = [
+                "Supermercado", "Alimentación", "Restaurantes", "Transporte",
+                "Combustible", "Salud", "Hogar", "Entretenimiento", "Ropa", "Otros",
+            ]
         context_msg = f"¿A qué categoría pertenece el gasto de {amount_str} en {session.raw_merchant}?"
         category_wamid = await send_category_list(to=phone, categories=categories, context_msg=context_msg)
         await save_msgid(category_wamid, transaction_id, redis)
