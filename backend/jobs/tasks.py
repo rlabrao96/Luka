@@ -693,8 +693,10 @@ async def run_plaid_sync_job(ctx: dict, plaid_item_id: str, initial: bool = Fals
                 notif.payload = {**(notif.payload or {}), "sync_job_id": str(review_job.id)}
                 await db.commit()
 
-                redis = ctx["redis"]
-                await redis.enqueue_job("process_merchant_review", str(review_job.id))
+                from arq import ArqRedis
+
+                arq_redis = ArqRedis(ctx["redis"])
+                await arq_redis.enqueue_job("process_merchant_review", str(review_job.id))
 
         return stats
 
