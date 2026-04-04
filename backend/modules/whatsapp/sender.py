@@ -34,25 +34,15 @@ async def send_expense_alert(
     categories: list[str] | None = None,
     transaction_type: str = "expense",
     currency: str = "CLP",
-    transaction_id: str = "",
 ) -> str:
-    """Send expense alert with split buttons (personal/partner/shared). Returns message ID."""
+    """Send expense alert with split buttons (personal/shared/edit). Returns message ID."""
     formatted = _format_amount(amount, currency)
-    if transaction_type == "transfer":
-        desc = f"Transferencia de {formatted} a {merchant}"
-    else:
-        desc = f"Gasto de {formatted} en {merchant}"
-
-    # Embed txn_id in button/list IDs so each response maps to the correct transaction
-    tid = f":{transaction_id}" if transaction_id else ""
 
     if is_joint:
-        body_text = f"{desc}. ¿Qué categoría le asignamos?"
-        return await send_category_list(
-            to=to, categories=categories or [], context_msg=body_text, transaction_id=transaction_id
-        )
+        body_text = f"_¡Luka registró un nuevo gasto!_\n*Comercio:* {merchant}\n*Monto:* {formatted}\n¿Qué categoría le asignamos?"
+        return await send_category_list(to=to, categories=categories or [], context_msg=body_text)
 
-    body_text = f"{desc}. ¿Cómo lo dividimos?"
+    body_text = f"_¡Luka registró un nuevo gasto!_\n*Comercio:* {merchant}\n*Monto:* {formatted}\n¿De qué bolsa es?"
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -63,12 +53,9 @@ async def send_expense_alert(
             "body": {"text": body_text},
             "action": {
                 "buttons": [
-                    {"type": "reply", "reply": {"id": f"split_personal{tid}", "title": "Personal"}},
-                    {
-                        "type": "reply",
-                        "reply": {"id": f"split_partner{tid}", "title": f"De {partner_name}"},
-                    },
-                    {"type": "reply", "reply": {"id": f"split_shared{tid}", "title": "Hogar"}},
+                    {"type": "reply", "reply": {"id": "split_personal", "title": "Personal"}},
+                    {"type": "reply", "reply": {"id": "split_shared", "title": "Compartido"}},
+                    {"type": "reply", "reply": {"id": "transaction_error", "title": "Editar Transacción"}},
                 ]
             },
         },
@@ -81,12 +68,9 @@ async def send_expense_alert(
     return data["messages"][0]["id"]
 
 
-async def send_category_list(
-    to: str, categories: list[str], context_msg: str = None, transaction_id: str = ""
-) -> str:
+async def send_category_list(to: str, categories: list[str], context_msg: str | None = None) -> str:
     """Send list message with category options. Returns WhatsApp message ID."""
-    tid = f":{transaction_id}" if transaction_id else ""
-    rows = [{"id": f"cat_{i}{tid}", "title": cat} for i, cat in enumerate(categories)]
+    rows = [{"id": f"cat_{i}", "title": cat} for i, cat in enumerate(categories)]
     body_text = context_msg or "¿A qué categoría pertenece este gasto?"
     payload = {
         "messaging_product": "whatsapp",
