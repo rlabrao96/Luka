@@ -63,6 +63,7 @@ const ACCOUNT_KIND_LABEL: Record<string, string> = {
   credit_card: "Tarjeta de Crédito",
   savings_account: "Cuenta de Ahorro",
   vista: "Cuenta Vista",
+  other: "Otra cuenta",
 };
 
 function formatLastSync(iso: string): string {
@@ -183,6 +184,10 @@ function PlaidConnectionCard({ item }: { item: PlaidItem }) {
     ? { color: "bg-red-500", label: "Error" }
     : syncStatusDot(item.last_sync_status);
 
+  const { startPlaidLink: reconnect, loading: reconnecting } = usePlaidConnection({
+    onComplete: () => queryClient.invalidateQueries({ queryKey: ["plaid-items"] }),
+  });
+
   const { mutate: triggerSync, isPending: syncing } = useMutation({
     mutationFn: () => api.syncPlaid(item.id),
     onSuccess: () => {
@@ -236,14 +241,25 @@ function PlaidConnectionCard({ item }: { item: PlaidItem }) {
         </div>
       </div>
       <div className="flex items-center justify-between px-4 pb-3 pt-1 border-t border-gray-50 mt-1">
-        <Button
-          size="sm" variant="outline"
-          onClick={() => triggerSync()}
-          disabled={syncing || !!item.error_code}
-          className="text-xs text-luka-primary border-luka-primary hover:bg-luka-light h-7 px-3"
-        >
-          {syncing ? "Iniciando..." : "Sincronizar ahora"}
-        </Button>
+        {item.error_code ? (
+          <Button
+            size="sm" variant="outline"
+            onClick={() => reconnect()}
+            disabled={reconnecting}
+            className="text-xs text-amber-600 border-amber-300 !bg-amber-50 hover:!bg-amber-100 h-7 px-3"
+          >
+            {reconnecting ? "Conectando..." : "Reconectar"}
+          </Button>
+        ) : (
+          <Button
+            size="sm" variant="outline"
+            onClick={() => triggerSync()}
+            disabled={syncing}
+            className="text-xs text-luka-primary border-luka-primary hover:bg-luka-light h-7 px-3"
+          >
+            {syncing ? "Iniciando..." : "Sincronizar ahora"}
+          </Button>
+        )}
         <div className="flex items-center gap-2">
           {!confirmDisconnect ? (
             <Button
@@ -606,6 +622,7 @@ function DetectedAccountCard({
     credit_card: "Tarjeta de Crédito",
     line_of_credit: "Línea de Crédito",
     savings_account: "Cuenta Ahorro",
+    other: "Otra cuenta",
   };
 
   async function toggleActive() {

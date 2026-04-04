@@ -548,7 +548,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 select(Transaction.raw_merchant_name)
                 .where(
                     Transaction.user_id == job.user_id,
-                    Transaction.source_type == "connect",
+                    Transaction.source_type.in_(["connect", "plaid"]),
                     Transaction.category.is_(None),
                 )
                 .distinct()
@@ -659,9 +659,43 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
 async def run_plaid_sync_job(ctx: dict, plaid_item_id: str, initial: bool = False):
     """Run a Plaid transaction sync for one item."""
     from modules.plaid.sync import run_plaid_sync
+    from modules.plaid.models import PlaidItem
+    from modules.merchant_review.models import MerchantReviewJob
+    from modules.notifications.service import create_notification
 
     async with AsyncSessionLocal() as db:
         stats = await run_plaid_sync(db, uuid.UUID(plaid_item_id), initial=initial)
+
+        # Trigger merchant review if new transactions were added
+        if stats.get("added", 0) > 0:
+            # Get the PlaidItem to find user_id
+            item_result = await db.execute(
+                select(PlaidItem).where(PlaidItem.id == uuid.UUID(plaid_item_id))
+            )
+            item = item_result.scalar_one_or_none()
+            if item:
+                notif = await create_notification(
+                    db,
+                    user_id=item.user_id,
+                    type="merchant_review",
+                    title="Processing your transactions...",
+                    payload={
+                        "bank_name": item.institution_name,
+                        "transaction_count": stats["added"],
+                    },
+                )
+                review_job = MerchantReviewJob(
+                    user_id=item.user_id,
+                    notification_id=notif.id,
+                )
+                db.add(review_job)
+                await db.flush()
+                notif.payload = {**(notif.payload or {}), "sync_job_id": str(review_job.id)}
+                await db.commit()
+
+                redis = ctx["redis"]
+                await redis.enqueue_job("process_merchant_review", str(review_job.id))
+
         return stats
 
 

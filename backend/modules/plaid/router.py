@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -52,7 +53,7 @@ async def create_link_token_endpoint(
     user=Depends(get_current_user),
 ):
     try:
-        token = create_link_token(user.id)
+        token = await asyncio.to_thread(create_link_token, user.id)
         return {"link_token": token}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create link token: {e}")
@@ -73,7 +74,7 @@ async def exchange_token_endpoint(
         raise HTTPException(status_code=400, detail="User has no household")
 
     try:
-        access_token, item_id = exchange_public_token(body.public_token)
+        access_token, item_id = await asyncio.to_thread(exchange_public_token, body.public_token)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Token exchange failed: {e}")
 
@@ -114,7 +115,7 @@ async def disconnect_endpoint(
 
     # Remove from Plaid (stops billing)
     try:
-        remove_item(decrypt_token(item.access_token_enc))
+        await asyncio.to_thread(remove_item, decrypt_token(item.access_token_enc))
     except Exception:
         pass  # Best effort — item may already be removed
 

@@ -12,21 +12,27 @@ from plaid.model.item_remove_request import ItemRemoveRequest
 
 from core.config import settings
 
+# Singleton client — reuses HTTP connection pool across calls
+_client: plaid_api.PlaidApi | None = None
+
 
 def _get_client() -> plaid_api.PlaidApi:
-    env_map = {
-        "sandbox": plaid.Environment.Sandbox,
-        "production": plaid.Environment.Production,
-    }
-    configuration = plaid.Configuration(
-        host=env_map.get(settings.plaid_env, plaid.Environment.Sandbox),
-        api_key={
-            "clientId": settings.plaid_client_id,
-            "secret": settings.plaid_secret,
-        },
-    )
-    api_client = plaid.ApiClient(configuration)
-    return plaid_api.PlaidApi(api_client)
+    global _client
+    if _client is None:
+        env_map = {
+            "sandbox": plaid.Environment.Sandbox,
+            "production": plaid.Environment.Production,
+        }
+        configuration = plaid.Configuration(
+            host=env_map.get(settings.plaid_env, plaid.Environment.Sandbox),
+            api_key={
+                "clientId": settings.plaid_client_id,
+                "secret": settings.plaid_secret,
+            },
+        )
+        api_client = plaid.ApiClient(configuration)
+        _client = plaid_api.PlaidApi(api_client)
+    return _client
 
 
 def create_link_token(user_id: uuid.UUID) -> str:
