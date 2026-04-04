@@ -87,4 +87,21 @@ async def whatsapp_webhook(request: Request):
                     finally:
                         await redis_client.aclose()
 
+                elif msg_type == "text":
+                    text_body = message.get("text", {}).get("body", "")
+                    redis_client = await aioredis.from_url(settings.redis_url)
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            from modules.whatsapp.handler import handle_text_message
+                            await handle_text_message(
+                                phone=phone,
+                                text=text_body,
+                                db=db,
+                                redis=redis_client,
+                            )
+                    except Exception as e:
+                        logger.error("WhatsApp text handler error: %s", e, exc_info=True)
+                    finally:
+                        await redis_client.aclose()
+
     return {"status": "ok"}
