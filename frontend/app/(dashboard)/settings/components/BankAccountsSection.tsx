@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLukaStore } from "@/app/lib/store";
-import { api, type BankAccountRow, type BankConnection } from "@/app/lib/api";
+import { api, type BankAccountRow, type BankConnection, type PlaidItem } from "@/app/lib/api";
 import { useBankConnections, useSyncStatus } from "@/app/lib/hooks/useSyncStatus";
 import { CountrySelectorModal } from "./CountrySelectorModal";
 import { usePlaidConnection } from "./PlaidLinkButton";
@@ -132,6 +132,114 @@ function BankConnectionCard({ connection }: { connection: BankConnection }) {
           size="sm" variant="outline"
           onClick={() => triggerSync()}
           disabled={syncing || status === "in_progress" || status === "awaiting_2fa"}
+          className="text-xs text-luka-primary border-luka-primary hover:bg-luka-light h-7 px-3"
+        >
+          {syncing ? "Iniciando..." : "Sincronizar ahora"}
+        </Button>
+        <div className="flex items-center gap-2">
+          {!confirmDisconnect ? (
+            <Button
+              size="sm" variant="outline"
+              onClick={() => setConfirmDisconnect(true)}
+              className="text-xs text-red-500 border-red-200 !bg-red-50 hover:!bg-red-100 hover:text-red-600 hover:border-red-300 h-7 px-3"
+            >
+              Desconectar
+            </Button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-luka-muted mr-1">¿Seguro?</span>
+              <Button
+                size="sm" variant="outline"
+                onClick={() => disconnect()}
+                disabled={disconnecting}
+                className="text-xs text-red-600 border-red-300 !bg-red-50 hover:!bg-red-100 h-7 px-3 disabled:opacity-50"
+              >
+                {disconnecting ? "..." : "Sí, desconectar"}
+              </Button>
+              <Button
+                size="sm" variant="outline"
+                onClick={() => setConfirmDisconnect(false)}
+                className="text-xs text-slate-500 border-slate-200 hover:bg-slate-50 h-7 px-3"
+              >
+                Cancelar
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Plaid connection card (US banks)
+   ═══════════════════════════════════════════════════════════════════ */
+
+function PlaidConnectionCard({ item }: { item: PlaidItem }) {
+  const queryClient = useQueryClient();
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  const { color, label } = item.error_code
+    ? { color: "bg-red-500", label: "Error" }
+    : syncStatusDot(item.last_sync_status);
+
+  const { mutate: triggerSync, isPending: syncing } = useMutation({
+    mutationFn: () => api.syncPlaid(item.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plaid-items"] });
+      queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
+    },
+  });
+
+  const { mutate: disconnect, isPending: disconnecting } = useMutation({
+    mutationFn: () => api.disconnectPlaid(item.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plaid-items"] });
+      queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
+    },
+  });
+
+  // Generate initials from institution name (first 2 chars of first 2 words)
+  const words = item.institution_name.split(" ");
+  const initials = words.length >= 2
+    ? words[0][0] + words[1][0]
+    : item.institution_name.slice(0, 2);
+
+  return (
+    <div className="rounded-xl border bg-white shadow-sm">
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <div className="flex items-center gap-3">
+          <div
+            className="rounded-lg flex items-center justify-center font-bold flex-shrink-0 shadow-sm"
+            style={{ width: 36, height: 36, backgroundColor: "#1a56db", color: "#fff", fontSize: 13 }}
+          >
+            {initials.toUpperCase()}
+          </div>
+          <div>
+            <span className="font-semibold text-luka-dark text-sm">
+              <span className="mr-1.5">🇺🇸</span>
+              {item.institution_name}
+            </span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
+              <span className="text-xs text-luka-muted">
+                {item.error_code ? "Requiere reconexión" : label}
+              </span>
+              {item.last_sync_at && (
+                <span className="text-xs text-slate-400 ml-2">{formatLastSync(item.last_sync_at)}</span>
+              )}
+              {!item.last_sync_at && !item.error_code && (
+                <span className="text-xs text-yellow-600 ml-2">Sincronizando...</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center justify-between px-4 pb-3 pt-1 border-t border-gray-50 mt-1">
+        <Button
+          size="sm" variant="outline"
+          onClick={() => triggerSync()}
+          disabled={syncing || !!item.error_code}
           className="text-xs text-luka-primary border-luka-primary hover:bg-luka-light h-7 px-3"
         >
           {syncing ? "Iniciando..." : "Sincronizar ahora"}
@@ -616,6 +724,17 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
   });
 
   const { data: connections, isLoading: loadingConnections } = useBankConnections();
+  const { data: plaidItems, isLoading: loadingPlaid } = useQuery({
+    queryKey: ["plaid-items"],
+    queryFn: () => api.getPlaidItems(),
+    staleTime: 10_000,
+    refetchInterval: (query) => {
+      // Poll every 5s while any item has no last_sync_at (initial sync in progress)
+      const items = query.state.data;
+      if (items?.some((i) => !i.last_sync_at && !i.error_code)) return 5_000;
+      return false;
+    },
+  });
   const { data: accounts, isLoading: loadingAccounts } = useQuery({
     queryKey: ["bank-accounts", householdId],
     queryFn: () => api.getBankAccounts(householdId!),
@@ -624,9 +743,10 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
   });
 
   const hasConnections = connections && connections.length > 0;
+  const hasPlaidItems = plaidItems && plaidItems.length > 0;
   const hasAccounts = accounts && accounts.length > 0;
-  const isEmpty = !hasConnections && !hasAccounts;
-  const isLoading = loadingConnections || loadingAccounts;
+  const isEmpty = !hasConnections && !hasPlaidItems && !hasAccounts;
+  const isLoading = loadingConnections || loadingAccounts || loadingPlaid;
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
@@ -647,6 +767,11 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
         {/* Luka Connect connections */}
         {hasConnections && connections.map((conn) => (
           <BankConnectionCard key={conn.bank_code} connection={conn} />
+        ))}
+
+        {/* Plaid connections */}
+        {hasPlaidItems && plaidItems.map((item) => (
+          <PlaidConnectionCard key={item.id} item={item} />
         ))}
 
         {/* Email-linked bank accounts */}

@@ -26,6 +26,27 @@ class ExchangeTokenRequest(BaseModel):
     institution_name: str
 
 
+@router.get("/items")
+async def list_items_endpoint(
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    result = await session.execute(select(PlaidItem).where(PlaidItem.user_id == user.id))
+    items = result.scalars().all()
+    return [
+        {
+            "id": str(item.id),
+            "institution_name": item.institution_name,
+            "institution_id": item.institution_id,
+            "last_sync_at": item.last_sync_at.isoformat() if item.last_sync_at else None,
+            "last_sync_status": item.last_sync_status,
+            "error_code": item.error_code,
+            "country": "US",
+        }
+        for item in items
+    ]
+
+
 @router.post("/create-link-token")
 async def create_link_token_endpoint(
     user=Depends(get_current_user),

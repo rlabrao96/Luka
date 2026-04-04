@@ -36,6 +36,7 @@ export function usePlaidConnection({ onComplete, onError }: PlaidLinkButtonProps
         );
         queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
         queryClient.invalidateQueries({ queryKey: ["bank-connections"] });
+        queryClient.invalidateQueries({ queryKey: ["plaid-items"] });
         onComplete();
       } catch (e) {
         onError?.("Error al vincular cuenta");
