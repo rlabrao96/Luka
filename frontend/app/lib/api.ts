@@ -217,6 +217,10 @@ export interface BankAccountRow {
   last_synced_at: string | null;
   balance_current: number | null;
   balance_limit: number | null;
+  country: string | null;
+  provider: string | null;
+  plaid_item_id: string | null;
+  error_code: string | null;
 }
 
 export interface RecurringExpense {
@@ -264,9 +268,11 @@ export interface SyncStatus {
 
 export interface BankConnection {
   bank_code: string;
+  bank_name?: string;
   last_sync_at: string | null;
   last_sync_status: string | null;
   next_sync_at: string | null;
+  country?: string;
 }
 
 export interface NotificationItem {
@@ -448,6 +454,26 @@ export const api = {
 
   getBankConnections: (): Promise<BankConnection[]> =>
     apiFetch("/bank-connect/connections"),
+
+  // --- Plaid (US banks) ---
+  createPlaidLinkToken: () =>
+    apiFetch<{ link_token: string }>("/plaid/create-link-token", { method: "POST" }),
+
+  exchangePlaidToken: (publicToken: string, institutionId: string, institutionName: string) =>
+    apiFetch<{ plaid_item_id: string }>("/plaid/exchange-token", {
+      method: "POST",
+      body: JSON.stringify({
+        public_token: publicToken,
+        institution_id: institutionId,
+        institution_name: institutionName,
+      }),
+    }),
+
+  disconnectPlaid: (plaidItemId: string) =>
+    apiFetch(`/plaid/disconnect?plaid_item_id=${plaidItemId}`, { method: "DELETE" }),
+
+  syncPlaid: (plaidItemId: string) =>
+    apiFetch(`/plaid/sync?plaid_item_id=${plaidItemId}`, { method: "POST" }),
 
   // --- Profile ---
   async updateProfile(payload: { full_name?: string; phone_whatsapp?: string; preferred_currency?: string }) {
