@@ -25,6 +25,7 @@ dependencies = [
     "pydantic[email]>=2.12.5",
     "cryptography>=43.0",
     "google-api-python-client>=2.0",
+    "plaid-python>=29.0.0",
 ]
 
 [project.optional-dependencies]

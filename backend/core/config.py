@@ -45,5 +45,10 @@ class Settings(BaseSettings):
     luka_connect_api_key: str = ""
     backend_public_url: str = "http://localhost:8000"  # Used for webhook callback URLs
 
+    # Plaid (US bank connections)
+    plaid_client_id: str = ""
+    plaid_secret: str = ""
+    plaid_env: str = "sandbox"  # "sandbox" or "production"
+
 
 settings = Settings()
