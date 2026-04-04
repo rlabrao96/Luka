@@ -23,6 +23,7 @@ from modules.auth.models import User
 from modules.households.models import HouseholdMember, BankAccount
 from modules.transactions.models import Transaction
 from modules.merchants.models import Merchant  # noqa: F401 — registers table in metadata
+from modules.merchants.service import lookup_merchant
 from modules.whatsapp.sender import send_expense_alert
 from modules.whatsapp.session import WhatsAppSession, save_session, save_msgid
 
@@ -104,6 +105,9 @@ async def main() -> None:
             )
             await save_session(user.phone_whatsapp, session, redis_client)
 
+            # Look up suggested categories for this merchant
+            categories = await lookup_merchant(fake["merchant"], db=db, redis=redis_client)
+
             # Send the WhatsApp alert
             msg_id = await send_expense_alert(
                 to=user.phone_whatsapp,
@@ -111,6 +115,7 @@ async def main() -> None:
                 merchant=fake["merchant"],
                 partner_name="tu pareja",
                 is_joint=is_joint,
+                categories=categories,
             )
             await save_msgid(msg_id, str(txn.id), redis_client)
             print(f"    WhatsApp message sent — ID: {msg_id}")
