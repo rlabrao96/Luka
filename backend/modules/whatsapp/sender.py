@@ -109,6 +109,32 @@ async def send_text(to: str, body: str) -> str:
     return data["messages"][0]["id"]
 
 
+async def send_edit_options(to: str) -> str:
+    """Send a 2-button message for editing merchant name or amount. Returns message ID."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "¿Qué deseas editar?"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "edit_merchant", "title": "Comercio"}},
+                    {"type": "reply", "reply": {"id": "edit_amount", "title": "Monto"}},
+                ]
+            },
+        },
+    }
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.post(_url(), headers=_headers(), json=payload)
+        data = resp.json()
+        if resp.status_code != 200:
+            raise Exception(f"WhatsApp API Error: {data}")
+    return data["messages"][0]["id"]
+
+
 async def send_verification_pin(to: str, pin: str) -> None:
     """Send a text message with a verification PIN. Raises on failure."""
     payload = {
