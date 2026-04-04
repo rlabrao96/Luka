@@ -808,7 +808,7 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
         {/* Detected accounts from Luka Connect */}
         {(() => {
           // Connect-created accounts have account_name set; email-linked ones don't
-          const detectedAccounts = accounts?.filter((a) => a.account_name !== null) ?? [];
+          const detectedAccounts = accounts?.filter((a) => a.account_name !== null && a.is_active) ?? [];
           if (detectedAccounts.length === 0) return null;
 
           // Group by bank
