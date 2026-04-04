@@ -543,11 +543,15 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 logger.error("Review job %s not found", job_id)
                 return
 
+            # Extract values immediately to avoid lazy-load issues in async context
+            job_user_id = job.user_id
+            job_notification_id = job.notification_id
+
             # Collect unique raw merchant names from user's uncategorized connect transactions
             txn_result = await db.execute(
                 select(Transaction.raw_merchant_name)
                 .where(
-                    Transaction.user_id == job.user_id,
+                    Transaction.user_id == job_user_id,
                     Transaction.source_type.in_(["connect", "plaid"]),
                     Transaction.category.is_(None),
                 )
@@ -605,7 +609,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                         await db.execute(
                             Transaction.__table__.update()
                             .where(
-                                Transaction.user_id == job.user_id,
+                                Transaction.user_id == job_user_id,
                                 Transaction.raw_merchant_name == raw_name,
                                 Transaction.category.is_(None),
                             )
@@ -620,9 +624,9 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
             job.updated_at = datetime.now(timezone.utc)
 
             # Update notification title
-            if job.notification_id:
+            if job_notification_id:
                 notif_result = await db.execute(
-                    select(Notification).where(Notification.id == job.notification_id)
+                    select(Notification).where(Notification.id == job_notification_id)
                 )
                 notif = notif_result.scalar_one_or_none()
                 if notif:
@@ -643,9 +647,9 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 if job:
                     job.status = "failed"
                     job.updated_at = datetime.now(timezone.utc)
-                    if job.notification_id:
+                    if job_notification_id:
                         notif_result = await error_db.execute(
-                            select(Notification).where(Notification.id == job.notification_id)
+                            select(Notification).where(Notification.id == job_notification_id)
                         )
                         notif = notif_result.scalar_one_or_none()
                         if notif:
