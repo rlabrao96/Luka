@@ -11,6 +11,7 @@ from jobs.tasks import (
     schedule_connect_syncs,
     run_connect_sync,
     refresh_subscriptions_cache,
+    process_merchant_review,
     run_plaid_sync_job,
     schedule_plaid_syncs,
     run_reconciliation_job,
@@ -26,7 +27,13 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_email, send_invite_email, run_connect_sync, run_plaid_sync_job]
+    functions = [
+        process_email,
+        send_invite_email,
+        run_connect_sync,
+        run_plaid_sync_job,
+        process_merchant_review,
+    ]
     cron_jobs = [
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
         cron(purge_raw_emails, minute=0),  # every hour
