@@ -46,6 +46,8 @@ async def list_bank_accounts(
             "balance_current": a.balance_current,
             "balance_limit": a.balance_limit,
             "last_synced_at": a.last_synced_at.isoformat() if a.last_synced_at else None,
+            "country": a.country,
+            "provider": a.provider,
         }
         for a in accounts
     ]
