@@ -28,9 +28,7 @@ class MerchantReviewJob(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    bank_credential_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("bank_credentials.id"), nullable=True
-    )
+    bank_credential_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(String, default="processing")
     total_merchants: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reviewed_count: Mapped[int] = mapped_column(Integer, default=0)
