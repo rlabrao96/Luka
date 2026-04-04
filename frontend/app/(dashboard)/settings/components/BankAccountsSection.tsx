@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow, type BankConnection } from "@/app/lib/api";
 import { useBankConnections, useSyncStatus } from "@/app/lib/hooks/useSyncStatus";
+import { CountrySelectorModal } from "./CountrySelectorModal";
+import { usePlaidConnection } from "./PlaidLinkButton";
 
 /* ═══════════════════════════════════════════════════════════════════
    Bank registry (shared with onboarding)
@@ -113,7 +115,10 @@ function BankConnectionCard({ connection }: { connection: BankConnection }) {
         <div className="flex items-center gap-3">
           {bank && <BankIcon bank={bank} />}
           <div>
-            <span className="font-semibold text-luka-dark text-sm">{bank?.name ?? connection.bank_code}</span>
+            <span className="font-semibold text-luka-dark text-sm">
+              <span className="mr-1.5">{connection.country === "US" ? "🇺🇸" : "🇨🇱"}</span>
+              {bank?.name ?? connection.bank_code}
+            </span>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
               <span className="text-xs text-luka-muted">{label}</span>
@@ -221,7 +226,10 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
     <div className={`rounded-xl border bg-white shadow-sm transition-opacity ${account.is_active ? "" : "opacity-60"}`}>
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-luka-dark text-sm">{account.bank_name}</span>
+          <span className="font-semibold text-luka-dark text-sm">
+            <span className="mr-1.5">{account.country === "US" ? "🇺🇸" : "🇨🇱"}</span>
+            {account.bank_name}
+          </span>
           {account.currency && <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{account.currency}</span>}
           {kindLabel && <span className="text-xs text-luka-muted">{kindLabel}</span>}
         </div>
@@ -601,6 +609,11 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
   const userId = useLukaStore((s) => s.userId);
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
+  const [showCountrySelector, setShowCountrySelector] = useState(false);
+
+  const { startPlaidLink, loading: plaidLoading } = usePlaidConnection({
+    onComplete: () => setShowCountrySelector(false),
+  });
 
   const { data: connections, isLoading: loadingConnections } = useBankConnections();
   const { data: accounts, isLoading: loadingAccounts } = useQuery({
@@ -619,7 +632,7 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
     <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
       <div className="px-5 pt-5 pb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Cuentas Bancarias</h3>
-        <Button size="sm" variant="outline" onClick={() => setShowModal(true)} className="text-luka-primary border-luka-primary hover:bg-luka-light">
+        <Button size="sm" variant="outline" onClick={() => setShowCountrySelector(true)} className="text-luka-primary border-luka-primary hover:bg-luka-light">
           + Conectar banco
         </Button>
       </div>
@@ -673,7 +686,7 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
               {Array.from(byBank.entries()).map(([bankName, bankAccounts]) => (
                 <div key={bankName} className="space-y-2">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                    {bankName}
+                    {bankAccounts[0]?.country === "US" ? "🇺🇸 " : "🇨🇱 "}{bankName}
                   </p>
                   {bankAccounts.map((a) => (
                     <DetectedAccountCard
@@ -688,6 +701,19 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
           );
         })()}
       </div>
+
+      <CountrySelectorModal
+        open={showCountrySelector}
+        onClose={() => setShowCountrySelector(false)}
+        onSelectChile={() => {
+          setShowCountrySelector(false);
+          setShowModal(true);
+        }}
+        onSelectUSA={() => {
+          setShowCountrySelector(false);
+          startPlaidLink();
+        }}
+      />
 
       {showModal && <ConnectBankModal onClose={() => setShowModal(false)} />}
     </div>

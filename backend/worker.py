@@ -11,6 +11,9 @@ from jobs.tasks import (
     schedule_connect_syncs,
     run_connect_sync,
     refresh_subscriptions_cache,
+    run_plaid_sync_job,
+    schedule_plaid_syncs,
+    run_reconciliation_job,
 )
 
 
@@ -23,13 +26,15 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_email, send_invite_email, run_connect_sync]
+    functions = [process_email, send_invite_email, run_connect_sync, run_plaid_sync_job]
     cron_jobs = [
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
         cron(purge_raw_emails, minute=0),  # every hour
         cron(cleanup_processed_webhooks, hour=4, minute=0),  # 4am daily
         cron(schedule_connect_syncs, minute=0),  # Every hour, check for due syncs
         cron(refresh_subscriptions_cache, hour=5, minute=30),  # 5:30am daily
+        cron(schedule_plaid_syncs, hour=3, minute=30),  # Daily 3:30am UTC — sync all Plaid items
+        cron(run_reconciliation_job, hour=6, minute=0),  # Daily 6am UTC — transfer detection
     ]
     on_startup = startup
     on_shutdown = shutdown

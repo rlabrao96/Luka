@@ -654,3 +654,47 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                     await error_db.commit()
         finally:
             await redis.aclose()
+
+
+async def run_plaid_sync_job(ctx: dict, plaid_item_id: str, initial: bool = False):
+    """Run a Plaid transaction sync for one item."""
+    from modules.plaid.sync import run_plaid_sync
+
+    async with AsyncSessionLocal() as db:
+        stats = await run_plaid_sync(db, uuid.UUID(plaid_item_id), initial=initial)
+        return stats
+
+
+async def schedule_plaid_syncs(ctx: dict):
+    """Daily cron: enqueue sync for all active Plaid items."""
+    from modules.plaid.models import PlaidItem
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(PlaidItem).where(PlaidItem.error_code.is_(None)))
+        items = result.scalars().all()
+        redis = ctx["redis"]
+        for item in items:
+            await redis.enqueue_job(
+                "run_plaid_sync_job",
+                plaid_item_id=str(item.id),
+                initial=False,
+            )
+        if items:
+            print(f"[SCHEDULE_PLAID_SYNCS] Enqueued {len(items)} syncs", flush=True)
+
+
+async def run_reconciliation_job(ctx: dict):
+    """Daily cron: detect inter-account transfers across all households."""
+    from modules.reconciliation.transfers import detect_transfers
+    from modules.households.models import Household
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Household.id))
+        household_ids = result.scalars().all()
+        total = 0
+        for hid in household_ids:
+            pairs = await detect_transfers(db, hid)
+            total += pairs
+        await db.commit()
+        if total:
+            print(f"[RECONCILIATION] Detected {total} transfer pairs", flush=True)
