@@ -1,9 +1,10 @@
 from pydantic import BaseModel
 
 
-class RawNameInfo(BaseModel):
-    name: str
-    last_date: str | None = None
+class ReviewTransactionInfo(BaseModel):
+    raw_name: str
+    date: str | None = None
+    amount: float = 0.0
 
 
 class ReviewCardResponse(BaseModel):
@@ -11,7 +12,7 @@ class ReviewCardResponse(BaseModel):
     display_name: str
     default_category: str | None = None
     llm_suggested_categories: list[str] = []
-    raw_names: list[RawNameInfo] = []
+    transactions: list[ReviewTransactionInfo] = []
     transaction_count: int = 0
     total_amount: float = 0.0
     is_verified: bool = False
