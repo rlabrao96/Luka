@@ -19,12 +19,11 @@ interface CategoryDonutProps {
 export function CategoryDonut({ data, currency = "CLP" }: CategoryDonutProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
+  /** Amounts are pre-normalized to standard currency unit. */
   const fmtAmount = (v: number) => {
     const n = Math.abs(Number(v));
-    if (currency === "USD") {
-      const val = n / 100;
-      return `US$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    }
+    if (currency === "USD")
+      return `US$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     return `$${Math.round(n).toLocaleString("es-CL")}`;
   };
 

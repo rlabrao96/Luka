@@ -13,16 +13,15 @@ interface BudgetBarsProps {
   currency: string;
 }
 
+/** Amounts are pre-normalized to standard currency unit. */
 function fmt(n: number, currency: string): string {
-  const isDecimal = currency !== "CLP";
-  const val = isDecimal ? n / 100 : n;
-  if (currency === "CLP" && Math.abs(val) >= 1_000_000)
-    return `$${(val / 1_000_000).toFixed(1)}M`;
-  if (currency === "CLP" && Math.abs(val) >= 1_000)
-    return `$${Math.round(val / 1_000)}k`;
+  if (currency === "CLP" && Math.abs(n) >= 1_000_000)
+    return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (currency === "CLP" && Math.abs(n) >= 1_000)
+    return `$${Math.round(n / 1_000)}k`;
   if (currency === "USD")
-    return `US$${Math.abs(val).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-  return `$${Math.round(val).toLocaleString("es-CL")}`;
+    return `US$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `$${Math.round(n).toLocaleString("es-CL")}`;
 }
 
 function pctColor(pct: number): string {

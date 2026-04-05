@@ -8,12 +8,11 @@ interface CashFlowCardsProps {
   currency: string;
 }
 
+/** Amounts are pre-normalized to standard currency unit (dollars/pesos). */
 function fmt(n: number, currency: string): string {
-  const isDecimal = currency !== "CLP";
-  const displayVal = isDecimal ? n / 100 : n;
   if (currency === "USD")
-    return `US$${Math.abs(displayVal).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(Math.abs(displayVal)).toLocaleString("es-CL")}`;
+    return `US$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${Math.round(Math.abs(n)).toLocaleString("es-CL")}`;
 }
 
 export function CashFlowCards({ income, expenses, net, currency }: CashFlowCardsProps) {

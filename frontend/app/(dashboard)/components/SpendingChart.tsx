@@ -17,10 +17,8 @@ export function SpendingChart({ data, currency = "CLP" }: SpendingChartProps) {
   const compartidoId = `compartido-${uid}`;
 
   const fmtAxis = (v: number) => {
-    if (currency === "USD") {
-      const val = v / 100;
-      return val >= 1000 ? `US$${(val / 1000).toFixed(0)}k` : `US$${val.toFixed(0)}`;
-    }
+    if (currency === "USD")
+      return v >= 1000 ? `US$${(v / 1000).toFixed(0)}k` : `US$${v.toFixed(0)}`;
     return v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : `$${(v / 1000).toFixed(0)}k`;
   };
 

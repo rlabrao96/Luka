@@ -11,12 +11,17 @@ const CHECKING_KINDS = new Set([
   "checking_account", "savings_account", "sight_account", "depository",
 ]);
 
+/** Normalize a bank account balance to standard currency unit.
+ *  Plaid stores balances in cents; luka_connect stores in dollars/pesos. */
+function normalizeBalance(balance: number, currency: string, provider: string | null): number {
+  if (currency === "USD" && provider === "plaid") return balance / 100;
+  return balance;
+}
+
 function formatBalance(n: number, currency: string): string {
-  const isDecimal = currency !== "CLP";
-  const displayVal = isDecimal ? n / 100 : n;
   if (currency === "USD")
-    return `US$${displayVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(displayVal).toLocaleString("es-CL")}`;
+    return `US$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${Math.round(n).toLocaleString("es-CL")}`;
 }
 
 export function BalanceCard({ accounts, currency }: BalanceCardProps) {
@@ -24,7 +29,9 @@ export function BalanceCard({ accounts, currency }: BalanceCardProps) {
     (a) => a.is_active && a.currency === currency && a.account_kind && CHECKING_KINDS.has(a.account_kind)
   );
 
-  const total = filtered.reduce((s, a) => s + (a.balance_current ?? 0), 0);
+  const total = filtered.reduce(
+    (s, a) => s + normalizeBalance(a.balance_current ?? 0, currency, a.provider), 0
+  );
 
   const banks = [...new Set(filtered.map((a) => a.bank_name).filter(Boolean))];
   const subtitle = banks.length > 0 ? banks.join(" + ") : "Sin cuentas";

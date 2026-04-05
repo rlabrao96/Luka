@@ -35,6 +35,14 @@ function getMonthKey(iso: string): string {
   return iso.split("T")[0].slice(0, 7);
 }
 
+/** Normalize a transaction amount to its currency's standard unit (dollars/pesos).
+ *  Gmail stores USD in cents; all other sources store in dollars/pesos directly. */
+function normalizeTxnAmount(t: { amount: number; currency: string; source: string }): number {
+  const raw = Number(t.amount);
+  if ((t.currency ?? "CLP") === "USD" && t.source === "gmail") return raw / 100;
+  return raw;
+}
+
 export default function DashboardPage() {
   const name = useLukaStore((s) => s.userFullName) ?? "tú";
   const householdId = useLukaStore((s) => s.householdId);
@@ -77,13 +85,13 @@ export default function DashboardPage() {
     [myTxns, selectedMonth, selectedCurrency]
   );
 
-  // Cash flow
+  // Cash flow (normalized to standard currency unit)
   const income = useMemo(
-    () => monthTxns.filter((t) => Number(t.amount) > 0).reduce((s, t) => s + Number(t.amount), 0),
+    () => monthTxns.filter((t) => normalizeTxnAmount(t) > 0).reduce((s, t) => s + normalizeTxnAmount(t), 0),
     [monthTxns]
   );
   const expenses = useMemo(
-    () => monthTxns.filter((t) => Number(t.amount) < 0).reduce((s, t) => s + Math.abs(Number(t.amount)), 0),
+    () => monthTxns.filter((t) => normalizeTxnAmount(t) < 0).reduce((s, t) => s + Math.abs(normalizeTxnAmount(t)), 0),
     [monthTxns]
   );
   const net = income - expenses;
@@ -92,10 +100,10 @@ export default function DashboardPage() {
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
     monthTxns
-      .filter((t) => Number(t.amount) < 0)
+      .filter((t) => normalizeTxnAmount(t) < 0)
       .forEach((t) => {
         const cat = t.category ?? "Otros";
-        map[cat] = (map[cat] ?? 0) + Math.abs(Number(t.amount));
+        map[cat] = (map[cat] ?? 0) + Math.abs(normalizeTxnAmount(t));
       });
     const sorted = Object.entries(map)
       .map(([category, amount]) => ({ category, amount }))
