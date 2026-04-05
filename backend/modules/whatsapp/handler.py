@@ -43,11 +43,14 @@ async def handle_button_click(
     phone: str, button_id: str, context_msg_id: str, db: AsyncSession, redis: Redis
 ) -> None:
     """Route a WhatsApp button reply to the correct split action."""
+    print(f"[WA_BUTTON] from={phone} button_id={button_id} context_msg_id={context_msg_id!r}", flush=True)
     transaction_id = await get_transaction_id_by_msgid(context_msg_id, redis)
+    print(f"[WA_BUTTON] transaction_id from msgid lookup={transaction_id!r}", flush=True)
     if not transaction_id:
         return  # message too old or unknown
 
     session = await get_session(phone, transaction_id, redis)
+    print(f"[WA_BUTTON] session={session}", flush=True)
     if not session:
         return  # session expired
 
