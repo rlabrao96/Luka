@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-04-01 (session 13)
+**Date:** 2026-04-04 (session 14)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -233,7 +233,7 @@ Fintoc has been removed and replaced by **Luka Connect** — a standalone bank s
 
 ## Phase 2: Infrastructure Setup ✅ COMPLETE
 
-- **2.1** Database migrations — done (`016 head`)
+- **2.1** Database migrations — done (`028 head`)
 - **2.2** Railway backend — live at `https://luka-production-eb87.up.railway.app`
 - **2.3** Vercel frontend — live at `https://luka-lovat.vercel.app`
 - **2.4** Supabase redirect URL configured for Vercel callback
@@ -441,8 +441,32 @@ Session 13 (2026-04-01): Merchant Cleaning & Review Pipeline — COMPLETE
   → 11 new tests, 22 commits, migration 022 applied to DB
   → Initial seed: 161 canonical merchants from 229 raw names, ~170 linked
 
+Session 14 (2026-04-04): Plaid Integration + Merchant Review UX Overhaul — COMPLETE
+  → Plaid sandbox connected (Capital One), Plaid Link flow working
+  → Migration 026: transaction_ids JSONB on merchant_review_jobs
+  → Merchant review scoped to newly imported transactions only
+  → Pre-applied categories during LLM processing (overridable during review)
+  → Known merchants: backfill category from canonical if missing, apply to new txs
+  → Deferred notifications: created after LLM processing, not before
+  → Desktop: 3-card grid layout with per-card Skip/Edit/Approve buttons
+  → Mobile: unchanged card swipe UX
+  → Optimistic card transitions: instant advance, API fires in background
+  → Categories fetched from user preferences API (no hardcoding in components)
+  → Category icon lookup: 100+ categories (ES/EN) with emoji, initial letter fallback
+  → USD balance display: stored as cents, ÷100 for display (was showing ×100)
+  → USD transaction amounts in WhatsApp: formatted as dollars not cents
+  → Review completion: job + notification auto-deleted when all merchants approved
+  → Dismiss (Omitir): accepts proposed categories, deletes job + notification
+  → Approve always applies effective_category (explicit or canonical default)
+  → Reviewed merchants filtered from cards (is_verified check)
+  → Transaction cache invalidated after review mutations
+  → Notification delete endpoint (DELETE /notifications/{id}) + trash button
+  → All UI copy translated to Spanish
+  → Worker queue scaling doc: fast/slow split architecture for 200+ users
+  → ~40 commits, migrations 026-028 applied
+
 Next: Merchant training curation (use /train UI to verify/merge/fix categories)
-Next: Deploy migration 022 + new code to Railway production
+Next: Implement fast/slow worker queue split (see docs/superpowers/specs/2026-04-04-worker-queue-scaling.md)
 Next: P0 Features (see docs/roadmap.md)
   → Category budget alerts via WhatsApp
 ```

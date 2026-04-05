@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-04-01 (session 13 — end)
-**Status:** **Merchant cleaning & review pipeline.** New canonical_merchants + notifications + merchant_review_jobs tables (migration 022). LLM grouping via Gemini (batched, 50/call). Two-phase pipeline: Phase 1 groups raw names → canonical merchants, Phase 2 categorizes. Notifications API (list, unread count, mark read). Merchant review API (cards, approve, skip). ARQ job triggers from bank connect webhook. Frontend: notification badge in sidebar/bottom nav, notifications page, processing banner, Tinder-style review cards. Transaction display_name via canonical merchant join. CLI: train_merchants.py (seed, review, merge, stats, regroup). Local training web UI at /train (card grid, edit, merge, delete, approve). 22 commits.
+**Date:** 2026-04-04 (session 14 — end)
+**Status:** **Plaid integration + merchant review UX overhaul.** Plaid sandbox connected (Capital One). Merchant review scoped to newly imported transactions via `transaction_ids` JSONB column on MerchantReviewJob (migration 026). Pre-applied categories during processing, overridable during review. Deferred notifications (fire after LLM processing, not before). Desktop: 3-card grid layout with inline edit/skip/approve per card. Mobile: unchanged card swipe. Categories fetched from user preferences API (no hardcoding). Category icon lookup (100+ ES/EN with emoji, initial fallback). Optimistic card transitions. USD balance display fix (stored as cents, divided by 100). Review auto-cleanup: job + notification deleted when all merchants approved. Dismiss (Omitir) accepts defaults and cleans up. Worker queue scaling doc written. All UI copy in Spanish. ~40 commits.
 
 ---
 
@@ -61,6 +61,12 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │   │                             GET/POST /budgets/monthly/{household_id}
 │   │   │                             GET /budgets/personal/{household_id}
 │   │   │                             GET/POST /budgets/allocation/{household_id}
+│   │   ├── plaid/                  ← Plaid Link integration (US banks)
+│   │   │   ├── models.py           ← PlaidItem model
+│   │   │   ├── service.py          ← Plaid API client (link token, sync, remove)
+│   │   │   ├── sync.py             ← Transaction sync with cursor pagination + dedup
+│   │   │   ├── mapper.py           ← Plaid tx → Luka tx mapping + account kind detection
+│   │   │   └── router.py           ← link-token, exchange, sync, disconnect endpoints
 │   │   └── bank_connect/           ← Luka Connect integration (replaces Fintoc)
 │   │       ├── encryption.py       ← AES-256-GCM encrypt/decrypt
 │   │       ├── models.py           ← BankCredential model
@@ -195,7 +201,8 @@ notifications      — id, user_id (FK users), type, title, payload (JSONB),
 
 merchant_review_jobs — id, user_id (FK users), bank_credential_id (FK bank_credentials),
                      status ('processing'|'ready'|'completed'|'skipped'|'failed'),
-                     total_merchants, reviewed_count, notification_id (FK notifications)
+                     total_merchants, reviewed_count, notification_id (FK notifications),
+                     transaction_ids (JSONB, nullable — scopes review to specific transactions)
 
 merchant_category_selections — id, merchant_id, category, count, last_used_at
 
@@ -296,6 +303,8 @@ POST /webhooks/whatsapp                    → WhatsApp message receive
 | `cleanup_processed_webhooks` | Cron 4am daily | Delete idempotency records >7 days |
 | `schedule_connect_syncs` | Cron hourly | Find users due for daily bank sync, enqueue `run_connect_sync` for each |
 | `run_connect_sync` | On-demand (enqueued by scheduler) | Send WhatsApp 2FA nudge, call Luka Connect async with callback |
+| `run_plaid_sync_job` | On-demand (Plaid Link exchange or manual sync) | Plaid transaction sync → create review job with transaction_ids → enqueue process_merchant_review |
+| `process_merchant_review` | On-demand (enqueued by sync jobs) | LLM grouping → categorization → pre-apply categories → create notification |
 
 ---
 
@@ -465,7 +474,13 @@ test_merchant_review_api.py ← Review API endpoints (3 tests)
 | Subscriptions nav item | ✅ DONE | "Suscripciones" in sidebar (after Presupuesto) + "Suscrip." in mobile bottom nav |
 | Merchant cleaning & review pipeline | ✅ DONE | LLM groups raw names → canonical merchants → user review (Tinder cards). Notifications drive user to review. CLI + web training UI at /train |
 | Canonical merchant display_name | ✅ DONE | Transactions show clean display_name via canonical merchant join, fallback to raw_merchant_name |
-| Notification system | ✅ DONE | Backend CRUD, unread badge in sidebar/bottom nav, notifications page with review/dismiss |
+| Notification system | ✅ DONE | Backend CRUD + DELETE, unread badge in sidebar/bottom nav, notifications page with review/dismiss/delete |
+| Plaid integration | ✅ DONE | Plaid Link (sandbox), token exchange, cursor-based sync, account creation, transaction dedup |
+| Merchant review scoping | ✅ DONE | Review scoped to newly imported transactions via transaction_ids JSONB. Pre-applied categories. Desktop 3-card grid. Optimistic transitions. Auto-cleanup on completion |
+| USD balance display | ✅ DONE | Balances stored as cents, frontend divides by 100 for non-CLP currencies |
+| Category icons | ✅ DONE | 100+ category→emoji lookup (ES/EN) in category-icons.ts, initial letter fallback |
+| Dynamic categories | ✅ DONE | Review cards fetch categories from user preferences API, not hardcoded |
+| Worker scaling doc | ✅ DONE | docs/superpowers/specs/2026-04-04-worker-queue-scaling.md — fast/slow queue split plan |
 | Email domain for Resend | Low | Currently sends from onboarding@resend.dev — custom domain needed for production emails |
 | Alembic auto-run on Railway | Low | Run manually: `cd backend && python3 -m alembic upgrade head` |
 
@@ -495,7 +510,7 @@ test_merchant_review_api.py ← Review API endpoints (3 tests)
 - `/health` returns `{"status":"ok","chromium":true}`
 
 **Database (Supabase):** ✅ LIVE
-- All 21 migrations applied (`021 head`)
+- All 28 migrations applied (`028 head`)
 - Migration 009 adds `last_synced_at` and `import_started_at` to `bank_accounts`
 - Migration 010 adds bank account settings overhaul columns
 - Migration 011 adds `transaction_type`, `transfer_to_account_id`, `household_budget_allocations`
