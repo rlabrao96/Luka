@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from redis.asyncio import Redis
 
 _SESSION_TTL = 86400  # 24 hours
@@ -11,6 +11,7 @@ class WhatsAppSession:
     step: str  # 'awaiting_split' | 'awaiting_category'
     split_type: str = ""
     raw_merchant: str = ""
+    overflow_categories: list = field(default_factory=list)  # categories not shown on first page
 
 
 def _normalize_phone(phone: str) -> str:
@@ -33,6 +34,7 @@ async def get_session(phone: str, txn_id: str, redis: Redis) -> WhatsAppSession 
     if not raw:
         return None
     data = json.loads(raw)
+    data.setdefault("overflow_categories", [])  # backward-compat with sessions stored before this field
     return WhatsAppSession(**data)
 
 

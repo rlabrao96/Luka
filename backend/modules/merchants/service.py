@@ -82,6 +82,67 @@ async def lookup_merchant(
     return categories
 
 
+async def get_user_ranked_categories(
+    user_id: uuid.UUID,
+    raw_name: str,
+    db: AsyncSession,
+) -> list[str]:
+    """
+    Return the user's full category list ranked for this specific merchant:
+      1. Categories the user has previously chosen for this merchant (count desc)
+      2. Categories chosen globally for this merchant (count desc)
+      3. Remaining user categories in default sort_order (expense first, then income)
+    Only returns categories that exist in the user's preferences list.
+    """
+    from modules.settings.models import UserCategoryPreference
+
+    normalized = normalize_merchant(raw_name)
+
+    # Fetch all user categories in their default display order
+    prefs_result = await db.execute(
+        select(UserCategoryPreference)
+        .where(UserCategoryPreference.user_id == user_id)
+        .order_by(UserCategoryPreference.category_type, UserCategoryPreference.sort_order)
+    )
+    user_cats = [p.category for p in prefs_result.scalars().all()]
+    if not user_cats:
+        return []
+
+    # Fetch merchant (may not exist yet)
+    merchant_result = await db.execute(
+        select(Merchant).where(Merchant.normalized_name == normalized)
+    )
+    merchant = merchant_result.scalar_one_or_none()
+    if not merchant:
+        return user_cats
+
+    # User-specific selections for this merchant
+    user_sel_result = await db.execute(
+        select(MerchantCategorySelection).where(
+            MerchantCategorySelection.merchant_id == merchant.id,
+            MerchantCategorySelection.user_id == user_id,
+        )
+    )
+    user_sel = {row.category: row.count for row in user_sel_result.scalars().all()}
+
+    # Global (legacy) selections for this merchant as secondary signal
+    global_sel_result = await db.execute(
+        select(MerchantCategorySelection).where(
+            MerchantCategorySelection.merchant_id == merchant.id,
+            MerchantCategorySelection.user_id == None,  # noqa: E711
+        )
+    )
+    global_sel = {row.category: row.count for row in global_sel_result.scalars().all()}
+
+    def _rank(cat: str) -> tuple:
+        u = user_sel.get(cat, 0)
+        g = global_sel.get(cat, 0)
+        # Lower tuple = shown first. Penalize zero counts, sort desc by count.
+        return (0 if u > 0 else 1, -u, 0 if g > 0 else 1, -g)
+
+    return sorted(user_cats, key=_rank)
+
+
 async def record_category_selection(
     raw_name: str,
     category: str,

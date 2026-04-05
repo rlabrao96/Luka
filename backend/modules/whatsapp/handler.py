@@ -17,8 +17,19 @@ from modules.whatsapp.session import (
     _normalize_phone,
 )
 from modules.whatsapp.sender import send_category_list, send_text, send_edit_options, send_expense_alert
-from modules.merchants.service import record_category_selection, lookup_merchant
+from modules.merchants.service import record_category_selection, get_user_ranked_categories
 from modules.transactions.models import Transaction, TransactionSplit
+
+_OTRAS = "Otras categorías"
+
+
+def _paginate_categories(ranked: list[str]) -> tuple[list[str], list[str]]:
+    """Split a ranked list into (display_page, overflow).
+    display_page has up to 9 items; if overflow exists, _OTRAS is appended as item 10.
+    """
+    if len(ranked) <= 9:
+        return ranked, []
+    return ranked[:9] + [_OTRAS], ranked[9:]
 
 
 def parse_manual_expense(text: str) -> tuple[int, str] | None:
@@ -88,18 +99,18 @@ async def handle_button_click(
         }[button_id]
         session.step = "awaiting_category"
         session.split_type = split_type
-        await save_session(phone, session, redis)
+
         txn_result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
         txn = txn_result.scalar_one_or_none()
         amount_str = f"${txn.amount:,}" if txn else session.raw_merchant
-        categories = await lookup_merchant(session.raw_merchant, db=db, redis=redis)
-        if not categories:
-            categories = [
-                "Supermercado", "Alimentación", "Restaurantes", "Transporte",
-                "Combustible", "Salud", "Hogar", "Entretenimiento", "Ropa", "Otros",
-            ]
+
+        ranked = await get_user_ranked_categories(txn.user_id, session.raw_merchant, db) if txn else []
+        display_cats, overflow = _paginate_categories(ranked)
+        session.overflow_categories = overflow
+        await save_session(phone, session, redis)
+
         context_msg = f"¿A qué categoría pertenece el gasto de {amount_str} en {session.raw_merchant}?"
-        category_wamid = await send_category_list(to=phone, categories=categories, context_msg=context_msg)
+        category_wamid = await send_category_list(to=phone, categories=display_cats, context_msg=context_msg)
         await save_msgid(category_wamid, transaction_id, redis)
 
 
@@ -118,6 +129,16 @@ async def handle_list_selection(
 
     session = await get_session(phone, transaction_id, redis)
     if not session:
+        return
+
+    # "Otras categorías" is not a real category — show the overflow page instead
+    if list_item_title == _OTRAS:
+        overflow_wamid = await send_category_list(
+            to=phone,
+            categories=session.overflow_categories,
+            context_msg=f"Otras categorías para {session.raw_merchant}:",
+        )
+        await save_msgid(overflow_wamid, transaction_id, redis)
         return
 
     category = list_item_title
@@ -209,21 +230,24 @@ async def _handle_manual_expense_trigger(
     await db.flush()
     await db.commit()
 
+    ranked = await get_user_ranked_categories(user_id, merchant, db)
+    display_cats, overflow = _paginate_categories(ranked)
+
     session = WhatsAppSession(
         transaction_id=str(txn.id),
         step="awaiting_split",
         raw_merchant=merchant,
+        overflow_categories=overflow,
     )
     await save_session(phone, session, redis)
 
-    categories = await lookup_merchant(merchant, db=db, redis=redis)
     wamid = await send_expense_alert(
         to=phone,
         amount=amount,
         merchant=merchant,
         partner_name="tu pareja",
         is_joint=False,
-        categories=categories,
+        categories=display_cats,
         currency=currency,
     )
     await save_msgid(wamid, str(txn.id), redis)
@@ -273,18 +297,20 @@ async def handle_text_message(
         acct = acct_result.scalar_one_or_none()
         is_joint = acct.account_type == "joint" if acct else False
 
-    # Re-send the expense alert with updated data
-    categories = await lookup_merchant(txn.raw_merchant_name, db=db, redis=redis)
+    # Re-send the expense alert with updated data, using user's ranked categories
+    ranked = await get_user_ranked_categories(txn.user_id, txn.raw_merchant_name, db)
+    display_cats, overflow = _paginate_categories(ranked)
+    session.overflow_categories = overflow
+    session.step = "awaiting_category" if is_joint else "awaiting_split"
+
     new_msg_id = await send_expense_alert(
         to=phone,
         amount=txn.amount,
         merchant=txn.raw_merchant_name,
         partner_name="tu pareja",
         is_joint=is_joint,
-        categories=categories,
+        categories=display_cats,
         currency=txn.currency or "CLP",
     )
-    # Reset session step for the new message
-    session.step = "awaiting_category" if is_joint else "awaiting_split"
     await save_session(phone, session, redis)
     await save_msgid(new_msg_id, transaction_id, redis)
