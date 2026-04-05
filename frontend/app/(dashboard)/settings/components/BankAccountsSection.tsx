@@ -653,11 +653,13 @@ function DetectedAccountCard({
 
   const formatBalance = (val: number | null, currency: string | null) => {
     if (val === null) return "—";
-    const abs = Math.abs(Math.round(val));
+    const isDecimalCurrency = currency !== "CLP";
+    const displayVal = isDecimalCurrency ? val / 100 : val;
+    const abs = Math.abs(displayVal);
     const formatted =
       currency === "USD"
-        ? `US$${abs.toLocaleString("en-US")}`
-        : `$${abs.toLocaleString("es-CL")}`;
+        ? `US$${abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : `$${Math.round(abs).toLocaleString("es-CL")}`;
     return val < 0 ? `(${formatted})` : formatted;
   };
 

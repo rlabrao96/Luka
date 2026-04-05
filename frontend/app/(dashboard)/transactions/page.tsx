@@ -12,8 +12,12 @@ import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 
 function formatAmount(n: number, currency: string) {
-  if (currency === "USD") return `US$${Math.round(n).toLocaleString("en-US")}`;
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
+  // Balances are stored in cents; CLP has no decimals
+  const isDecimal = currency !== "CLP";
+  const displayVal = isDecimal ? n / 100 : n;
+  if (currency === "USD")
+    return `US$${Math.abs(displayVal).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${Math.round(Math.abs(displayVal)).toLocaleString("es-CL")}`;
 }
 
 function getMonthKey(iso: string) {
