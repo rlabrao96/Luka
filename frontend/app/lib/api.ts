@@ -300,9 +300,10 @@ export interface NotificationItem {
   read_at: string | null;
 }
 
-export interface RawNameInfo {
-  name: string;
-  last_date: string | null;
+export interface ReviewTransactionInfo {
+  raw_name: string;
+  date: string | null;
+  amount: number;
 }
 
 export interface ReviewCard {
@@ -310,7 +311,7 @@ export interface ReviewCard {
   display_name: string;
   default_category: string | null;
   llm_suggested_categories: string[];
-  raw_names: RawNameInfo[];
+  transactions: ReviewTransactionInfo[];
   transaction_count: number;
   total_amount: number;
   is_verified: boolean;

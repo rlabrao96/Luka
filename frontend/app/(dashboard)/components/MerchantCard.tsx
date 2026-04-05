@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ReviewCard } from "@/app/lib/api";
+import { ReviewCard, ReviewTransactionInfo } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 
 const EXPENSE_CATEGORIES = [
@@ -15,8 +15,13 @@ const CATEGORY_ICONS: Record<string, string> = {
   Tecnologia: "💻", Educacion: "📚", Viajes: "✈️", Servicios: "🔧", Otros: "📦",
 };
 
-function formatAmount(amount: number): string {
-  return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(Math.abs(amount));
+function formatAmount(amount: number, currency = "CLP"): string {
+  return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: 0 }).format(Math.abs(amount));
+}
+
+function formatTxAmount(amount: number): string {
+  const prefix = amount < 0 ? "-" : "+";
+  return `${prefix}${formatAmount(amount)}`;
 }
 
 interface Props {
@@ -119,13 +124,17 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
 
         <div className="bg-slate-50 rounded-xl p-3 mb-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">
-            Grouped from ({card.transaction_count} txns)
+            Transactions ({card.transaction_count})
           </p>
-          <div className="flex flex-wrap gap-1">
-            {card.raw_names.map((rn) => (
-              <span key={rn.name} className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] text-slate-500">
-                {rn.name}{rn.last_date && <span className="text-slate-400 ml-1">{rn.last_date}</span>}
-              </span>
+          <div className="flex flex-col gap-1">
+            {card.transactions.map((tx, i) => (
+              <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
+                <span className="text-slate-500 truncate">{tx.raw_name}</span>
+                <span className="flex gap-2 text-slate-400 shrink-0 ml-2">
+                  <span>{tx.date}</span>
+                  <span className="font-medium text-slate-600">{formatTxAmount(tx.amount)}</span>
+                </span>
+              </div>
             ))}
           </div>
         </div>
@@ -164,13 +173,17 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
 
       <div className="bg-slate-50 rounded-xl p-3 mb-4">
         <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">
-          Raw names found ({card.transaction_count} txns)
+          Transactions ({card.transaction_count})
         </p>
-        <div className="flex flex-wrap gap-1">
-          {card.raw_names.map((rn) => (
-            <span key={rn.name} className="bg-white border border-slate-200 px-2 py-0.5 rounded-md text-[10px] text-slate-500">
-              {rn.name}{rn.last_date && <span className="text-slate-400 ml-1">{rn.last_date}</span>}
-            </span>
+        <div className="flex flex-col gap-1">
+          {card.transactions.map((tx, i) => (
+            <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
+              <span className="text-slate-500 truncate">{tx.raw_name}</span>
+              <span className="flex gap-2 text-slate-400 shrink-0 ml-2">
+                <span>{tx.date}</span>
+                <span className="font-medium text-slate-600">{formatTxAmount(tx.amount)}</span>
+              </span>
+            </div>
           ))}
         </div>
       </div>

@@ -124,30 +124,30 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
         )
         stat = stats.one()
 
-        # Get per-raw-name last date — scoped
-        date_where = [
+        # Get individual transactions — scoped
+        tx_where = [
             Transaction.user_id == user_id,
             Transaction.raw_merchant_name.in_(unique_names),
         ]
         if tx_id_uuids:
-            date_where.append(Transaction.id.in_(tx_id_uuids))
+            tx_where.append(Transaction.id.in_(tx_id_uuids))
 
-        date_q = await db.execute(
+        tx_q = await db.execute(
             select(
                 Transaction.raw_merchant_name,
-                func.max(Transaction.transaction_date).label("last_date"),
+                Transaction.transaction_date,
+                Transaction.amount,
             )
-            .where(*date_where)
-            .group_by(Transaction.raw_merchant_name)
+            .where(*tx_where)
+            .order_by(Transaction.transaction_date.desc())
         )
-        date_map = {r.raw_merchant_name: r.last_date for r in date_q.all()}
-
-        raw_names_info = [
+        transactions_info = [
             {
-                "name": n,
-                "last_date": date_map[n].strftime("%d-%b-%Y") if date_map.get(n) else None,
+                "raw_name": r.raw_merchant_name,
+                "date": r.transaction_date.strftime("%d-%b-%Y") if r.transaction_date else None,
+                "amount": float(r.amount) if r.amount else 0,
             }
-            for n in unique_names
+            for r in tx_q.all()
         ]
 
         # Get LLM suggestions from the first linked merchant
@@ -164,7 +164,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 "llm_suggested_categories": merchant.llm_suggested_categories or []
                 if merchant
                 else [],
-                "raw_names": raw_names_info,
+                "transactions": transactions_info,
                 "transaction_count": stat.count,
                 "total_amount": float(stat.total or 0),
                 "is_verified": row.is_verified,
