@@ -17,9 +17,14 @@ def _url() -> str:
 
 
 def _format_amount(amount: float, currency: str = "CLP") -> str:
-    """Format amount for display: CLP integer ($15,990) or USD dollars (US$25.00)."""
+    """Format amount for display: CLP integer ($15,990) or USD cents→dollars (US$7.00).
+
+    USD amounts are stored as cents (e.g. $7.00 → 700).
+    CLP amounts are stored as integers (e.g. $15.990 → 15990).
+    """
     if currency == "USD":
-        return f"US${amount:,.2f}"
+        dollars = amount / 100
+        return f"US${dollars:,.2f}"
     return f"${int(amount):,}"
 
 
@@ -53,7 +58,10 @@ async def send_expense_alert(
                 "buttons": [
                     {"type": "reply", "reply": {"id": "split_personal", "title": "Personal"}},
                     {"type": "reply", "reply": {"id": "split_shared", "title": "Compartido"}},
-                    {"type": "reply", "reply": {"id": "transaction_error", "title": "Editar Transacción"}},
+                    {
+                        "type": "reply",
+                        "reply": {"id": "transaction_error", "title": "Editar Transacción"},
+                    },
                 ]
             },
         },
