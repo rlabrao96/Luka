@@ -1,4 +1,5 @@
 "use client";
+import { Landmark } from "lucide-react";
 import type { BankAccountRow } from "@/app/lib/api";
 
 interface BalanceCardProps {
@@ -30,6 +31,9 @@ export function BalanceCard({ accounts, currency }: BalanceCardProps) {
 
   return (
     <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-4 text-white">
+      <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center mb-2">
+        <Landmark size={16} className="text-white" />
+      </div>
       <p className="text-xs font-medium uppercase tracking-wide opacity-80">
         Saldo disponible
       </p>

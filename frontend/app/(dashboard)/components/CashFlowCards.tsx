@@ -39,7 +39,7 @@ export function CashFlowCards({ income, expenses, net, currency }: CashFlowCards
           Gastos del mes
         </p>
         <p className="text-2xl font-bold text-red-600 mt-1 tabular-nums">
-          {fmt(expenses, currency)}
+          ({fmt(expenses, currency)})
         </p>
       </div>
 
@@ -51,7 +51,7 @@ export function CashFlowCards({ income, expenses, net, currency }: CashFlowCards
           Movimiento neto
         </p>
         <p className={`text-2xl font-bold mt-1 tabular-nums ${net >= 0 ? "text-blue-600" : "text-red-600"}`}>
-          {net >= 0 ? "+" : "-"}{fmt(Math.abs(net), currency)}
+          {net >= 0 ? `+${fmt(net, currency)}` : `(${fmt(Math.abs(net), currency)})`}
         </p>
       </div>
     </>
