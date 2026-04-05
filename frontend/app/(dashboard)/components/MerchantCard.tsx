@@ -50,12 +50,12 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
     return (
       <div className="bg-white rounded-2xl shadow-lg p-6 w-full border-2 border-luka-primary">
         <span className="inline-block bg-blue-50 text-luka-primary text-[10px] font-semibold px-2.5 py-1 rounded-md mb-4">
-          EDITING
+          EDITANDO
         </span>
 
         <div className="mb-4">
           <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-            Display Name
+            Nombre
           </label>
           <input
             type="text"
@@ -68,7 +68,7 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
 
         <div className="mb-4">
           <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-            Category
+            Categoría
           </label>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {suggestions.map((cat) => (
@@ -116,9 +116,9 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
 
         <div className="bg-slate-50 rounded-xl p-3 mb-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1">
-            Transactions ({card.transaction_count})
+            Movimientos ({card.transaction_count})
           </p>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
             {(card.transactions ?? []).map((tx, i) => (
               <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
                 <span className="text-slate-500 truncate">{tx.raw_name}</span>
@@ -136,13 +136,13 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
             onClick={() => setEditing(false)}
             className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-500 hover:bg-slate-50"
           >
-            Cancel
+            Cancelar
           </button>
           <button
             onClick={handleSaveApprove}
             className="flex-[1.5] py-2.5 bg-luka-primary text-white rounded-xl text-sm font-bold hover:bg-blue-700"
           >
-            Save & Approve
+            Guardar
           </button>
         </div>
       </div>
@@ -170,9 +170,9 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
 
       <div className="bg-slate-50 rounded-xl p-3">
         <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">
-          Transactions ({card.transaction_count})
+          Movimientos ({card.transaction_count})
         </p>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
           {(card.transactions ?? []).map((tx, i) => (
             <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
               <span className="text-slate-500 truncate">{tx.raw_name}</span>
@@ -184,7 +184,7 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
           ))}
         </div>
         <div className="flex justify-end mt-2 pt-2 border-t border-slate-200">
-          <span className="text-xs font-semibold text-slate-600">Total: {formatAmount(card.total_amount)}</span>
+          <span className="text-xs font-semibold text-slate-600">Total: {formatTxAmount(card.total_amount)}</span>
         </div>
       </div>
     </div>

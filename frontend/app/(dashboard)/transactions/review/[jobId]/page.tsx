@@ -94,12 +94,12 @@ export default function ReviewPage() {
   if (total === 0) {
     return (
       <div className="text-center py-16">
-        <p className="text-lg font-semibold text-luka-dark">No merchants to review</p>
+        <p className="text-lg font-semibold text-luka-dark">No hay comercios para revisar</p>
         <button
           onClick={() => router.push("/transactions")}
           className="mt-4 text-sm text-luka-primary hover:underline"
         >
-          Back to transactions
+          Volver a transacciones
         </button>
       </div>
     );
@@ -115,11 +115,11 @@ export default function ReviewPage() {
       <div className="hidden lg:block">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-xl font-bold text-luka-dark">Reviewing Merchants</h1>
+            <h1 className="text-xl font-bold text-luka-dark">Revisión de comercios</h1>
             <p className="text-sm text-slate-400 mt-0.5">
               {remaining.length > 0
-                ? `${remaining.length} of ${cards.length} remaining`
-                : "All done!"}
+                ? `${remaining.length} de ${cards.length} pendientes`
+                : "¡Listo!"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -132,13 +132,13 @@ export default function ReviewPage() {
                   className="px-4 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg hover:bg-emerald-600 transition-colors flex items-center gap-1.5"
                 >
                   <Check size={16} />
-                  Approve All
+                  Aprobar todo
                 </button>
                 <button
                   onClick={handleSkipAll}
                   className="px-4 py-2 border border-slate-200 text-sm text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
                 >
-                  Skip All
+                  Omitir todo
                 </button>
               </>
             )}
@@ -189,7 +189,7 @@ export default function ReviewPage() {
         {processed.length > 0 && (
           <>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-              Reviewed ({processed.length})
+              Revisados ({processed.length})
             </p>
             <div className="grid grid-cols-3 gap-4 opacity-40">
               {processed.map((card) => (
@@ -211,7 +211,7 @@ export default function ReviewPage() {
               onClick={() => router.push("/transactions")}
               className="px-6 py-3 bg-luka-primary text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
             >
-              Back to Transactions
+              Volver a transacciones
             </button>
           </div>
         )}
@@ -221,7 +221,7 @@ export default function ReviewPage() {
       <div className="lg:hidden flex flex-col items-center pt-4">
         <div className="w-full max-w-[380px] mb-4">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-slate-400">Reviewing merchants</span>
+            <span className="text-xs text-slate-400">Revisando comercios</span>
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-400">{currentIndex + 1} / {total}</span>
               <button
@@ -282,9 +282,9 @@ export default function ReviewPage() {
           </button>
         </div>
         <div className="flex items-center gap-4 mt-2 text-[10px] text-slate-400">
-          <span className="w-12 text-center">Skip</span>
-          <span className="w-12 text-center">Edit</span>
-          <span className="w-16 text-center">Approve</span>
+          <span className="w-12 text-center">Omitir</span>
+          <span className="w-12 text-center">Editar</span>
+          <span className="w-16 text-center">Aprobar</span>
         </div>
       </div>
     </>
