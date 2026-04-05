@@ -218,7 +218,7 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
         </div>
       </div>
 
-      <div className="px-5 py-1">
+      <div className="px-5 pt-1 pb-5">
         {loading ? (
           <div className="py-12 flex items-center justify-center">
             <div className="w-5 h-5 border-2 border-luka-primary border-t-transparent rounded-full animate-spin" />
