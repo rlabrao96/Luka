@@ -108,12 +108,10 @@ async def handle_button_click(
         amount_str = f"${txn.amount:,}" if txn else session.raw_merchant
 
         ranked = await get_user_ranked_categories(txn.user_id, session.raw_merchant, db, category_type="expense") if txn else []
-        display_cats, overflow = _paginate_categories(ranked)
-        session.overflow_categories = overflow
         await save_session(phone, session, redis)
 
         context_msg = f"¿A qué categoría pertenece el gasto de {amount_str} en {session.raw_merchant}?"
-        category_wamid = await send_category_list(to=phone, categories=display_cats, context_msg=context_msg)
+        category_wamid = await send_category_list(to=phone, categories=ranked[:10], context_msg=context_msg)
         await save_msgid(category_wamid, transaction_id, redis)
 
 
@@ -223,7 +221,7 @@ async def _handle_manual_expense_trigger(
     await db.flush()
     await db.commit()
 
-    categories = await get_user_ranked_categories(user_id, merchant, db, category_type="expense")
+    categories = (await get_user_ranked_categories(user_id, merchant, db, category_type="expense"))[:10]
 
     session = WhatsAppSession(
         transaction_id=str(txn.id),
@@ -289,7 +287,7 @@ async def handle_text_message(
         is_joint = acct.account_type == "joint" if acct else False
 
     # Re-send the expense alert with updated data, using user's ranked expense categories
-    categories = await get_user_ranked_categories(txn.user_id, txn.raw_merchant_name, db, category_type="expense")
+    categories = (await get_user_ranked_categories(txn.user_id, txn.raw_merchant_name, db, category_type="expense"))[:10]
     session.step = "awaiting_category" if is_joint else "awaiting_split"
 
     new_msg_id = await send_expense_alert(
