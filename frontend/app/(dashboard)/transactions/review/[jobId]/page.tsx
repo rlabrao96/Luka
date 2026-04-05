@@ -3,13 +3,13 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SkipForward, Pencil } from "lucide-react";
 import { MerchantCard } from "../../../components/MerchantCard";
-import { useMerchantReview, useApproveMerchant, useSkipReview } from "@/app/lib/hooks/useMerchantReview";
+import { useMerchantReview, useOptimisticReview, useSkipReview } from "@/app/lib/hooks/useMerchantReview";
 
 export default function ReviewPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const router = useRouter();
   const { data: cards = [], isLoading } = useMerchantReview(jobId);
-  const approveMutation = useApproveMerchant(jobId);
+  const { submit } = useOptimisticReview(jobId);
   const skipMutation = useSkipReview(jobId);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editRequested, setEditRequested] = useState(false);
@@ -34,24 +34,18 @@ export default function ReviewPage() {
 
   const handleApprove = (displayName?: string, category?: string) => {
     if (!currentCard) return;
-    approveMutation.mutate(
-      {
-        canonicalId: currentCard.canonical_merchant_id,
-        data: { display_name: displayName, category, action: "approve" },
-      },
-      { onSuccess: advance }
-    );
+    submit(currentCard.canonical_merchant_id, {
+      display_name: displayName,
+      category,
+      action: "approve",
+    });
+    advance();
   };
 
   const handleSkip = () => {
     if (!currentCard) return;
-    approveMutation.mutate(
-      {
-        canonicalId: currentCard.canonical_merchant_id,
-        data: { action: "skip" },
-      },
-      { onSuccess: advance }
-    );
+    submit(currentCard.canonical_merchant_id, { action: "skip" });
+    advance();
   };
 
   const handleSkipAll = () => {
