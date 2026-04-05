@@ -544,81 +544,78 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
             job_id_uuid = job.id
             job_user_id = job.user_id
             job_notification_id = job.notification_id
+            job_tx_ids = job.transaction_ids  # list of UUID strings, or None
 
-            # Collect unique raw merchant names from user's uncategorized connect transactions
-            txn_result = await db.execute(
-                select(Transaction.raw_merchant_name)
-                .where(
-                    Transaction.user_id == job_user_id,
-                    Transaction.source_type.in_(["connect", "plaid"]),
-                    Transaction.category.is_(None),
+            # Collect unique raw merchant names — scoped to specific transactions if available
+            if job_tx_ids:
+                txn_result = await db.execute(
+                    select(Transaction.raw_merchant_name)
+                    .where(
+                        Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids]),
+                        Transaction.category.is_(None),
+                    )
+                    .distinct()
                 )
-                .distinct()
-            )
+            else:
+                txn_result = await db.execute(
+                    select(Transaction.raw_merchant_name)
+                    .where(
+                        Transaction.user_id == job_user_id,
+                        Transaction.source_type.in_(["connect", "plaid"]),
+                        Transaction.category.is_(None),
+                    )
+                    .distinct()
+                )
             raw_names = [r[0] for r in txn_result.all() if r[0]]
 
-            # Filter out names that already have a canonical merchant
+            # Split into known (has canonical) vs new merchants
             names_to_process = []
+            known_count = 0
             for name in raw_names:
                 mr = await db.execute(select(Merchant).where(Merchant.raw_name == name))
                 merchant = mr.scalar_one_or_none()
-                if not merchant or not merchant.canonical_merchant_id:
+                if merchant and merchant.canonical_merchant_id:
+                    known_count += 1
+                else:
                     names_to_process.append(name)
-                    # Ensure merchant row exists
                     if not merchant:
                         db.add(Merchant(raw_name=name, normalized_name=name))
                         await db.flush()
 
-            if not names_to_process:
-                job.status = "ready"
-                job.total_merchants = 0
-                await db.commit()
-                return
-
-            # Phase 1: LLM grouping
-            groups = await group_raw_merchants(names_to_process)
-
-            # Create canonical merchants and link (pass job.id to scope review cards)
-            canonicals = await create_canonicals_from_groups(db, groups, review_job_id=job_id_uuid)
-            await db.commit()
-
-            # Phase 2: Categorize each new canonical using existing lookup_merchant
+            # Phase 1: LLM grouping for truly new merchants
             new_count = 0
-            for i, group in enumerate(groups):
-                canonical_info = canonicals[i]
-                if not canonical_info.get("is_new"):
-                    continue
+            if names_to_process:
+                groups = await group_raw_merchants(names_to_process)
+                canonicals = await create_canonicals_from_groups(
+                    db, groups, review_job_id=job_id_uuid
+                )
+                await db.commit()
 
-                first_raw = group["raw_names"][0]
-                categories = await lookup_merchant(first_raw, db, redis)
+                # Phase 2: Categorize each new canonical using existing lookup_merchant
+                for i, group in enumerate(groups):
+                    canonical_info = canonicals[i]
+                    if not canonical_info.get("is_new"):
+                        continue
 
-                if categories:
-                    canonical_result = await db.execute(
-                        select(CanonicalMerchant).where(
-                            CanonicalMerchant.id == uuid.UUID(canonical_info["id"])
-                        )
-                    )
-                    canonical = canonical_result.scalar_one_or_none()
-                    if canonical:
-                        canonical.default_category = categories[0]
+                    first_raw = group["raw_names"][0]
+                    categories = await lookup_merchant(first_raw, db, redis)
 
-                    # Apply category to all linked transactions
-                    for raw_name in group["raw_names"]:
-                        await db.execute(
-                            Transaction.__table__.update()
-                            .where(
-                                Transaction.user_id == job_user_id,
-                                Transaction.raw_merchant_name == raw_name,
-                                Transaction.category.is_(None),
+                    if categories:
+                        canonical_result = await db.execute(
+                            select(CanonicalMerchant).where(
+                                CanonicalMerchant.id == uuid.UUID(canonical_info["id"])
                             )
-                            .values(category=categories[0])
                         )
+                        canonical = canonical_result.scalar_one_or_none()
+                        if canonical:
+                            canonical.default_category = categories[0]
 
-                new_count += 1
+                    new_count += 1
 
-            # Finalize
+            # Finalize — total_merchants = all unique merchants (known + new)
+            total_count = known_count + new_count
             job.status = "ready"
-            job.total_merchants = new_count
+            job.total_merchants = total_count
             job.updated_at = datetime.now(timezone.utc)
 
             # Update notification title
@@ -628,11 +625,17 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 )
                 notif = notif_result.scalar_one_or_none()
                 if notif:
-                    notif.title = f"{new_count} merchants ready for review"
+                    notif.title = f"{total_count} merchants ready for review"
                     notif.updated_at = datetime.now(timezone.utc)
 
             await db.commit()
-            logger.info("Review job %s complete: %d canonical merchants created", job_id, new_count)
+            logger.info(
+                "Review job %s complete: %d merchants (%d known, %d new)",
+                job_id,
+                total_count,
+                known_count,
+                new_count,
+            )
 
         except Exception:
             logger.exception("Review job %s failed", job_id)
@@ -689,6 +692,7 @@ async def run_plaid_sync_job(ctx: dict, plaid_item_id: str, initial: bool = Fals
                 review_job = MerchantReviewJob(
                     user_id=item.user_id,
                     notification_id=notif.id,
+                    transaction_ids=stats.get("new_tx_ids"),
                 )
                 db.add(review_job)
                 await db.flush()

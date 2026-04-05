@@ -76,7 +76,11 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
     if not review_job:
         return []
 
-    result = await db.execute(
+    job_tx_ids = review_job.transaction_ids  # list of UUID strings, or None
+    tx_id_uuids = [uuid.UUID(tid) for tid in job_tx_ids] if job_tx_ids else None
+
+    # Find canonicals via the job's transactions (covers known + new merchants)
+    card_query = (
         select(
             CanonicalMerchant.id,
             CanonicalMerchant.display_name,
@@ -86,40 +90,54 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
         )
         .join(Merchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
         .join(Transaction, Transaction.raw_merchant_name == Merchant.raw_name)
-        .where(
+    )
+    if tx_id_uuids:
+        card_query = card_query.where(Transaction.id.in_(tx_id_uuids))
+    else:
+        # Legacy fallback: use review_job_id on canonical
+        card_query = card_query.where(
             Transaction.user_id == user_id,
             CanonicalMerchant.review_job_id == job_id,
         )
-        .group_by(CanonicalMerchant.id)
-    )
+    card_query = card_query.group_by(CanonicalMerchant.id)
+
+    result = await db.execute(card_query)
     rows = result.all()
 
     cards = []
     for row in rows:
         unique_names = list(set(row.raw_names))
 
-        # Get transaction stats for this canonical merchant
+        # Get transaction stats — scoped to new transactions if available
+        stat_where = [
+            Transaction.user_id == user_id,
+            Transaction.raw_merchant_name.in_(unique_names),
+        ]
+        if tx_id_uuids:
+            stat_where.append(Transaction.id.in_(tx_id_uuids))
+
         stats = await db.execute(
             select(
                 func.count().label("count"),
                 func.sum(Transaction.amount).label("total"),
-            ).where(
-                Transaction.user_id == user_id,
-                Transaction.raw_merchant_name.in_(unique_names),
-            )
+            ).where(*stat_where)
         )
         stat = stats.one()
 
-        # Get per-raw-name last date
+        # Get per-raw-name last date — scoped
+        date_where = [
+            Transaction.user_id == user_id,
+            Transaction.raw_merchant_name.in_(unique_names),
+        ]
+        if tx_id_uuids:
+            date_where.append(Transaction.id.in_(tx_id_uuids))
+
         date_q = await db.execute(
             select(
                 Transaction.raw_merchant_name,
                 func.max(Transaction.transaction_date).label("last_date"),
             )
-            .where(
-                Transaction.user_id == user_id,
-                Transaction.raw_merchant_name.in_(unique_names),
-            )
+            .where(*date_where)
             .group_by(Transaction.raw_merchant_name)
         )
         date_map = {r.raw_merchant_name: r.last_date for r in date_q.all()}
@@ -179,21 +197,29 @@ async def approve_merchant(
     merchant.is_verified = True
     merchant.updated_at = datetime.now(timezone.utc)
 
-    # Update all linked transactions with the category
+    # Update linked transactions with the category — scoped if tx IDs available
     if category:
+        # Load job to get transaction_ids scope
+        job_result = await db.execute(
+            select(MerchantReviewJob).where(MerchantReviewJob.id == job_id)
+        )
+        review_job = job_result.scalar_one_or_none()
+        job_tx_ids = review_job.transaction_ids if review_job else None
+
         linked_merchants = await db.execute(
             select(Merchant.raw_name).where(Merchant.canonical_merchant_id == canonical_id)
         )
         raw_names = [r[0] for r in linked_merchants.all()]
         if raw_names:
+            where_clauses = [
+                Transaction.user_id == user_id,
+                Transaction.raw_merchant_name.in_(raw_names),
+                Transaction.category.is_(None),
+            ]
+            if job_tx_ids:
+                where_clauses.append(Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids]))
             await db.execute(
-                Transaction.__table__.update()
-                .where(
-                    Transaction.user_id == user_id,
-                    Transaction.raw_merchant_name.in_(raw_names),
-                    Transaction.category.is_(None),
-                )
-                .values(category=category)
+                Transaction.__table__.update().where(*where_clauses).values(category=category)
             )
 
     # Increment reviewed count on the job
