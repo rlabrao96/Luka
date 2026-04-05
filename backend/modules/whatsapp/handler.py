@@ -99,13 +99,22 @@ _CLP_KEYWORDS = {"clp", "pesos", "chile", "chileno", "chilenos"}
 
 # Prefixes stripped before amount+merchant extraction (order matters: longer first)
 _PREFIXES = re.compile(
-    r"^(?:gast[oée]\s+de|gast[oée]|expense\s+of|expense|spent)\s+",
+    r"^(?:"
+    r"gast[oée]\s+de|gast[oée]|"  # gasto, gasté, gasto de
+    r"compra\s+de|compra\s+en|compra|"  # compra, compra de, compra en
+    r"transferencia\s+de|transferencia\s+a|transferencia|"  # transferencia, transferencia de/a
+    r"pago\s+de|pago\s+en|pago|"  # pago, pago de, pago en
+    r"pagué\s+de|pagué|"  # pagué
+    r"expense\s+of|expense|"  # expense, expense of
+    r"spent|paid|payment\s+of|payment|"  # spent, paid, payment, payment of
+    r"transfer\s+to|transfer"  # transfer, transfer to
+    r")\s+",
     re.IGNORECASE,
 )
 
-# Amount then merchant, with optional "en"/"in"/"at" separator
+# Amount then merchant, with optional "en"/"in"/"at"/"a"/"de" separator
 _AMOUNT_MERCHANT = re.compile(
-    r"^(\$?\d[\d.,]*)\s+(?:en\s+|in\s+|at\s+)?(.+)$",
+    r"^(\$?\d[\d.,]*)\s+(?:en\s+|in\s+|at\s+|a\s+|de\s+)?(.+)$",
     re.IGNORECASE,
 )
 
