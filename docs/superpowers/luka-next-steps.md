@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-04-05 (session 15)
+**Date:** 2026-04-05 (session 16)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -475,8 +475,21 @@ Session 15 (2026-04-05): Gmail Watch + Bank Connect Cron Fixes — COMPLETE
   → Manual sync tested: Banco de Chile returned 127 movements, all deduped (0 new), working correctly
   → 3 commits
 
+Session 16 (2026-04-05): Worker Queue Scaling — COMPLETE
+  → Split single ARQ worker into fast/slow workers with separate Redis queues
+  → Fast worker (luka-worker): process_email, send_invite_email + 6 crons, max_jobs=20, timeout=60s
+  → Slow worker (luka-worker-slow): run_connect_sync, run_plaid_sync_job, process_merchant_review + reconciliation cron, max_jobs=5, timeout=600s
+  → Queue routing via SLOW_JOBS set in enqueue_job() → arq:queue:slow
+  → Schedulers (schedule_connect_syncs, schedule_plaid_syncs) stay on fast worker — they just enqueue slow jobs
+  → railway.toml updated: case-based START_COMMAND routing (worker-fast / worker-slow / web)
+  → Migration safety: deployed routing first (backwards-compatible), then added slow worker service
+  → New Railway service: luka-worker-slow, connected to Redis, same env vars
+  → 14 new tests (5 queue routing + 8 worker settings + 1 alias), all passing
+  → Verified with live Plaid sync: run_plaid_sync_job (28.7s) → process_merchant_review (6.9s), both on slow worker
+  → Spec: docs/superpowers/specs/2026-04-04-worker-queue-scaling.md
+  → 5 commits
+
 Next: Merchant training curation (use /train UI to verify/merge/fix categories)
-Next: Implement fast/slow worker queue split (see docs/superpowers/specs/2026-04-04-worker-queue-scaling.md)
 Next: P0 Features (see docs/roadmap.md)
   → Category budget alerts via WhatsApp
 ```

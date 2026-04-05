@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-04-05 (session 15 — end)
-**Status:** **Bug fixes: Gmail watch auto-setup + bank connect cron fix.** Gmail watch now activates automatically on every login (was never called from frontend). Bank connect cron was crashing every run due to wrong kwarg (`mode=` instead of `days_back=`). Sync frequency changed from hourly to daily (~24h jitter). Added stuck-job cleanup (2h timeout) so credentials don't get permanently blocked. 3 commits.
+**Date:** 2026-04-05 (session 16 — end)
+**Status:** **Worker queue scaling: split single ARQ worker into fast/slow.** Fast worker (max_jobs=20, 60s timeout) handles email webhooks + schedulers + crons. Slow worker (max_jobs=5, 600s timeout) handles bank syncs, LLM merchant reviews, reconciliation. Queue routing via `SLOW_JOBS` set in `enqueue_job`. Both deployed on Railway as separate services. Verified with live Plaid sync — jobs correctly routed to slow worker.
 
 ---
 
@@ -30,7 +30,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 /
 ├── backend/
 │   ├── main.py                     ← FastAPI app factory + all routers
-│   ├── worker.py                   ← ARQ WorkerSettings (cron + on-demand jobs)
+│   ├── worker.py                   ← ARQ FastWorkerSettings + SlowWorkerSettings (two queues)
 │   ├── pyproject.toml
 │   ├── core/
 │   │   ├── config.py               ← Pydantic Settings (all env vars)
@@ -75,7 +75,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 │   │       ├── scheduler.py        ← get_due_syncs query
 │   │       └── router.py           ← connect/disconnect/sync/status/webhook
 │   ├── jobs/
-│   │   ├── queue.py                ← ARQ enqueue helpers
+│   │   ├── queue.py                ← ARQ enqueue helpers + SLOW_JOBS routing (arq:queue vs arq:queue:slow)
 │   │   └── tasks.py                ← 7 async tasks (see ARQ Jobs below)
 │   ├── modules/
 │   │   └── bank_accounts/              ← BankAccount CRUD
@@ -293,18 +293,32 @@ POST /webhooks/whatsapp                    → WhatsApp message receive
 
 ---
 
-## ARQ Jobs
+## ARQ Jobs — Two Worker Architecture
+
+**Fast Worker** (`luka-worker`, queue: `arq:queue`, max_jobs=20, timeout=60s):
 
 | Job | Trigger | What it does |
 |-----|---------|-------------|
-| `process_email` | On-demand (enqueued by webhook) | Fetch email → parse bank amount/merchant → lookup_merchant() → create Transaction+TransactionSplit → save WhatsApp session → send WhatsApp alert |
-| `renew_mail_watches` | Cron 3am daily | Renew Gmail (7d expiry) and Outlook (3d expiry) subscriptions |
+| `process_email` | On-demand (enqueued by webhook) | Fetch email → parse → lookup_merchant() → create Transaction → send WhatsApp alert |
+| `send_invite_email` | On-demand | Send household invite via Resend API |
+| `renew_mail_watches` | Cron 3am daily | Renew Gmail/Outlook subscriptions |
 | `purge_raw_emails` | Cron hourly | Set `raw_email_text = NULL` on transactions >24h old |
 | `cleanup_processed_webhooks` | Cron 4am daily | Delete idempotency records >7 days |
-| `schedule_connect_syncs` | Cron every 6h | Find users due for daily bank sync (stuck-job cleanup + enqueue `run_connect_sync`) |
+| `schedule_connect_syncs` | Cron every 6h | Find due syncs → enqueue `run_connect_sync` (routed to slow queue) |
+| `schedule_plaid_syncs` | Cron 3:30am daily | Enqueue Plaid syncs (routed to slow queue) |
+| `refresh_subscriptions_cache` | Cron 5:30am daily | Recompute subscription detection for all users |
+
+**Slow Worker** (`luka-worker-slow`, queue: `arq:queue:slow`, max_jobs=5, timeout=600s):
+
+| Job | Trigger | What it does |
+|-----|---------|-------------|
 | `run_connect_sync` | On-demand (enqueued by scheduler) | Send WhatsApp 2FA nudge, call Luka Connect async with callback |
-| `run_plaid_sync_job` | On-demand (Plaid Link exchange or manual sync) | Plaid transaction sync → create review job with transaction_ids → enqueue process_merchant_review |
+| `run_plaid_sync_job` | On-demand (Plaid Link exchange or manual sync) | Plaid transaction sync → enqueue process_merchant_review |
 | `process_merchant_review` | On-demand (enqueued by sync jobs) | LLM grouping → categorization → pre-apply categories → create notification |
+| `run_reconciliation_job` | Cron 6am daily | Detect inter-account transfers across all households |
+
+**Routing:** `enqueue_job()` in `jobs/queue.py` checks `SLOW_JOBS` set → routes to `arq:queue:slow` or `arq:queue` (default).
+**Spec:** `docs/superpowers/specs/2026-04-04-worker-queue-scaling.md`
 
 ---
 
@@ -492,7 +506,9 @@ test_merchant_review_api.py ← Review API endpoints (3 tests)
 - URL: `https://luka-production-eb87.up.railway.app`
 - Configured via `backend/railway.toml`
 - Entry: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-- Worker: separate Railway service running `arq worker.WorkerSettings`
+- Fast worker (`luka-worker`): `python -m arq worker.FastWorkerSettings` — email webhooks, schedulers, crons
+- Slow worker (`luka-worker-slow`): `python -m arq worker.SlowWorkerSettings` — bank syncs, LLM reviews, reconciliation
+- Start command routing via `backend/railway.toml` + `START_COMMAND` env var (`worker-fast` / `worker-slow`)
 - Redis: Railway add-on (auto-injects `REDIS_URL`)
 - `/health` returns `{"status":"ok","app":"luka"}`
 
