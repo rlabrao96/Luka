@@ -108,28 +108,40 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
     for row in rows:
         unique_names = list(set(row.raw_names))
 
-        # Get transaction stats — scoped to new transactions if available
-        stat_where = [
+        # Base filter: user's transactions for these merchant names
+        base_where = [
             Transaction.user_id == user_id,
             Transaction.raw_merchant_name.in_(unique_names),
         ]
-        if tx_id_uuids:
-            stat_where.append(Transaction.id.in_(tx_id_uuids))
+
+        # Try scoped first, fall back to unscoped if no results
+        def _build_where():
+            w = list(base_where)
+            if tx_id_uuids:
+                w.append(Transaction.id.in_(tx_id_uuids))
+            return w
 
         stats = await db.execute(
             select(
                 func.count().label("count"),
                 func.sum(Transaction.amount).label("total"),
-            ).where(*stat_where)
+            ).where(*_build_where())
         )
         stat = stats.one()
 
-        # Get individual transactions — scoped
-        tx_where = [
-            Transaction.user_id == user_id,
-            Transaction.raw_merchant_name.in_(unique_names),
-        ]
-        if tx_id_uuids:
+        # If scoped query returned nothing, fall back to unscoped
+        use_scope = tx_id_uuids and stat.count > 0
+        if not use_scope and tx_id_uuids:
+            stats = await db.execute(
+                select(
+                    func.count().label("count"),
+                    func.sum(Transaction.amount).label("total"),
+                ).where(*base_where)
+            )
+            stat = stats.one()
+
+        tx_where = list(base_where)
+        if use_scope:
             tx_where.append(Transaction.id.in_(tx_id_uuids))
 
         tx_q = await db.execute(
@@ -197,8 +209,11 @@ async def approve_merchant(
     merchant.is_verified = True
     merchant.updated_at = datetime.now(timezone.utc)
 
-    # Update linked transactions with the approved category (overwrites pre-applied)
-    if category:
+    # Use explicit category or fall back to canonical's default
+    effective_category = category or merchant.default_category
+
+    # Apply category to linked transactions
+    if effective_category:
         # Load job to get transaction_ids scope
         job_result = await db.execute(
             select(MerchantReviewJob).where(MerchantReviewJob.id == job_id)
@@ -218,7 +233,9 @@ async def approve_merchant(
             if job_tx_ids:
                 where_clauses.append(Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids]))
             await db.execute(
-                Transaction.__table__.update().where(*where_clauses).values(category=category)
+                Transaction.__table__.update()
+                .where(*where_clauses)
+                .values(category=effective_category)
             )
 
     # Increment reviewed count on the job
