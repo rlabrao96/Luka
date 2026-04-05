@@ -496,9 +496,9 @@ async def run_connect_sync(ctx: dict, credential_id: str) -> None:
                     ),
                 )
 
-        # Trigger async scrape with callback
+        # Trigger async scrape with callback (only last 4 days for cron syncs)
         callback_url = f"{settings.backend_public_url}/bank-connect/webhooks/luka-connect"
-        await trigger_sync(db=db, cred=cred, mode="recent", callback_url=callback_url)
+        await trigger_sync(db=db, cred=cred, days_back=4, callback_url=callback_url)
 
 
 async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> None:
