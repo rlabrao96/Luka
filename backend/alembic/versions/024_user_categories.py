@@ -10,6 +10,8 @@ from alembic import op
 
 revision = "024"
 down_revision = "023"
+branch_labels = None
+depends_on = None
 
 
 def upgrade() -> None:
@@ -92,9 +94,17 @@ def upgrade() -> None:
         sa.Column(
             "user_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("users.id"),
             nullable=True,
         ),
+    )
+
+    # 9b. Create FK separately (op.add_column silently ignores ForeignKey constraints)
+    op.create_foreign_key(
+        "fk_merchant_category_selections_user_id",
+        "merchant_category_selections",
+        "users",
+        ["user_id"],
+        ["id"],
     )
 
     # 10. Partial unique index for per-user rows
@@ -115,6 +125,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS uq_merchant_category_user")
     op.execute("DROP INDEX IF EXISTS uq_merchant_category_global")
+    op.drop_constraint(
+        "fk_merchant_category_selections_user_id",
+        "merchant_category_selections",
+        type_="foreignkey",
+    )
     op.drop_column("merchant_category_selections", "user_id")
     op.add_column(
         "user_category_preferences",
