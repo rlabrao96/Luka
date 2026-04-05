@@ -172,7 +172,7 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
         )}
       </div>
 
-      <div className="bg-slate-50 rounded-xl p-3 mb-4">
+      <div className="bg-slate-50 rounded-xl p-3">
         <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">
           Transactions ({card.transaction_count})
         </p>
@@ -187,11 +187,9 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
             </div>
           ))}
         </div>
-      </div>
-
-      <div className="flex justify-between text-xs text-slate-400 px-1">
-        <span>{card.transaction_count} transactions</span>
-        <span>Total: {formatAmount(card.total_amount)}</span>
+        <div className="flex justify-end mt-2 pt-2 border-t border-slate-200">
+          <span className="text-xs font-semibold text-slate-600">Total: {formatAmount(card.total_amount)}</span>
+        </div>
       </div>
     </div>
   );
