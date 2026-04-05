@@ -16,13 +16,11 @@ def _url() -> str:
     return f"{_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
 
 
-def _format_amount(amount: int, currency: str = "CLP") -> str:
-    """Format amount for display: CLP integer ($15,990) or USD cents ($17.08)."""
+def _format_amount(amount: float, currency: str = "CLP") -> str:
+    """Format amount for display: CLP integer ($15,990) or USD dollars (US$25.00)."""
     if currency == "USD":
-        dollars = amount // 100
-        cents = amount % 100
-        return f"US${dollars:,}.{cents:02d}"
-    return f"${amount:,}"
+        return f"US${amount:,.2f}"
+    return f"${int(amount):,}"
 
 
 async def send_expense_alert(
