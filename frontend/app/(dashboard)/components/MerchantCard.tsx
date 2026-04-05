@@ -20,8 +20,10 @@ function formatAmount(amount: number, currency = "CLP"): string {
 }
 
 function formatTxAmount(amount: number): string {
-  const prefix = amount < 0 ? "-" : "+";
-  return `${prefix}${formatAmount(amount)}`;
+  const formatted = formatAmount(amount);
+  if (amount < 0) return `(${formatted})`;
+  if (amount > 0) return `+${formatted}`;
+  return formatted;
 }
 
 interface Props {
