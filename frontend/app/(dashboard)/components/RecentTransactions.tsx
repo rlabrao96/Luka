@@ -52,8 +52,8 @@ function formatCLP(amount: number) {
 function formatTxnAmount(txn: { amount: number; currency: string; source: string }): string {
   let val = Math.abs(Number(txn.amount));
   const currency = txn.currency ?? "CLP";
-  // Gmail stores USD in cents
-  if (currency === "USD" && txn.source === "gmail") val = val / 100;
+  // USD is always stored as cents (email, manual, plaid)
+  if (currency === "USD") val = val / 100;
   if (currency === "USD")
     return `US$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return `$${Math.round(val).toLocaleString("es-CL")}`;
@@ -296,7 +296,7 @@ export function RecentTransactions({
                         <div className="flex justify-between items-center mt-1">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="text-[10px] text-slate-400 shrink-0">
-                              {txn.bank_name ? toTitleCase(txn.bank_name) : "\u2014"}
+                              {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Agregado Manualmente" : "\u2014"}
                             </span>
                             <button
                               onClick={() => setCategorySheet(txn)}
@@ -358,7 +358,7 @@ export function RecentTransactions({
                     <div className="flex justify-between items-center mt-1">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-[10px] text-slate-400 shrink-0">
-                          {txn.bank_name ? toTitleCase(txn.bank_name) : "\u2014"}
+                          {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Agregado Manualmente" : "\u2014"}
                         </span>
                         <CategoryCell txn={txn} />
                       </div>
