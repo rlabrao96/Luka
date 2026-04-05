@@ -8,18 +8,25 @@ import {
 
 interface SpendingChartProps {
   data: Array<{ month: string; personal: number; compartido: number }>;
+  currency?: string;
 }
 
-const CLP = (v: number) => `$${(v / 1000).toFixed(0)}k`;
-
-export function SpendingChart({ data }: SpendingChartProps) {
+export function SpendingChart({ data, currency = "CLP" }: SpendingChartProps) {
   const uid          = useId().replace(/:/g, "");
   const personalId   = `personal-${uid}`;
   const compartidoId = `compartido-${uid}`;
 
+  const fmtAxis = (v: number) => {
+    if (currency === "USD") {
+      const val = v / 100;
+      return val >= 1000 ? `US$${(val / 1000).toFixed(0)}k` : `US$${val.toFixed(0)}`;
+    }
+    return v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : `$${(v / 1000).toFixed(0)}k`;
+  };
+
   if (data.length === 0) {
     return (
-      <div className="h-[200px] flex flex-col items-center justify-center gap-2">
+      <div className="h-full min-h-[140px] flex flex-col items-center justify-center gap-2">
         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
           <TrendingUp size={18} className="text-slate-400" />
         </div>
@@ -29,7 +36,7 @@ export function SpendingChart({ data }: SpendingChartProps) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={200}>
+    <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
         <defs>
           <linearGradient id={personalId} x1="0" y1="0" x2="0" y2="1">
@@ -43,7 +50,7 @@ export function SpendingChart({ data }: SpendingChartProps) {
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
         <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-        <YAxis tickFormatter={CLP} tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={36} />
+        <YAxis tickFormatter={fmtAxis} tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={36} />
         <Tooltip
           contentStyle={{ borderRadius: "12px", border: "1px solid #E2E8F0", fontSize: 12 }}
           formatter={(v) => [`$${Number(v).toLocaleString("es-CL")}`, ""]}
