@@ -118,16 +118,16 @@ async def test_get_categories_requires_auth(app):
 
 
 @pytest.mark.asyncio
-async def test_put_categories_route_exists(auth_app):
-    fake_cats = [{"category": "Alimentación", "sort_order": 0, "hidden": False}]
+async def test_put_categories_reorder_route_exists(auth_app):
+    fake_cats = [{"category": "Alimentación", "sort_order": 0, "category_type": "expense", "is_custom": False}]
     with patch(
-        "modules.settings.service.update_category_preferences",
+        "modules.settings.service.reorder_categories",
         new=AsyncMock(return_value=fake_cats),
     ):
         async with AsyncClient(transport=ASGITransport(app=auth_app), base_url="http://test") as c:
             response = await c.put(
                 "/categories/preferences",
-                json={"categories": fake_cats},
+                json={"categories": [{"category": "Alimentación", "sort_order": 0}]},
                 headers={"Authorization": "Bearer token"},
             )
     assert response.status_code in (200, 500)
