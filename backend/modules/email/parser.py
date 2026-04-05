@@ -50,8 +50,9 @@ _TRANSFER_PATTERNS = [
 ]
 
 # US merchant patterns — BofA uses "Where: MERCHANT_NAME"
+# Merchant names can be mixed case (Spotify), contain @ (BA@PENNPRETCAFE), etc.
 _US_MERCHANT_PATTERNS = [
-    r"Where:?\s+([A-Z][A-Z0-9 &\-/'.]{2,50}?)(?:\s+View|\s+If\b|\s*$)",  # Where: TARGET STORE- T3206
+    r"Where:?\s+([A-Za-z0-9@][A-Za-z0-9 &\-/'.@#]{2,50}?)(?:\s+View|\s+If\b|\s*$)",
 ]
 
 # Chilean merchant patterns — order matters, most specific first.

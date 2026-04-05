@@ -273,3 +273,53 @@ def test_parse_bofa_zelle_small_amount():
     assert result.currency == "USD"
     assert result.transaction_type == "transfer"
     assert "Jane Doe" in result.raw_merchant
+
+
+# --- BofA mixed-case and special char merchants ---
+
+BOFA_SPOTIFY = (
+    "Credit card transaction exceeds alert limit you set "
+    "Customized Cash Rewards Visa Signature ending in 5876 "
+    "Amount: $7.55 "
+    "Date: April 5, 2026 "
+    "Where: Spotify P412215700 "
+    "View details "
+    "If you made this purchase or payment but don't recognize the "
+    "amount, wait until the final purchase amount has posted "
+    "before filing a dispute claim. "
+    "If you get an email that looks suspicious or you are not the intended "
+    "recipient of this email, don't click on any links. Instead, forward to "
+    "abuse@bankofamerica.com then delete it."
+)
+
+
+def test_parse_bofa_spotify():
+    result = parse_bank_email(BOFA_SPOTIFY)
+    assert result is not None
+    assert result.amount == 755
+    assert result.currency == "USD"
+    assert "SPOTIFY" in result.raw_merchant
+    assert "DELETE" not in result.raw_merchant
+
+
+BOFA_CAFE = (
+    "Credit card transaction exceeds alert limit you set "
+    "Customized Cash Rewards Visa Signature ending in 5876 "
+    "Amount: $5.19 "
+    "Date: April 2, 2026 "
+    "Where: BA@PENNPRETCAFE "
+    "View details "
+    "If you made this purchase or payment but don't recognize the "
+    "amount, wait until the final purchase amount has posted "
+    "before filing a dispute claim. "
+    "abuse@bankofamerica.com then delete it."
+)
+
+
+def test_parse_bofa_cafe_at_sign():
+    result = parse_bank_email(BOFA_CAFE)
+    assert result is not None
+    assert result.amount == 519
+    assert result.currency == "USD"
+    assert "PENNPRETCAFE" in result.raw_merchant
+    assert "DELETE" not in result.raw_merchant
