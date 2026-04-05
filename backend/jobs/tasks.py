@@ -355,7 +355,6 @@ async def process_email(
                     categories=categories,
                     transaction_type=parsed.transaction_type,
                     currency=parsed.currency,
-                    transaction_id=str(txn.id),
                 )
                 await save_msgid(msg_id, str(txn.id), redis_client)
             except Exception as e:
