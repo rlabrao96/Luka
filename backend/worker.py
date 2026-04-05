@@ -26,27 +26,48 @@ async def shutdown(ctx: dict) -> None:
     await ctx["redis"].aclose()
 
 
-class WorkerSettings:
+class FastWorkerSettings:
+    """Handles webhooks, emails, schedulers, and lightweight cron jobs."""
+
     functions = [
         process_email,
         send_invite_email,
-        run_connect_sync,
-        run_plaid_sync_job,
-        process_merchant_review,
     ]
     cron_jobs = [
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
         cron(purge_raw_emails, minute=0),  # every hour
         cron(cleanup_processed_webhooks, hour=4, minute=0),  # 4am daily
-        cron(
-            schedule_connect_syncs, hour={0, 6, 12, 18}, minute=0
-        ),  # Every 6h, check for due syncs
+        cron(schedule_connect_syncs, hour={0, 6, 12, 18}, minute=0),  # every 6h
         cron(refresh_subscriptions_cache, hour=5, minute=30),  # 5:30am daily
-        cron(schedule_plaid_syncs, hour=3, minute=30),  # Daily 3:30am UTC — sync all Plaid items
-        cron(run_reconciliation_job, hour=6, minute=0),  # Daily 6am UTC — transfer detection
+        cron(schedule_plaid_syncs, hour=3, minute=30),  # 3:30am daily
     ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    max_jobs = 10
-    job_timeout = 300  # 5 min — enough for bank scrape + 2FA wait
+    max_jobs = 20
+    job_timeout = 60
+    queue_name = "arq:queue"
+
+
+class SlowWorkerSettings:
+    """Handles bank syncs, LLM processing, and heavy batch jobs."""
+
+    functions = [
+        run_connect_sync,
+        run_plaid_sync_job,
+        process_merchant_review,
+    ]
+    cron_jobs = [
+        cron(run_reconciliation_job, hour=6, minute=0),  # 6am daily
+    ]
+    on_startup = startup
+    on_shutdown = shutdown
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    max_jobs = 5
+    job_timeout = 600
+    queue_name = "arq:queue:slow"
+
+
+# Backwards compat: Railway's existing worker service uses `worker.WorkerSettings`
+# Remove this alias after both services are deployed (Task 6)
+WorkerSettings = FastWorkerSettings
