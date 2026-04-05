@@ -247,19 +247,29 @@ async def approve_merchant(
         review_job.reviewed_count += 1
         review_job.updated_at = datetime.now(timezone.utc)
 
-        # Check if all merchants are now reviewed
+        # Check if all merchants are now reviewed — clean up job + notification
         if review_job.total_merchants and review_job.reviewed_count >= review_job.total_merchants:
-            review_job.status = "completed"
-            review_job.completed_at = datetime.now(timezone.utc)
-            # Dismiss the notification
-            if review_job.notification_id:
+            notification_id = review_job.notification_id
+
+            # Unlink canonicals from this job
+            await db.execute(
+                CanonicalMerchant.__table__.update()
+                .where(CanonicalMerchant.review_job_id == job_id)
+                .values(review_job_id=None)
+            )
+
+            # Delete the review job
+            await db.delete(review_job)
+            await db.flush()
+
+            # Delete the notification
+            if notification_id:
                 notif = await db.execute(
-                    select(Notification).where(Notification.id == review_job.notification_id)
+                    select(Notification).where(Notification.id == notification_id)
                 )
                 n = notif.scalar_one_or_none()
                 if n:
-                    n.status = "actioned"
-                    n.updated_at = datetime.now(timezone.utc)
+                    await db.delete(n)
 
     await db.commit()
     return True
