@@ -51,8 +51,7 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
 
   const handleSaveApprove = () => {
     const nameChanged = displayName !== card.display_name ? displayName : undefined;
-    const catChanged = selectedCategory !== (card.default_category ?? llmSuggestions[0]) ? selectedCategory : undefined;
-    onApprove(nameChanged, catChanged);
+    onApprove(nameChanged, selectedCategory || undefined);
   };
 
   if (editing) {
