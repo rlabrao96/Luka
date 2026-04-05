@@ -1,39 +1,34 @@
 import uuid
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from modules.settings.models import NotificationPreference, UserCategoryPreference
 
-EXPENSE_CATEGORIES = [
-    "Alimentación",
-    "Supermercado",
-    "Transporte",
-    "Combustible",
-    "Entretenimiento",
-    "Salud",
-    "Farmacia",
-    "Hogar",
-    "Ropa",
-    "Tecnología",
-    "Educación",
-    "Viajes",
-    "Servicios",
-    "Otros",
+_DEFAULT_CATEGORIES = [
+    ("Alimentación", "expense", 0),
+    ("Supermercado", "expense", 1),
+    ("Transporte", "expense", 2),
+    ("Combustible", "expense", 3),
+    ("Entretenimiento", "expense", 4),
+    ("Salud", "expense", 5),
+    ("Farmacia", "expense", 6),
+    ("Hogar", "expense", 7),
+    ("Ropa", "expense", 8),
+    ("Tecnología", "expense", 9),
+    ("Educación", "expense", 10),
+    ("Viajes", "expense", 11),
+    ("Servicios", "expense", 12),
+    ("Otros", "expense", 13),
+    ("Sueldo", "income", 0),
+    ("Freelance", "income", 1),
+    ("Inversiones", "income", 2),
+    ("Arriendo", "income", 3),
+    ("Bono", "income", 4),
+    ("Transferencia de terceros", "income", 5),
+    ("Deuda pendiente", "income", 6),
+    ("Otros ingresos", "income", 7),
 ]
-
-INCOME_CATEGORIES = [
-    "Sueldo",
-    "Freelance",
-    "Inversiones",
-    "Arriendo",
-    "Bono",
-    "Transferencia de terceros",
-    "Deuda pendiente",
-    "Otros ingresos",
-]
-
-ALL_CATEGORIES = EXPENSE_CATEGORIES + INCOME_CATEGORIES
 
 
 async def get_notification_preferences(
@@ -70,42 +65,170 @@ async def update_notification_preferences(
     return result.scalar_one()
 
 
+def _pref_to_dict(p: UserCategoryPreference) -> dict:
+    return {
+        "category": p.category,
+        "sort_order": p.sort_order,
+        "category_type": p.category_type,
+        "is_custom": p.is_custom,
+    }
+
+
 async def get_category_preferences(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
     result = await db.execute(
         select(UserCategoryPreference)
         .where(UserCategoryPreference.user_id == user_id)
-        .order_by(UserCategoryPreference.sort_order)
+        .order_by(UserCategoryPreference.category_type, UserCategoryPreference.sort_order)
     )
     prefs = result.scalars().all()
-    if prefs:
-        return [
-            {"category": p.category, "sort_order": p.sort_order, "hidden": p.hidden} for p in prefs
-        ]
-    return [
-        {"category": cat, "sort_order": i, "hidden": False} for i, cat in enumerate(ALL_CATEGORIES)
-    ]
+    if not prefs:
+        for category, category_type, sort_order in _DEFAULT_CATEGORIES:
+            db.add(
+                UserCategoryPreference(
+                    user_id=user_id,
+                    category=category,
+                    category_type=category_type,
+                    is_custom=False,
+                    sort_order=sort_order,
+                )
+            )
+        await db.commit()
+        result = await db.execute(
+            select(UserCategoryPreference)
+            .where(UserCategoryPreference.user_id == user_id)
+            .order_by(UserCategoryPreference.category_type, UserCategoryPreference.sort_order)
+        )
+        prefs = result.scalars().all()
+
+    expense = [p for p in prefs if p.category_type == "expense"]
+    income = [p for p in prefs if p.category_type == "income"]
+    return [_pref_to_dict(p) for p in expense + income]
 
 
-async def update_category_preferences(
-    db: AsyncSession, user_id: uuid.UUID, categories: list[dict]
-) -> list[dict]:
-    for item in categories:
-        if item["category"] not in ALL_CATEGORIES:
-            raise ValueError(f"Unknown category: {item['category']}")
-    await db.execute(
-        delete(UserCategoryPreference).where(UserCategoryPreference.user_id == user_id)
+async def add_category(
+    db: AsyncSession, user_id: uuid.UUID, category: str, category_type: str
+) -> dict:
+    category = category.strip()
+    if not category:
+        raise ValueError("Category name cannot be empty")
+    if len(category) > 40:
+        raise ValueError("Category name too long (max 40 chars)")
+
+    count_result = await db.execute(
+        select(func.count()).where(
+            UserCategoryPreference.user_id == user_id,
+            UserCategoryPreference.category_type == category_type,
+        )
     )
-    for item in categories:
-        db.add(
-            UserCategoryPreference(
-                user_id=user_id,
-                category=item["category"],
-                sort_order=item["sort_order"],
-                hidden=item.get("hidden", False),
+    if (count_result.scalar() or 0) >= 19:
+        raise ValueError(f"Limit of 19 {category_type} categories reached")
+
+    dup_result = await db.execute(
+        select(UserCategoryPreference).where(
+            UserCategoryPreference.user_id == user_id,
+            UserCategoryPreference.category == category,
+        )
+    )
+    if dup_result.scalar_one_or_none() is not None:
+        raise ValueError("Duplicate category name")
+
+    max_result = await db.execute(
+        select(func.max(UserCategoryPreference.sort_order)).where(
+            UserCategoryPreference.user_id == user_id,
+            UserCategoryPreference.category_type == category_type,
+        )
+    )
+    max_order = max_result.scalar()
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    pref = UserCategoryPreference(
+        user_id=user_id,
+        category=category,
+        category_type=category_type,
+        is_custom=True,
+        sort_order=next_order,
+    )
+    db.add(pref)
+    await db.commit()
+    return _pref_to_dict(pref)
+
+
+async def reorder_categories(
+    db: AsyncSession, user_id: uuid.UUID, items: list[dict]
+) -> list[dict]:
+    result = await db.execute(
+        select(UserCategoryPreference).where(UserCategoryPreference.user_id == user_id)
+    )
+    existing = {p.category: p for p in result.scalars().all()}
+
+    submitted = {item["category"] for item in items}
+    if submitted != set(existing.keys()):
+        raise ValueError("Submitted categories do not match existing set (no additions or deletions allowed)")
+
+    for item in items:
+        existing[item["category"]].sort_order = item["sort_order"]
+
+    await db.commit()
+    return await get_category_preferences(db, user_id)
+
+
+async def get_category_usage(db: AsyncSession, user_id: uuid.UUID, category: str) -> int:
+    from modules.transactions.models import Transaction, TransactionSplit
+
+    txn_ids = select(Transaction.id).where(Transaction.user_id == user_id)
+    result = await db.execute(
+        select(func.count()).where(
+            TransactionSplit.transaction_id.in_(txn_ids),
+            TransactionSplit.category == category,
+        )
+    )
+    return result.scalar() or 0
+
+
+async def delete_category(
+    db: AsyncSession, user_id: uuid.UUID, category: str, reclassify_to: str | None
+) -> None:
+    from modules.transactions.models import Transaction, TransactionSplit
+    from modules.merchants.models import MerchantCategorySelection
+
+    if reclassify_to is not None:
+        check = await db.execute(
+            select(UserCategoryPreference).where(
+                UserCategoryPreference.user_id == user_id,
+                UserCategoryPreference.category == reclassify_to,
             )
         )
+        if check.scalar_one_or_none() is None:
+            raise ValueError(f"Reclassify target '{reclassify_to}' not found in your categories")
+
+        txn_ids = select(Transaction.id).where(Transaction.user_id == user_id)
+        await db.execute(
+            update(TransactionSplit)
+            .where(
+                TransactionSplit.transaction_id.in_(txn_ids),
+                TransactionSplit.category == category,
+            )
+            .values(category=reclassify_to)
+        )
+        await db.execute(
+            update(Transaction)
+            .where(Transaction.user_id == user_id, Transaction.category == category)
+            .values(category=reclassify_to)
+        )
+
+    await db.execute(
+        delete(MerchantCategorySelection).where(
+            MerchantCategorySelection.user_id == user_id,
+            MerchantCategorySelection.category == category,
+        )
+    )
+    await db.execute(
+        delete(UserCategoryPreference).where(
+            UserCategoryPreference.user_id == user_id,
+            UserCategoryPreference.category == category,
+        )
+    )
     await db.commit()
-    return categories
 
 
 async def delete_user_account(db: AsyncSession, user_id: uuid.UUID) -> None:
