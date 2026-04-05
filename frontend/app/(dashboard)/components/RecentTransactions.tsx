@@ -351,8 +351,8 @@ export function RecentTransactions({
                         )}
                       >
                         {isOutflow
-                          ? `(${formatCLP(Math.abs(Number(txn.amount)))})`
-                          : `+${formatCLP(Math.abs(Number(txn.amount)))}`}
+                          ? `(${formatTxnAmount(txn)})`
+                          : `+${formatTxnAmount(txn)}`}
                       </span>
                     </div>
                     <div className="flex justify-between items-center mt-1">
