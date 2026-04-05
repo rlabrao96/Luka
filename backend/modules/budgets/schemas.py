@@ -107,3 +107,22 @@ class SetAllocationRequest(BaseModel):
         if abs(total - 100.0) > 0.01:
             raise ValueError(f"Percentages must sum to 100, got {total}")
         return self
+
+
+# ── Category budget schemas ──
+
+
+class CategoryBudgetItem(BaseModel):
+    category: str
+    amount: float
+
+
+class CategoryBudgetResponse(BaseModel):
+    household_id: str
+    month: str
+    budgets: list[CategoryBudgetItem]
+
+
+class SetCategoryBudgetRequest(BaseModel):
+    month: date
+    budgets: list[CategoryBudgetItem]
