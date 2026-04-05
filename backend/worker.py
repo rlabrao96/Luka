@@ -38,7 +38,9 @@ class WorkerSettings:
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
         cron(purge_raw_emails, minute=0),  # every hour
         cron(cleanup_processed_webhooks, hour=4, minute=0),  # 4am daily
-        cron(schedule_connect_syncs, minute=0),  # Every hour, check for due syncs
+        cron(
+            schedule_connect_syncs, hour={0, 6, 12, 18}, minute=0
+        ),  # Every 6h, check for due syncs
         cron(refresh_subscriptions_cache, hour=5, minute=30),  # 5:30am daily
         cron(schedule_plaid_syncs, hour=3, minute=30),  # Daily 3:30am UTC — sync all Plaid items
         cron(run_reconciliation_job, hour=6, minute=0),  # Daily 6am UTC — transfer detection

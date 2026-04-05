@@ -113,7 +113,7 @@ async def trigger_sync(
 
 
 def _random_next_sync() -> datetime:
-    """Random time in the next 24h window."""
+    """Schedule next sync ~24h from now (jittered ±2h to avoid thundering herd)."""
     now = datetime.now(timezone.utc)
-    offset_minutes = randint(60, 1440)
+    offset_minutes = randint(22 * 60, 26 * 60)  # 22–26 hours
     return now + timedelta(minutes=offset_minutes)

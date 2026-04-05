@@ -448,7 +448,7 @@ async def cleanup_processed_webhooks(ctx: dict) -> None:
 
 
 async def schedule_connect_syncs(ctx: dict) -> None:
-    """Hourly cron: find users due for sync, enqueue run_connect_sync for each."""
+    """Every 6h cron: find users due for daily sync, enqueue run_connect_sync for each."""
     async with AsyncSessionLocal() as db:
         from modules.bank_connect.scheduler import get_due_syncs
 
