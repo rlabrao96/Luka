@@ -40,6 +40,7 @@ export function useOptimisticReview(jobId: string) {
       // Invalidate after all pending mutations settle
       if (mutation.isPending) return;
       queryClient.invalidateQueries({ queryKey: ["merchant-review", jobId] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
     },
   });
 
@@ -60,6 +61,7 @@ export function useSkipReview(jobId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["merchant-review"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
     },
   });
 }

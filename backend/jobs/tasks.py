@@ -670,7 +670,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                     db,
                     user_id=job_user_id,
                     type="merchant_review",
-                    title=f"{total_count} merchants ready for review",
+                    title=f"{total_count} comercios listos para revisar",
                     payload={"sync_job_id": str(job_id_uuid)},
                 )
                 job.notification_id = notif.id
@@ -680,7 +680,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 )
                 notif = notif_result.scalar_one_or_none()
                 if notif:
-                    notif.title = f"{total_count} merchants ready for review"
+                    notif.title = f"{total_count} comercios listos para revisar"
                     notif.updated_at = datetime.now(timezone.utc)
 
             await db.commit()
@@ -709,7 +709,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                         )
                         notif = notif_result.scalar_one_or_none()
                         if notif:
-                            notif.title = "Could not process merchants — transactions available with original names"
+                            notif.title = "No se pudieron procesar los comercios — transacciones disponibles con nombres originales"
                             notif.updated_at = datetime.now(timezone.utc)
                     await error_db.commit()
         finally:
