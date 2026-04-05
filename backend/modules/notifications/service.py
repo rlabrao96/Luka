@@ -50,6 +50,8 @@ async def update_notification(
 async def delete_notification(
     db: AsyncSession, user_id: uuid.UUID, notification_id: uuid.UUID
 ) -> bool:
+    from modules.merchant_review.models import MerchantReviewJob
+
     result = await db.execute(
         select(Notification).where(
             Notification.id == notification_id,
@@ -59,6 +61,14 @@ async def delete_notification(
     notif = result.scalar_one_or_none()
     if not notif:
         return False
+
+    # Unlink any review jobs referencing this notification
+    await db.execute(
+        MerchantReviewJob.__table__.update()
+        .where(MerchantReviewJob.notification_id == notification_id)
+        .values(notification_id=None)
+    )
+
     await db.delete(notif)
     await db.commit()
     return True
