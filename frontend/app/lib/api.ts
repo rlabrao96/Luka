@@ -119,6 +119,17 @@ export interface BudgetStatus {
   percent_used: number;
 }
 
+export interface CategoryBudgetItem {
+  category: string;
+  amount: number;
+}
+
+export interface CategoryBudgetResponse {
+  household_id: string;
+  month: string;
+  budgets: CategoryBudgetItem[];
+}
+
 // Pace chart
 export interface PacePoint {
   day: number;
@@ -371,6 +382,17 @@ export const api = {
 
   getBudgetStatus: (householdId: string, month?: string) =>
     apiFetch<BudgetStatus>(`/budgets/monthly/${householdId}${month ? `?month=${month}` : ""}`),
+
+  getCategoryBudgets: (householdId: string, month?: string) =>
+    apiFetch<CategoryBudgetResponse>(
+      `/budgets/categories/${householdId}${month ? `?month=${month}` : ""}`
+    ),
+
+  setCategoryBudgets: (householdId: string, body: { month: string; budgets: CategoryBudgetItem[] }) =>
+    apiFetch<CategoryBudgetResponse>(`/budgets/categories/${householdId}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   setBudget: (
     householdId: string,

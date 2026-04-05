@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type SetAllocationPayload } from "@/app/lib/api";
+import { api, type SetAllocationPayload, type CategoryBudgetItem } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 
 export function useBudgetStatus(month?: string) {
@@ -37,6 +37,15 @@ export function useAllocation(month?: string) {
   return useQuery({
     queryKey: ["allocation", householdId, month],
     queryFn: () => api.getAllocation(householdId!, month),
+    enabled: !!householdId,
+  });
+}
+
+export function useCategoryBudgets(month?: string) {
+  const householdId = useLukaStore((s) => s.householdId);
+  return useQuery({
+    queryKey: ["categoryBudgets", householdId, month],
+    queryFn: () => api.getCategoryBudgets(householdId!, month),
     enabled: !!householdId,
   });
 }
