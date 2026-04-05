@@ -40,10 +40,10 @@ export function MonthSelector({ value, onChange, currentMonth }: MonthSelectorPr
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold border transition-colors ${
+        className={`flex items-center gap-1 rounded-lg px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap ${
           isViewingPast
-            ? "bg-blue-50 border-blue-200 text-blue-600"
-            : "bg-white border-slate-200 text-slate-800 shadow-sm"
+            ? "bg-luka-primary text-white"
+            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
         }`}
       >
         {selectedLabel}
@@ -56,9 +56,9 @@ export function MonthSelector({ value, onChange, currentMonth }: MonthSelectorPr
             <button
               key={opt.key}
               onClick={() => { onChange(opt.key); setOpen(false); }}
-              className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between transition-colors ${
+              className={`w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors ${
                 opt.key === value
-                  ? "bg-blue-600 text-white font-semibold"
+                  ? "bg-luka-primary text-white font-semibold"
                   : "text-slate-700 hover:bg-slate-50"
               }`}
             >

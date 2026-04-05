@@ -140,14 +140,14 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-luka-dark tracking-tight">
             {greeting}, {firstName}
           </h1>
           <p className="text-sm text-luka-muted mt-0.5">Aquí está tu resumen financiero</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <MonthSelector value={selectedMonth} onChange={setSelectedMonth} currentMonth={currentMonth} />
           <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
         </div>
@@ -161,14 +161,10 @@ export default function DashboardPage() {
       )}
 
       {/* ── Section 1: Balance + Cash Flow ── */}
-      <div className={`grid gap-4 ${
-        isViewingPast
-          ? "grid-cols-1 sm:grid-cols-3"
-          : "grid-cols-1 sm:grid-cols-3 md:grid-cols-4"
-      }`}>
-        {!isViewingPast && (
-          <BalanceCard accounts={accounts} currency={selectedCurrency} />
-        )}
+      {!isViewingPast && (
+        <BalanceCard accounts={accounts} currency={selectedCurrency} />
+      )}
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
         <CashFlowCards
           income={income}
           expenses={expenses}
