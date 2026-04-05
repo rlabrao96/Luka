@@ -35,7 +35,7 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(card.display_name);
   const [selectedCategory, setSelectedCategory] = useState(
-    card.default_category ?? card.llm_suggested_categories[0] ?? ""
+    card.default_category ?? (card.llm_suggested_categories ?? [])[0] ?? ""
   );
   const [showAllCategories, setShowAllCategories] = useState(false);
 
@@ -44,13 +44,14 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
   }, [editRequested]);
 
   const icon = CATEGORY_ICONS[selectedCategory] ?? "📦";
-  const suggestions = card.llm_suggested_categories.length > 0
-    ? card.llm_suggested_categories
+  const llmSuggestions = card.llm_suggested_categories ?? [];
+  const suggestions = llmSuggestions.length > 0
+    ? llmSuggestions
     : [card.default_category].filter(Boolean) as string[];
 
   const handleSaveApprove = () => {
     const nameChanged = displayName !== card.display_name ? displayName : undefined;
-    const catChanged = selectedCategory !== (card.default_category ?? card.llm_suggested_categories[0]) ? selectedCategory : undefined;
+    const catChanged = selectedCategory !== (card.default_category ?? llmSuggestions[0]) ? selectedCategory : undefined;
     onApprove(nameChanged, catChanged);
   };
 
@@ -176,7 +177,7 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
           Transactions ({card.transaction_count})
         </p>
         <div className="flex flex-col gap-1">
-          {card.transactions.map((tx, i) => (
+          {(card.transactions ?? []).map((tx, i) => (
             <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
               <span className="text-slate-500 truncate">{tx.raw_name}</span>
               <span className="flex gap-2 text-slate-400 shrink-0 ml-2">
