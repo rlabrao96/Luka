@@ -3,11 +3,6 @@ import { useState, useEffect } from "react";
 import { ReviewCard, ReviewTransactionInfo } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 
-const CATEGORY_ICONS: Record<string, string> = {
-  Alimentacion: "🍽️", Supermercado: "🛒", Transporte: "🚗", Combustible: "⛽",
-  Entretenimiento: "🎬", Salud: "🏥", Farmacia: "💊", Hogar: "🏠", Ropa: "👕",
-  Tecnologia: "💻", Educacion: "📚", Viajes: "✈️", Servicios: "🔧", Otros: "📦",
-};
 
 function formatAmount(amount: number, currency = "CLP"): string {
   return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: 0 }).format(Math.abs(amount));
@@ -40,7 +35,6 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
     if (editRequested) setEditing(true);
   }, [editRequested]);
 
-  const icon = CATEGORY_ICONS[selectedCategory] ?? "📦";
   const llmSuggestions = card.llm_suggested_categories ?? [];
   const suggestions = llmSuggestions.length > 0
     ? llmSuggestions
@@ -157,9 +151,6 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
   return (
     <div className="bg-white rounded-2xl shadow-lg p-6 w-full">
       <div className="text-center mb-5">
-        <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl">
-          {icon}
-        </div>
         <h2 className="text-xl font-bold text-luka-dark">{card.display_name}</h2>
         {selectedCategory && (
           <span className="inline-block mt-1.5 bg-blue-50 text-luka-primary text-xs font-medium px-3 py-1 rounded-full">
