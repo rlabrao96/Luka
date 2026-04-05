@@ -1,7 +1,8 @@
 import json
+import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from modules.whatsapp.handler import handle_text_message
+from modules.whatsapp.handler import handle_text_message, parse_manual_expense
 from modules.whatsapp.session import _session_key, _normalize_phone
 
 
@@ -140,10 +141,99 @@ async def test_handle_text_message_invalid_amount_sends_error():
 
 @pytest.mark.asyncio
 async def test_handle_text_message_no_active_edit_ignores():
-    """If no active_edit key exists, handler silently returns."""
-    mock_redis = AsyncMock()
-    mock_redis.get = AsyncMock(return_value=None)
+    """If no active_edit key exists and message is unparseable, handler silently returns."""
+    stored = {}
+    redis = _make_redis(stored)
     mock_db = AsyncMock()
 
-    await handle_text_message(phone="56900000000", text="hello", db=mock_db, redis=mock_redis)
+    await handle_text_message(phone="56900000000", text="hello", db=mock_db, redis=redis)
     mock_db.execute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# parse_manual_expense — unit tests
+# ---------------------------------------------------------------------------
+
+def test_parse_manual_expense_with_gasto_keyword():
+    assert parse_manual_expense("gasto 5000 Starbucks") == (5000, "Starbucks")
+
+
+def test_parse_manual_expense_without_keyword():
+    assert parse_manual_expense("5000 Starbucks") == (5000, "Starbucks")
+
+
+def test_parse_manual_expense_dot_thousands_separator():
+    assert parse_manual_expense("gasto 15.990 Copec") == (15990, "Copec")
+
+
+def test_parse_manual_expense_multi_word_merchant():
+    assert parse_manual_expense("gasto 3500 Café del Centro") == (3500, "Café del Centro")
+
+
+def test_parse_manual_expense_no_merchant_returns_none():
+    assert parse_manual_expense("5000") is None
+
+
+def test_parse_manual_expense_no_amount_returns_none():
+    assert parse_manual_expense("gasto Starbucks") is None
+
+
+def test_parse_manual_expense_empty_returns_none():
+    assert parse_manual_expense("") is None
+
+
+# ---------------------------------------------------------------------------
+# handle_text_message — manual expense trigger (no active edit)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_text_message_manual_trigger_creates_transaction():
+    """Valid 'gasto N merchant' with no active edit creates a transaction and sends alert."""
+    stored = {}
+    phone = "56912345678"
+    user_id = uuid.uuid4()
+    household_id = uuid.uuid4()
+
+    redis = _make_redis(stored)
+
+    mock_row = (user_id, household_id)
+    mock_execute_result = MagicMock()
+    mock_execute_result.first = MagicMock(return_value=mock_row)
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(return_value=mock_execute_result)
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+    mock_db.commit = AsyncMock()
+
+    with patch("modules.whatsapp.handler.send_expense_alert", new_callable=AsyncMock, return_value="wamid.MANUAL") as mock_alert, \
+         patch("modules.whatsapp.handler.lookup_merchant", new_callable=AsyncMock, return_value=["Restaurantes", "Café"]):
+        await handle_text_message(phone=phone, text="gasto 5000 Starbucks", db=mock_db, redis=redis)
+
+    mock_db.add.assert_called_once()
+    mock_db.commit.assert_called_once()
+    mock_alert.assert_called_once()
+    # Session must be saved in redis
+    assert any("wa_session" in key for key in stored)
+    # Message ID must be mapped to the new transaction
+    assert "wa_msgid:wamid.MANUAL" in stored
+
+
+@pytest.mark.asyncio
+async def test_handle_text_message_manual_trigger_unknown_phone_ignores():
+    """Valid trigger but phone not found in DB — silently returns without creating anything."""
+    stored = {}
+    phone = "56999999999"
+
+    redis = _make_redis(stored)
+
+    mock_execute_result = MagicMock()
+    mock_execute_result.first = MagicMock(return_value=None)  # no user found
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(return_value=mock_execute_result)
+    mock_db.add = MagicMock()
+
+    with patch("modules.whatsapp.handler.send_expense_alert", new_callable=AsyncMock) as mock_alert:
+        await handle_text_message(phone=phone, text="gasto 5000 Starbucks", db=mock_db, redis=redis)
+
+    mock_db.add.assert_not_called()
+    mock_alert.assert_not_called()

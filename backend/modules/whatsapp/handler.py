@@ -1,8 +1,11 @@
+import re
+import uuid
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from redis.asyncio import Redis
 from modules.whatsapp.session import (
+    WhatsAppSession,
     get_session,
     save_session,
     clear_session,
@@ -11,10 +14,29 @@ from modules.whatsapp.session import (
     save_active_edit,
     get_active_edit_transaction_id,
     clear_active_edit,
+    _normalize_phone,
 )
 from modules.whatsapp.sender import send_category_list, send_text, send_edit_options, send_expense_alert
 from modules.merchants.service import record_category_selection, lookup_merchant
 from modules.transactions.models import Transaction, TransactionSplit
+
+
+def parse_manual_expense(text: str) -> tuple[int, str] | None:
+    """Parse 'gasto 5000 Starbucks' or '5000 Starbucks' → (5000, 'Starbucks').
+
+    Returns None if the text cannot be interpreted as a manual expense.
+    """
+    text = re.sub(r"^gasto\s+", "", text.strip(), flags=re.IGNORECASE).strip()
+    match = re.match(r"^(\d[\d.,]*)\s+(.+)$", text)
+    if not match:
+        return None
+    amount_str = match.group(1).replace(".", "").replace(",", "")
+    if not amount_str.isdigit():
+        return None
+    merchant = match.group(2).strip()
+    if not merchant:
+        return None
+    return (int(amount_str), merchant)
 
 
 async def handle_button_click(
@@ -126,13 +148,86 @@ async def _save_split(
     return txn
 
 
+async def _get_user_and_household_by_phone(
+    phone: str, db: AsyncSession
+) -> tuple[uuid.UUID, uuid.UUID] | None:
+    """Return (user_id, household_id) for a verified WhatsApp phone, or None."""
+    from modules.auth.models import User
+    from modules.households.models import HouseholdMember
+
+    normalized = _normalize_phone(phone)
+    result = await db.execute(
+        select(User.id, HouseholdMember.household_id)
+        .join(HouseholdMember, HouseholdMember.user_id == User.id)
+        .where(or_(User.phone_whatsapp == f"+{normalized}", User.phone_whatsapp == normalized))
+        .limit(1)
+    )
+    row = result.first()
+    if not row:
+        return None
+    return (row[0], row[1])
+
+
+async def _handle_manual_expense_trigger(
+    phone: str, text: str, db: AsyncSession, redis: Redis
+) -> None:
+    """Create a manual transaction from a parsed expense message and start the session."""
+    parsed = parse_manual_expense(text)
+    if not parsed:
+        return
+
+    amount, merchant = parsed
+
+    user_row = await _get_user_and_household_by_phone(phone, db)
+    if not user_row:
+        return
+
+    user_id, household_id = user_row
+
+    txn = Transaction(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        household_id=household_id,
+        raw_merchant_name=merchant,
+        amount=amount,
+        currency="CLP",
+        transaction_date=datetime.now(timezone.utc),
+        source="manual",
+        status="pending",
+        transaction_type="expense",
+    )
+    db.add(txn)
+    await db.flush()
+    await db.commit()
+
+    session = WhatsAppSession(
+        transaction_id=str(txn.id),
+        step="awaiting_split",
+        raw_merchant=merchant,
+    )
+    await save_session(phone, session, redis)
+
+    categories = await lookup_merchant(merchant, db=db, redis=redis)
+    wamid = await send_expense_alert(
+        to=phone,
+        amount=amount,
+        merchant=merchant,
+        partner_name="tu pareja",
+        is_joint=False,
+        categories=categories,
+        currency="CLP",
+    )
+    await save_msgid(wamid, str(txn.id), redis)
+
+
 async def handle_text_message(
     phone: str, text: str, db: AsyncSession, redis: Redis
 ) -> None:
-    """Handle a free-text reply during an active edit step."""
+    """Handle a free-text reply during an active edit step, or a new manual expense trigger."""
     transaction_id = await get_active_edit_transaction_id(phone, redis)
     if not transaction_id:
-        return  # no active edit — ignore
+        await _handle_manual_expense_trigger(phone, text, db, redis)
+        return
 
     session = await get_session(phone, transaction_id, redis)
     if not session:
