@@ -1,6 +1,6 @@
 # Luka — Project State Document
-**Date:** 2026-04-04 (session 14 — end)
-**Status:** **Plaid integration + merchant review UX overhaul.** Plaid sandbox connected (Capital One). Merchant review scoped to newly imported transactions via `transaction_ids` JSONB column on MerchantReviewJob (migration 026). Pre-applied categories during processing, overridable during review. Deferred notifications (fire after LLM processing, not before). Desktop: 3-card grid layout with inline edit/skip/approve per card. Mobile: unchanged card swipe. Categories fetched from user preferences API (no hardcoding). Category icon lookup (100+ ES/EN with emoji, initial fallback). Optimistic card transitions. USD balance display fix (stored as cents, divided by 100). Review auto-cleanup: job + notification deleted when all merchants approved. Dismiss (Omitir) accepts defaults and cleans up. Worker queue scaling doc written. All UI copy in Spanish. ~40 commits.
+**Date:** 2026-04-05 (session 15 — end)
+**Status:** **Bug fixes: Gmail watch auto-setup + bank connect cron fix.** Gmail watch now activates automatically on every login (was never called from frontend). Bank connect cron was crashing every run due to wrong kwarg (`mode=` instead of `days_back=`). Sync frequency changed from hourly to daily (~24h jitter). Added stuck-job cleanup (2h timeout) so credentials don't get permanently blocked. 3 commits.
 
 ---
 
@@ -301,7 +301,7 @@ POST /webhooks/whatsapp                    → WhatsApp message receive
 | `renew_mail_watches` | Cron 3am daily | Renew Gmail (7d expiry) and Outlook (3d expiry) subscriptions |
 | `purge_raw_emails` | Cron hourly | Set `raw_email_text = NULL` on transactions >24h old |
 | `cleanup_processed_webhooks` | Cron 4am daily | Delete idempotency records >7 days |
-| `schedule_connect_syncs` | Cron hourly | Find users due for daily bank sync, enqueue `run_connect_sync` for each |
+| `schedule_connect_syncs` | Cron every 6h | Find users due for daily bank sync (stuck-job cleanup + enqueue `run_connect_sync`) |
 | `run_connect_sync` | On-demand (enqueued by scheduler) | Send WhatsApp 2FA nudge, call Luka Connect async with callback |
 | `run_plaid_sync_job` | On-demand (Plaid Link exchange or manual sync) | Plaid transaction sync → create review job with transaction_ids → enqueue process_merchant_review |
 | `process_merchant_review` | On-demand (enqueued by sync jobs) | LLM grouping → categorization → pre-apply categories → create notification |
@@ -442,7 +442,7 @@ test_merchant_review_api.py ← Review API endpoints (3 tests)
 | Frontend Redesign Tier 2 | ✅ DONE | Settings page (7 sections), login/onboarding polish, invite flow with self-invite protection |
 | Google OAuth token storage | ✅ DONE | Fernet-encrypted tokens in users table (google_access_token_enc, google_refresh_token_enc) |
 | Resend email integration | ✅ DONE | Transactional emails via Resend HTTP API (Railway blocks outbound SMTP) |
-| Email watch setup | ✅ DONE | Gmail Pub/Sub watch live, OIDC auth working, fallback fetch when History API empty |
+| Email watch setup | ✅ DONE | Gmail Pub/Sub watch live, auto-activates on every login via auth callback |
 | WhatsApp PIN verification | ✅ DONE | Send/verify PIN via Redis (5-min TTL), brute-force protection (5 attempts) |
 | Email pipeline end-to-end | ✅ DONE | Gmail → Pub/Sub → webhook → ARQ worker → fetch email → WhatsApp notification |
 | Email pre-filter | ✅ DONE | 27 Spanish + 20 English financial keywords, 60+ bank sender domains (Chile + US), bank name inference from sender |

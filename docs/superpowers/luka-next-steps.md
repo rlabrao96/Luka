@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-04-04 (session 14)
+**Date:** 2026-04-05 (session 15)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -142,7 +142,7 @@ This document walks through every decision and credential that requires your inp
 - **Refactor** — Fintoc removed entirely: module, tests, jobs, endpoints, config, frontend widget ✅
 - **Feature** — bank_connect module: AES-256-GCM encryption, BankCredential model, service, mapper, router ✅
 - **Feature** — bank_connect: 6 API endpoints (connect/disconnect/sync/status/connections/webhook) ✅
-- **Feature** — bank_connect: ARQ jobs (schedule_connect_syncs hourly cron + run_connect_sync) ✅
+- **Feature** — bank_connect: ARQ jobs (schedule_connect_syncs daily cron + run_connect_sync + stuck-job cleanup) ✅
 - **Feature** — Migration 017: drop Fintoc columns, create bank_credentials table with RLS ✅
 - **Feature** — Frontend: bank credential entry modal (3-screen: form → 2FA → success) ✅
 - **Feature** — Frontend: sync status UI in settings (connection cards, manual sync, disconnect) ✅
@@ -464,6 +464,16 @@ Session 14 (2026-04-04): Plaid Integration + Merchant Review UX Overhaul — COM
   → All UI copy translated to Spanish
   → Worker queue scaling doc: fast/slow split architecture for 200+ users
   → ~40 commits, migrations 026-028 applied
+
+Session 15 (2026-04-05): Gmail Watch + Bank Connect Cron Fixes — COMPLETE
+  → Gmail watch auto-activates on every login (auth callback calls setup-email-watch)
+  → Existing users get watch activated on next login (no manual intervention)
+  → Bank connect cron was crashing: passed mode="recent" but trigger_sync expects days_back=
+  → Fixed cron to pass days_back=4 (only fetch last 4 days of data)
+  → Sync frequency: changed from hourly to daily (_random_next_sync: 22-26h, cron: every 6h)
+  → Stuck-job cleanup: credentials stuck in_progress >2h auto-reset to failed_timeout
+  → Manual sync tested: Banco de Chile returned 127 movements, all deduped (0 new), working correctly
+  → 3 commits
 
 Next: Merchant training curation (use /train UI to verify/merge/fix categories)
 Next: Implement fast/slow worker queue split (see docs/superpowers/specs/2026-04-04-worker-queue-scaling.md)
