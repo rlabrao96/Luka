@@ -96,8 +96,11 @@ async def handle_list_selection(
         return
 
     category = list_item_title
-    await _save_split(session.transaction_id, session.split_type or "shared", category, db)
-    await record_category_selection(session.raw_merchant, category, db=db, redis=redis)
+    txn = await _save_split(session.transaction_id, session.split_type or "shared", category, db)
+    if txn is not None:
+        await record_category_selection(
+            session.raw_merchant, category, db=db, redis=redis, user_id=txn.user_id
+        )
     await clear_session(phone, transaction_id, redis)
     split_label = {"personal": "Personal", "shared": "Compartido"}.get(session.split_type or "shared", session.split_type)
     await send_text(to=phone, body=f"✅ Guardado: {session.raw_merchant} → {category} ({split_label})")
@@ -105,11 +108,11 @@ async def handle_list_selection(
 
 async def _save_split(
     transaction_id: str, split_type: str, category: str | None, db: AsyncSession
-) -> None:
+) -> Transaction | None:
     result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
     txn = result.scalar_one_or_none()
     if not txn:
-        return
+        return None
     split = TransactionSplit(
         transaction_id=txn.id,
         split_type=split_type,
@@ -120,6 +123,7 @@ async def _save_split(
     if category:
         txn.category = category
     await db.commit()
+    return txn
 
 
 async def handle_text_message(

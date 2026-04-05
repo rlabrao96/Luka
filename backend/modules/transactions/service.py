@@ -165,7 +165,7 @@ async def update_category(
     # Train merchant data: record this user correction for future suggestions
     if category:
         try:
-            await record_category_selection(txn.raw_merchant_name, category, db, _get_redis())
+            await record_category_selection(txn.raw_merchant_name, category, db, _get_redis(), user_id=user_id)
         except Exception:
             pass  # never block the category save if training fails
     return True
