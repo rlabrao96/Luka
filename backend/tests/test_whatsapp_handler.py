@@ -209,7 +209,10 @@ async def test_handle_text_message_manual_trigger_creates_transaction():
          patch("modules.whatsapp.handler.lookup_merchant", new_callable=AsyncMock, return_value=["Restaurantes", "Café"]):
         await handle_text_message(phone=phone, text="gasto 5000 Starbucks", db=mock_db, redis=redis)
 
-    mock_db.add.assert_called_once()
+    # Transaction must be created with confirmed status (not pending — manual txns are user-initiated)
+    added_txn = mock_db.add.call_args[0][0]
+    assert added_txn.status == "confirmed"
+    assert added_txn.source == "manual"
     mock_db.commit.assert_called_once()
     mock_alert.assert_called_once()
     # Session must be saved in redis
