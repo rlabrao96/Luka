@@ -16,35 +16,95 @@ from modules.whatsapp.session import (
     clear_active_edit,
     _normalize_phone,
 )
-from modules.whatsapp.sender import send_category_list, send_text, send_edit_options, send_expense_alert
+from modules.whatsapp.sender import (
+    send_category_list,
+    send_text,
+    send_edit_options,
+    send_expense_alert,
+)
 from modules.merchants.service import record_category_selection, get_user_ranked_categories
 from modules.transactions.models import Transaction, TransactionSplit
 
-def _parse_amount(raw: str) -> float | None:
-    """Parse an amount string to a float.
 
-    Rules:
-    - No dot → whole integer  ("25" → 25.0, "1000" → 1000.0)
-    - Any dot → decimal point ("2.5" → 2.5, "25.00" → 25.0, "15.990" → 15.99)
-    Commas are always stripped (thousands separators).
+def _parse_amount(raw: str, currency: str = "CLP") -> int | None:
+    """Parse a human-entered amount string into the DB storage unit.
+
+    USD → stored as cents.  CLP → stored as integer (no decimals).
+
+    Disambiguation rule for '.' and ',':
+    - 3 digits after separator → thousands (1.500 = 1500, 25.600 = 25600)
+    - 1-2 digits after separator → decimal (USD only; CLP never has decimals)
+
+    Examples (USD):
+      "25"      → 2500 cents ($25.00)
+      "25.5"    → 2550 cents ($25.50)
+      "25.50"   → 2550 cents ($25.50)
+      "1,000"   → 100000 cents ($1,000.00)
+      "1.500"   → 150000 cents ($1,500.00 — 3 digits = thousands)
+
+    Examples (CLP):
+      "25600"   → 25600
+      "25.600"  → 25600 (dot = thousands)
+      "25,600"  → 25600 (comma = thousands)
+      "1.500.000" → 1500000
     """
-    raw = raw.replace(",", "")
-    try:
-        return float(raw)
-    except ValueError:
-        return None
+    raw = raw.strip().lstrip("$")
+
+    if currency == "CLP":
+        # CLP: dots and commas are always thousands separators, no decimals
+        cleaned = raw.replace(".", "").replace(",", "")
+        try:
+            return int(cleaned)
+        except ValueError:
+            return None
+
+    # USD: need to distinguish thousands vs decimal separators
+    # Check for the last '.' or ',' — that's the potential decimal separator
+    # Replace all commas with dots for uniform handling, then analyze
+    last_dot = raw.rfind(".")
+    last_comma = raw.rfind(",")
+    last_sep = max(last_dot, last_comma)
+
+    if last_sep == -1:
+        # No separator: "25" → $25.00 → 2500 cents
+        try:
+            return int(raw) * 100
+        except ValueError:
+            return None
+
+    after_sep = raw[last_sep + 1 :]
+    if len(after_sep) == 3:
+        # 3 digits after separator → thousands: "1.500" or "1,500" → 1500 → 150000 cents
+        cleaned = raw.replace(".", "").replace(",", "")
+        try:
+            return int(cleaned) * 100
+        except ValueError:
+            return None
+    else:
+        # 1-2 digits after separator → decimal: "25.5" → $25.50, "25.50" → $25.50
+        # Remove thousands separators (everything except the last separator)
+        sep_char = raw[last_sep]
+        other_char = "," if sep_char == "." else "."
+        cleaned = raw.replace(other_char, "")
+        # Replace the decimal separator with '.'
+        cleaned = cleaned[: cleaned.rfind(sep_char)] + "." + cleaned[cleaned.rfind(sep_char) + 1 :]
+        try:
+            return int(round(float(cleaned) * 100))
+        except ValueError:
+            return None
 
 
-def parse_manual_expense(text: str) -> tuple[float, str] | None:
-    """Parse 'gasto 5000 Starbucks' or '5000 Starbucks' → (5000.0, 'Starbucks').
+def parse_manual_expense(text: str, currency: str = "CLP") -> tuple[int, str] | None:
+    """Parse 'gasto 5000 Starbucks' or '5000 Starbucks' → (amount_int, 'Starbucks').
 
+    Amount is returned in DB storage units (CLP integer or USD cents).
     Returns None if the text cannot be interpreted as a manual expense.
     """
     text = re.sub(r"^gasto\s+", "", text.strip(), flags=re.IGNORECASE).strip()
     match = re.match(r"^(\d[\d.,]*)\s+(.+)$", text)
     if not match:
         return None
-    amount = _parse_amount(match.group(1))
+    amount = _parse_amount(match.group(1), currency)
     if amount is None:
         return None
     merchant = match.group(2).strip()
@@ -57,7 +117,10 @@ async def handle_button_click(
     phone: str, button_id: str, context_msg_id: str, db: AsyncSession, redis: Redis
 ) -> None:
     """Route a WhatsApp button reply to the correct split action."""
-    print(f"[WA_BUTTON] from={phone} button_id={button_id} context_msg_id={context_msg_id!r}", flush=True)
+    print(
+        f"[WA_BUTTON] from={phone} button_id={button_id} context_msg_id={context_msg_id!r}",
+        flush=True,
+    )
     transaction_id = await get_transaction_id_by_msgid(context_msg_id, redis)
     print(f"[WA_BUTTON] transaction_id from msgid lookup={transaction_id!r}", flush=True)
     if not transaction_id:
@@ -92,7 +155,7 @@ async def handle_button_click(
             session.step = "awaiting_new_amount"
             await save_session(phone, session, redis)
             await save_active_edit(phone, transaction_id, redis)
-            await send_text(to=phone, body="Escribe el monto en CLP (solo números):")
+            await send_text(to=phone, body="Escribe el nuevo monto (ej: 25.50 o 15990):")
         return
 
     if button_id in ("split_personal", "split_shared"):
@@ -105,13 +168,27 @@ async def handle_button_click(
 
         txn_result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
         txn = txn_result.scalar_one_or_none()
-        amount_str = f"${txn.amount:,}" if txn else session.raw_merchant
+        from modules.whatsapp.sender import _format_amount
 
-        ranked = await get_user_ranked_categories(txn.user_id, session.raw_merchant, db, category_type="expense") if txn else []
+        amount_str = (
+            _format_amount(txn.amount, txn.currency or "CLP") if txn else session.raw_merchant
+        )
+
+        ranked = (
+            await get_user_ranked_categories(
+                txn.user_id, session.raw_merchant, db, category_type="expense"
+            )
+            if txn
+            else []
+        )
         await save_session(phone, session, redis)
 
-        context_msg = f"¿A qué categoría pertenece el gasto de {amount_str} en {session.raw_merchant}?"
-        category_wamid = await send_category_list(to=phone, categories=ranked[:10], context_msg=context_msg)
+        context_msg = (
+            f"¿A qué categoría pertenece el gasto de {amount_str} en {session.raw_merchant}?"
+        )
+        category_wamid = await send_category_list(
+            to=phone, categories=ranked[:10], context_msg=context_msg
+        )
         await save_msgid(category_wamid, transaction_id, redis)
 
 
@@ -139,8 +216,12 @@ async def handle_list_selection(
             session.raw_merchant, category, db=db, redis=redis, user_id=txn.user_id
         )
     await clear_session(phone, transaction_id, redis)
-    split_label = {"personal": "Personal", "shared": "Compartido"}.get(session.split_type or "shared", session.split_type)
-    await send_text(to=phone, body=f"✅ Guardado: {session.raw_merchant} → {category} ({split_label})")
+    split_label = {"personal": "Personal", "shared": "Compartido"}.get(
+        session.split_type or "shared", session.split_type
+    )
+    await send_text(
+        to=phone, body=f"✅ Guardado: {session.raw_merchant} → {category} ({split_label})"
+    )
 
 
 async def _save_split(
@@ -189,21 +270,23 @@ async def _handle_manual_expense_trigger(
     """Create a manual transaction from a parsed expense message and start the session."""
     print(f"[MANUAL_EXPENSE] received from={phone} text={text!r}", flush=True)
 
-    parsed = parse_manual_expense(text)
-    if not parsed:
-        print(f"[MANUAL_EXPENSE] parse failed, ignoring", flush=True)
-        return
-
-    amount, merchant = parsed
-    print(f"[MANUAL_EXPENSE] parsed amount={amount} merchant={merchant!r}", flush=True)
-
     user_row = await _get_user_and_household_by_phone(phone, db)
     if not user_row:
         print(f"[MANUAL_EXPENSE] user not found for phone={phone}", flush=True)
         return
 
     user_id, household_id, currency = user_row
-    print(f"[MANUAL_EXPENSE] user_id={user_id} household_id={household_id} currency={currency}", flush=True)
+
+    parsed = parse_manual_expense(text, currency)
+    if not parsed:
+        print("[MANUAL_EXPENSE] parse failed, ignoring", flush=True)
+        return
+
+    amount, merchant = parsed
+    print(
+        f"[MANUAL_EXPENSE] user_id={user_id} household_id={household_id} currency={currency}",
+        flush=True,
+    )
 
     txn = Transaction(
         id=uuid.uuid4(),
@@ -221,7 +304,9 @@ async def _handle_manual_expense_trigger(
     await db.flush()
     await db.commit()
 
-    categories = (await get_user_ranked_categories(user_id, merchant, db, category_type="expense"))[:10]
+    categories = (await get_user_ranked_categories(user_id, merchant, db, category_type="expense"))[
+        :10
+    ]
 
     session = WhatsAppSession(
         transaction_id=str(txn.id),
@@ -242,9 +327,7 @@ async def _handle_manual_expense_trigger(
     await save_msgid(wamid, str(txn.id), redis)
 
 
-async def handle_text_message(
-    phone: str, text: str, db: AsyncSession, redis: Redis
-) -> None:
+async def handle_text_message(phone: str, text: str, db: AsyncSession, redis: Redis) -> None:
     """Handle a free-text reply during an active edit step, or a new manual expense trigger."""
     print(f"[WA_TEXT] from={phone} text={text!r}", flush=True)
     transaction_id = await get_active_edit_transaction_id(phone, redis)
@@ -267,11 +350,13 @@ async def handle_text_message(
         txn.raw_merchant_name = text.strip()
         session.raw_merchant = text.strip()
     elif session.step == "awaiting_new_amount":
-        cleaned = text.strip().replace(".", "").replace(",", "").replace("$", "")
-        if not cleaned.isdigit():
-            await send_text(to=phone, body="❌ Por favor escribe solo el número (ej: 15990).")
+        currency = txn.currency or "CLP"
+        new_amount = _parse_amount(text.strip(), currency)
+        if new_amount is None:
+            example = "15990" if currency == "CLP" else "25.50"
+            await send_text(to=phone, body=f"❌ Por favor escribe solo el número (ej: {example}).")
             return
-        txn.amount = int(cleaned)
+        txn.amount = new_amount
     else:
         return  # unexpected step
 
@@ -282,12 +367,19 @@ async def handle_text_message(
     is_joint = False
     if txn.bank_account_id:
         from modules.households.models import BankAccount
-        acct_result = await db.execute(select(BankAccount).where(BankAccount.id == txn.bank_account_id))
+
+        acct_result = await db.execute(
+            select(BankAccount).where(BankAccount.id == txn.bank_account_id)
+        )
         acct = acct_result.scalar_one_or_none()
         is_joint = acct.account_type == "joint" if acct else False
 
     # Re-send the expense alert with updated data, using user's ranked expense categories
-    categories = (await get_user_ranked_categories(txn.user_id, txn.raw_merchant_name, db, category_type="expense"))[:10]
+    categories = (
+        await get_user_ranked_categories(
+            txn.user_id, txn.raw_merchant_name, db, category_type="expense"
+        )
+    )[:10]
     session.step = "awaiting_category" if is_joint else "awaiting_split"
 
     new_msg_id = await send_expense_alert(

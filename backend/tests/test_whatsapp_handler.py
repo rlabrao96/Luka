@@ -2,8 +2,8 @@ import json
 import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from modules.whatsapp.handler import handle_text_message, parse_manual_expense
-from modules.whatsapp.session import _session_key, _normalize_phone
+from modules.whatsapp.handler import handle_text_message, parse_manual_expense, _parse_amount
+from modules.whatsapp.session import _session_key
 
 
 def _make_redis(stored: dict) -> AsyncMock:
@@ -34,13 +34,15 @@ async def test_handle_text_message_updates_merchant():
 
     # Pre-populate active_edit and session
     stored[f"wa_active_edit:{phone}"] = txn_id
-    stored[_session_key(phone, txn_id)] = json.dumps({
-        "transaction_id": txn_id,
-        "step": "awaiting_new_merchant",
-        "split_type": "",
-        "raw_merchant": "OldName",
-        "overflow_categories": [],
-    })
+    stored[_session_key(phone, txn_id)] = json.dumps(
+        {
+            "transaction_id": txn_id,
+            "step": "awaiting_new_merchant",
+            "split_type": "",
+            "raw_merchant": "OldName",
+            "overflow_categories": [],
+        }
+    )
 
     redis = _make_redis(stored)
 
@@ -56,8 +58,18 @@ async def test_handle_text_message_updates_merchant():
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock(return_value=mock_execute_result)
 
-    with patch("modules.whatsapp.handler.send_expense_alert", new_callable=AsyncMock, return_value="wamid.NEW") as mock_alert, \
-         patch("modules.whatsapp.handler.get_user_ranked_categories", new_callable=AsyncMock, return_value=["Restaurantes"]):
+    with (
+        patch(
+            "modules.whatsapp.handler.send_expense_alert",
+            new_callable=AsyncMock,
+            return_value="wamid.NEW",
+        ) as mock_alert,
+        patch(
+            "modules.whatsapp.handler.get_user_ranked_categories",
+            new_callable=AsyncMock,
+            return_value=["Restaurantes"],
+        ),
+    ):
         await handle_text_message(phone=phone, text="NewName", db=mock_db, redis=redis)
 
     assert mock_txn.raw_merchant_name == "NewName"
@@ -74,13 +86,15 @@ async def test_handle_text_message_updates_amount():
     txn_id = "txn-xyz"
 
     stored[f"wa_active_edit:{phone}"] = txn_id
-    stored[_session_key(phone, txn_id)] = json.dumps({
-        "transaction_id": txn_id,
-        "step": "awaiting_new_amount",
-        "split_type": "personal",
-        "raw_merchant": "Starbucks",
-        "overflow_categories": [],
-    })
+    stored[_session_key(phone, txn_id)] = json.dumps(
+        {
+            "transaction_id": txn_id,
+            "step": "awaiting_new_amount",
+            "split_type": "personal",
+            "raw_merchant": "Starbucks",
+            "overflow_categories": [],
+        }
+    )
 
     redis = _make_redis(stored)
 
@@ -96,8 +110,18 @@ async def test_handle_text_message_updates_amount():
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock(return_value=mock_execute_result)
 
-    with patch("modules.whatsapp.handler.send_expense_alert", new_callable=AsyncMock, return_value="wamid.NEW2"), \
-         patch("modules.whatsapp.handler.get_user_ranked_categories", new_callable=AsyncMock, return_value=[]):
+    with (
+        patch(
+            "modules.whatsapp.handler.send_expense_alert",
+            new_callable=AsyncMock,
+            return_value="wamid.NEW2",
+        ),
+        patch(
+            "modules.whatsapp.handler.get_user_ranked_categories",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
         await handle_text_message(phone=phone, text="12500", db=mock_db, redis=redis)
 
     assert mock_txn.amount == 12500
@@ -112,32 +136,40 @@ async def test_handle_text_message_invalid_amount_sends_error():
     txn_id = "txn-err"
 
     stored[f"wa_active_edit:{phone}"] = txn_id
-    stored[_session_key(phone, txn_id)] = json.dumps({
-        "transaction_id": txn_id,
-        "step": "awaiting_new_amount",
-        "split_type": "",
-        "raw_merchant": "Copec",
-        "overflow_categories": [],
-    })
+    stored[_session_key(phone, txn_id)] = json.dumps(
+        {
+            "transaction_id": txn_id,
+            "step": "awaiting_new_amount",
+            "split_type": "",
+            "raw_merchant": "Copec",
+            "overflow_categories": [],
+        }
+    )
 
     redis = _make_redis(stored)
     mock_db = AsyncMock()
 
     mock_execute_result = MagicMock()
-    mock_execute_result.scalar_one_or_none = MagicMock(return_value=MagicMock(
-        id=txn_id,
-        raw_merchant_name="Copec",
-        amount=48000,
-        currency="CLP",
-        bank_account_id=None,
-    ))
+    mock_execute_result.scalar_one_or_none = MagicMock(
+        return_value=MagicMock(
+            id=txn_id,
+            raw_merchant_name="Copec",
+            amount=48000,
+            currency="CLP",
+            bank_account_id=None,
+        )
+    )
     mock_db.execute = AsyncMock(return_value=mock_execute_result)
 
-    with patch("modules.whatsapp.handler.send_text", new_callable=AsyncMock, return_value="wamid.ERR") as mock_send:
+    with patch(
+        "modules.whatsapp.handler.send_text", new_callable=AsyncMock, return_value="wamid.ERR"
+    ) as mock_send:
         await handle_text_message(phone=phone, text="not a number", db=mock_db, redis=redis)
 
     mock_send.assert_called_once()
-    body_arg = mock_send.call_args.kwargs.get("body") or (mock_send.call_args.args[1] if len(mock_send.call_args.args) > 1 else "")
+    body_arg = mock_send.call_args.kwargs.get("body") or (
+        mock_send.call_args.args[1] if len(mock_send.call_args.args) > 1 else ""
+    )
     assert "número" in body_arg.lower() or "numero" in body_arg.lower()
     mock_db.commit.assert_not_called()
 
@@ -154,24 +186,81 @@ async def test_handle_text_message_no_active_edit_ignores():
 
 
 # ---------------------------------------------------------------------------
-# parse_manual_expense — unit tests
+# _parse_amount — currency-aware unit tests
 # ---------------------------------------------------------------------------
 
-def test_parse_manual_expense_with_gasto_keyword():
-    assert parse_manual_expense("gasto 5000 Starbucks") == (5000, "Starbucks")
+
+def test_parse_amount_usd_whole():
+    assert _parse_amount("25", "USD") == 2500  # $25.00 → 2500 cents
 
 
-def test_parse_manual_expense_without_keyword():
-    assert parse_manual_expense("5000 Starbucks") == (5000, "Starbucks")
+def test_parse_amount_usd_decimal_two():
+    assert _parse_amount("25.50", "USD") == 2550  # $25.50 → 2550 cents
 
 
-def test_parse_manual_expense_dot_is_always_decimal():
-    # dot always means decimal — 15.990 is fifteen point nine nine, not fifteen thousand
-    assert parse_manual_expense("gasto 15.990 Copec") == (15.99, "Copec")
+def test_parse_amount_usd_decimal_one():
+    assert _parse_amount("2.5", "USD") == 250  # $2.50 → 250 cents
 
 
-def test_parse_manual_expense_multi_word_merchant():
-    assert parse_manual_expense("gasto 3500 Café del Centro") == (3500, "Café del Centro")
+def test_parse_amount_usd_comma_thousands():
+    assert _parse_amount("1,000", "USD") == 100000  # $1,000.00 → 100000 cents
+
+
+def test_parse_amount_usd_dot_three_digits_is_thousands():
+    assert _parse_amount("1.500", "USD") == 150000  # $1,500.00 → 150000 cents
+
+
+def test_parse_amount_usd_large():
+    assert _parse_amount("1000", "USD") == 100000  # $1,000.00 → 100000 cents
+
+
+def test_parse_amount_clp_whole():
+    assert _parse_amount("25600", "CLP") == 25600
+
+
+def test_parse_amount_clp_dot_thousands():
+    assert _parse_amount("25.600", "CLP") == 25600
+
+
+def test_parse_amount_clp_comma_thousands():
+    assert _parse_amount("25,600", "CLP") == 25600
+
+
+def test_parse_amount_clp_small():
+    assert _parse_amount("500", "CLP") == 500
+
+
+def test_parse_amount_clp_million():
+    assert _parse_amount("1.500.000", "CLP") == 1500000
+
+
+def test_parse_amount_invalid():
+    assert _parse_amount("abc", "USD") is None
+
+
+def test_parse_amount_dollar_sign_stripped():
+    assert _parse_amount("$25", "USD") == 2500
+
+
+# ---------------------------------------------------------------------------
+# parse_manual_expense — currency-aware unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_parse_manual_expense_clp_with_gasto():
+    assert parse_manual_expense("gasto 5000 Starbucks", "CLP") == (5000, "Starbucks")
+
+
+def test_parse_manual_expense_clp_without_keyword():
+    assert parse_manual_expense("5000 Starbucks", "CLP") == (5000, "Starbucks")
+
+
+def test_parse_manual_expense_clp_dot_thousands():
+    assert parse_manual_expense("gasto 15.990 Copec", "CLP") == (15990, "Copec")
+
+
+def test_parse_manual_expense_clp_multi_word():
+    assert parse_manual_expense("gasto 3500 Café del Centro", "CLP") == (3500, "Café del Centro")
 
 
 def test_parse_manual_expense_no_merchant_returns_none():
@@ -186,33 +275,26 @@ def test_parse_manual_expense_empty_returns_none():
     assert parse_manual_expense("") is None
 
 
-def test_parse_manual_expense_whole_number_no_decimal():
-    assert parse_manual_expense("gasto 25 Taxi") == (25, "Taxi")
+def test_parse_manual_expense_usd_whole():
+    assert parse_manual_expense("gasto 25 Taxi", "USD") == (2500, "Taxi")
 
 
-def test_parse_manual_expense_decimal_two_places():
-    # 25.00 → 25.0 (USD whole dollars written with cents)
-    assert parse_manual_expense("gasto 25.00 Starbucks") == (25.0, "Starbucks")
+def test_parse_manual_expense_usd_decimal():
+    assert parse_manual_expense("gasto 25.50 Starbucks", "USD") == (2550, "Starbucks")
 
 
-def test_parse_manual_expense_decimal_one_place():
-    # 2.5 → 2.5 (USD fractional)
-    assert parse_manual_expense("gasto 2.5 Coffee") == (2.5, "Coffee")
+def test_parse_manual_expense_usd_fractional():
+    assert parse_manual_expense("gasto 2.5 Coffee", "USD") == (250, "Coffee")
 
 
-def test_parse_manual_expense_dot_three_digits_is_decimal():
-    # 15.990 → 15.99 (dot is always decimal, trailing zero dropped)
-    assert parse_manual_expense("gasto 15.990 Copec") == (15.99, "Copec")
-
-
-def test_parse_manual_expense_comma_thousands_separator():
-    # 1,500 → 1500
-    assert parse_manual_expense("gasto 1,500 Supermercado") == (1500, "Supermercado")
+def test_parse_manual_expense_clp_comma_thousands():
+    assert parse_manual_expense("gasto 1,500 Supermercado", "CLP") == (1500, "Supermercado")
 
 
 # ---------------------------------------------------------------------------
 # handle_text_message — manual expense trigger (no active edit)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_handle_text_message_manual_trigger_creates_transaction():
@@ -233,8 +315,18 @@ async def test_handle_text_message_manual_trigger_creates_transaction():
     mock_db.flush = AsyncMock()
     mock_db.commit = AsyncMock()
 
-    with patch("modules.whatsapp.handler.send_expense_alert", new_callable=AsyncMock, return_value="wamid.MANUAL") as mock_alert, \
-         patch("modules.whatsapp.handler.get_user_ranked_categories", new_callable=AsyncMock, return_value=["Restaurantes", "Café"]):
+    with (
+        patch(
+            "modules.whatsapp.handler.send_expense_alert",
+            new_callable=AsyncMock,
+            return_value="wamid.MANUAL",
+        ) as mock_alert,
+        patch(
+            "modules.whatsapp.handler.get_user_ranked_categories",
+            new_callable=AsyncMock,
+            return_value=["Restaurantes", "Café"],
+        ),
+    ):
         await handle_text_message(phone=phone, text="gasto 5000 Starbucks", db=mock_db, redis=redis)
 
     # Transaction must use user's preferred currency, not hardcoded CLP
