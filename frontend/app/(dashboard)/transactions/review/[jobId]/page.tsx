@@ -15,8 +15,9 @@ export default function ReviewPage() {
   const skipMutation = useSkipReview(jobId);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editRequested, setEditRequested] = useState(false);
-  // Track processed cards for desktop grid
+  // Track processed and editing cards for desktop grid
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
+  const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
 
   // Fetch user's category preferences
   const { data: catPrefs } = useQuery({
@@ -160,22 +161,33 @@ export default function ReviewPage() {
                 <MerchantCard
                   card={card}
                   categories={userCategories}
-                  onApprove={(dn, cat) => handleGridApprove(card, dn, cat)}
+                  onApprove={(dn, cat) => {
+                    handleGridApprove(card, dn, cat);
+                    setEditingIds((prev) => { const s = new Set(prev); s.delete(card.canonical_merchant_id); return s; });
+                  }}
                   onSkip={() => handleGridSkip(card)}
+                  editRequested={editingIds.has(card.canonical_merchant_id)}
                 />
                 {/* Per-card actions */}
                 <div className="flex items-center justify-center gap-3 mt-3">
                   <button
                     onClick={() => handleGridSkip(card)}
                     className="w-10 h-10 rounded-full border-2 border-slate-200 flex items-center justify-center text-slate-400 hover:border-slate-300 hover:text-slate-500 transition-colors"
-                    title="Skip"
+                    title="Omitir"
                   >
                     <SkipForward size={16} />
                   </button>
                   <button
+                    onClick={() => setEditingIds((prev) => new Set(prev).add(card.canonical_merchant_id))}
+                    className="w-10 h-10 rounded-full border-2 border-red-200 flex items-center justify-center text-red-400 hover:border-red-300 hover:text-red-500 transition-colors"
+                    title="Editar"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
                     onClick={() => handleGridApprove(card)}
                     className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md shadow-emerald-200 hover:bg-emerald-600 transition-colors"
-                    title="Approve"
+                    title="Aprobar"
                   >
                     <Check size={20} />
                   </button>
