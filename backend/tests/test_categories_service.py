@@ -1,6 +1,6 @@
 import uuid
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock
 
 
 def _mock_db():

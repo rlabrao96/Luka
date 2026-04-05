@@ -150,6 +150,7 @@ async def add_category(
     )
     db.add(pref)
     await db.commit()
+    await db.refresh(pref)
     return _pref_to_dict(pref)
 
 
