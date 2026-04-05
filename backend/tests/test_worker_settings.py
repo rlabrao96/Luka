@@ -66,10 +66,3 @@ def test_no_cron_overlap():
     fast = _cron_names(FastWorkerSettings)
     slow = _cron_names(SlowWorkerSettings)
     assert fast & slow == set()
-
-
-def test_worker_settings_alias():
-    """WorkerSettings alias exists for backwards compat during migration."""
-    from worker import WorkerSettings
-
-    assert WorkerSettings is FastWorkerSettings

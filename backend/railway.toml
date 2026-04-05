@@ -2,6 +2,6 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "sh -c 'case \"$START_COMMAND\" in worker-fast) exec python -m arq worker.FastWorkerSettings;; worker-slow) exec python -m arq worker.SlowWorkerSettings;; worker) exec python -m arq worker.FastWorkerSettings;; *) exec uvicorn main:app --host 0.0.0.0 --port $PORT;; esac'"
+startCommand = "sh -c 'case \"$START_COMMAND\" in worker-fast) exec python -m arq worker.FastWorkerSettings;; worker-slow) exec python -m arq worker.SlowWorkerSettings;; *) exec uvicorn main:app --host 0.0.0.0 --port $PORT;; esac'"
 restartPolicyType = "on_failure"
 releaseCommand = "alembic upgrade head"

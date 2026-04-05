@@ -66,8 +66,3 @@ class SlowWorkerSettings:
     max_jobs = 5
     job_timeout = 600
     queue_name = "arq:queue:slow"
-
-
-# Backwards compat: Railway's existing worker service uses `worker.WorkerSettings`
-# Remove this alias after both services are deployed (Task 6)
-WorkerSettings = FastWorkerSettings
