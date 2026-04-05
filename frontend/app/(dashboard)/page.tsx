@@ -11,7 +11,7 @@ import { CashFlowCards } from "./components/CashFlowCards";
 import { BudgetBars } from "./components/BudgetBars";
 import { RecentTransactions } from "./components/RecentTransactions";
 
-import { useMyTransactions, useMonthlySpending } from "@/app/lib/hooks/useTransactions";
+import { useMyTransactions, useMonthlySpending, usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useBudgetStatus, useCategoryBudgets } from "@/app/lib/hooks/useBudget";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow } from "@/app/lib/api";
@@ -71,6 +71,7 @@ export default function DashboardPage() {
 
   // ── Data ──
   const { data: myTxns = [] } = useMyTransactions();
+  const { data: pendingData } = usePendingTransactions();
   const { data: monthlySpending = [] } = useMonthlySpending();
   const { data: budget } = useBudgetStatus(selectedMonth);
   const { data: catBudgets } = useCategoryBudgets(selectedMonth);
@@ -124,13 +125,25 @@ export default function DashboardPage() {
     return [...top5, { category: "Otros", amount: overflowTotal }];
   }, [monthTxns]);
 
-  // Recent transactions (latest 5 for selected month/currency)
-  const recentTxns = useMemo(
-    () => [...monthTxns]
+  // Recent transactions (latest 5, including pending)
+  const recentTxns = useMemo(() => {
+    const pending = [
+      ...(pendingData?.awaiting_reconciliation ?? []),
+      ...(pendingData?.needs_classification ?? []),
+      ...(pendingData?.unmatched_email ?? []),
+    ].filter((t) => (t.currency ?? "CLP") === selectedCurrency);
+    const combined = [...monthTxns, ...pending];
+    // Dedupe by id
+    const seen = new Set<string>();
+    const unique = combined.filter((t) => {
+      if (seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    });
+    return unique
       .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
-      .slice(0, 5),
-    [monthTxns]
-  );
+      .slice(0, 5);
+  }, [monthTxns, pendingData, selectedCurrency]);
 
   // ── Greeting ──
   const firstName = name.split(" ")[0];
