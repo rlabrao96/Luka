@@ -172,17 +172,23 @@ async def _handle_manual_expense_trigger(
     phone: str, text: str, db: AsyncSession, redis: Redis
 ) -> None:
     """Create a manual transaction from a parsed expense message and start the session."""
+    print(f"[MANUAL_EXPENSE] received from={phone} text={text!r}", flush=True)
+
     parsed = parse_manual_expense(text)
     if not parsed:
+        print(f"[MANUAL_EXPENSE] parse failed, ignoring", flush=True)
         return
 
     amount, merchant = parsed
+    print(f"[MANUAL_EXPENSE] parsed amount={amount} merchant={merchant!r}", flush=True)
 
     user_row = await _get_user_and_household_by_phone(phone, db)
     if not user_row:
+        print(f"[MANUAL_EXPENSE] user not found for phone={phone}", flush=True)
         return
 
     user_id, household_id = user_row
+    print(f"[MANUAL_EXPENSE] user_id={user_id} household_id={household_id}", flush=True)
 
     txn = Transaction(
         id=uuid.uuid4(),
@@ -224,6 +230,7 @@ async def handle_text_message(
     phone: str, text: str, db: AsyncSession, redis: Redis
 ) -> None:
     """Handle a free-text reply during an active edit step, or a new manual expense trigger."""
+    print(f"[WA_TEXT] from={phone} text={text!r}", flush=True)
     transaction_id = await get_active_edit_transaction_id(phone, redis)
     if not transaction_id:
         await _handle_manual_expense_trigger(phone, text, db, redis)
