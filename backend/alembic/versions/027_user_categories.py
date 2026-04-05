@@ -1,15 +1,15 @@
 """user_categories — add category_type/is_custom, drop hidden, per-user merchant counters
 
-Revision ID: 024
-Revises: 023
+Revision ID: 027
+Revises: 026
 """
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from alembic import op
 
-revision = "024"
-down_revision = "023"
+revision = "027"
+down_revision = "026"
 branch_labels = None
 depends_on = None
 
