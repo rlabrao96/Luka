@@ -127,7 +127,7 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
             Transactions ({card.transaction_count})
           </p>
           <div className="flex flex-col gap-1">
-            {card.transactions.map((tx, i) => (
+            {(card.transactions ?? []).map((tx, i) => (
               <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
                 <span className="text-slate-500 truncate">{tx.raw_name}</span>
                 <span className="flex gap-2 text-slate-400 shrink-0 ml-2">
