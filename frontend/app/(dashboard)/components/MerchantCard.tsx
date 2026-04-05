@@ -150,41 +150,41 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-6 w-full">
+    <div className="bg-white rounded-2xl shadow-lg p-6 w-full h-full flex flex-col">
       <div className="text-center mb-5">
         {(() => {
           const { icon, isEmoji } = getCategoryIconOrInitial(selectedCategory || card.display_name);
           return (
-            <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <span className={isEmoji ? "text-2xl" : "text-lg font-bold text-luka-primary"}>{icon}</span>
+            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <span className={isEmoji ? "text-3xl" : "text-xl font-bold text-luka-primary"}>{icon}</span>
             </div>
           );
         })()}
-        <h2 className="text-xl font-bold text-luka-dark">{card.display_name}</h2>
+        <h2 className="text-2xl font-bold text-luka-dark">{card.display_name}</h2>
         {selectedCategory && (
-          <span className="inline-block mt-1.5 bg-blue-50 text-luka-primary text-xs font-medium px-3 py-1 rounded-full">
+          <span className="inline-block mt-2 bg-blue-50 text-luka-primary text-sm font-medium px-3.5 py-1 rounded-full">
             {selectedCategory}
           </span>
         )}
       </div>
 
-      <div className="bg-slate-50 rounded-xl p-3">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5">
+      <div className="bg-slate-50 rounded-xl p-4 flex-1 flex flex-col">
+        <p className="text-xs font-semibold text-slate-400 uppercase mb-2">
           Movimientos ({card.transaction_count})
         </p>
-        <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
+        <div className="flex flex-col gap-1.5 max-h-[200px] overflow-y-auto flex-1">
           {(card.transactions ?? []).map((tx, i) => (
-            <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
-              <span className="text-slate-500 truncate">{tx.raw_name}</span>
-              <span className="flex gap-2 text-slate-400 shrink-0 ml-2">
+            <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs">
+              <span className="text-slate-600 truncate">{tx.raw_name}</span>
+              <span className="flex gap-3 text-slate-400 shrink-0 ml-3">
                 <span>{tx.date}</span>
-                <span className="font-medium text-slate-600">{formatTxAmount(tx.amount)}</span>
+                <span className="font-medium text-slate-700">{formatTxAmount(tx.amount)}</span>
               </span>
             </div>
           ))}
         </div>
-        <div className="flex justify-end mt-2 pt-2 border-t border-slate-200">
-          <span className="text-xs font-semibold text-slate-600">Total: {formatTxAmount(card.total_amount)}</span>
+        <div className="flex justify-end mt-3 pt-3 border-t border-slate-200">
+          <span className="text-sm font-semibold text-slate-700">Total: {formatTxAmount(card.total_amount)}</span>
         </div>
       </div>
     </div>

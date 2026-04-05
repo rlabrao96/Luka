@@ -155,7 +155,7 @@ export default function ReviewPage() {
 
         {/* Active cards — 3 per row */}
         {remaining.length > 0 && (
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-3 gap-5 mb-6">
             {remaining.map((card) => (
               <div key={card.canonical_merchant_id} className="flex flex-col">
                 <MerchantCard
@@ -203,7 +203,7 @@ export default function ReviewPage() {
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
               Revisados ({processed.length})
             </p>
-            <div className="grid grid-cols-3 gap-4 opacity-40">
+            <div className="grid grid-cols-3 gap-5 opacity-40">
               {processed.map((card) => (
                 <MerchantCard
                   key={card.canonical_merchant_id}
