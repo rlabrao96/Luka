@@ -39,12 +39,14 @@ export default function ReviewPage() {
       category,
       action: "approve",
     });
+    setEditRequested(false);
     advance();
   };
 
   const handleSkip = () => {
     if (!currentCard) return;
     submit(currentCard.canonical_merchant_id, { action: "skip" });
+    setEditRequested(false);
     advance();
   };
 
