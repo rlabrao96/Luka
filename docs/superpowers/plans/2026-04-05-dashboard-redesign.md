@@ -4,14 +4,14 @@
 
 **Goal:** Replace the current dashboard with a useful financial overview: bank balance, cash flow (income/expenses/net), spending trends, category breakdown with budget progress, and recent transactions — with month and currency selectors.
 
-**Architecture:** Frontend-only changes. All data already available via existing API endpoints and React Query hooks. New components for month selector, currency toggle, cash flow cards, and budget bars. Existing components (SpendingChart, CategoryDonut, RecentTransactions) receive new props for month/currency filtering. Client-side filtering of the 6-month transaction dataset.
+**Architecture:** Backend adds a `category_budgets` table and CRUD endpoints for per-category budget amounts. Frontend adds new components (month selector, currency toggle, cash flow cards, budget bars) and rewrites the dashboard page. Existing components (SpendingChart, CategoryDonut, RecentTransactions) receive new props for month/currency filtering. Client-side filtering of the 6-month transaction dataset.
 
 **Tech Stack:** Next.js 14, Tailwind CSS, shadcn/ui, Recharts, React Query, Zustand
 
 **Design Spec:** `docs/superpowers/specs/2026-04-05-dashboard-redesign-design.md`
 
 **Important context:**
-- No per-category budgets exist in the system. The `household_budgets` table stores a single monthly total per bank account. Budget bars show each category's spending as % of total spending (like the donut but as progress bars), plus an overall budget progress indicator if a budget is set.
+- Per-category budgets will be added in Tasks 1-3 (new `category_budgets` table + API endpoints + frontend hook). Budget bars then show actual spending vs budget per category.
 - Balance amounts for CLP are stored as integers (no cents). USD amounts are stored in cents (divide by 100).
 - The `CHECKING_KINDS` set must include `"depository"` for Plaid accounts (existing code in `transactions/page.tsx:34` uses `["checking_account", "savings_account", "sight_account"]`).
 - `myTxns` includes the user's own transactions with both `split_type: "personal"` and `split_type: "shared"`. `sharedTxns` is partner transactions — do NOT include those in expense/income totals.
@@ -22,6 +22,13 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
+| `backend/modules/budgets/category_service.py` | Create | CRUD logic for per-category budgets |
+| `backend/modules/budgets/schemas.py` | Modify | Add CategoryBudget schemas |
+| `backend/modules/budgets/router.py` | Modify | Add category budget endpoints |
+| `backend/modules/households/models.py` | Modify | Add CategoryBudget model |
+| `backend/alembic/versions/029_category_budgets.py` | Create | Migration for category_budgets table |
+| `frontend/app/lib/api.ts` | Modify | Add category budget API functions + types |
+| `frontend/app/lib/hooks/useBudget.ts` | Modify | Add useCategoryBudgets hook |
 | `frontend/app/(dashboard)/components/MonthSelector.tsx` | Create | Dropdown pill for month selection (6 rolling months) |
 | `frontend/app/(dashboard)/components/CurrencyToggle.tsx` | Create | CLP/USD toggle pill |
 | `frontend/app/(dashboard)/components/BalanceCard.tsx` | Create | Blue gradient card showing checking balance |
@@ -33,7 +40,302 @@
 
 ---
 
-### Task 1: MonthSelector Component
+### Task 1: Category Budgets — Backend Model + Migration
+
+**Files:**
+- Modify: `backend/modules/households/models.py`
+- Create: `backend/alembic/versions/029_category_budgets.py`
+
+- [ ] **Step 1: Add CategoryBudget model**
+
+In `backend/modules/households/models.py`, after the `HouseholdBudget` class (line 95), add:
+
+```python
+class CategoryBudget(Base):
+    __tablename__ = "category_budgets"
+    __table_args__ = (
+        UniqueConstraint(
+            "household_id", "category", "month",
+            name="uq_category_budgets_household_cat_month",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("households.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    month: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+```
+
+- [ ] **Step 2: Create Alembic migration**
+
+Create `backend/alembic/versions/029_category_budgets.py`:
+
+```python
+"""Add category_budgets table
+
+Revision ID: 029
+Revises: 028
+Create Date: 2026-04-05
+"""
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+revision = "029"
+down_revision = "028"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        "category_budgets",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("household_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("category", sa.String(), nullable=False),
+        sa.Column("month", sa.Date(), nullable=False),
+        sa.Column("amount", sa.Numeric(12, 2), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["household_id"], ["households.id"],
+            name="fk_category_budgets_household_id",
+            ondelete="CASCADE",
+        ),
+        sa.UniqueConstraint(
+            "household_id", "category", "month",
+            name="uq_category_budgets_household_cat_month",
+        ),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table("category_budgets")
+```
+
+- [ ] **Step 3: Run migration**
+
+```bash
+cd backend && alembic upgrade head
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add backend/modules/households/models.py backend/alembic/versions/029_category_budgets.py
+git commit -m "feat: add category_budgets table for per-category budget limits"
+```
+
+---
+
+### Task 2: Category Budgets — Backend Service + Endpoints
+
+**Files:**
+- Create: `backend/modules/budgets/category_service.py`
+- Modify: `backend/modules/budgets/schemas.py`
+- Modify: `backend/modules/budgets/router.py`
+
+- [ ] **Step 1: Add schemas**
+
+In `backend/modules/budgets/schemas.py`, add at the end:
+
+```python
+# ── Category budget schemas ──
+
+
+class CategoryBudgetItem(BaseModel):
+    category: str
+    amount: float
+
+
+class CategoryBudgetResponse(BaseModel):
+    household_id: str
+    month: str
+    budgets: list[CategoryBudgetItem]
+
+
+class SetCategoryBudgetRequest(BaseModel):
+    month: date
+    budgets: list[CategoryBudgetItem]
+```
+
+- [ ] **Step 2: Create category_service.py**
+
+Create `backend/modules/budgets/category_service.py`:
+
+```python
+import uuid
+from datetime import date
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
+from modules.households.models import CategoryBudget
+
+
+async def get_category_budgets(
+    db: AsyncSession,
+    household_id: uuid.UUID,
+    month: date,
+) -> dict:
+    result = await db.execute(
+        select(CategoryBudget).where(
+            CategoryBudget.household_id == household_id,
+            CategoryBudget.month == month,
+        )
+    )
+    rows = result.scalars().all()
+    return {
+        "household_id": str(household_id),
+        "month": month.isoformat(),
+        "budgets": [{"category": r.category, "amount": float(r.amount)} for r in rows],
+    }
+
+
+async def set_category_budgets(
+    db: AsyncSession,
+    household_id: uuid.UUID,
+    month: date,
+    budgets: list[dict],
+) -> dict:
+    # Delete existing budgets for this month, then insert new ones
+    await db.execute(
+        delete(CategoryBudget).where(
+            CategoryBudget.household_id == household_id,
+            CategoryBudget.month == month,
+        )
+    )
+    for b in budgets:
+        db.add(CategoryBudget(
+            household_id=household_id,
+            category=b["category"],
+            month=month,
+            amount=b["amount"],
+        ))
+    await db.commit()
+    return await get_category_budgets(db, household_id, month)
+```
+
+- [ ] **Step 3: Add endpoints to router**
+
+In `backend/modules/budgets/router.py`, add imports at the top:
+
+```python
+from modules.budgets.schemas import CategoryBudgetResponse, SetCategoryBudgetRequest
+from modules.budgets.category_service import get_category_budgets, set_category_budgets
+```
+
+Then add at the end of the file:
+
+```python
+@router.get("/categories/{household_id}", response_model=CategoryBudgetResponse)
+async def get_cat_budgets(
+    household_id: uuid.UUID,
+    month: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_membership(household_id, current_user.id, db)
+    if not month:
+        today = date.today()
+        month = date(today.year, today.month, 1)
+    else:
+        month = date(month.year, month.month, 1)
+    return await get_category_budgets(db, household_id, month)
+
+
+@router.post("/categories/{household_id}", response_model=CategoryBudgetResponse)
+async def set_cat_budgets(
+    household_id: uuid.UUID,
+    body: SetCategoryBudgetRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_membership(household_id, current_user.id, db)
+    month = date(body.month.year, body.month.month, 1)
+    return await set_category_budgets(
+        db, household_id, month, [b.model_dump() for b in body.budgets]
+    )
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add backend/modules/budgets/category_service.py backend/modules/budgets/schemas.py backend/modules/budgets/router.py
+git commit -m "feat: add category budget CRUD endpoints (GET/POST /budgets/categories/{household_id})"
+```
+
+---
+
+### Task 3: Category Budgets — Frontend Hook + API
+
+**Files:**
+- Modify: `frontend/app/lib/api.ts`
+- Modify: `frontend/app/lib/hooks/useBudget.ts`
+
+- [ ] **Step 1: Add types and API functions**
+
+In `frontend/app/lib/api.ts`, add the type near the other budget types (after `BudgetStatus` around line 120):
+
+```typescript
+export interface CategoryBudgetItem {
+  category: string;
+  amount: number;
+}
+
+export interface CategoryBudgetResponse {
+  household_id: string;
+  month: string;
+  budgets: CategoryBudgetItem[];
+}
+```
+
+In the `api` object, add the API function (near the other budget functions):
+
+```typescript
+getCategoryBudgets: (householdId: string, month?: string) =>
+  get<CategoryBudgetResponse>(
+    `/budgets/categories/${householdId}${month ? `?month=${month}` : ""}`
+  ),
+
+setCategoryBudgets: (householdId: string, body: { month: string; budgets: CategoryBudgetItem[] }) =>
+  post<CategoryBudgetResponse>(`/budgets/categories/${householdId}`, body),
+```
+
+- [ ] **Step 2: Add React Query hook**
+
+In `frontend/app/lib/hooks/useBudget.ts`, add:
+
+```typescript
+export function useCategoryBudgets(month?: string) {
+  const householdId = useLukaStore((s) => s.householdId);
+  return useQuery({
+    queryKey: ["categoryBudgets", householdId, month],
+    queryFn: () => api.getCategoryBudgets(householdId!, month),
+    enabled: !!householdId,
+  });
+}
+```
+
+Also add the import for `CategoryBudgetResponse` if needed (it's used via `api` so may not need explicit import).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add frontend/app/lib/api.ts frontend/app/lib/hooks/useBudget.ts
+git commit -m "feat: add frontend hook and API for category budgets"
+```
+
+---
+
+### Task 4: MonthSelector Component
 
 **Files:**
 - Create: `frontend/app/(dashboard)/components/MonthSelector.tsx`
@@ -130,7 +432,7 @@ git commit -m "feat(dashboard): add MonthSelector dropdown component"
 
 ---
 
-### Task 2: CurrencyToggle Component
+### Task 5: CurrencyToggle Component
 
 **Files:**
 - Create: `frontend/app/(dashboard)/components/CurrencyToggle.tsx`
@@ -177,7 +479,7 @@ git commit -m "feat(dashboard): add CurrencyToggle component"
 
 ---
 
-### Task 3: BalanceCard Component
+### Task 6: BalanceCard Component
 
 **Files:**
 - Create: `frontend/app/(dashboard)/components/BalanceCard.tsx`
@@ -241,7 +543,7 @@ git commit -m "feat(dashboard): add BalanceCard with gradient background"
 
 ---
 
-### Task 4: CashFlowCards Component
+### Task 7: CashFlowCards Component
 
 **Files:**
 - Create: `frontend/app/(dashboard)/components/CashFlowCards.tsx`
@@ -324,18 +626,18 @@ git commit -m "feat(dashboard): add CashFlowCards (income/expenses/net)"
 
 ---
 
-### Task 5: BudgetBars Component
+### Task 8: BudgetBars Component
 
 **Files:**
 - Create: `frontend/app/(dashboard)/components/BudgetBars.tsx`
 
-**Context:** No per-category budgets exist. This component shows top 5 categories by spending amount, each as a percentage of total spending. If an overall monthly budget is set, a summary line shows total budget progress.
+**Context:** Per-category budgets are now available via `useCategoryBudgets`. This component shows the top 5 categories by spending, each with a progress bar against its category budget. Categories without a budget show spending amount only (no percentage). An overall budget summary is shown if a total budget is set.
 
 - [ ] **Step 1: Create BudgetBars component**
 
 ```tsx
 "use client";
-import type { BudgetStatus } from "@/app/lib/api";
+import type { BudgetStatus, CategoryBudgetItem } from "@/app/lib/api";
 
 interface CategorySpend {
   category: string;
@@ -343,16 +645,15 @@ interface CategorySpend {
 }
 
 interface BudgetBarsProps {
-  categories: CategorySpend[];  // top 5, already sorted desc
-  totalSpending: number;
-  budget: BudgetStatus | undefined;
+  categories: CategorySpend[];         // top 5, already sorted desc
+  categoryBudgets: CategoryBudgetItem[];  // per-category budget limits
+  budget: BudgetStatus | undefined;    // overall monthly budget
   currency: string;
 }
 
 function fmt(n: number, currency: string): string {
   const isDecimal = currency !== "CLP";
   const val = isDecimal ? n / 100 : n;
-  // Abbreviate large CLP values
   if (currency === "CLP" && Math.abs(val) >= 1_000_000)
     return `$${(val / 1_000_000).toFixed(1)}M`;
   if (currency === "CLP" && Math.abs(val) >= 1_000)
@@ -362,14 +663,32 @@ function fmt(n: number, currency: string): string {
   return `$${Math.round(val).toLocaleString("es-CL")}`;
 }
 
-function barColor(pct: number): string {
-  if (pct >= 40) return "bg-blue-600";
-  if (pct >= 20) return "bg-blue-500";
-  return "bg-blue-400";
+function pctColor(pct: number): string {
+  if (pct >= 100) return "red";
+  if (pct >= 80) return "amber";
+  if (pct >= 50) return "blue";
+  return "green";
 }
 
-export function BudgetBars({ categories, totalSpending, budget, currency }: BudgetBarsProps) {
+function barBg(color: string): string {
+  const map: Record<string, string> = {
+    green: "bg-green-500", blue: "bg-blue-600", amber: "bg-amber-500", red: "bg-red-500",
+  };
+  return map[color] ?? "bg-blue-600";
+}
+
+function textColor(color: string): string {
+  const map: Record<string, string> = {
+    green: "text-green-600", blue: "text-blue-600", amber: "text-amber-600", red: "text-red-600",
+  };
+  return map[color] ?? "text-blue-600";
+}
+
+export function BudgetBars({ categories, categoryBudgets, budget, currency }: BudgetBarsProps) {
   if (categories.length === 0) return null;
+
+  // Build a lookup: category name → budget amount
+  const budgetMap = new Map(categoryBudgets.map((b) => [b.category, b.amount]));
 
   return (
     <div className="space-y-4">
@@ -379,7 +698,7 @@ export function BudgetBars({ categories, totalSpending, budget, currency }: Budg
           <div className="flex justify-between text-xs mb-1.5">
             <span className="font-semibold text-slate-700">Presupuesto total</span>
             <span className="text-slate-500">
-              <span className={`font-bold ${budget.percent_used > 100 ? "text-red-600" : budget.percent_used > 80 ? "text-amber-600" : "text-blue-600"}`}>
+              <span className={`font-bold ${textColor(pctColor(budget.percent_used))}`}>
                 {Math.round(budget.percent_used)}%
               </span>
               {" "}· {fmt(budget.spent, currency)} / {fmt(budget.budgeted, currency)}
@@ -387,9 +706,7 @@ export function BudgetBars({ categories, totalSpending, budget, currency }: Budg
           </div>
           <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${
-                budget.percent_used > 100 ? "bg-red-500" : budget.percent_used > 80 ? "bg-amber-500" : "bg-blue-600"
-              }`}
+              className={`h-full rounded-full transition-all ${barBg(pctColor(budget.percent_used))}`}
               style={{ width: `${Math.min(budget.percent_used, 100)}%` }}
             />
           </div>
@@ -398,22 +715,32 @@ export function BudgetBars({ categories, totalSpending, budget, currency }: Budg
 
       {/* Per-category bars */}
       {categories.map((cat) => {
-        const pct = totalSpending > 0 ? (cat.amount / totalSpending) * 100 : 0;
+        const catBudget = budgetMap.get(cat.category);
+        const hasBudget = catBudget != null && catBudget > 0;
+        const pct = hasBudget ? (cat.amount / catBudget) * 100 : 0;
+        const color = hasBudget ? pctColor(pct) : "blue";
+
         return (
           <div key={cat.category}>
             <div className="flex justify-between text-xs mb-1">
               <span className="font-semibold text-slate-700">{cat.category}</span>
               <span className="text-slate-500">
-                <span className={`font-bold ${barColor(pct).replace("bg-", "text-")}`}>
-                  {Math.round(pct)}%
-                </span>
-                {" "}· {fmt(cat.amount, currency)}
+                {hasBudget ? (
+                  <>
+                    <span className={`font-bold ${textColor(color)}`}>
+                      {Math.round(pct)}%
+                    </span>
+                    {" "}· {fmt(cat.amount, currency)} / {fmt(catBudget, currency)}
+                  </>
+                ) : (
+                  <span className="font-medium">{fmt(cat.amount, currency)}</span>
+                )}
               </span>
             </div>
             <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${barColor(pct)}`}
-                style={{ width: `${Math.min(pct, 100)}%` }}
+                className={`h-full rounded-full transition-all ${barBg(color)}`}
+                style={{ width: hasBudget ? `${Math.min(pct, 100)}%` : "100%" }}
               />
             </div>
           </div>
@@ -433,7 +760,7 @@ git commit -m "feat(dashboard): add BudgetBars for top 5 category spending"
 
 ---
 
-### Task 6: Update SpendingChart for Currency
+### Task 9: Update SpendingChart for Currency
 
 **Files:**
 - Modify: `frontend/app/(dashboard)/components/SpendingChart.tsx`
@@ -514,7 +841,7 @@ git commit -m "feat(dashboard): add currency support to SpendingChart"
 
 ---
 
-### Task 7: Update CategoryDonut for Currency
+### Task 10: Update CategoryDonut for Currency
 
 **Files:**
 - Modify: `frontend/app/(dashboard)/components/CategoryDonut.tsx`
@@ -583,7 +910,7 @@ git commit -m "feat(dashboard): add currency support to CategoryDonut"
 
 ---
 
-### Task 8: Rewrite Dashboard Page (renumbered from 7)
+### Task 11: Rewrite Dashboard Page
 
 **Files:**
 - Rewrite: `frontend/app/(dashboard)/page.tsx`
@@ -609,7 +936,7 @@ import { BudgetBars } from "./components/BudgetBars";
 import { RecentTransactions } from "./components/RecentTransactions";
 
 import { useMyTransactions, useMonthlySpending } from "@/app/lib/hooks/useTransactions";
-import { useBudgetStatus } from "@/app/lib/hooks/useBudget";
+import { useBudgetStatus, useCategoryBudgets } from "@/app/lib/hooks/useBudget";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow } from "@/app/lib/api";
 
@@ -657,6 +984,7 @@ export default function DashboardPage() {
   const { data: myTxns = [] } = useMyTransactions();
   const { data: monthlySpending = [] } = useMonthlySpending();
   const { data: budget } = useBudgetStatus(selectedMonth);
+  const { data: catBudgets } = useCategoryBudgets(selectedMonth);
   const { data: accounts = [] } = useQuery<BankAccountRow[]>({
     queryKey: ["bank-accounts", householdId],
     queryFn: () => api.getBankAccounts(householdId!),
@@ -813,7 +1141,7 @@ export default function DashboardPage() {
           {categoryData.length > 0 ? (
             <BudgetBars
               categories={categoryData.slice(0, 5)}
-              totalSpending={expenses}
+              categoryBudgets={catBudgets?.budgets ?? []}
               budget={budget}
               currency={selectedCurrency}
             />
@@ -893,7 +1221,7 @@ git commit -m "feat(dashboard): redesign with balance, cash flow, budget bars, m
 
 ---
 
-### Task 9: Responsive Polish
+### Task 12: Responsive Polish
 
 **Files:**
 - Modify: `frontend/app/(dashboard)/page.tsx`
@@ -949,7 +1277,7 @@ git commit -m "fix(dashboard): responsive grid for mobile and past-month views"
 
 ---
 
-### Task 10: Final Verification and Cleanup
+### Task 13: Final Verification and Cleanup
 
 - [ ] **Step 1: Remove unused imports from old page**
 
