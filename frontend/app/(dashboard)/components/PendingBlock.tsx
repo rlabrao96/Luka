@@ -6,6 +6,20 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction, type PendingTransactions } from "@/app/lib/api";
 import { Trash2, ChevronDown, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CategoryBottomSheet } from "./CategoryBottomSheet";
+import { SplitTypeEditor } from "./SplitTypeEditor";
+
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    setMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return mobile;
+}
 
 const EXPENSE_CATEGORIES = [
   "Alimentación", "Supermercado", "Transporte", "Combustible",
@@ -187,16 +201,71 @@ function PendingSplitCell({ txn }: { txn: Transaction }) {
   );
 }
 
+/* ─── Mobile category pill (opens bottom sheet) ─── */
+
+function PendingCategoryPill({ txn }: { txn: Transaction }) {
+  const [open, setOpen] = useState(false);
+  const [localCategory, setLocalCategory] = useState(txn.category);
+  const queryClient = useQueryClient();
+
+  useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
+
+  const isIncome = Number(txn.amount) < 0;
+
+  async function handleSelect(cat: string | null) {
+    setLocalCategory(cat);
+    const queryKey = ["transactions", "pending"];
+    const previous = queryClient.getQueryData(queryKey);
+    queryClient.setQueryData(queryKey, (old: PendingTransactions | undefined) => {
+      if (!old) return old;
+      const patch = (list: Transaction[]) =>
+        list.map((t) => (t.id === txn.id ? { ...t, category: cat } : t));
+      return {
+        ...old,
+        awaiting_reconciliation: patch(old.awaiting_reconciliation),
+        unmatched_email: patch(old.unmatched_email),
+      };
+    });
+    try {
+      await api.updateTransactionCategory(txn.id, cat);
+    } catch {
+      queryClient.setQueryData(queryKey, previous);
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className={cn(
+          "text-[9px] font-medium px-1.5 py-0.5 rounded max-w-[80px] text-center truncate cursor-pointer hover:opacity-80",
+          localCategory ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600"
+        )}
+      >
+        {localCategory ?? "Sin categoría"}
+      </button>
+      <CategoryBottomSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        currentCategory={localCategory}
+        isIncome={isIncome}
+        onSelect={handleSelect}
+      />
+    </>
+  );
+}
+
 /* ─── PendingSection ─── */
 
 interface PendingSectionProps {
   title: string;
   transactions: Transaction[];
+  isMobile: boolean;
   renderAction?: (txn: Transaction) => React.ReactNode;
   borderLeft?: boolean;
 }
 
-function PendingSection({ title, transactions, renderAction, borderLeft }: PendingSectionProps) {
+function PendingSection({ title, transactions, isMobile, renderAction, borderLeft }: PendingSectionProps) {
   if (transactions.length === 0) return null;
   return (
     <div className="mt-3 first:mt-0">
@@ -266,10 +335,18 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
                       <span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
                         {bankName ? toTitleCase(bankName) : "—"}
                       </span>
-                      <PendingCategoryCell txn={txn} />
+                      {isMobile ? (
+                        <PendingCategoryPill txn={txn} />
+                      ) : (
+                        <PendingCategoryCell txn={txn} />
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <PendingSplitCell txn={txn} />
+                      {isMobile ? (
+                        <SplitTypeEditor txn={txn} isMobile={true} />
+                      ) : (
+                        <PendingSplitCell txn={txn} />
+                      )}
                       {renderAction?.(txn)}
                     </div>
                   </div>
@@ -290,6 +367,7 @@ export function PendingBlock() {
   const queryClient = useQueryClient();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const isMobile = useIsMobile();
 
   if (isLoading || !data) return null;
 
@@ -330,11 +408,13 @@ export function PendingBlock() {
       <PendingSection
         title="Esperando confirmación bancaria"
         transactions={awaiting_reconciliation}
+        isMobile={isMobile}
       />
 
       <PendingSection
         title="Sin match bancario"
         transactions={unmatched_email}
+        isMobile={isMobile}
         borderLeft
         renderAction={(txn) =>
           confirmingId === txn.id ? (
