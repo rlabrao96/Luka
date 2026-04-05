@@ -291,6 +291,48 @@ def test_parse_manual_expense_clp_comma_thousands():
     assert parse_manual_expense("gasto 1,500 Supermercado", "CLP") == (1500, "Supermercado")
 
 
+# --- Natural language forms ---
+
+
+def test_parse_manual_expense_gasto_de_en():
+    assert parse_manual_expense("gasto de 5000 en Starbucks", "CLP") == (5000, "Starbucks")
+
+
+def test_parse_manual_expense_gaste_en():
+    assert parse_manual_expense("gasté 5000 en Starbucks", "CLP") == (5000, "Starbucks")
+
+
+def test_parse_manual_expense_expense_of_in():
+    assert parse_manual_expense("expense of 25 in Starbucks", "USD") == (2500, "Starbucks")
+
+
+def test_parse_manual_expense_spent_at():
+    assert parse_manual_expense("spent 25.50 at Cafe", "USD") == (2550, "Cafe")
+
+
+# --- Currency override ---
+
+
+def test_parse_manual_expense_clp_override_from_usd():
+    assert parse_manual_expense("gasto de 15000 en Lider clp", "USD") == (15000, "Lider")
+
+
+def test_parse_manual_expense_chile_keyword_override():
+    assert parse_manual_expense("gasto de 15.000 en Lider chile", "USD") == (15000, "Lider")
+
+
+def test_parse_manual_expense_pesos_keyword_override():
+    assert parse_manual_expense("gasto de 15,000 en Lider pesos", "USD") == (15000, "Lider")
+
+
+def test_parse_manual_expense_usd_override_from_clp():
+    assert parse_manual_expense("expense 25 Starbucks usd", "CLP") == (2500, "Starbucks")
+
+
+def test_parse_manual_expense_dolares_keyword_override():
+    assert parse_manual_expense("gasto 25 cafe dolares", "CLP") == (2500, "cafe")
+
+
 # ---------------------------------------------------------------------------
 # handle_text_message — manual expense trigger (no active edit)
 # ---------------------------------------------------------------------------

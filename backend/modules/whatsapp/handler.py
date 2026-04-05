@@ -94,14 +94,63 @@ def _parse_amount(raw: str, currency: str = "CLP") -> int | None:
             return None
 
 
+_USD_KEYWORDS = {"usd", "dolares", "dólares", "dollars", "dollar", "dolar", "dólar"}
+_CLP_KEYWORDS = {"clp", "pesos", "chile", "chileno", "chilenos"}
+
+# Prefixes stripped before amount+merchant extraction (order matters: longer first)
+_PREFIXES = re.compile(
+    r"^(?:gast[oée]\s+de|gast[oée]|expense\s+of|expense|spent)\s+",
+    re.IGNORECASE,
+)
+
+# Amount then merchant, with optional "en"/"in"/"at" separator
+_AMOUNT_MERCHANT = re.compile(
+    r"^(\$?\d[\d.,]*)\s+(?:en\s+|in\s+|at\s+)?(.+)$",
+    re.IGNORECASE,
+)
+
+
+def _detect_currency(text: str, default: str) -> tuple[str, str]:
+    """Detect currency override from keywords in the message.
+
+    Returns (currency, cleaned_text) with the currency keyword removed.
+    """
+    words = text.strip().split()
+    for i, word in enumerate(words):
+        lower = word.lower().rstrip(".,;!?")
+        if lower in _USD_KEYWORDS:
+            cleaned = " ".join(words[:i] + words[i + 1 :])
+            return "USD", cleaned
+        if lower in _CLP_KEYWORDS:
+            cleaned = " ".join(words[:i] + words[i + 1 :])
+            return "CLP", cleaned
+    return default, text
+
+
 def parse_manual_expense(text: str, currency: str = "CLP") -> tuple[int, str] | None:
-    """Parse 'gasto 5000 Starbucks' or '5000 Starbucks' → (amount_int, 'Starbucks').
+    """Parse natural-language expense messages into (amount_int, merchant).
+
+    Accepted forms (Spanish & English):
+      "gasto 5000 Starbucks"
+      "gasto de 5000 en Starbucks"
+      "gasté 25.50 en Starbucks"
+      "expense of 25 in Starbucks"
+      "spent 25 at Starbucks"
+      "5000 Starbucks"
+      "gasto de 15,000 en Lider clp"  ← currency override
 
     Amount is returned in DB storage units (CLP integer or USD cents).
     Returns None if the text cannot be interpreted as a manual expense.
     """
-    text = re.sub(r"^gasto\s+", "", text.strip(), flags=re.IGNORECASE).strip()
-    match = re.match(r"^(\d[\d.,]*)\s+(.+)$", text)
+    text = text.strip()
+
+    # Detect currency override before stripping keywords
+    currency, text = _detect_currency(text, currency)
+
+    # Strip known prefixes
+    text = _PREFIXES.sub("", text).strip()
+
+    match = _AMOUNT_MERCHANT.match(text)
     if not match:
         return None
     amount = _parse_amount(match.group(1), currency)
