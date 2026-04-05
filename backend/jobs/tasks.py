@@ -3,6 +3,7 @@ import redis.asyncio as aioredis
 from core.config import settings
 from core.encryption import decrypt_token, encrypt_token
 from core.database import AsyncSessionLocal
+from jobs.queue import enqueue_job
 from modules.email.parser import parse_bank_email
 from modules.email.filter import is_financial_email, is_bank_sender, get_bank_name
 from modules.merchants.service import lookup_merchant
@@ -452,12 +453,8 @@ async def schedule_connect_syncs(ctx: dict) -> None:
         from modules.bank_connect.scheduler import get_due_syncs
 
         due = await get_due_syncs(db)
-        redis = ctx["redis"]  # ArqRedis pool from worker startup
         for cred in due:
-            await redis.enqueue_job(
-                "run_connect_sync",
-                str(cred.id),
-            )
+            await enqueue_job("run_connect_sync", str(cred.id))
         if due:
             print(f"[SCHEDULE_CONNECT_SYNCS] Enqueued {len(due)} syncs", flush=True)
 
@@ -698,8 +695,6 @@ async def run_plaid_sync_job(ctx: dict, plaid_item_id: str, initial: bool = Fals
                 notif.payload = {**(notif.payload or {}), "sync_job_id": str(review_job.id)}
                 await db.commit()
 
-                from jobs.queue import enqueue_job
-
                 await enqueue_job("process_merchant_review", str(review_job.id))
 
         return stats
@@ -712,13 +707,8 @@ async def schedule_plaid_syncs(ctx: dict):
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(PlaidItem).where(PlaidItem.error_code.is_(None)))
         items = result.scalars().all()
-        redis = ctx["redis"]
         for item in items:
-            await redis.enqueue_job(
-                "run_plaid_sync_job",
-                plaid_item_id=str(item.id),
-                initial=False,
-            )
+            await enqueue_job("run_plaid_sync_job", plaid_item_id=str(item.id), initial=False)
         if items:
             print(f"[SCHEDULE_PLAID_SYNCS] Enqueued {len(items)} syncs", flush=True)
 

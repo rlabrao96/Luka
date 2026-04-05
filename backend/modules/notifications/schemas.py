@@ -1,10 +1,11 @@
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel
 
 
 class NotificationResponse(BaseModel):
-    id: str
+    id: UUID
     type: str
     title: str
     status: str
