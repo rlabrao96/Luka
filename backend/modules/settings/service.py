@@ -7,19 +7,14 @@ from modules.settings.models import NotificationPreference, UserCategoryPreferen
 
 _DEFAULT_CATEGORIES = [
     ("Alimentación", "expense", 0),
-    ("Supermercado", "expense", 1),
-    ("Transporte", "expense", 2),
-    ("Combustible", "expense", 3),
-    ("Entretenimiento", "expense", 4),
-    ("Salud", "expense", 5),
-    ("Farmacia", "expense", 6),
-    ("Hogar", "expense", 7),
-    ("Ropa", "expense", 8),
-    ("Tecnología", "expense", 9),
-    ("Educación", "expense", 10),
-    ("Viajes", "expense", 11),
-    ("Servicios", "expense", 12),
-    ("Otros", "expense", 13),
+    ("Transporte", "expense", 1),
+    ("Entretenimiento", "expense", 2),
+    ("Salud", "expense", 3),
+    ("Hogar", "expense", 4),
+    ("Ropa", "expense", 5),
+    ("Educación", "expense", 6),
+    ("Viajes", "expense", 7),
+    ("Otros", "expense", 8),
     ("Sueldo", "income", 0),
     ("Freelance", "income", 1),
     ("Inversiones", "income", 2),
@@ -120,8 +115,8 @@ async def add_category(
             UserCategoryPreference.category_type == category_type,
         )
     )
-    if (count_result.scalar() or 0) >= 19:
-        raise ValueError(f"Limit of 19 {category_type} categories reached")
+    if (count_result.scalar() or 0) >= 10:
+        raise ValueError(f"Limit of 10 {category_type} categories reached")
 
     dup_result = await db.execute(
         select(UserCategoryPreference).where(

@@ -350,8 +350,8 @@ export function CategoriesSection() {
   const addDisabled =
     !addInput.trim() ||
     addMutation.isPending ||
-    (addType === "expense" && addTypeExpenseCount >= 19) ||
-    (addType === "income" && addTypeIncomeCount >= 19);
+    (addType === "expense" && addTypeExpenseCount >= 10) ||
+    (addType === "income" && addTypeIncomeCount >= 10);
 
   if (isLoading) {
     return (
@@ -423,7 +423,7 @@ export function CategoriesSection() {
 
         {/* Counter line */}
         <p className="text-xs text-slate-400 mb-4">
-          Gastos: {expenseCats.length}/19 · Ingresos: {incomeCats.length}/19
+          Gastos: {expenseCats.length}/10 · Ingresos: {incomeCats.length}/10
         </p>
 
         {/* Two-column grid */}

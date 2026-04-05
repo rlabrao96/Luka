@@ -20,20 +20,31 @@ from modules.whatsapp.sender import send_category_list, send_text, send_edit_opt
 from modules.merchants.service import record_category_selection, get_user_ranked_categories
 from modules.transactions.models import Transaction, TransactionSplit
 
-_OTRAS = "Otras categorías"
+def _parse_amount(raw: str) -> float | None:
+    """Parse an amount string to a float.
 
-
-def _paginate_categories(ranked: list[str]) -> tuple[list[str], list[str]]:
-    """Split a ranked list into (display_page, overflow).
-    display_page has up to 9 items; if overflow exists, _OTRAS is appended as item 10.
+    Rules:
+    - No dot → whole integer           ("25"      → 25.0)
+    - Dot followed by 1–2 digits → decimal separator  ("2.5" → 2.5, "25.00" → 25.0)
+    - Dot followed by 3 digits → thousands separator  ("15.990" → 15990.0)
+    Commas are always treated as thousands separators and stripped.
     """
-    if len(ranked) <= 9:
-        return ranked, []
-    return ranked[:9] + [_OTRAS], ranked[9:]
+    raw = raw.replace(",", "")
+    # Dot with 1–2 trailing digits = decimal point
+    if re.search(r"\.\d{1,2}$", raw) and not re.search(r"\.\d{3}", raw):
+        integer_part = raw[: raw.rfind(".")].replace(".", "") or "0"
+        frac_part = raw[raw.rfind("."):]
+        try:
+            return float(integer_part + frac_part)
+        except ValueError:
+            return None
+    # All remaining dots are thousands separators
+    raw = raw.replace(".", "")
+    return float(raw) if raw.isdigit() else None
 
 
-def parse_manual_expense(text: str) -> tuple[int, str] | None:
-    """Parse 'gasto 5000 Starbucks' or '5000 Starbucks' → (5000, 'Starbucks').
+def parse_manual_expense(text: str) -> tuple[float, str] | None:
+    """Parse 'gasto 5000 Starbucks' or '5000 Starbucks' → (5000.0, 'Starbucks').
 
     Returns None if the text cannot be interpreted as a manual expense.
     """
@@ -41,13 +52,13 @@ def parse_manual_expense(text: str) -> tuple[int, str] | None:
     match = re.match(r"^(\d[\d.,]*)\s+(.+)$", text)
     if not match:
         return None
-    amount_str = match.group(1).replace(".", "").replace(",", "")
-    if not amount_str.isdigit():
+    amount = _parse_amount(match.group(1))
+    if amount is None:
         return None
     merchant = match.group(2).strip()
     if not merchant:
         return None
-    return (int(amount_str), merchant)
+    return (amount, merchant)
 
 
 async def handle_button_click(
@@ -104,13 +115,11 @@ async def handle_button_click(
         txn = txn_result.scalar_one_or_none()
         amount_str = f"${txn.amount:,}" if txn else session.raw_merchant
 
-        ranked = await get_user_ranked_categories(txn.user_id, session.raw_merchant, db) if txn else []
-        display_cats, overflow = _paginate_categories(ranked)
-        session.overflow_categories = overflow
+        categories = await get_user_ranked_categories(txn.user_id, session.raw_merchant, db, category_type="expense") if txn else []
         await save_session(phone, session, redis)
 
         context_msg = f"¿A qué categoría pertenece el gasto de {amount_str} en {session.raw_merchant}?"
-        category_wamid = await send_category_list(to=phone, categories=display_cats, context_msg=context_msg)
+        category_wamid = await send_category_list(to=phone, categories=categories, context_msg=context_msg)
         await save_msgid(category_wamid, transaction_id, redis)
 
 
@@ -129,16 +138,6 @@ async def handle_list_selection(
 
     session = await get_session(phone, transaction_id, redis)
     if not session:
-        return
-
-    # "Otras categorías" is not a real category — show the overflow page instead
-    if list_item_title == _OTRAS:
-        overflow_wamid = await send_category_list(
-            to=phone,
-            categories=session.overflow_categories,
-            context_msg=f"Otras categorías para {session.raw_merchant}:",
-        )
-        await save_msgid(overflow_wamid, transaction_id, redis)
         return
 
     category = list_item_title
@@ -230,14 +229,12 @@ async def _handle_manual_expense_trigger(
     await db.flush()
     await db.commit()
 
-    ranked = await get_user_ranked_categories(user_id, merchant, db)
-    display_cats, overflow = _paginate_categories(ranked)
+    categories = await get_user_ranked_categories(user_id, merchant, db, category_type="expense")
 
     session = WhatsAppSession(
         transaction_id=str(txn.id),
         step="awaiting_split",
         raw_merchant=merchant,
-        overflow_categories=overflow,
     )
     await save_session(phone, session, redis)
 
@@ -247,7 +244,7 @@ async def _handle_manual_expense_trigger(
         merchant=merchant,
         partner_name="tu pareja",
         is_joint=False,
-        categories=display_cats,
+        categories=categories,
         currency=currency,
     )
     await save_msgid(wamid, str(txn.id), redis)
@@ -297,10 +294,8 @@ async def handle_text_message(
         acct = acct_result.scalar_one_or_none()
         is_joint = acct.account_type == "joint" if acct else False
 
-    # Re-send the expense alert with updated data, using user's ranked categories
-    ranked = await get_user_ranked_categories(txn.user_id, txn.raw_merchant_name, db)
-    display_cats, overflow = _paginate_categories(ranked)
-    session.overflow_categories = overflow
+    # Re-send the expense alert with updated data, using user's ranked expense categories
+    categories = await get_user_ranked_categories(txn.user_id, txn.raw_merchant_name, db, category_type="expense")
     session.step = "awaiting_category" if is_joint else "awaiting_split"
 
     new_msg_id = await send_expense_alert(
@@ -309,7 +304,7 @@ async def handle_text_message(
         merchant=txn.raw_merchant_name,
         partner_name="tu pareja",
         is_joint=is_joint,
-        categories=display_cats,
+        categories=categories,
         currency=txn.currency or "CLP",
     )
     await save_session(phone, session, redis)

@@ -86,22 +86,27 @@ async def get_user_ranked_categories(
     user_id: uuid.UUID,
     raw_name: str,
     db: AsyncSession,
+    category_type: str | None = None,
 ) -> list[str]:
     """
-    Return the user's full category list ranked for this specific merchant:
+    Return the user's category list ranked for this specific merchant:
       1. Categories the user has previously chosen for this merchant (count desc)
       2. Categories chosen globally for this merchant (count desc)
       3. Remaining user categories in default sort_order (expense first, then income)
     Only returns categories that exist in the user's preferences list.
+    Pass category_type="expense" or "income" to restrict to one type.
     """
     from modules.settings.models import UserCategoryPreference
 
     normalized = normalize_merchant(raw_name)
 
-    # Fetch all user categories in their default display order
+    # Fetch user categories in their default display order (optionally filtered by type)
+    where_clause = [UserCategoryPreference.user_id == user_id]
+    if category_type:
+        where_clause.append(UserCategoryPreference.category_type == category_type)
     prefs_result = await db.execute(
         select(UserCategoryPreference)
-        .where(UserCategoryPreference.user_id == user_id)
+        .where(*where_clause)
         .order_by(UserCategoryPreference.category_type, UserCategoryPreference.sort_order)
     )
     user_cats = [p.category for p in prefs_result.scalars().all()]
