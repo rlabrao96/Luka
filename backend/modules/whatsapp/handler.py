@@ -165,7 +165,7 @@ def parse_manual_expense(text: str, currency: str = "CLP") -> tuple[int, str] | 
     amount = _parse_amount(match.group(1), currency)
     if amount is None:
         return None
-    merchant = match.group(2).strip()
+    merchant = match.group(2).strip().title()
     if not merchant:
         return None
     return (amount, merchant)
