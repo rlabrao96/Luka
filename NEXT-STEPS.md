@@ -20,9 +20,9 @@ _Last updated: 2026-04-05_
 
 ## Known Issues
 
-- **`.env.example` has stale `FINTOC_API_KEY`** — Fintoc was removed; this env var should be removed from `.env.example`.
-- **`OPENAI_API_KEY` in `.env.example`** — OpenAI was replaced by Gemini for merchant categorization. The key is optional (fallback only) but `.env.example` doesn't reflect this.
 - **WhatsApp Business API approval** — Currently using test/dev mode. For multi-user production use, Meta's official WhatsApp Business API approval process is needed.
+- **No frontend test infrastructure** — No Jest, Vitest, or Playwright configured. Backend has 45+ test files but frontend has zero tests.
+- **No CI/CD pipeline** — No GitHub Actions workflows. Backend tests are run manually (`pytest`). Deployment is manual via Railway/Vercel.
 
 ## Infrastructure TODOs
 

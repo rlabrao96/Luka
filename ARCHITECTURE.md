@@ -126,6 +126,19 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 3. Slow worker calls Plaid Sync API with cursor pagination
 4. Mapper detects account kind, maps Plaid transactions → saved to DB
 
+### Reconciliation Flow
+1. `run_reconciliation_job` cron (6am daily) scans recent bank-sourced transactions
+2. For each bank tx, `find_email_match()` uses 3-tier priority matching:
+   - **Exact:** same merchant (ilike), ±2 days, 0% amount tolerance
+   - **Fuzzy:** ±3 days, 30% amount tolerance
+   - **Sum match:** N email txs from same merchant whose amounts sum to bank tx (5% tolerance)
+3. On match: copies merchant_id, category, transaction_type from email tx → bank tx; re-links splits; deletes email tx
+4. `detect_transfers()` finds same-amount opposite-sign pairs across accounts within ±2 days, marks both as transfer
+
+### Encryption
+- **Fernet** (`backend/core/encryption.py`): symmetric encryption for OAuth provider tokens (Google, Microsoft)
+- **AES-256-GCM** (`backend/modules/bank_connect/encryption.py`): bank credentials (RUT + password), 12-byte random nonce per field
+
 ## Authentication & Authorization
 
 - **Provider:** Supabase Auth (Google OAuth for Gmail users, Microsoft OAuth for Outlook users)
@@ -330,16 +343,51 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 - `(public)` — Privacy policy, terms of service, data deletion (Meta compliance)
 
 **State Management:**
-- Zustand 5 — user profile, household info, persisted to localStorage
-- TanStack Query 5 — all API data, 30s staleTime, prefetched in `StoreInitializer`
+- **Zustand 5** — lightweight client state: `{ householdId, userId, userFullName, onboardingDraft }`, persisted to localStorage
+- **TanStack Query 5** — all API data, 30s staleTime, prefetched in `StoreInitializer`
 - 8 dashboard queries prefetched on app load (no waterfall)
 
-**Key Patterns:**
-- Dynamic Recharts imports (~200KB deferred)
+**Key Dashboard Components** (`frontend/app/(dashboard)/components/`):
+- `TransactionCard` — merchant, amount, direction, bank, category tag, split badge
+- `RecentTransactions` — date-grouped transaction list with inline category/split editing
+- `CategoryDonut` — interactive Recharts pie chart with hover tooltips
+- `SpendingChart` — 6-month area chart (personal vs shared)
+- `PaceChart` — daily spend vs budget pace line (on_track green/red)
+- `BalanceCard` — total checking balance across active accounts
+- `BudgetBars` — horizontal progress bars color-coded by usage %
+- `AllocationCard` — 50/20/30 allocation sliders with suggestion pills
+- `MonthSelector` — dropdown (desktop) / bottom sheet (mobile)
+- `PendingBlock` — pending/unreconciled transaction buckets
+- `MerchantCard` — merchant review approval cards
 - `SessionGuard` — PWA persistent sessions + 30-min inactivity timeout
 - `StoreInitializer` — prefetches all dashboard data on mount
+
+**React Query Hooks** (`frontend/app/lib/hooks/`):
+- `useMyTransactions`, `useSharedTransactions`, `usePendingTransactions`, `useMonthlySpending`
+- `useBudgetStatus`, `usePersonalBudget`, `useAllocation`, `useCategoryBudgets`
+- `useHouseholdSummary`, `usePartnerStats`, `useCategoryBreakdown`, `useSettlement`, `useSplitRatio`
+- `useNotifications`, `useUnreadCount` (30s polling)
+- `useSyncStatus` (3s polling during active sync), `useBankConnections`
+- `useMerchantReview`, `useReviewStatus`, `useOptimisticReview`
+- `useSubscriptions`
+
+**Key Patterns:**
+- Dynamic Recharts imports (~200KB deferred via `next/dynamic`)
 - Optimistic updates on category changes and notification preferences
 - Bottom sheets on mobile for filters and category selection
+- Mobile-first responsive: floating bottom nav on mobile, sidebar on desktop
+- API client (`frontend/app/lib/api.ts`): 50+ methods covering all backend endpoints
+
+## Testing
+
+**Backend:** 45+ test files in `backend/tests/`, ~150-200 test functions using pytest + pytest-asyncio
+- Coverage areas: auth, transactions, budgets, households, email parsing, WhatsApp handler, merchant normalization, bank connect encryption/mapping, queue routing, worker settings, notifications, categories, subscriptions, reconciliation
+- Config: `asyncio_mode = "auto"`, testpaths = `["tests"]`
+- Run: `cd backend && pytest -v`
+
+**Frontend:** No test infrastructure configured (no Jest/Vitest/Playwright)
+
+**CI/CD:** No GitHub Actions pipeline. Deployment is manual via Railway (backend) and Vercel (frontend auto-deploy on push)
 
 ## Design Decisions
 
@@ -356,3 +404,9 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 **Joint account auto-classification:** Bank accounts with `account_type = 'joint'` auto-classify all transactions as shared, skipping the WhatsApp split question.
 
 **Luka Connect over Fintoc:** Fintoc was removed entirely and replaced with Luka Connect (standalone bank scraper). Luka Connect supports 9 Chilean banks via browser automation, stored as AES-256-GCM encrypted credentials.
+
+**3-tier reconciliation:** Email transactions arrive first (real-time), bank transactions arrive later (scheduled sync). Reconciliation matches them with decreasing confidence: exact → fuzzy → sum-match. Email data enriches bank transactions (user-edited categories transfer over), then email duplicates are deleted.
+
+**Per-user merchant overrides:** `merchant_category_selections` supports both global (shared dataset) and per-user category choices via nullable `user_id` FK. Users see their own overrides first, global selections second, LLM suggestions last.
+
+**Subscription detection without extra tables:** Recurring expenses are detected from transaction patterns (2+ consecutive months, ±20% amount tolerance) using a computed view, cached in Redis for 3 days. No additional database tables needed.

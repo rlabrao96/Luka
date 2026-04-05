@@ -137,6 +137,9 @@ Plaid Link integration for US bank accounts. Handles link token creation, public
 **Transaction Processing** (`backend/modules/transactions/`)
 Core transaction storage with support for personal, partner, and shared split types. Tracks transaction type (income/expense/transfer), source (email/bank_connect/plaid/whatsapp/manual), and reconciliation status. Optimistic category updates with merchant feedback loops.
 
+**Reconciliation** (`backend/modules/reconciliation/`)
+Matches email-sourced transactions with bank-sourced transactions using 3-tier priority matching (exact → fuzzy → sum-match). Enriches bank transactions with user-edited categories from email txs. Also detects transfers between accounts (same-amount opposite-sign pairs).
+
 **Merchant Categorization** (`backend/modules/merchants/`, `backend/modules/merchant_review/`)
 Two-tier system: known merchants resolve instantly from a global DB cache, new merchants get 3 LLM-suggested categories (Gemini 2.5 Flash). Canonical merchant grouping via LLM batching. Training UI at `/train` for local admin use. User category selections feed back into the merchant database.
 
