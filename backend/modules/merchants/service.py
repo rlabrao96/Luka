@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -37,7 +38,10 @@ async def lookup_merchant(
     if merchant:
         top = await db.execute(
             select(MerchantCategorySelection)
-            .where(MerchantCategorySelection.merchant_id == merchant.id)
+            .where(
+                MerchantCategorySelection.merchant_id == merchant.id,
+                MerchantCategorySelection.user_id == None,  # noqa: E711 — legacy global rows only
+            )
             .order_by(MerchantCategorySelection.count.desc())
             .limit(1)
         )
@@ -83,6 +87,7 @@ async def record_category_selection(
     category: str,
     db: AsyncSession,
     redis: Redis,
+    user_id: uuid.UUID | None = None,
 ) -> None:
     """Called when a user selects a final category via WhatsApp. Trains the dataset."""
     normalized = normalize_merchant(raw_name)
@@ -102,7 +107,11 @@ async def record_category_selection(
     if selection:
         selection.count += 1
     else:
-        db.add(MerchantCategorySelection(merchant_id=merchant.id, category=category))
+        db.add(MerchantCategorySelection(
+            merchant_id=merchant.id,
+            category=category,
+            user_id=user_id,
+        ))
 
     merchant.total_selections += 1
     await db.commit()
