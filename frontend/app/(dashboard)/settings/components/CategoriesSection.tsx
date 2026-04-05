@@ -464,7 +464,10 @@ export function CategoriesSection() {
           categoryType={deleteTarget.category_type}
           allCats={localCats}
           onClose={() => setDeleteTarget(null)}
-          onDeleted={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            setLocalCats((prev) => prev.filter((c) => c.category !== deleteTarget.category));
+            setDeleteTarget(null);
+          }}
         />
       )}
     </>

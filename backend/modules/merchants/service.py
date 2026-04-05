@@ -101,6 +101,7 @@ async def record_category_selection(
         select(MerchantCategorySelection).where(
             MerchantCategorySelection.merchant_id == merchant.id,
             MerchantCategorySelection.category == category,
+            MerchantCategorySelection.user_id == user_id,
         )
     )
     selection = sel_result.scalar_one_or_none()
