@@ -391,20 +391,20 @@ export function CategoriesSection() {
           <div className="flex gap-1 shrink-0">
             <button
               onClick={() => setAddType("expense")}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 addType === "expense"
-                  ? "bg-luka-primary text-white"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
               }`}
             >
               Gasto
             </button>
             <button
               onClick={() => setAddType("income")}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 addType === "income"
-                  ? "bg-luka-primary text-white"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  ? "bg-sky-500 text-white"
+                  : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
               }`}
             >
               Ingreso
@@ -413,13 +413,20 @@ export function CategoriesSection() {
           <button
             onClick={() => addMutation.mutate()}
             disabled={addDisabled}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-luka-primary rounded-lg hover:bg-blue-700 disabled:opacity-40 shrink-0"
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-colors bg-luka-primary text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
           >
             Agregar
           </button>
         </div>
 
         {addError && <p className="text-xs text-red-500 mb-2">{addError}</p>}
+        {!addError && addInput.trim() && (
+          (addType === "expense" && addTypeExpenseCount >= 10)
+            ? <p className="text-xs text-amber-600 mb-2">Límite de 10 gastos alcanzado. Elimina una para agregar otra.</p>
+            : (addType === "income" && addTypeIncomeCount >= 10)
+              ? <p className="text-xs text-amber-600 mb-2">Límite de 10 ingresos alcanzado. Elimina una para agregar otra.</p>
+              : null
+        )}
 
         {/* Counter line */}
         <p className="text-xs text-slate-400 mb-4">
