@@ -2,6 +2,6 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "sh -c 'if [ \"$START_COMMAND\" = \"worker\" ]; then arq worker.WorkerSettings; else uvicorn main:app --host 0.0.0.0 --port $PORT; fi'"
+startCommand = "sh -c 'case \"$START_COMMAND\" in worker-fast) exec python -m arq worker.FastWorkerSettings;; worker-slow) exec python -m arq worker.SlowWorkerSettings;; worker) exec python -m arq worker.FastWorkerSettings;; *) exec uvicorn main:app --host 0.0.0.0 --port $PORT;; esac'"
 restartPolicyType = "on_failure"
 releaseCommand = "alembic upgrade head"
