@@ -153,14 +153,14 @@ async def _save_split(
 
 async def _get_user_and_household_by_phone(
     phone: str, db: AsyncSession
-) -> tuple[uuid.UUID, uuid.UUID] | None:
-    """Return (user_id, household_id) for a verified WhatsApp phone, or None."""
+) -> tuple[uuid.UUID, uuid.UUID, str] | None:
+    """Return (user_id, household_id, preferred_currency) for a verified WhatsApp phone, or None."""
     from modules.auth.models import User
     from modules.households.models import HouseholdMember
 
     normalized = _normalize_phone(phone)
     result = await db.execute(
-        select(User.id, HouseholdMember.household_id)
+        select(User.id, HouseholdMember.household_id, User.preferred_currency)
         .join(HouseholdMember, HouseholdMember.user_id == User.id)
         .where(or_(User.phone_whatsapp == f"+{normalized}", User.phone_whatsapp == normalized))
         .limit(1)
@@ -168,7 +168,7 @@ async def _get_user_and_household_by_phone(
     row = result.first()
     if not row:
         return None
-    return (row[0], row[1])
+    return (row[0], row[1], row[2])
 
 
 async def _handle_manual_expense_trigger(
@@ -190,8 +190,8 @@ async def _handle_manual_expense_trigger(
         print(f"[MANUAL_EXPENSE] user not found for phone={phone}", flush=True)
         return
 
-    user_id, household_id = user_row
-    print(f"[MANUAL_EXPENSE] user_id={user_id} household_id={household_id}", flush=True)
+    user_id, household_id, currency = user_row
+    print(f"[MANUAL_EXPENSE] user_id={user_id} household_id={household_id} currency={currency}", flush=True)
 
     txn = Transaction(
         id=uuid.uuid4(),
@@ -199,7 +199,7 @@ async def _handle_manual_expense_trigger(
         household_id=household_id,
         raw_merchant_name=merchant,
         amount=amount,
-        currency="CLP",
+        currency=currency,
         transaction_date=datetime.now(timezone.utc),
         source="manual",
         status="confirmed",
@@ -224,7 +224,7 @@ async def _handle_manual_expense_trigger(
         partner_name="tu pareja",
         is_joint=False,
         categories=categories,
-        currency="CLP",
+        currency=currency,
     )
     await save_msgid(wamid, str(txn.id), redis)
 

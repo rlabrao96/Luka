@@ -196,7 +196,7 @@ async def test_handle_text_message_manual_trigger_creates_transaction():
 
     redis = _make_redis(stored)
 
-    mock_row = (user_id, household_id)
+    mock_row = (user_id, household_id, "USD")
     mock_execute_result = MagicMock()
     mock_execute_result.first = MagicMock(return_value=mock_row)
     mock_db = AsyncMock()
@@ -209,10 +209,11 @@ async def test_handle_text_message_manual_trigger_creates_transaction():
          patch("modules.whatsapp.handler.lookup_merchant", new_callable=AsyncMock, return_value=["Restaurantes", "Café"]):
         await handle_text_message(phone=phone, text="gasto 5000 Starbucks", db=mock_db, redis=redis)
 
-    # Transaction must be created with confirmed status (not pending — manual txns are user-initiated)
+    # Transaction must use user's preferred currency, not hardcoded CLP
     added_txn = mock_db.add.call_args[0][0]
     assert added_txn.status == "confirmed"
     assert added_txn.source == "manual"
+    assert added_txn.currency == "USD"
     mock_db.commit.assert_called_once()
     mock_alert.assert_called_once()
     # Session must be saved in redis
