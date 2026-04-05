@@ -37,6 +37,15 @@ export async function GET(request: Request) {
             provider_refresh_token: session.provider_refresh_token ?? null,
           }),
         });
+
+        // Set up Gmail push notifications (works for new + existing users)
+        await fetch(`${apiUrl}/auth/setup-email-watch`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
       } catch (err) {
         console.error("Failed to store provider tokens", err);
       }
