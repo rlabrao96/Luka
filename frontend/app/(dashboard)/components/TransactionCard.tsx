@@ -13,7 +13,11 @@ function toTitleCase(str: string) {
   return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
-function formatCLP(amount: number) {
+function formatAmount(amount: number, currency: string) {
+  if (currency === "USD") {
+    const dollars = amount / 100;
+    return `US$${dollars.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
   return `$${Math.round(amount).toLocaleString("es-CL")}`;
 }
 
@@ -69,8 +73,8 @@ export function TransactionCard({
               )}
             >
               {isOutflow
-                ? `(${formatCLP(Math.abs(Number(txn.amount)))})`
-                : `+${formatCLP(Math.abs(Number(txn.amount)))}`}
+                ? `(${formatAmount(Math.abs(Number(txn.amount)), txn.currency ?? "CLP")})`
+                : `+${formatAmount(Math.abs(Number(txn.amount)), txn.currency ?? "CLP")}`}
             </span>
           </div>
 
@@ -78,7 +82,7 @@ export function TransactionCard({
           <div className="flex justify-between items-center mt-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-[10px] text-slate-400 shrink-0">
-                {txn.bank_name ? toTitleCase(txn.bank_name) : "—"}
+                {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Agregado Manualmente" : "—"}
               </span>
               {compact ? (
                 <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded w-[90px] text-center truncate", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
