@@ -35,11 +35,16 @@ function getMonthKey(iso: string): string {
   return iso.split("T")[0].slice(0, 7);
 }
 
-/** Normalize a transaction amount to its currency's standard unit (dollars/pesos).
- *  Gmail stores USD in cents; all other sources store in dollars/pesos directly. */
-function normalizeTxnAmount(t: { amount: number; currency: string; source: string }): number {
-  const raw = Number(t.amount);
-  if ((t.currency ?? "CLP") === "USD" && t.source === "gmail") return raw / 100;
+/** Normalize a transaction amount to a signed value in the currency's standard unit.
+ *  - Sign: uses transaction_type when amount is positive (expense → negative, income → positive).
+ *    If amount is already negative, keeps it as-is.
+ *  - USD cents: Gmail stores USD in cents (divide by 100). Other sources store in dollars. */
+function normalizeTxnAmount(t: { amount: number; currency: string; source: string; transaction_type: string | null }): number {
+  let raw = Number(t.amount);
+  // Gmail stores USD amounts in cents
+  if ((t.currency ?? "CLP") === "USD" && t.source === "gmail") raw = raw / 100;
+  // If amount is positive but transaction_type is expense/transfer, flip to negative
+  if (raw > 0 && t.transaction_type !== "income") raw = -raw;
   return raw;
 }
 
