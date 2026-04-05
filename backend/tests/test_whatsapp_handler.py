@@ -39,6 +39,7 @@ async def test_handle_text_message_updates_merchant():
         "step": "awaiting_new_merchant",
         "split_type": "",
         "raw_merchant": "OldName",
+        "overflow_categories": [],
     })
 
     redis = _make_redis(stored)
@@ -56,7 +57,7 @@ async def test_handle_text_message_updates_merchant():
     mock_db.execute = AsyncMock(return_value=mock_execute_result)
 
     with patch("modules.whatsapp.handler.send_expense_alert", new_callable=AsyncMock, return_value="wamid.NEW") as mock_alert, \
-         patch("modules.whatsapp.handler.lookup_merchant", new_callable=AsyncMock, return_value=["Restaurantes"]):
+         patch("modules.whatsapp.handler.get_user_ranked_categories", new_callable=AsyncMock, return_value=["Restaurantes"]):
         await handle_text_message(phone=phone, text="NewName", db=mock_db, redis=redis)
 
     assert mock_txn.raw_merchant_name == "NewName"
@@ -78,6 +79,7 @@ async def test_handle_text_message_updates_amount():
         "step": "awaiting_new_amount",
         "split_type": "personal",
         "raw_merchant": "Starbucks",
+        "overflow_categories": [],
     })
 
     redis = _make_redis(stored)
@@ -95,7 +97,7 @@ async def test_handle_text_message_updates_amount():
     mock_db.execute = AsyncMock(return_value=mock_execute_result)
 
     with patch("modules.whatsapp.handler.send_expense_alert", new_callable=AsyncMock, return_value="wamid.NEW2"), \
-         patch("modules.whatsapp.handler.lookup_merchant", new_callable=AsyncMock, return_value=[]):
+         patch("modules.whatsapp.handler.get_user_ranked_categories", new_callable=AsyncMock, return_value=[]):
         await handle_text_message(phone=phone, text="12500", db=mock_db, redis=redis)
 
     assert mock_txn.amount == 12500
@@ -115,6 +117,7 @@ async def test_handle_text_message_invalid_amount_sends_error():
         "step": "awaiting_new_amount",
         "split_type": "",
         "raw_merchant": "Copec",
+        "overflow_categories": [],
     })
 
     redis = _make_redis(stored)
@@ -182,6 +185,30 @@ def test_parse_manual_expense_empty_returns_none():
     assert parse_manual_expense("") is None
 
 
+def test_parse_manual_expense_whole_number_no_decimal():
+    assert parse_manual_expense("gasto 25 Taxi") == (25, "Taxi")
+
+
+def test_parse_manual_expense_decimal_two_places():
+    # 25.00 → 25.0 (USD whole dollars written with cents)
+    assert parse_manual_expense("gasto 25.00 Starbucks") == (25.0, "Starbucks")
+
+
+def test_parse_manual_expense_decimal_one_place():
+    # 2.5 → 2.5 (USD fractional)
+    assert parse_manual_expense("gasto 2.5 Coffee") == (2.5, "Coffee")
+
+
+def test_parse_manual_expense_dot_three_digits_is_thousands():
+    # 15.990 → 15990 (CLP thousands separator)
+    assert parse_manual_expense("gasto 15.990 Copec") == (15990, "Copec")
+
+
+def test_parse_manual_expense_comma_thousands_separator():
+    # 1,500 → 1500
+    assert parse_manual_expense("gasto 1,500 Supermercado") == (1500, "Supermercado")
+
+
 # ---------------------------------------------------------------------------
 # handle_text_message — manual expense trigger (no active edit)
 # ---------------------------------------------------------------------------
@@ -206,7 +233,7 @@ async def test_handle_text_message_manual_trigger_creates_transaction():
     mock_db.commit = AsyncMock()
 
     with patch("modules.whatsapp.handler.send_expense_alert", new_callable=AsyncMock, return_value="wamid.MANUAL") as mock_alert, \
-         patch("modules.whatsapp.handler.lookup_merchant", new_callable=AsyncMock, return_value=["Restaurantes", "Café"]):
+         patch("modules.whatsapp.handler.get_user_ranked_categories", new_callable=AsyncMock, return_value=["Restaurantes", "Café"]):
         await handle_text_message(phone=phone, text="gasto 5000 Starbucks", db=mock_db, redis=redis)
 
     # Transaction must use user's preferred currency, not hardcoded CLP
