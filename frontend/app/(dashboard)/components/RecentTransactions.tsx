@@ -48,6 +48,17 @@ function formatCLP(amount: number) {
   return `$${Math.round(amount).toLocaleString("es-CL")}`;
 }
 
+/** Normalize + format a transaction amount respecting source and currency. */
+function formatTxnAmount(txn: { amount: number; currency: string; source: string }): string {
+  let val = Math.abs(Number(txn.amount));
+  const currency = txn.currency ?? "CLP";
+  // Gmail stores USD in cents
+  if (currency === "USD" && txn.source === "gmail") val = val / 100;
+  if (currency === "USD")
+    return `US$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${Math.round(val).toLocaleString("es-CL")}`;
+}
+
 function formatDate(iso: string) {
   // Parse as date-only (YYYY-MM-DD) to avoid timezone shift.
   // "2026-03-20T00:00:00+00:00" in UTC would display as Mar 19 in Chile (UTC-3).
@@ -278,8 +289,8 @@ export function RecentTransactions({
                             )}
                           >
                             {isOutflow
-                              ? `(${formatCLP(Math.abs(Number(txn.amount)))})`
-                              : `+${formatCLP(Math.abs(Number(txn.amount)))}`}
+                              ? `(${formatTxnAmount(txn)})`
+                              : `+${formatTxnAmount(txn)}`}
                           </span>
                         </div>
                         <div className="flex justify-between items-center mt-1">
