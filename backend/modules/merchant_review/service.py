@@ -278,7 +278,7 @@ async def skip_review(db: AsyncSession, user_id: uuid.UUID, job_id: uuid.UUID) -
 
 
 async def dismiss_review(db: AsyncSession, user_id: uuid.UUID, job_id: uuid.UUID) -> bool:
-    """Dismiss a review — revert pre-applied categories, delete job and notification."""
+    """Dismiss a review — accept all proposed categories, delete job and notification."""
     result = await db.execute(
         select(MerchantReviewJob).where(
             MerchantReviewJob.id == job_id,
@@ -289,17 +289,7 @@ async def dismiss_review(db: AsyncSession, user_id: uuid.UUID, job_id: uuid.UUID
     if not job:
         return False
 
-    # Revert pre-applied categories on scoped transactions
-    job_tx_ids = job.transaction_ids
-    if job_tx_ids:
-        await db.execute(
-            Transaction.__table__.update()
-            .where(
-                Transaction.user_id == user_id,
-                Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids]),
-            )
-            .values(category=None)
-        )
+    # Pre-applied categories are kept as-is (user accepts defaults)
 
     # Unlink canonicals from this job
     await db.execute(
