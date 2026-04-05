@@ -1,7 +1,9 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { Store, CheckCircle, AlertTriangle, Trash2 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNotifications, useUpdateNotification, useDeleteNotification } from "@/app/lib/hooks/useNotifications";
+import { api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 
 function timeAgo(dateStr: string): string {
@@ -24,6 +26,14 @@ export default function NotificationsPage() {
   const { data: notifications = [], isLoading } = useNotifications();
   const updateNotification = useUpdateNotification();
   const deleteNotification = useDeleteNotification();
+  const queryClient = useQueryClient();
+
+  const dismissReview = useMutation({
+    mutationFn: (jobId: string) => api.dismissReview(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
 
   const handleDelete = (notif: (typeof notifications)[0]) => {
     deleteNotification.mutate(notif.id);
@@ -38,7 +48,12 @@ export default function NotificationsPage() {
   };
 
   const handleDismiss = (notif: (typeof notifications)[0]) => {
-    updateNotification.mutate({ id: notif.id, status: "dismissed" });
+    const jobId = notif.payload?.sync_job_id;
+    if (jobId) {
+      dismissReview.mutate(jobId);
+    } else {
+      deleteNotification.mutate(notif.id);
+    }
   };
 
   const handleMarkAllRead = () => {

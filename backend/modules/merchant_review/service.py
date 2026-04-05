@@ -277,6 +277,53 @@ async def skip_review(db: AsyncSession, user_id: uuid.UUID, job_id: uuid.UUID) -
     return True
 
 
+async def dismiss_review(db: AsyncSession, user_id: uuid.UUID, job_id: uuid.UUID) -> bool:
+    """Dismiss a review — revert pre-applied categories, delete job and notification."""
+    result = await db.execute(
+        select(MerchantReviewJob).where(
+            MerchantReviewJob.id == job_id,
+            MerchantReviewJob.user_id == user_id,
+        )
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        return False
+
+    # Revert pre-applied categories on scoped transactions
+    job_tx_ids = job.transaction_ids
+    if job_tx_ids:
+        await db.execute(
+            Transaction.__table__.update()
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids]),
+            )
+            .values(category=None)
+        )
+
+    # Unlink canonicals from this job
+    await db.execute(
+        CanonicalMerchant.__table__.update()
+        .where(CanonicalMerchant.review_job_id == job_id)
+        .values(review_job_id=None)
+    )
+
+    # Delete notification
+    notification_id = job.notification_id
+    job.notification_id = None
+    await db.flush()
+    if notification_id:
+        notif = await db.execute(select(Notification).where(Notification.id == notification_id))
+        n = notif.scalar_one_or_none()
+        if n:
+            await db.delete(n)
+
+    # Delete the review job
+    await db.delete(job)
+    await db.commit()
+    return True
+
+
 async def get_review_status(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UUID) -> dict | None:
     result = await db.execute(
         select(MerchantReviewJob).where(

@@ -602,6 +602,8 @@ export const api = {
     }),
   skipReview: (jobId: string) =>
     apiFetch<{ ok: boolean }>(`/merchant-review/${jobId}/skip`, { method: "POST" }),
+  dismissReview: (jobId: string) =>
+    apiFetch<{ ok: boolean }>(`/merchant-review/${jobId}`, { method: "DELETE" }),
 
   // --- Delete Account ---
   async deleteAccount() {

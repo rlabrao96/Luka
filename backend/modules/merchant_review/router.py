@@ -66,3 +66,15 @@ async def skip_review(
     if not ok:
         raise HTTPException(404, "Review job not found")
     return {"ok": True}
+
+
+@router.delete("/{job_id}")
+async def dismiss_review(
+    job_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ok = await service.dismiss_review(db, current_user.id, job_id)
+    if not ok:
+        raise HTTPException(404, "Review job not found")
+    return {"ok": True}
