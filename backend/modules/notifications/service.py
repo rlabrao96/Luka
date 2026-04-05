@@ -47,6 +47,23 @@ async def update_notification(
     return notif
 
 
+async def delete_notification(
+    db: AsyncSession, user_id: uuid.UUID, notification_id: uuid.UUID
+) -> bool:
+    result = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == user_id,
+        )
+    )
+    notif = result.scalar_one_or_none()
+    if not notif:
+        return False
+    await db.delete(notif)
+    await db.commit()
+    return True
+
+
 async def create_notification(
     db: AsyncSession,
     user_id: uuid.UUID,

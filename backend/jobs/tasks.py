@@ -587,6 +587,22 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                         categories = await lookup_merchant(name, db, redis)
                         if categories:
                             canonical.default_category = categories[0]
+                    # Pre-apply category to transactions
+                    if canonical and canonical.default_category:
+                        where_clauses = [
+                            Transaction.user_id == job_user_id,
+                            Transaction.raw_merchant_name == name,
+                            Transaction.category.is_(None),
+                        ]
+                        if job_tx_ids:
+                            where_clauses.append(
+                                Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids])
+                            )
+                        await db.execute(
+                            Transaction.__table__.update()
+                            .where(*where_clauses)
+                            .values(category=canonical.default_category)
+                        )
                 else:
                     names_to_process.append(name)
                     if not merchant:
@@ -602,7 +618,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 )
                 await db.commit()
 
-                # Phase 2: Categorize each new canonical using existing lookup_merchant
+                # Phase 2: Categorize each new canonical and pre-apply to transactions
                 for i, group in enumerate(groups):
                     canonical_info = canonicals[i]
                     if not canonical_info.get("is_new"):
@@ -620,6 +636,23 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                         canonical = canonical_result.scalar_one_or_none()
                         if canonical:
                             canonical.default_category = categories[0]
+
+                        # Pre-apply category to transactions
+                        for raw_name in group["raw_names"]:
+                            where_clauses = [
+                                Transaction.user_id == job_user_id,
+                                Transaction.raw_merchant_name == raw_name,
+                                Transaction.category.is_(None),
+                            ]
+                            if job_tx_ids:
+                                where_clauses.append(
+                                    Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids])
+                                )
+                            await db.execute(
+                                Transaction.__table__.update()
+                                .where(*where_clauses)
+                                .values(category=categories[0])
+                            )
 
                     new_count += 1
 

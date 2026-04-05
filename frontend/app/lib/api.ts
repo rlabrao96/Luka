@@ -589,6 +589,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  deleteNotification: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/notifications/${id}`, { method: "DELETE" }),
 
   // --- Merchant Review ---
   getReviewCards: (jobId: string) => apiFetch<ReviewCard[]>(`/merchant-review/${jobId}`),

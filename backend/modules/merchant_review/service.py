@@ -197,7 +197,7 @@ async def approve_merchant(
     merchant.is_verified = True
     merchant.updated_at = datetime.now(timezone.utc)
 
-    # Update linked transactions with the category — scoped if tx IDs available
+    # Update linked transactions with the approved category (overwrites pre-applied)
     if category:
         # Load job to get transaction_ids scope
         job_result = await db.execute(
@@ -214,7 +214,6 @@ async def approve_merchant(
             where_clauses = [
                 Transaction.user_id == user_id,
                 Transaction.raw_merchant_name.in_(raw_names),
-                Transaction.category.is_(None),
             ]
             if job_tx_ids:
                 where_clauses.append(Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids]))

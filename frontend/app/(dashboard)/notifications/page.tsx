@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { Store, CheckCircle, AlertTriangle } from "lucide-react";
-import { useNotifications, useUpdateNotification } from "@/app/lib/hooks/useNotifications";
+import { Store, CheckCircle, AlertTriangle, Trash2 } from "lucide-react";
+import { useNotifications, useUpdateNotification, useDeleteNotification } from "@/app/lib/hooks/useNotifications";
 import { cn } from "@/lib/utils";
 
 function timeAgo(dateStr: string): string {
@@ -23,6 +23,11 @@ export default function NotificationsPage() {
   const router = useRouter();
   const { data: notifications = [], isLoading } = useNotifications();
   const updateNotification = useUpdateNotification();
+  const deleteNotification = useDeleteNotification();
+
+  const handleDelete = (notif: (typeof notifications)[0]) => {
+    deleteNotification.mutate(notif.id);
+  };
 
   const handleReview = (notif: (typeof notifications)[0]) => {
     const jobId = notif.payload?.sync_job_id;
@@ -113,7 +118,16 @@ export default function NotificationsPage() {
                       {timeAgo(notif.created_at)}
                     </p>
                   </div>
-                  {isUnread && <div className="w-2 h-2 bg-luka-primary rounded-full mt-1 shrink-0" />}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isUnread && <div className="w-2 h-2 bg-luka-primary rounded-full" />}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(notif); }}
+                      className="text-slate-300 hover:text-red-400 transition-colors p-1"
+                      title="Eliminar"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 {isUnread && notif.type === "merchant_review" && (

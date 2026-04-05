@@ -44,3 +44,15 @@ async def update_notification(
     if not notif:
         raise HTTPException(404, "Notification not found")
     return notif
+
+
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = await service.delete_notification(db, current_user.id, notification_id)
+    if not deleted:
+        raise HTTPException(404, "Notification not found")
+    return {"ok": True}
