@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SkipForward, Pencil } from "lucide-react";
 import { MerchantCard } from "../../../components/MerchantCard";
+import { MerchantReviewTable } from "../../../components/MerchantReviewTable";
 import { useMerchantReview, useOptimisticReview, useSkipReview } from "@/app/lib/hooks/useMerchantReview";
 
 export default function ReviewPage() {
@@ -14,7 +15,6 @@ export default function ReviewPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editRequested, setEditRequested] = useState(false);
 
-  // Reset edit state when advancing
   useEffect(() => {
     setEditRequested(false);
   }, [currentIndex]);
@@ -56,6 +56,19 @@ export default function ReviewPage() {
     });
   };
 
+  // Desktop table handlers
+  const handleTableApprove = (canonicalId: string, displayName?: string, category?: string) => {
+    submit(canonicalId, {
+      display_name: displayName,
+      category,
+      action: "approve",
+    });
+  };
+
+  const handleTableSkip = (canonicalId: string) => {
+    submit(canonicalId, { action: "skip" });
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -79,78 +92,86 @@ export default function ReviewPage() {
   }
 
   return (
-    <div className="flex flex-col items-center pt-4">
-      {/* Header */}
-      <div className="w-full max-w-[380px] mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-slate-400">Reviewing merchants</span>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-400">{currentIndex + 1} / {total}</span>
-            <button
-              onClick={handleSkipAll}
-              className="text-xs text-slate-400 hover:text-slate-600"
-            >
-              Skip All
-            </button>
-          </div>
-        </div>
-        <div className="bg-slate-200 rounded-full h-1.5 overflow-hidden">
-          <div
-            className="bg-luka-primary h-full rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+    <>
+      {/* Desktop: Table layout */}
+      <div className="hidden lg:block">
+        <MerchantReviewTable
+          cards={cards}
+          onApprove={handleTableApprove}
+          onSkip={handleTableSkip}
+          onSkipAll={handleSkipAll}
+        />
       </div>
 
-      {/* Card stack */}
-      <div className="relative w-[340px] min-h-[360px] mb-6">
-        {/* Next card (peek behind) */}
-        {nextCard && (
-          <div className="absolute top-2 left-3 right-3 bg-white rounded-2xl shadow-sm h-[340px] opacity-60" />
-        )}
-        {/* Current card */}
-        {currentCard && (
-          <div className="relative z-10">
-            <MerchantCard
-              key={currentCard.canonical_merchant_id}
-              card={currentCard}
-              onApprove={handleApprove}
-              onSkip={handleSkip}
-              editRequested={editRequested}
+      {/* Mobile: Card stack */}
+      <div className="lg:hidden flex flex-col items-center pt-4">
+        <div className="w-full max-w-[380px] mb-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-slate-400">Reviewing merchants</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-400">{currentIndex + 1} / {total}</span>
+              <button
+                onClick={handleSkipAll}
+                className="text-xs text-slate-400 hover:text-slate-600"
+              >
+                Skip All
+              </button>
+            </div>
+          </div>
+          <div className="bg-slate-200 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-luka-primary h-full rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
             />
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Action buttons */}
-      <div className="flex items-center gap-4">
-        <button
-          onClick={handleSkip}
-          className="w-12 h-12 rounded-full border-2 border-slate-200 flex items-center justify-center text-slate-400 hover:border-slate-300 hover:text-slate-500 transition-colors"
-          title="Skip"
-        >
-          <SkipForward size={18} />
-        </button>
-        <button
-          onClick={() => setEditRequested(true)}
-          className="w-12 h-12 rounded-full border-2 border-red-200 flex items-center justify-center text-red-400 hover:border-red-300 hover:text-red-500 transition-colors"
-          title="Edit"
-        >
-          <Pencil size={18} />
-        </button>
-        <button
-          onClick={() => handleApprove()}
-          className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-green-200 hover:bg-green-600 transition-colors"
-          title="Approve"
-        >
-          &#10003;
-        </button>
+        <div className="relative w-[340px] min-h-[360px] mb-6">
+          {nextCard && (
+            <div className="absolute top-2 left-3 right-3 bg-white rounded-2xl shadow-sm h-[340px] opacity-60" />
+          )}
+          {currentCard && (
+            <div className="relative z-10">
+              <MerchantCard
+                key={currentCard.canonical_merchant_id}
+                card={currentCard}
+                onApprove={handleApprove}
+                onSkip={handleSkip}
+                editRequested={editRequested}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleSkip}
+            className="w-12 h-12 rounded-full border-2 border-slate-200 flex items-center justify-center text-slate-400 hover:border-slate-300 hover:text-slate-500 transition-colors"
+            title="Skip"
+          >
+            <SkipForward size={18} />
+          </button>
+          <button
+            onClick={() => setEditRequested(true)}
+            className="w-12 h-12 rounded-full border-2 border-red-200 flex items-center justify-center text-red-400 hover:border-red-300 hover:text-red-500 transition-colors"
+            title="Edit"
+          >
+            <Pencil size={18} />
+          </button>
+          <button
+            onClick={() => handleApprove()}
+            className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-green-200 hover:bg-green-600 transition-colors"
+            title="Approve"
+          >
+            &#10003;
+          </button>
+        </div>
+        <div className="flex items-center gap-4 mt-2 text-[10px] text-slate-400">
+          <span className="w-12 text-center">Skip</span>
+          <span className="w-12 text-center">Edit</span>
+          <span className="w-16 text-center">Approve</span>
+        </div>
       </div>
-      <div className="flex items-center gap-4 mt-2 text-[10px] text-slate-400">
-        <span className="w-12 text-center">Skip</span>
-        <span className="w-12 text-center">Edit</span>
-        <span className="w-16 text-center">Approve</span>
-      </div>
-    </div>
+    </>
   );
 }
