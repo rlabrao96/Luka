@@ -14,6 +14,7 @@ def mock_user():
         email_provider="gmail",
         whatsapp_verified=False,
         phone_whatsapp=None,
+        preferred_currency="CLP",
     )
 
 
@@ -46,24 +47,31 @@ async def test_patch_profile_route_exists(auth_app, mock_user):
         phone_whatsapp=mock_user.phone_whatsapp,
         household_id=None,
     )
-    with patch("modules.auth.router.update_profile", new=AsyncMock(return_value=fake_response)):
-        # Patch at DB level — commit/refresh are the problematic calls
-        with (
-            patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new=AsyncMock()),
-            patch("sqlalchemy.ext.asyncio.AsyncSession.refresh", new=AsyncMock()),
-            patch(
-                "sqlalchemy.ext.asyncio.AsyncSession.execute",
-                new=AsyncMock(return_value=type("R", (), {"first": lambda self: None})()),
-            ),
-        ):
-            async with AsyncClient(
-                transport=ASGITransport(app=auth_app), base_url="http://test"
-            ) as c:
-                response = await c.patch(
-                    "/auth/me",
-                    json={"full_name": "New Name"},
-                    headers={"Authorization": "Bearer token"},
-                )
+    mock_result = type(
+        "R",
+        (),
+        {
+            "first": lambda self: None,
+            "scalar_one_or_none": lambda self: mock_user,
+        },
+    )()
+    # Patch at DB level — commit/refresh are the problematic calls
+    with (
+        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new=AsyncMock()),
+        patch("sqlalchemy.ext.asyncio.AsyncSession.refresh", new=AsyncMock()),
+        patch(
+            "sqlalchemy.ext.asyncio.AsyncSession.execute",
+            new=AsyncMock(return_value=mock_result),
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=auth_app), base_url="http://test"
+        ) as c:
+            response = await c.patch(
+                "/auth/me",
+                json={"full_name": "New Name"},
+                headers={"Authorization": "Bearer token"},
+            )
     assert response.status_code in (200, 500)
 
 

@@ -43,6 +43,7 @@ def mock_user():
         full_name="Rafa Test",
         email_provider="gmail",
         whatsapp_verified=False,
+        preferred_currency="CLP",
     )
 
 
