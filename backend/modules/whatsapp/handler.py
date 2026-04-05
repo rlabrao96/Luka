@@ -24,23 +24,15 @@ def _parse_amount(raw: str) -> float | None:
     """Parse an amount string to a float.
 
     Rules:
-    - No dot → whole integer           ("25"      → 25.0)
-    - Dot followed by 1–2 digits → decimal separator  ("2.5" → 2.5, "25.00" → 25.0)
-    - Dot followed by 3 digits → thousands separator  ("15.990" → 15990.0)
-    Commas are always treated as thousands separators and stripped.
+    - No dot → whole integer  ("25" → 25.0, "1000" → 1000.0)
+    - Any dot → decimal point ("2.5" → 2.5, "25.00" → 25.0, "15.990" → 15.99)
+    Commas are always stripped (thousands separators).
     """
     raw = raw.replace(",", "")
-    # Dot with 1–2 trailing digits = decimal point
-    if re.search(r"\.\d{1,2}$", raw) and not re.search(r"\.\d{3}", raw):
-        integer_part = raw[: raw.rfind(".")].replace(".", "") or "0"
-        frac_part = raw[raw.rfind("."):]
-        try:
-            return float(integer_part + frac_part)
-        except ValueError:
-            return None
-    # All remaining dots are thousands separators
-    raw = raw.replace(".", "")
-    return float(raw) if raw.isdigit() else None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
 
 
 def parse_manual_expense(text: str) -> tuple[float, str] | None:

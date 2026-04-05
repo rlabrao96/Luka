@@ -165,8 +165,9 @@ def test_parse_manual_expense_without_keyword():
     assert parse_manual_expense("5000 Starbucks") == (5000, "Starbucks")
 
 
-def test_parse_manual_expense_dot_thousands_separator():
-    assert parse_manual_expense("gasto 15.990 Copec") == (15990, "Copec")
+def test_parse_manual_expense_dot_is_always_decimal():
+    # dot always means decimal — 15.990 is fifteen point nine nine, not fifteen thousand
+    assert parse_manual_expense("gasto 15.990 Copec") == (15.99, "Copec")
 
 
 def test_parse_manual_expense_multi_word_merchant():
@@ -199,9 +200,9 @@ def test_parse_manual_expense_decimal_one_place():
     assert parse_manual_expense("gasto 2.5 Coffee") == (2.5, "Coffee")
 
 
-def test_parse_manual_expense_dot_three_digits_is_thousands():
-    # 15.990 → 15990 (CLP thousands separator)
-    assert parse_manual_expense("gasto 15.990 Copec") == (15990, "Copec")
+def test_parse_manual_expense_dot_three_digits_is_decimal():
+    # 15.990 → 15.99 (dot is always decimal, trailing zero dropped)
+    assert parse_manual_expense("gasto 15.990 Copec") == (15.99, "Copec")
 
 
 def test_parse_manual_expense_comma_thousands_separator():
