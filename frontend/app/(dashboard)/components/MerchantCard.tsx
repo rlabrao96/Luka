@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { ReviewCard, ReviewTransactionInfo } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
+import { getCategoryIconOrInitial } from "@/app/lib/category-icons";
 
 
 function formatAmount(amount: number, currency = "CLP"): string {
@@ -151,9 +152,14 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
   return (
     <div className="bg-white rounded-2xl shadow-lg p-6 w-full">
       <div className="text-center mb-5">
-        <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-          <span className="text-lg font-bold text-luka-primary">{card.display_name.charAt(0).toUpperCase()}</span>
-        </div>
+        {(() => {
+          const { icon, isEmoji } = getCategoryIconOrInitial(selectedCategory || card.display_name);
+          return (
+            <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <span className={isEmoji ? "text-2xl" : "text-lg font-bold text-luka-primary"}>{icon}</span>
+            </div>
+          );
+        })()}
         <h2 className="text-xl font-bold text-luka-dark">{card.display_name}</h2>
         {selectedCategory && (
           <span className="inline-block mt-1.5 bg-blue-50 text-luka-primary text-xs font-medium px-3 py-1 rounded-full">
