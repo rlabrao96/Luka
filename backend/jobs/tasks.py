@@ -576,6 +576,17 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 merchant = mr.scalar_one_or_none()
                 if merchant and merchant.canonical_merchant_id:
                     known_count += 1
+                    # Backfill category for known merchants missing one
+                    canon_result = await db.execute(
+                        select(CanonicalMerchant).where(
+                            CanonicalMerchant.id == merchant.canonical_merchant_id
+                        )
+                    )
+                    canonical = canon_result.scalar_one_or_none()
+                    if canonical and not canonical.default_category:
+                        categories = await lookup_merchant(name, db, redis)
+                        if categories:
+                            canonical.default_category = categories[0]
                 else:
                     names_to_process.append(name)
                     if not merchant:
