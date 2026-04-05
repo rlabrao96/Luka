@@ -3,12 +3,6 @@ import { useState, useEffect } from "react";
 import { ReviewCard, ReviewTransactionInfo } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 
-const EXPENSE_CATEGORIES = [
-  "Alimentacion", "Supermercado", "Transporte", "Combustible",
-  "Entretenimiento", "Salud", "Farmacia", "Hogar", "Ropa",
-  "Tecnologia", "Educacion", "Viajes", "Servicios", "Otros",
-];
-
 const CATEGORY_ICONS: Record<string, string> = {
   Alimentacion: "🍽️", Supermercado: "🛒", Transporte: "🚗", Combustible: "⛽",
   Entretenimiento: "🎬", Salud: "🏥", Farmacia: "💊", Hogar: "🏠", Ropa: "👕",
@@ -28,12 +22,13 @@ function formatTxAmount(amount: number): string {
 
 interface Props {
   card: ReviewCard;
+  categories: string[];
   onApprove: (displayName?: string, category?: string) => void;
   onSkip: () => void;
   editRequested?: boolean;
 }
 
-export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) {
+export function MerchantCard({ card, categories, onApprove, onSkip, editRequested }: Props) {
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(card.display_name);
   const [selectedCategory, setSelectedCategory] = useState(
@@ -58,7 +53,7 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
 
   if (editing) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-[340px] border-2 border-luka-primary">
+      <div className="bg-white rounded-2xl shadow-lg p-6 w-full border-2 border-luka-primary">
         <span className="inline-block bg-blue-50 text-luka-primary text-[10px] font-semibold px-2.5 py-1 rounded-md mb-4">
           EDITING
         </span>
@@ -106,7 +101,7 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
           </div>
           {showAllCategories && (
             <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-slate-100">
-              {EXPENSE_CATEGORIES.filter((c) => !suggestions.includes(c)).map((cat) => (
+              {categories.filter((c) => !suggestions.includes(c)).map((cat) => (
                 <button
                   key={cat}
                   onClick={() => { setSelectedCategory(cat); setShowAllCategories(false); }}
@@ -160,7 +155,7 @@ export function MerchantCard({ card, onApprove, onSkip, editRequested }: Props) 
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-[340px]">
+    <div className="bg-white rounded-2xl shadow-lg p-6 w-full">
       <div className="text-center mb-5">
         <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl">
           {icon}
