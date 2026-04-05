@@ -13,12 +13,20 @@ const COLORS = [
 
 interface CategoryDonutProps {
   data: Array<{ category: string; amount: number }>;
+  currency?: string;
 }
 
-const CLP = (v: number) => `$${Math.round(Number(v)).toLocaleString("es-CL")}`;
-
-export function CategoryDonut({ data }: CategoryDonutProps) {
+export function CategoryDonut({ data, currency = "CLP" }: CategoryDonutProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  const fmtAmount = (v: number) => {
+    const n = Math.abs(Number(v));
+    if (currency === "USD") {
+      const val = n / 100;
+      return `US$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return `$${Math.round(n).toLocaleString("es-CL")}`;
+  };
 
   // Recharts Pie requires positive values — use absolute amounts for rendering
   const chartData = data.map((d) => ({ ...d, amount: Math.abs(Number(d.amount)) }));
@@ -63,7 +71,7 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
             Total
           </p>
           <p className="text-sm font-bold text-slate-800 tabular-nums leading-tight">
-            {CLP(total)}
+            {fmtAmount(total)}
           </p>
         </div>
       </div>
@@ -88,7 +96,7 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
           </div>
           <div className="text-right shrink-0">
             <p className="text-xs font-bold text-slate-800 tabular-nums">
-              {CLP(active ? Number(active.amount) : 0)}
+              {fmtAmount(active ? Number(active.amount) : 0)}
             </p>
             <p className="text-[10px] text-slate-400">
               {active ? ((Math.abs(Number(active.amount)) / absTotal) * 100).toFixed(1) : "0.0"}% del total
