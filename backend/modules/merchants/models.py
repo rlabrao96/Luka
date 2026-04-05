@@ -26,6 +26,9 @@ class MerchantCategorySelection(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     merchant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("merchants.id"), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
     category: Mapped[str] = mapped_column(String, nullable=False)
     count: Mapped[int] = mapped_column(Integer, default=1)
     last_used_at: Mapped[datetime] = mapped_column(

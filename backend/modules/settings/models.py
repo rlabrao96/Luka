@@ -31,7 +31,8 @@ class UserCategoryPreference(Base):
     )
     category: Mapped[str] = mapped_column(String, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, server_default="0")
-    hidden: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    category_type: Mapped[str] = mapped_column(String, nullable=False)
+    is_custom: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
