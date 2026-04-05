@@ -99,6 +99,8 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
             Transaction.user_id == user_id,
             CanonicalMerchant.review_job_id == job_id,
         )
+    # Only show unreviewed merchants
+    card_query = card_query.where(CanonicalMerchant.is_verified.is_(False))
     card_query = card_query.group_by(CanonicalMerchant.id)
 
     result = await db.execute(card_query)
@@ -244,6 +246,20 @@ async def approve_merchant(
     if review_job:
         review_job.reviewed_count += 1
         review_job.updated_at = datetime.now(timezone.utc)
+
+        # Check if all merchants are now reviewed
+        if review_job.total_merchants and review_job.reviewed_count >= review_job.total_merchants:
+            review_job.status = "completed"
+            review_job.completed_at = datetime.now(timezone.utc)
+            # Dismiss the notification
+            if review_job.notification_id:
+                notif = await db.execute(
+                    select(Notification).where(Notification.id == review_job.notification_id)
+                )
+                n = notif.scalar_one_or_none()
+                if n:
+                    n.status = "actioned"
+                    n.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     return True

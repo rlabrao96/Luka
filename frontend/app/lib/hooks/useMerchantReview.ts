@@ -7,7 +7,7 @@ export function useMerchantReview(jobId: string) {
     queryKey: ["merchant-review", jobId],
     queryFn: () => api.getReviewCards(jobId),
     enabled: !!jobId,
-    staleTime: Infinity, // Cards don't change during review
+    staleTime: 30 * 1000, // Refetch after 30s to pick up verified state
   });
 }
 
@@ -41,6 +41,7 @@ export function useOptimisticReview(jobId: string) {
       if (mutation.isPending) return;
       queryClient.invalidateQueries({ queryKey: ["merchant-review", jobId] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 
