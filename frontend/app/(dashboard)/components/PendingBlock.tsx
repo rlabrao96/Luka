@@ -217,11 +217,11 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
             <div
               key={txn.id}
               className={cn(
-                "bg-white rounded-xl p-3.5 border border-slate-100 shadow-[var(--shadow-card)]",
+                "bg-white rounded-xl p-3 sm:p-3.5 border border-slate-100 shadow-[var(--shadow-card)]",
                 borderLeft ? "border-l-[3px] border-l-amber-400" : ""
               )}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 {/* Direction icon — hidden on mobile to save space */}
                 <div
                   className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0"
@@ -242,12 +242,12 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
                 <div className="flex-1 min-w-0">
                   {/* Line 1: Merchant + Amount */}
                   <div className="flex justify-between items-baseline gap-2">
-                    <p className="text-sm font-semibold text-luka-dark truncate">
+                    <p className="text-[13px] sm:text-sm font-semibold text-luka-dark truncate">
                       {toTitleCase(txn.raw_merchant_name)}
                     </p>
                     <span
                       className={cn(
-                        "text-[15px] font-bold tabular-nums shrink-0",
+                        "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
                         isOutflow ? "text-red-500" : "text-luka-success"
                       )}
                     >
@@ -257,11 +257,11 @@ function PendingSection({ title, transactions, renderAction, borderLeft }: Pendi
 
                   {/* Line 2: Bank name + Email tag + Category | Split + Action */}
                   <div className="flex justify-between items-center mt-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[10px] text-slate-400 shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                      <span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
                         {bankName ? toTitleCase(bankName) : "—"}
                       </span>
-                      <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-500 font-medium shrink-0">
+                      <span className="text-[8px] sm:text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-500 font-medium shrink-0">
                         email
                       </span>
                       <PendingCategoryCell txn={txn} />

@@ -260,32 +260,18 @@ export function RecentTransactions({
                 return (
                   <div
                     key={txn.id}
-                    className="bg-white rounded-xl p-3.5 border border-slate-100 shadow-[var(--shadow-card)]"
+                    className="bg-white rounded-xl p-3 border border-slate-100 shadow-[var(--shadow-card)]"
                   >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center shrink-0"
-                        style={{
-                          background: isOutflow
-                            ? "linear-gradient(135deg, #fef2f2, #fecaca)"
-                            : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
-                        }}
-                      >
-                        {isOutflow ? (
-                          <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
-                        ) : (
-                          <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
-                        )}
-                      </div>
+                    <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline gap-2">
-                          <p className="text-sm font-semibold text-luka-dark truncate">
+                          <p className="text-[13px] font-semibold text-luka-dark truncate">
                             {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
                           </p>
                           <span
                             className={cn(
-                              "text-[15px] font-bold tabular-nums shrink-0",
-                              isOutflow ? "text-luka-dark" : "text-luka-success"
+                              "text-[13px] font-bold tabular-nums shrink-0",
+                              isOutflow ? "text-red-500" : "text-luka-success"
                             )}
                           >
                             {isOutflow
@@ -294,14 +280,14 @@ export function RecentTransactions({
                           </span>
                         </div>
                         <div className="flex justify-between items-center mt-1">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-[10px] text-slate-400 shrink-0">
-                              {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Agregado Manualmente" : "\u2014"}
+                          <div className="flex items-center gap-1 min-w-0">
+                            <span className="text-[9px] text-slate-400 shrink-0">
+                              {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Manual" : "\u2014"}
                             </span>
                             <button
                               onClick={() => setCategorySheet(txn)}
                               className={cn(
-                                "text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 w-[90px] text-center truncate",
+                                "text-[9px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 max-w-[80px] text-center truncate",
                                 txn.category
                                   ? "bg-slate-100 text-slate-600"
                                   : "bg-amber-50 text-amber-600"
