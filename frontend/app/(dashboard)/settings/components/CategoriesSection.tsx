@@ -106,7 +106,7 @@ function DeleteConfirmModal({
                     value={c.category}
                     checked={reclassifyTo === c.category}
                     onChange={() => setReclassifyTo(c.category)}
-                    className="accent-violet-500"
+                    className="accent-blue-500"
                   />
                   <span className="text-sm text-slate-700">{c.category}</span>
                 </label>
@@ -189,7 +189,7 @@ function SortableItem({
       </button>
       <span className="flex-1 text-sm text-slate-700 truncate">{item.category}</span>
       {item.is_custom && (
-        <span className="text-[10px] text-violet-500 font-medium px-1.5 py-0.5 rounded-full bg-violet-50 shrink-0">
+        <span className="text-[10px] text-blue-600 font-medium px-1.5 py-0.5 rounded-full bg-blue-50 shrink-0">
           Tuya
         </span>
       )}
@@ -264,6 +264,7 @@ export function CategoriesSection() {
   const { data, isLoading } = useQuery({
     queryKey: ["category-preferences"],
     queryFn: () => api.getCategoryPreferences(),
+    staleTime: 5 * 60 * 1000,
   });
 
   useEffect(() => {
@@ -385,14 +386,14 @@ export function CategoriesSection() {
             }}
             maxLength={40}
             placeholder="Nueva categoría"
-            className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-400"
+            className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2 outline-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           />
           <div className="flex rounded-lg border border-slate-200 overflow-hidden shrink-0">
             <button
               onClick={() => setAddType("expense")}
               className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 addType === "expense"
-                  ? "bg-violet-500 text-white"
+                  ? "bg-blue-600 text-white"
                   : "text-slate-500 hover:bg-slate-50"
               }`}
             >
@@ -402,7 +403,7 @@ export function CategoriesSection() {
               onClick={() => setAddType("income")}
               className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 addType === "income"
-                  ? "bg-violet-500 text-white"
+                  ? "bg-blue-600 text-white"
                   : "text-slate-500 hover:bg-slate-50"
               }`}
             >
@@ -412,7 +413,7 @@ export function CategoriesSection() {
           <button
             onClick={() => addMutation.mutate()}
             disabled={addDisabled}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-violet-500 rounded-lg hover:bg-violet-600 disabled:opacity-40 shrink-0"
+            className="px-3 py-1.5 text-xs font-medium text-white bg-violet-500 rounded-lg hover:bg-blue-700 disabled:opacity-40 shrink-0"
           >
             Agregar
           </button>

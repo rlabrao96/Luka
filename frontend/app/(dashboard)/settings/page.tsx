@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 import { ProfileSection } from "./components/ProfileSection";
@@ -14,6 +15,17 @@ import { DeleteAccountSection } from "./components/DeleteAccountSection";
 
 export default function SettingsPage() {
   const householdId = useLukaStore((s) => s.householdId);
+  const queryClient = useQueryClient();
+
+  // Prefetch categories in parallel with the me query so the section
+  // renders instantly instead of waiting for a second waterfall request.
+  useEffect(() => {
+    queryClient.prefetchQuery({
+      queryKey: ["category-preferences"],
+      queryFn: () => api.getCategoryPreferences(),
+      staleTime: 5 * 60 * 1000,
+    });
+  }, [queryClient]);
 
   const { data: me, isLoading } = useQuery({
     queryKey: ["me"],
