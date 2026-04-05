@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel
 
 
@@ -13,7 +14,8 @@ class NotificationPreferencesUpdate(BaseModel):
 class CategoryPreferenceItem(BaseModel):
     category: str
     sort_order: int
-    hidden: bool = False
+    category_type: str
+    is_custom: bool
     model_config = {"from_attributes": True}
 
 
@@ -21,5 +23,23 @@ class CategoryPreferencesResponse(BaseModel):
     categories: list[CategoryPreferenceItem]
 
 
-class CategoryPreferencesUpdate(BaseModel):
-    categories: list[CategoryPreferenceItem]
+class CategoryReorderItem(BaseModel):
+    category: str
+    sort_order: int
+
+
+class CategoryReorderRequest(BaseModel):
+    categories: list[CategoryReorderItem]
+
+
+class CategoryAddRequest(BaseModel):
+    category: str
+    category_type: Literal["expense", "income"]
+
+
+class CategoryDeleteRequest(BaseModel):
+    reclassify_to: str | None = None
+
+
+class CategoryUsageResponse(BaseModel):
+    count: int
