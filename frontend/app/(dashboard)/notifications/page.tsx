@@ -130,13 +130,13 @@ export default function NotificationsPage() {
                   </div>
                 </div>
 
-                {isUnread && notif.type === "merchant_review" && (
+                {!isDone && notif.type === "merchant_review" && (
                   <div className="mt-3 flex gap-2">
                     <button
                       onClick={() => handleReview(notif)}
                       className="px-4 py-2 bg-luka-primary text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
                     >
-                      Revisar merchants
+                      Revisar comercios
                     </button>
                     <button
                       onClick={() => handleDismiss(notif)}
