@@ -388,23 +388,23 @@ export function CategoriesSection() {
             placeholder="Nueva categoría"
             className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2 outline-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           />
-          <div className="flex rounded-lg border border-slate-200 overflow-hidden shrink-0">
+          <div className="flex gap-1 shrink-0">
             <button
               onClick={() => setAddType("expense")}
-              className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
                 addType === "expense"
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-500 hover:bg-slate-50"
+                  ? "bg-luka-primary text-white"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
               }`}
             >
               Gasto
             </button>
             <button
               onClick={() => setAddType("income")}
-              className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
                 addType === "income"
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-500 hover:bg-slate-50"
+                  ? "bg-luka-primary text-white"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
               }`}
             >
               Ingreso
@@ -413,7 +413,7 @@ export function CategoriesSection() {
           <button
             onClick={() => addMutation.mutate()}
             disabled={addDisabled}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-violet-500 rounded-lg hover:bg-blue-700 disabled:opacity-40 shrink-0"
+            className="px-3 py-1.5 text-xs font-medium text-white bg-luka-primary rounded-lg hover:bg-blue-700 disabled:opacity-40 shrink-0"
           >
             Agregar
           </button>

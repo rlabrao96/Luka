@@ -147,7 +147,7 @@ export default function DashboardPage() {
           </h1>
           <p className="text-sm text-luka-muted mt-0.5">Aquí está tu resumen financiero</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+        <div className="flex items-center gap-2 shrink-0">
           <MonthSelector value={selectedMonth} onChange={setSelectedMonth} currentMonth={currentMonth} />
           <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
         </div>
