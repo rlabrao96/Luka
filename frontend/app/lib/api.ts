@@ -512,19 +512,57 @@ export const api = {
   // --- Categories ---
   async getCategoryPreferences() {
     return apiFetch<{
-      categories: Array<{ category: string; sort_order: number; hidden: boolean }>;
+      categories: Array<{
+        category: string;
+        sort_order: number;
+        category_type: "expense" | "income";
+        is_custom: boolean;
+      }>;
     }>("/categories/preferences");
   },
 
-  async updateCategoryPreferences(
-    categories: Array<{ category: string; sort_order: number; hidden: boolean }>
+  async reorderCategoryPreferences(
+    categories: Array<{ category: string; sort_order: number }>
   ) {
     return apiFetch<{
-      categories: Array<{ category: string; sort_order: number; hidden: boolean }>;
+      categories: Array<{
+        category: string;
+        sort_order: number;
+        category_type: "expense" | "income";
+        is_custom: boolean;
+      }>;
     }>("/categories/preferences", {
       method: "PUT",
       body: JSON.stringify({ categories }),
     });
+  },
+
+  async addCategory(category: string, category_type: "expense" | "income") {
+    return apiFetch<{
+      category: string;
+      sort_order: number;
+      category_type: "expense" | "income";
+      is_custom: boolean;
+    }>("/categories/preferences", {
+      method: "POST",
+      body: JSON.stringify({ category, category_type }),
+    });
+  },
+
+  async getCategoryUsage(category: string) {
+    return apiFetch<{ count: number }>(
+      `/categories/preferences/${encodeURIComponent(category)}/usage`
+    );
+  },
+
+  async deleteCategory(category: string, reclassify_to: string | null) {
+    return apiFetch<{ ok: boolean }>(
+      `/categories/preferences/${encodeURIComponent(category)}/delete`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reclassify_to }),
+      }
+    );
   },
 
   // --- WhatsApp PIN ---
