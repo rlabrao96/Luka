@@ -24,7 +24,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   try {
     const res = await fetch(`${apiUrl}/auth/me`, {
       headers: { Authorization: `Bearer ${session?.access_token}` },
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
     if (res.ok) userData = await res.json();
   } catch {
