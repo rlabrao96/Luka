@@ -123,11 +123,11 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
           </p>
           <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
             {(card.transactions ?? []).map((tx, i) => (
-              <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
-                <span className="text-slate-500 min-w-0 break-words">{tx.raw_name}</span>
+              <div key={i} className="flex items-center bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
+                <span className="text-slate-500 truncate flex-1 min-w-0">{tx.raw_name}</span>
                 <span className="flex gap-2 text-slate-400 shrink-0 ml-2">
-                  <span>{tx.date}</span>
-                  <span className="font-medium text-slate-600">{formatTxAmount(tx.amount, tx.currency)}</span>
+                  <span className="hidden sm:inline">{tx.date}</span>
+                  <span className="font-medium text-slate-600 whitespace-nowrap">{formatTxAmount(tx.amount, tx.currency)}</span>
                 </span>
               </div>
             ))}
@@ -177,11 +177,11 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
         </p>
         <div className="flex flex-col gap-1.5 max-h-[200px] overflow-y-auto flex-1">
           {(card.transactions ?? []).map((tx, i) => (
-            <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs">
-              <span className="text-slate-600 min-w-0 break-words">{tx.raw_name}</span>
+            <div key={i} className="flex items-center bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs">
+              <span className="text-slate-600 truncate flex-1 min-w-0">{tx.raw_name}</span>
               <span className="flex gap-3 text-slate-400 shrink-0 ml-3">
                 <span>{tx.date}</span>
-                <span className="font-medium text-slate-700">{formatTxAmount(tx.amount, tx.currency)}</span>
+                <span className="font-medium text-slate-700 whitespace-nowrap">{formatTxAmount(tx.amount, tx.currency)}</span>
               </span>
             </div>
           ))}
