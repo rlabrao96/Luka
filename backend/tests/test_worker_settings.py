@@ -23,6 +23,7 @@ def test_slow_worker_functions():
         "run_connect_sync",
         "run_plaid_sync_job",
         "process_merchant_review",
+        "run_template_agent",
     }
 
 
@@ -40,7 +41,7 @@ def test_fast_worker_cron_jobs():
 
 
 def test_slow_worker_cron_jobs():
-    assert _cron_names(SlowWorkerSettings) == {"run_reconciliation_job"}
+    assert _cron_names(SlowWorkerSettings) == {"run_reconciliation_job", "run_template_agent"}
 
 
 def test_fast_worker_config():
