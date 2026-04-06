@@ -323,3 +323,55 @@ def test_parse_bofa_cafe_at_sign():
     assert result.currency == "USD"
     assert "PENNPRETCAFE" in result.raw_merchant
     assert "DELETE" not in result.raw_merchant
+
+
+# --- PNC Zelle ---
+
+PNC_ZELLE_SENT = (
+    "Payment Alert You Sent a Payment to "
+    "RAFAEL LABRA OETTINGER "
+    "From Account: x1645 "
+    "Amount: $500.00 "
+    "Payment Date: 04/06/26 "
+    "Memo: Apt April "
+    "Transaction ID: PNCAA0ZGt35v "
+    "This money will be in RAFAEL LABRA OETTINGER's account shortly, "
+    "typically in minutes. "
+    "For more information on sending and receiving money with people "
+    "you know and trust, visit PNC.com/Zelle. "
+    "Thank you for banking with PNC."
+)
+
+
+def test_parse_pnc_zelle_sent():
+    result = parse_bank_email(PNC_ZELLE_SENT)
+    assert result is not None
+    assert result.amount == 50000  # $500.00 stored as cents
+    assert result.currency == "USD"
+    assert result.transaction_type == "transfer"
+    assert "Rafael Labra Oettinger" in result.raw_merchant
+    assert result.transaction_date.month == 4
+    assert result.transaction_date.day == 6
+
+
+PNC_ZELLE_RECEIVED = (
+    "Payment Alert You Received a Payment from "
+    "JANE DOE "
+    "To Account: x1645 "
+    "Amount: $75.50 "
+    "Payment Date: 03/28/26 "
+    "Memo: Dinner split "
+    "Transaction ID: PNCBB1XYZ99w "
+    "Thank you for banking with PNC."
+)
+
+
+def test_parse_pnc_zelle_received():
+    result = parse_bank_email(PNC_ZELLE_RECEIVED)
+    assert result is not None
+    assert result.amount == 7550  # $75.50 stored as cents
+    assert result.currency == "USD"
+    assert result.transaction_type == "transfer"
+    assert "Jane Doe" in result.raw_merchant
+    assert result.transaction_date.month == 3
+    assert result.transaction_date.day == 28

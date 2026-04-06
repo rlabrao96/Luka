@@ -37,10 +37,12 @@ _NAME_ANY = r"[A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{
 _TRANSFER_PATTERNS = [
     # US — Zelle (BofA): "payment of $... to BENJAMIN BRAITHWAITE has been sent"
     r"payment of \$[\d,]+\.\d{2} to\s+([A-Z][A-Z ]{2,60}?)\s+has been sent",
-    # US — Zelle (PNC): "You sent a Zelle® payment to RAFAEL LABRA OETTINGER"
+    # US — Zelle (PNC subject): "You sent a Zelle® payment to NAME"
     r"sent a Zelle.*?payment to\s+([A-Z][A-Z ]{2,60})",
-    # US — Zelle (PNC): "received a Zelle® payment from JANE DOE"
-    r"received a Zelle.*?payment from\s+([A-Z][A-Z ]{2,60})",
+    # US — Zelle (PNC body): "You Sent a Payment to RAFAEL LABRA OETTINGER"
+    r"[Ss]ent a [Pp]ayment to\s+([A-Z][A-Z ]{2,60})",
+    # US — Zelle (PNC incoming): "You Received a Payment from NAME"
+    r"[Rr]eceived a [Pp]ayment from\s+([A-Z][A-Z ]{2,60})",
     # Incoming — "cliente {NAME} ha efectuado una transferencia" (Edwards)
     # Must be before outgoing prose patterns to avoid matching "a tu cuenta"
     rf"cliente\s+({_NAME_ANY}?)\s+ha efectuado una transferencia",
@@ -77,6 +79,7 @@ _DATE_PATTERNS = [
     r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})",  # 10/03/2026 14:32
     r"(\d{2}/\d{2}/\d{4})",  # 10/03/2026
     rf"({_MONTHS_EN}\s+\d{{1,2}},?\s+\d{{4}})",  # March 28, 2026
+    r"Payment Date:?\s*(\d{2}/\d{2}/\d{2})\b",  # PNC: Payment Date: 04/06/26
 ]
 
 
@@ -136,6 +139,7 @@ _DATE_FORMATS = [
     "%d/%m/%Y",  # 10/03/2026
     "%B %d, %Y",  # March 28, 2026
     "%B %d %Y",  # March 28 2026
+    "%m/%d/%y",  # PNC: 04/06/26 (MM/DD/YY)
 ]
 
 
