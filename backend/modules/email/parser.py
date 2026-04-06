@@ -35,8 +35,12 @@ _CLP_AMOUNT_PATTERNS = [
 _NAME_UPPER_START = r"[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{2,60}"  # must start uppercase
 _NAME_ANY = r"[A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{2,60}"
 _TRANSFER_PATTERNS = [
-    # US — Zelle: "payment of $... to BENJAMIN BRAITHWAITE has been sent"
+    # US — Zelle (BofA): "payment of $... to BENJAMIN BRAITHWAITE has been sent"
     r"payment of \$[\d,]+\.\d{2} to\s+([A-Z][A-Z ]{2,60}?)\s+has been sent",
+    # US — Zelle (PNC): "You sent a Zelle® payment to RAFAEL LABRA OETTINGER"
+    r"sent a Zelle.*?payment to\s+([A-Z][A-Z ]{2,60})",
+    # US — Zelle (PNC): "received a Zelle® payment from JANE DOE"
+    r"received a Zelle.*?payment from\s+([A-Z][A-Z ]{2,60})",
     # Incoming — "cliente {NAME} ha efectuado una transferencia" (Edwards)
     # Must be before outgoing prose patterns to avoid matching "a tu cuenta"
     rf"cliente\s+({_NAME_ANY}?)\s+ha efectuado una transferencia",

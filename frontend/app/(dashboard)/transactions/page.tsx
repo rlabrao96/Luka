@@ -37,17 +37,19 @@ const LOC_KIND = "line_of_credit";
 
 interface SummaryBarProps {
   accounts: BankAccountRow[];
+  transactions: Transaction[];
   selectedCurrency: string;
   selectedBank: string;
   onCurrencyChange: (c: string) => void;
 }
 
-function SummaryBar({ accounts, selectedCurrency, selectedBank, onCurrencyChange }: SummaryBarProps) {
+function SummaryBar({ accounts, transactions, selectedCurrency, selectedBank, onCurrencyChange }: SummaryBarProps) {
   const currencies = useMemo(() => {
     const set = new Set<string>();
     accounts.forEach((a) => { if (a.currency) set.add(a.currency); });
+    transactions.forEach((t) => { if (t.currency) set.add(t.currency); });
     return Array.from(set).sort();
-  }, [accounts]);
+  }, [accounts, transactions]);
 
   const hasUSD = currencies.includes("USD");
 
@@ -456,6 +458,7 @@ export default function TransactionsPage() {
       {/* Summary cards — account balances */}
       <SummaryBar
         accounts={accounts}
+        transactions={[...myTxns, ...sharedTxns]}
         selectedCurrency={selectedCurrency}
         selectedBank={selectedBank}
         onCurrencyChange={setSelectedCurrency}
