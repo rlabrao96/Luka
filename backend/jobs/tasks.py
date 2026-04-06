@@ -4,8 +4,13 @@ from core.config import settings
 from core.encryption import decrypt_token, encrypt_token
 from core.database import AsyncSessionLocal
 from jobs.queue import enqueue_job
-from modules.email.parser import parse_bank_email
-from modules.email.filter import is_financial_email, is_bank_sender, get_bank_name
+from modules.email.parser import parse_bank_email, _strip_html
+from modules.email.bank_registry_service import (
+    is_bank_sender as is_bank_sender_async,
+    get_bank_metadata,
+    is_financial_email as is_financial_email_async,
+)
+from modules.email.models import ParsedEmailLog
 from modules.merchants.service import lookup_merchant
 from modules.whatsapp.sender import send_expense_alert
 from modules.whatsapp.session import WhatsAppSession, save_session, save_msgid
@@ -237,7 +242,7 @@ async def process_email(
                 await redis_client.set(dedup_key, "1", ex=86400)  # 24h TTL
 
                 # Pre-filter: only process emails from known bank domains
-                if not is_bank_sender(raw_email.sender):
+                if not await is_bank_sender_async(raw_email.sender, redis=redis_client, db=db):
                     print(
                         f"[PROCESS_EMAIL] skipping non-bank sender: {raw_email.sender}",
                         flush=True,
@@ -245,20 +250,27 @@ async def process_email(
                     continue
 
                 # Pre-filter: skip non-financial emails
-                if not is_financial_email(raw_email.subject, raw_email.sender, raw_email.body):
+                if not is_financial_email_async(
+                    raw_email.subject, raw_email.sender, raw_email.body
+                ):
                     continue
 
+                # Get bank metadata for LLM context
+                bank_meta = await get_bank_metadata(raw_email.sender, redis=redis_client, db=db)
+
                 # Parse email (three-layer: template → LLM → regex)
-                parsed, _parser_used, _depth, _model = await parse_bank_email(
+                stripped = _strip_html(raw_email.body)
+                parsed, parser_used, depth, model_used = await parse_bank_email(
                     raw_email.body,
-                    raw_email.body,
+                    stripped,
+                    bank_metadata=bank_meta,
                     db=db,
                 )
                 if not parsed:
                     continue
 
-                # Infer bank name from email sender
-                inferred_bank = get_bank_name(raw_email.sender)
+                # Infer bank name from metadata
+                inferred_bank = bank_meta["bank_name"] if bank_meta else "Unknown"
 
                 # Match bank account by inferred name (don't fall back to wrong bank)
                 bank_account = None
@@ -323,6 +335,35 @@ async def process_email(
                 db.add(txn)
                 await db.commit()
                 await db.refresh(txn)
+
+                # Log parsing result for template training
+                log_entry = ParsedEmailLog(
+                    user_id=user.id,
+                    bank_domain=bank_meta["bank_domain"] if bank_meta else "unknown",
+                    country=bank_meta.get("country") if bank_meta else None,
+                    raw_email_html=raw_email.body,
+                    llm_extraction={
+                        "merchant": parsed.raw_merchant,
+                        "amount": parsed.amount,
+                        "currency": parsed.currency,
+                        "date": str(parsed.transaction_date),
+                        "type": parsed.transaction_type,
+                        "confidence": parsed.confidence,
+                    }
+                    if parser_used == "llm"
+                    else None,
+                    template_extraction={
+                        "merchant": parsed.raw_merchant,
+                        "amount": parsed.amount,
+                    }
+                    if parser_used == "template"
+                    else None,
+                    parser_used=parser_used,
+                    llm_model_used=model_used,
+                    waterfall_depth=depth,
+                )
+                db.add(log_entry)
+                await db.commit()
 
                 # Add transaction split AFTER commit so txn.id exists
                 is_joint = bank_account and bank_account.account_type == "joint"
@@ -440,6 +481,21 @@ async def purge_raw_emails(ctx: dict) -> None:
             .values(raw_email_text=None)
         )
         await db.commit()
+
+
+async def purge_email_logs(ctx: dict) -> None:
+    """Purge raw_email_html from parsed_email_log entries older than 7 days."""
+    async with AsyncSessionLocal() as db:
+        cutoff = datetime.utcnow() - timedelta(days=7)
+        stmt = (
+            update(ParsedEmailLog)
+            .where(ParsedEmailLog.created_at < cutoff)
+            .where(ParsedEmailLog.raw_email_html.isnot(None))
+            .values(raw_email_html=None)
+        )
+        result = await db.execute(stmt)
+        await db.commit()
+        logger.info("Purged raw HTML from %d email log entries", result.rowcount)
 
 
 async def cleanup_processed_webhooks(ctx: dict) -> None:

@@ -6,6 +6,7 @@ from jobs.tasks import (
     process_email,
     renew_mail_watches,
     purge_raw_emails,
+    purge_email_logs,
     cleanup_processed_webhooks,
     send_invite_email,
     schedule_connect_syncs,
@@ -36,6 +37,7 @@ class FastWorkerSettings:
     cron_jobs = [
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
         cron(purge_raw_emails, minute=0),  # every hour
+        cron(purge_email_logs, hour=2, minute=0),  # 2am daily
         cron(cleanup_processed_webhooks, hour=4, minute=0),  # 4am daily
         cron(schedule_connect_syncs, hour={0, 6, 12, 18}, minute=0),  # every 6h
         cron(refresh_subscriptions_cache, hour=5, minute=30),  # 5:30am daily

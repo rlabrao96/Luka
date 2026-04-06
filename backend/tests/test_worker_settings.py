@@ -30,6 +30,7 @@ def test_fast_worker_cron_jobs():
     expected = {
         "renew_mail_watches",
         "purge_raw_emails",
+        "purge_email_logs",
         "cleanup_processed_webhooks",
         "schedule_connect_syncs",
         "refresh_subscriptions_cache",
