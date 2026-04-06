@@ -5,6 +5,7 @@ class ReviewTransactionInfo(BaseModel):
     raw_name: str
     date: str | None = None
     amount: float = 0.0
+    currency: str = "CLP"
 
 
 class ReviewCardResponse(BaseModel):

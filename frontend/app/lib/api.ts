@@ -315,6 +315,7 @@ export interface ReviewTransactionInfo {
   raw_name: string;
   date: string | null;
   amount: number;
+  currency: string;
 }
 
 export interface ReviewCard {
@@ -325,6 +326,7 @@ export interface ReviewCard {
   transactions: ReviewTransactionInfo[];
   transaction_count: number;
   total_amount: number;
+  currency: string;
   is_verified: boolean;
 }
 
