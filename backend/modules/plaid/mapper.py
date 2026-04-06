@@ -19,7 +19,8 @@ def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, househol
     So we multiply by -1.
     """
     plaid_amount = float(plaid_tx.amount)
-    luka_amount = plaid_amount * -1
+    # Plaid sends dollars; Luka stores USD as cents (frontend divides by 100)
+    luka_amount = round(plaid_amount * -100)
 
     # Derive transaction_type from Plaid's amount sign (before our flip)
     transaction_type = "expense" if plaid_amount > 0 else "income"

@@ -126,7 +126,8 @@ async def run_plaid_sync(
             continue
 
         plaid_amount = float(plaid_tx.amount)
-        tx.amount = plaid_amount * -1
+        # Plaid sends dollars; Luka stores USD as cents
+        tx.amount = round(plaid_amount * -100)
         tx.status = "pending" if plaid_tx.pending else "confirmed"
         tx.raw_merchant_name = plaid_tx.merchant_name or plaid_tx.name or tx.raw_merchant_name
         stats["modified"] += 1
