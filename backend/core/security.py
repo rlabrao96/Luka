@@ -115,6 +115,8 @@ async def get_current_user(
                 full_name=cached["full_name"],
                 email_provider=cached["email_provider"],
                 whatsapp_verified=cached.get("whatsapp_verified", False),
+                phone_whatsapp=cached.get("phone_whatsapp"),
+                preferred_currency=cached.get("preferred_currency", "CLP"),
             )
 
     # Cache miss — look up in DB (shared session, same as route handler)
@@ -147,6 +149,8 @@ async def get_current_user(
             "full_name": user.full_name,
             "email_provider": user.email_provider,
             "whatsapp_verified": user.whatsapp_verified,
+            "phone_whatsapp": user.phone_whatsapp,
+            "preferred_currency": user.preferred_currency,
         },
         ttl_seconds=300,
     )
