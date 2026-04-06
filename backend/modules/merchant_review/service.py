@@ -151,6 +151,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 Transaction.raw_merchant_name,
                 Transaction.transaction_date,
                 Transaction.amount,
+                Transaction.currency,
             )
             .where(*tx_where)
             .order_by(Transaction.transaction_date.desc())
@@ -160,6 +161,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 "raw_name": r.raw_merchant_name,
                 "date": r.transaction_date.strftime("%d-%b-%Y") if r.transaction_date else None,
                 "amount": float(r.amount) if r.amount else 0,
+                "currency": r.currency or "CLP",
             }
             for r in tx_q.all()
         ]
@@ -169,6 +171,9 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
             select(Merchant).where(Merchant.raw_name == unique_names[0])
         )
         merchant = merchant_result.scalar_one_or_none()
+
+        # Use currency from first transaction (all txs for a merchant share currency)
+        card_currency = transactions_info[0]["currency"] if transactions_info else "CLP"
 
         cards.append(
             {
@@ -181,6 +186,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 "transactions": transactions_info,
                 "transaction_count": stat.count,
                 "total_amount": float(stat.total or 0),
+                "currency": card_currency,
                 "is_verified": row.is_verified,
             }
         )

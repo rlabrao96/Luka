@@ -6,11 +6,14 @@ import { getCategoryIconOrInitial } from "@/app/lib/category-icons";
 
 
 function formatAmount(amount: number, currency = "CLP"): string {
-  return new Intl.NumberFormat("es-CL", { style: "currency", currency, maximumFractionDigits: 0 }).format(Math.abs(amount));
+  const val = currency === "USD" ? Math.abs(amount) / 100 : Math.abs(amount);
+  if (currency === "USD")
+    return `US$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${Math.round(val).toLocaleString("es-CL")}`;
 }
 
-function formatTxAmount(amount: number): string {
-  const formatted = formatAmount(amount);
+function formatTxAmount(amount: number, currency = "CLP"): string {
+  const formatted = formatAmount(amount, currency);
   if (amount < 0) return `(${formatted})`;
   if (amount > 0) return `+${formatted}`;
   return formatted;
@@ -121,10 +124,10 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
           <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
             {(card.transactions ?? []).map((tx, i) => (
               <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-2 py-1 rounded-md text-[10px]">
-                <span className="text-slate-500 truncate">{tx.raw_name}</span>
+                <span className="text-slate-500 min-w-0 break-words">{tx.raw_name}</span>
                 <span className="flex gap-2 text-slate-400 shrink-0 ml-2">
                   <span>{tx.date}</span>
-                  <span className="font-medium text-slate-600">{formatTxAmount(tx.amount)}</span>
+                  <span className="font-medium text-slate-600">{formatTxAmount(tx.amount, tx.currency)}</span>
                 </span>
               </div>
             ))}
@@ -175,16 +178,16 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
         <div className="flex flex-col gap-1.5 max-h-[200px] overflow-y-auto flex-1">
           {(card.transactions ?? []).map((tx, i) => (
             <div key={i} className="flex items-center justify-between bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs">
-              <span className="text-slate-600 truncate">{tx.raw_name}</span>
+              <span className="text-slate-600 min-w-0 break-words">{tx.raw_name}</span>
               <span className="flex gap-3 text-slate-400 shrink-0 ml-3">
                 <span>{tx.date}</span>
-                <span className="font-medium text-slate-700">{formatTxAmount(tx.amount)}</span>
+                <span className="font-medium text-slate-700">{formatTxAmount(tx.amount, tx.currency)}</span>
               </span>
             </div>
           ))}
         </div>
         <div className="flex justify-end mt-3 pt-3 border-t border-slate-200">
-          <span className="text-sm font-semibold text-slate-700">Total: {formatTxAmount(card.total_amount)}</span>
+          <span className="text-sm font-semibold text-slate-700">Total: {formatTxAmount(card.total_amount, card.currency)}</span>
         </div>
       </div>
     </div>
