@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     whatsapp_access_token: str = ""
     openai_api_key: str = ""
     gemini_api_key: str = ""  # Google AI Studio API key
+
+    # LLM parser waterfall thresholds (confidence scores)
+    llm_waterfall_thresholds: str = "0.9,0.8,0.7,0.0"
+    llm_shadow_validation_rate: float = 0.25
+    template_agent_min_emails: int = 20
+    template_agent_recency_days: int = 14
+    template_agent_recency_min: int = 5
+
     frontend_url: str = "http://localhost:3000"
     cors_origins: str = ""  # Comma-separated additional CORS origins
     environment: str = "development"

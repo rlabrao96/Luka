@@ -20,6 +20,9 @@ class ParsedEmail:
     bank_name: str  # inferred from sender/subject
     transaction_type: str = "expense"  # "expense" or "transfer"
     currency: str = "CLP"  # ISO 4217: "CLP" or "USD"
+    transfer_recipient: str | None = None
+    card_last_four: str | None = None
+    confidence: float | None = None
 
 
 class EmailProvider(ABC):

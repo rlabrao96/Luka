@@ -1,6 +1,10 @@
+import logging as _logging
 import re
 from datetime import datetime, timezone
+
 from modules.email.base import ParsedEmail
+from modules.email.llm_parser import parse_with_llm
+from modules.email.template_executor import execute_template
 
 
 def _strip_html(html: str) -> str:
@@ -156,7 +160,7 @@ def _parse_date(text: str) -> datetime | None:
     return None
 
 
-def parse_bank_email(raw_text: str) -> ParsedEmail | None:
+def parse_bank_email_regex(raw_text: str) -> ParsedEmail | None:
     """Parse a bank email alert (Chilean or US). Returns None if not a transaction email."""
     # Strip HTML if the email body contains HTML tags
     if "<html" in raw_text.lower() or "<table" in raw_text.lower():
@@ -192,3 +196,59 @@ def parse_bank_email(raw_text: str) -> ParsedEmail | None:
         transaction_type=transaction_type,
         currency=currency,
     )
+
+
+_logger = _logging.getLogger(__name__)
+
+
+async def _get_active_template(template_id: str, *, db=None) -> dict | None:
+    if not template_id or not db:
+        return None
+    from sqlalchemy import select
+    from modules.email.models import EmailTemplate
+
+    stmt = select(EmailTemplate).where(
+        EmailTemplate.id == template_id,
+        EmailTemplate.status == "active",
+    )
+    result = await db.execute(stmt)
+    entry = result.scalar_one_or_none()
+    return entry.template_code if entry else None
+
+
+async def parse_bank_email(
+    raw_html: str,
+    stripped_text: str,
+    *,
+    bank_metadata: dict | None = None,
+    db=None,
+) -> tuple[ParsedEmail | None, str, int | None, str | None]:
+    """Three-layer parser: template → LLM waterfall → regex fallback.
+
+    Returns (ParsedEmail | None, parser_used, waterfall_depth, model_name).
+    parser_used: "template" | "llm" | "regex"
+    """
+    # Layer 1: Template
+    template_id = (bank_metadata or {}).get("active_template_id")
+    if template_id:
+        template = await _get_active_template(template_id, db=db)
+        if template:
+            result = execute_template(raw_html, template, full_text=stripped_text)
+            if result:
+                if bank_metadata:
+                    result.bank_name = bank_metadata.get("bank_name", "")
+                return result, "template", None, None
+
+    # Layer 2: LLM waterfall
+    result, depth, model = await parse_with_llm(stripped_text, bank_metadata=bank_metadata)
+    if result:
+        if bank_metadata:
+            result.bank_name = bank_metadata.get("bank_name", "")
+        return result, "llm", depth, model
+
+    # Layer 3: Legacy regex fallback
+    result = parse_bank_email_regex(stripped_text)
+    if result:
+        return result, "regex", None, None
+
+    return None, "regex", None, None

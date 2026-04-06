@@ -5,7 +5,7 @@ Run: python3 -m scripts.fix_bofa_transactions
 
 import asyncio
 from core.database import AsyncSessionLocal
-from modules.email.parser import parse_bank_email
+from modules.email.parser import parse_bank_email_regex as parse_bank_email
 from sqlalchemy import text
 
 
