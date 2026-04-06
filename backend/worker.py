@@ -17,6 +17,7 @@ from jobs.tasks import (
     schedule_plaid_syncs,
     run_reconciliation_job,
 )
+from modules.email.template_agent import run_template_agent
 
 
 async def startup(ctx: dict) -> None:
@@ -58,9 +59,11 @@ class SlowWorkerSettings:
         run_connect_sync,
         run_plaid_sync_job,
         process_merchant_review,
+        run_template_agent,
     ]
     cron_jobs = [
         cron(run_reconciliation_job, hour=6, minute=0),  # 6am daily
+        cron(run_template_agent, hour=2, minute=0),  # 2am daily — template generation
     ]
     on_startup = startup
     on_shutdown = shutdown
