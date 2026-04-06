@@ -1,4 +1,4 @@
-from modules.email.parser import parse_bank_email
+from modules.email.parser import parse_bank_email_regex as parse_bank_email
 
 
 SANTANDER_EMAIL = """

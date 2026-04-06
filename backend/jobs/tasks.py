@@ -248,8 +248,12 @@ async def process_email(
                 if not is_financial_email(raw_email.subject, raw_email.sender, raw_email.body):
                     continue
 
-                # Parse email
-                parsed = parse_bank_email(raw_email.body)
+                # Parse email (three-layer: template → LLM → regex)
+                parsed, _parser_used, _depth, _model = await parse_bank_email(
+                    raw_email.body,
+                    raw_email.body,
+                    db=db,
+                )
                 if not parsed:
                     continue
 
