@@ -1,3 +1,5 @@
+# DEPRECATED: Use bank_registry_service.py for async DB-backed lookups.
+# This module is kept as a sync fallback when DB is unavailable.
 import re
 
 FINANCIAL_KEYWORDS = {
@@ -29,6 +31,22 @@ FINANCIAL_KEYWORDS = {
     "comprobante",
     "saldo",
     "retiro",
+    # Portuguese (Brazilian banks)
+    "transação",
+    "transacao",
+    "compra aprovada",
+    "cartão",
+    "cartao",
+    "fatura",
+    "pagamento",
+    "pix",
+    # Additional Spanish (CO/MX/PE)
+    "movimiento",
+    "consumo",
+    "aviso",
+    "alerta",
+    "notificación",
+    "notificacion",
     # English (US banks)
     "transaction",
     "purchase",
