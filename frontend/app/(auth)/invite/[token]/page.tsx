@@ -19,27 +19,39 @@ export default function InvitePage({
   const setHousehold = useLukaStore((s) => s.setHousehold);
   const reset = useLukaStore((s) => s.reset);
 
-  const [status, setStatus] = useState<"loading" | "self-invite" | "error" | "success">("loading");
+  const [status, setStatus] = useState<"checking" | "unauthenticated" | "loading" | "self-invite" | "error" | "success">("checking");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
   useEffect(() => {
+    async function init() {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        setStatus("unauthenticated");
+        return;
+      }
+
+      await tryAccept();
+    }
+
     async function tryAccept() {
+      setStatus("loading");
       try {
         const data = await api.acceptInvite(token);
         setHousehold(data.household_id);
+        localStorage.removeItem("pending_invite_token");
         setStatus("success");
-        router.push("/");
+        router.push("/household");
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : "";
 
-        // Not logged in — redirect to login with return URL
-        if (errMsg.includes("401") || errMsg.includes("403") || errMsg.includes("Could not validate")) {
-          router.push(`/login?redirect=/invite/${token}`);
-          return;
-        }
-
-        // Self-invite — special UI with option to switch accounts
-        if (errMsg.includes("propia invitación") || errMsg.includes("Ya eres miembro")) {
+        // Self-invite or same-account member — special UI
+        if (
+          errMsg.includes("propia invitación") ||
+          errMsg.includes("Ya eres miembro") ||
+          errMsg.includes("Ya perteneces a un grupo compartido")
+        ) {
           setErrorMessage(errMsg);
           setStatus("self-invite");
           return;
@@ -49,13 +61,20 @@ export default function InvitePage({
         setStatus("error");
       }
     }
-    tryAccept();
+
+    init();
   }, [token, router, setHousehold]);
+
+  function handleRedirectToLogin() {
+    localStorage.setItem("pending_invite_token", token);
+    router.push(`/login?redirect=/invite/${token}`);
+  }
 
   async function handleSwitchAccount() {
     const supabase = createClient();
     await supabase.auth.signOut();
     reset();
+    localStorage.setItem("pending_invite_token", token);
     router.push(`/login?redirect=/invite/${token}`);
   }
 
@@ -75,10 +94,34 @@ export default function InvitePage({
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center space-y-4 py-4">
-          {status === "loading" && (
+          {(status === "checking" || status === "loading") && (
             <>
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-luka-primary border-t-transparent" />
-              <p className="text-luka-muted text-sm">Uniéndote al hogar...</p>
+              <p className="text-luka-muted text-sm">Uniéndote al grupo...</p>
+            </>
+          )}
+
+          {status === "unauthenticated" && (
+            <>
+              <p className="text-center text-base font-semibold text-slate-800">
+                Te han invitado a un grupo compartido
+              </p>
+              <p className="text-center text-sm text-slate-500">
+                Inicia sesión o crea una cuenta para aceptar la invitación.
+              </p>
+              <Button
+                onClick={handleRedirectToLogin}
+                className="w-full bg-luka-primary hover:bg-blue-700"
+              >
+                Ya tengo cuenta
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleRedirectToLogin}
+                className="w-full"
+              >
+                Crear cuenta
+              </Button>
             </>
           )}
 
@@ -86,7 +129,7 @@ export default function InvitePage({
             <>
               <p className="text-center text-sm text-slate-700 font-medium">{errorMessage}</p>
               <p className="text-center text-xs text-slate-500">
-                Abre este enlace en el navegador de tu pareja, o cambia de cuenta aquí.
+                Este enlace es para otro miembro. Cambia de cuenta si necesitas.
               </p>
               <Button
                 onClick={handleSwitchAccount}
