@@ -11,6 +11,7 @@ async def require_membership(household_id: uuid.UUID, user_id: uuid.UUID, db: As
         select(HouseholdMember).where(
             HouseholdMember.household_id == household_id,
             HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
         )
     )
     if not result.scalar_one_or_none():
