@@ -5,7 +5,8 @@ _Last updated: 2026-04-07_
 ## In Progress
 
 - **Template Agent production monitoring** — Template agent deployed (2am daily cron on slow worker). Monitoring first autonomous template generations and shadow validations. First LLM-parsed transactions confirmed live (BofA via gemini-2.5-flash, 0.98 confidence).
-- **Plaid production rollout** — Plaid production credentials configured and deployed. BofA connected successfully, 290 transactions synced. Zelle person extraction and CC payment detection working. OAuth redirect URIs configured.
+- **Plaid production rollout** — Plaid production credentials configured and deployed. BofA connected successfully, 290 transactions synced. Zelle person extraction and CC payment detection working. Pending (processing) transactions now visible in frontend. OAuth redirect URIs configured.
+- **Email transaction type + sign fixes** — Email pipeline now correctly infers transaction_type (expense/transfer/income) and stores negative amounts for expenses. Person-to-person payments classified as expense/income, CC payments as transfer. Data migration applied to existing transactions. Monitoring for edge cases.
 
 ## Pending
 

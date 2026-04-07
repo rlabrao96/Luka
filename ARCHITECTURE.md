@@ -117,12 +117,13 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
    - gemini-3.1-flash-lite (threshold 0.9) -> gemini-2.5-flash (0.8) -> gemini-3-flash (0.7) -> gemini-2.5-pro (0.0)
    - Circuit breaker: 50% error rate over 20 requests -> 15min cooldown
    - Each model gets 2 attempts before escalating
-8. **Layer 3 — Legacy Regex:** Banco de Chile format fallback
-9. Parsed email logged to `parsed_email_log` (parser used, model, waterfall depth, raw HTML for template training)
-10. Dedup: Redis-based per-email (24h TTL) + cross-sender 5-minute window
-11. Merchant lookup: known -> instant category, new -> 3 LLM suggestions (Gemini)
-12. Transaction saved with status `pending_email`
-13. WhatsApp notification sent to user with split type buttons
+8. **Layer 3 — Legacy Regex:** Banco de Chile format fallback with transaction type inference from subject/body keywords (person-to-person detection, CC payment detection, income keywords)
+9. **Empty body guard:** Emails with no HTML/text body are skipped before parsing to prevent LLM hallucinations
+10. Parsed email logged to `parsed_email_log` (parser used, model, waterfall depth, raw HTML for template training)
+11. Dedup: Redis-based per-email (24h TTL) + cross-sender 5-minute window (sign-agnostic with abs() for expense amounts)
+12. Merchant lookup: known -> instant category, new -> 3 LLM suggestions (Gemini)
+13. Transaction saved with correct sign: expenses/transfers as negative, income as positive (unified convention across all sources)
+14. WhatsApp: expenses/income get split type buttons; transfers get informational-only message (no split/category flow)
 
 ### Template Agent Flow (Daily 2am)
 1. **Shadow validation:** For banks with active templates, sample 25% of recent template-parsed emails and re-parse with LLM. Any amount mismatch -> auto-retire template.
@@ -132,8 +133,8 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 5. **Promotion:** If passes validation, promote to active + link to bank_registry.
 
 ### WhatsApp Conversational Flow
-1. User receives transaction alert with interactive buttons
-2. User picks split type (Personal/Hogar/Pareja)
+1. User receives transaction alert — expenses/income get interactive split buttons, transfers get informational-only message ("Ajuste entre cuentas" — no action needed)
+2. User picks split type (Personal/Hogar/Pareja) for non-transfer transactions
 3. Category picker presented (inline keyboard)
 4. User confirms -> transaction_split created, status updated
 5. Manual expense: user sends natural language -> parsed into transaction
@@ -152,9 +153,11 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 4. Smart mapper (`backend/modules/plaid/mapper.py`):
    - Extracts person names from Zelle descriptions ("Zelle payment to JOHN DOE Conf#..." → "John Doe")
    - Detects CC bill payments (Amex ACH, Chase, etc.) → only flags as "transfer" if the target card account exists in the system; otherwise treated as expense
-   - Excludes P2P services (Zelle, Venmo, CashApp, PayPal) from transfer classification
+   - Person-to-person payments (Zelle, Venmo, CashApp, PayPal) classified as expense/income, NOT transfer
+   - Transaction type derived from Plaid amount sign before flip: positive = expense, negative = income
    - Amounts stored in cents (Plaid sends dollars × 100)
-5. Reconciliation: `find_email_match()` checks for matching pending email transactions and merges them
+5. Pending (processing) Plaid transactions surfaced in frontend pending section with "bank" badge
+6. Reconciliation: `find_email_match()` checks for matching pending email transactions and merges them
 
 ### Reconciliation Flow
 Reconciliation runs in two places: inline during Plaid/Connect sync (immediate) and via `run_reconciliation_job` cron (6am daily, catches stragglers).
@@ -163,7 +166,7 @@ Reconciliation runs in two places: inline during Plaid/Connect sync (immediate) 
    - **Exact:** same merchant (ilike), +/-2 days, exact absolute amount
    - **Fuzzy:** +/-3 days, 30% amount tolerance (absolute)
    - **Sum match:** N email txs from same merchant whose amounts sum to bank tx (5% tolerance)
-2. All comparisons use `abs(amount)` — email stores positive, Plaid/Connect store negative
+2. All comparisons use `abs(amount)` — all sources now store negative for expenses, positive for income
 3. On match: copies merchant_id, category, transaction_type from email tx -> bank tx; re-links splits; deletes email tx
 4. `detect_transfers()` finds same-amount opposite-sign pairs across accounts within +/-2 days, marks both as transfer
 
@@ -392,7 +395,7 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 - `BudgetBars` — horizontal progress bars color-coded by usage %
 - `AllocationCard` — 50/20/30 allocation sliders with suggestion pills
 - `MonthSelector` — dropdown (desktop) / bottom sheet (mobile)
-- `PendingBlock` — pending/unreconciled transaction buckets
+- `PendingBlock` — pending/unreconciled transaction buckets with date display, source badges ("email"/"bank"), correct category type by amount sign, and transfer display ("Ajuste entre cuentas")
 - `MerchantCard` — merchant review approval cards (currency-aware formatting, prefetch on hover)
 - `SessionGuard` — PWA persistent sessions + 30-min inactivity timeout
 - `StoreInitializer` — prefetches all dashboard data on mount
@@ -416,7 +419,7 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 
 ## Testing
 
-**Backend:** 46 test files in `backend/tests/`, covering all major modules:
+**Backend:** 50 test files in `backend/tests/`, covering all major modules:
 - Auth, transactions, budgets, households, email parsing, WhatsApp handler, merchant normalization
 - Bank connect encryption/mapping, queue routing, worker settings, notifications, categories, subscriptions, reconciliation
 - **New (session 17):** LLM parser, LLM parser integration, parser orchestrator, template executor, template agent, bank registry service
@@ -450,6 +453,10 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 **Joint account auto-classification:** Bank accounts with `account_type = 'joint'` auto-classify all transactions as shared, skipping the WhatsApp split question.
 
 **Luka Connect over Fintoc:** Fintoc was removed entirely and replaced with Luka Connect (standalone bank scraper). Luka Connect supports 9 Chilean banks via browser automation, stored as AES-256-GCM encrypted credentials.
+
+**Unified amount sign convention:** All transaction sources (email, Plaid, bank connect) store expenses/transfers as negative amounts and income as positive. Email pipeline infers transaction_type from LLM/regex output and flips sign accordingly. This eliminates sign-mismatch bugs in reconciliation, frontend display, and dedup logic. A data migration converted existing email transactions to negative expense amounts.
+
+**Transaction type classification (expense vs transfer vs income):** Person-to-person payments (Zelle, bank transfers to other people) are classified as expense or income, NOT transfer. "Transfer" is reserved for own-account moves: CC bill payments, checking-to-savings, ATM cash. This distinction drives the WhatsApp flow (transfers get informational-only messages) and frontend display (transfers show "Ajuste entre cuentas" instead of category/split controls).
 
 **3-tier reconciliation:** Email transactions arrive first (real-time), bank transactions arrive later (scheduled sync). Reconciliation matches them with decreasing confidence: exact -> fuzzy -> sum-match. Email data enriches bank transactions (user-edited categories transfer over), then email duplicates are deleted.
 

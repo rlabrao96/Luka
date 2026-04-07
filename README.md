@@ -22,7 +22,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 
 **Database**
 - Supabase PostgreSQL 15
-- Alembic migrations (30 versions)
+- Alembic migrations (32 versions)
 
 **Auth**
 - Supabase Auth — Google OAuth (Gmail users) + Microsoft OAuth (Outlook users)
@@ -82,8 +82,8 @@ backend/
   core/               Config, database, security (PyJWT), cache (Redis)
   modules/            Feature modules (see "What Luka Does" below)
   jobs/               ARQ task definitions + queue routing
-  alembic/            Database migrations (30 versions)
-  tests/              46 test files
+  alembic/            Database migrations (32 versions)
+  tests/              50 test files
 
 frontend/
   app/
@@ -135,9 +135,9 @@ Supports individual and couple households. Partners can be invited via shareable
 Three-layer email parsing system for LATAM expansion:
 1. **Layer 1 — Declarative Templates:** Auto-generated JSON extraction templates (CSS selectors + regex + fixed transforms). Zero LLM cost per email once promoted.
 2. **Layer 2 — Gemini LLM Waterfall:** Confidence-based model escalation (3.1 Flash Lite -> 2.5 Flash -> 3 Flash -> 2.5 Pro). Circuit breaker for API outages (50% error rate -> 15min cooldown).
-3. **Layer 3 — Legacy Regex:** Fallback for Banco de Chile formats.
+3. **Layer 3 — Legacy Regex:** Fallback for Banco de Chile formats with transaction type inference from subject/body keywords.
 
-Receives Gmail push notifications via Google Cloud Pub/Sub and Outlook webhooks via Microsoft Graph. DB-backed bank registry (101 banks across CL, CO, MX, PE, BR, US) with Redis-cached lookups replaces hardcoded sender domains. Financial keyword filter now supports Spanish, English, and Portuguese.
+Receives Gmail push notifications via Google Cloud Pub/Sub and Outlook webhooks via Microsoft Graph. DB-backed bank registry (101 banks across CL, CO, MX, PE, BR, US) with Redis-cached lookups replaces hardcoded sender domains. Financial keyword filter now supports Spanish, English, and Portuguese. Empty email bodies are detected and skipped before parsing to prevent LLM hallucinations.
 
 **Template Agent** (`backend/modules/email/template_agent.py`)
 Autonomous ARQ cron job (daily 2am on slow worker). Discovers banks with sufficient LLM-parsed emails but no active template, generates declarative templates via Gemini, validates against LLM ground truth (100% amount match, 95% merchant match required), promotes to production, and auto-retires on shadow validation drift.
@@ -149,10 +149,10 @@ DB-backed bank registry with Redis cache (24h TTL). 101 banks seeded across 6 co
 Integrates with Luka Connect, a standalone bank scraping service (separate repo). Stores AES-256-GCM encrypted bank credentials, triggers scraping jobs, maps scraped movements to Luka transactions with deduplication. Scheduled syncs run every 6 hours.
 
 **Bank Connect — US** (`backend/modules/plaid/`)
-Plaid Link integration for US bank accounts (production). Handles link token creation, public token exchange, transaction sync with cursor pagination, and account kind detection. Amounts stored in cents. Smart transaction mapping: extracts person names from Zelle transfers, detects credit card payments (Amex, Chase, etc.) and only flags as "transfer" if the target card account exists in the system. Scheduled syncs run daily.
+Plaid Link integration for US bank accounts (production). Handles link token creation, public token exchange, transaction sync with cursor pagination, and account kind detection. Amounts stored in cents. Smart transaction mapping: extracts person names from Zelle transfers, detects credit card payments (Amex, Chase, etc.) and only flags as "transfer" if the target card account exists in the system. Person-to-person payments (Zelle, bank transfers) are classified as expense/income, not transfer. Pending (processing) Plaid transactions are surfaced in the frontend pending section with a "bank" badge. Scheduled syncs run daily.
 
 **Transaction Processing** (`backend/modules/transactions/`)
-Core transaction storage with support for personal, partner, and shared split types. Tracks transaction type (income/expense/transfer), source (email/bank_connect/plaid/whatsapp/manual), and reconciliation status. Optimistic category updates with merchant feedback loops.
+Core transaction storage with support for personal, partner, and shared split types. Tracks transaction type (income/expense/transfer), source (email/bank_connect/plaid/whatsapp/manual), and reconciliation status. Unified sign convention: expenses and transfers are stored as negative amounts, income as positive — consistent across all sources (email, Plaid, bank connect). Optimistic category updates with merchant feedback loops.
 
 **Reconciliation** (`backend/modules/reconciliation/`)
 Matches email-sourced transactions with bank-sourced transactions using 3-tier priority matching (exact -> fuzzy -> sum-match). Compares absolute amounts to handle sign differences between sources (email=positive, Plaid/connect=negative). Runs during both Plaid sync and luka-connect sync. Enriches bank transactions with user-edited categories from email txs. Also detects transfers between accounts (same-amount opposite-sign pairs).
@@ -161,7 +161,7 @@ Matches email-sourced transactions with bank-sourced transactions using 3-tier p
 Two-tier system: known merchants resolve instantly from a global DB cache, new merchants get 3 LLM-suggested categories (Gemini 2.5 Flash). Canonical merchant grouping via LLM batching. Training UI at `/train` for local admin use. User category selections feed back into the merchant database.
 
 **WhatsApp Integration** (`backend/modules/whatsapp/`)
-Full conversational flow via Meta WhatsApp Cloud API. Transaction alerts include sender, subject, and Chile-timezone time. Interactive split type selection (Personal/Hogar), category picker, and confirmation. Supports manual expense entry via natural language.
+Full conversational flow via Meta WhatsApp Cloud API. Transaction alerts include sender, subject, and Chile-timezone time. Interactive split type selection (Personal/Hogar), category picker, and confirmation. Transfers (CC payments, own-account moves) receive an informational-only message with no split/category flow. Supports manual expense entry via natural language.
 
 **Budgets & Allocations** (`backend/modules/budgets/`)
 Monthly household budgets with waterfall ceiling logic. Personal budget service, 50/20/30 allocation suggestions (historical + recommended), per-category budgets. Frontend includes pace charts, allocation sliders, and waterfall cards.
