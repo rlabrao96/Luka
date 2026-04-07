@@ -59,7 +59,11 @@ export function useSubscriptionOverride() {
       }
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["subscriptions"] });
+      // Delay revalidation so the DB commit is visible and
+      // the optimistic update isn't immediately overwritten
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["subscriptions"] });
+      }, 2000);
     },
   });
 }
