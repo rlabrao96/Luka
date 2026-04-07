@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction, type PendingTransactions } from "@/app/lib/api";
-import { Trash2, ChevronDown, TrendingDown, TrendingUp } from "lucide-react";
+import { Trash2, ChevronDown, TrendingDown, TrendingUp, ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
@@ -49,7 +49,7 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
 
   const { expense: expenseCats, income: incomeCats } = useCategories();
-  const isIncome = Number(txn.amount) < 0;
+  const isIncome = Number(txn.amount) > 0 && txn.transaction_type !== "transfer";
   const categories = isIncome ? incomeCats : expenseCats;
 
   async function handleSelect(cat: string | null) {
@@ -202,7 +202,7 @@ function PendingCategoryPill({ txn }: { txn: Transaction }) {
 
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
 
-  const isIncome = Number(txn.amount) < 0;
+  const isIncome = Number(txn.amount) > 0 && txn.transaction_type !== "transfer";
 
   async function handleSelect(cat: string | null) {
     setLocalCategory(cat);
@@ -267,11 +267,14 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
       <div className="space-y-2">
         {transactions.map((txn) => {
           const amount = Number(txn.amount);
-          const isOutflow = Number(txn.amount) < 0;
+          const isTransfer = txn.transaction_type === "transfer";
+          const isOutflow = amount < 0;
           const currency = txn.currency ?? "CLP";
-          const formattedAmount = isOutflow
+          const formattedAmount = isTransfer
             ? `(${formatAmount(amount, currency)})`
-            : `+${formatAmount(amount, currency)}`;
+            : isOutflow
+              ? `(${formatAmount(amount, currency)})`
+              : `+${formatAmount(amount, currency)}`;
           const bankName = txn.bank_name;
 
           return (
@@ -287,12 +290,16 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
                 <div
                   className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0"
                   style={{
-                    background: isOutflow
-                      ? "linear-gradient(135deg, #fef2f2, #fecaca)"
-                      : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
+                    background: isTransfer
+                      ? "linear-gradient(135deg, #f0f9ff, #bae6fd)"
+                      : isOutflow
+                        ? "linear-gradient(135deg, #fef2f2, #fecaca)"
+                        : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
                   }}
                 >
-                  {isOutflow ? (
+                  {isTransfer ? (
+                    <ArrowLeftRight size={16} className="text-sky-500" strokeWidth={2.5} />
+                  ) : isOutflow ? (
                     <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
                   ) : (
                     <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
@@ -314,7 +321,7 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
                     <span
                       className={cn(
                         "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
-                        isOutflow ? "text-red-500" : "text-luka-success"
+                        isTransfer ? "text-sky-500" : isOutflow ? "text-red-500" : "text-luka-success"
                       )}
                     >
                       {formattedAmount}
@@ -327,17 +334,23 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
                       <span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
                         {bankName ? toTitleCase(bankName) : "—"}
                       </span>
-                      {isMobile ? (
+                      {txn.transaction_type === "transfer" ? (
+                        <span className="text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
+                          Ajuste entre cuentas
+                        </span>
+                      ) : isMobile ? (
                         <PendingCategoryPill txn={txn} />
                       ) : (
                         <PendingCategoryCell txn={txn} />
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {isMobile ? (
-                        <SplitTypeEditor txn={txn} isMobile={true} />
-                      ) : (
-                        <PendingSplitCell txn={txn} />
+                      {txn.transaction_type !== "transfer" && (
+                        isMobile ? (
+                          <SplitTypeEditor txn={txn} isMobile={true} />
+                        ) : (
+                          <PendingSplitCell txn={txn} />
+                        )
                       )}
                       {renderAction?.(txn)}
                     </div>
