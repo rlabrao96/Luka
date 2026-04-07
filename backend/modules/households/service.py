@@ -160,46 +160,64 @@ async def get_category_breakdown(db: AsyncSession, household_id, month: str | No
     return build_category_breakdown(rows)
 
 
-def calculate_settlement(members: list[dict], split_ratio: list[int]) -> dict:
-    """Pure function: calculates who owes whom based on actual spending and ratio."""
-    if len(members) != 2:
-        return {
-            "from_user_id": "",
-            "from_user_name": "",
-            "to_user_id": "",
-            "to_user_name": "",
-            "amount": Decimal("0"),
-        }
+def calculate_settlement(members: list[dict], split_ratio: list[int]) -> list[dict]:
+    """Pool-based settlement for N members. Returns minimal list of transfers."""
+    if len(members) <= 1 or not split_ratio:
+        return []
 
     grand_total = sum(m["total"] for m in members)
     if grand_total == 0:
-        return {
-            "from_user_id": str(members[0]["user_id"]),
-            "from_user_name": members[0]["full_name"],
-            "to_user_id": str(members[1]["user_id"]),
-            "to_user_name": members[1]["full_name"],
-            "amount": Decimal("0"),
-        }
+        return []
 
-    expected_0 = grand_total * Decimal(split_ratio[0]) / Decimal(100)
-    diff_0 = expected_0 - members[0]["total"]
+    # Calculate each member's balance (positive = overpaid/creditor, negative = underpaid/debtor)
+    balances = []
+    for i, member in enumerate(members):
+        ratio = Decimal(split_ratio[i]) if i < len(split_ratio) else Decimal(0)
+        expected = grand_total * ratio / Decimal(100)
+        balance = member["total"] - expected
+        balances.append(
+            {
+                "user_id": str(member["user_id"]),
+                "full_name": member["full_name"],
+                "balance": balance,
+            }
+        )
 
-    if diff_0 > 0:
-        return {
-            "from_user_id": str(members[0]["user_id"]),
-            "from_user_name": members[0]["full_name"],
-            "to_user_id": str(members[1]["user_id"]),
-            "to_user_name": members[1]["full_name"],
-            "amount": diff_0,
-        }
-    else:
-        return {
-            "from_user_id": str(members[1]["user_id"]),
-            "from_user_name": members[1]["full_name"],
-            "to_user_id": str(members[0]["user_id"]),
-            "to_user_name": members[0]["full_name"],
-            "amount": abs(diff_0),
-        }
+    # Greedy algorithm: match largest creditor with largest debtor
+    transfers = []
+    creditors = sorted(
+        [b for b in balances if b["balance"] > 0],
+        key=lambda x: x["balance"],
+        reverse=True,
+    )
+    debtors = sorted(
+        [b for b in balances if b["balance"] < 0],
+        key=lambda x: x["balance"],
+    )
+
+    ci, di = 0, 0
+    while ci < len(creditors) and di < len(debtors):
+        creditor = creditors[ci]
+        debtor = debtors[di]
+        amount = min(creditor["balance"], abs(debtor["balance"]))
+        if amount > 0:
+            transfers.append(
+                {
+                    "from_user_id": debtor["user_id"],
+                    "from_user_name": debtor["full_name"],
+                    "to_user_id": creditor["user_id"],
+                    "to_user_name": creditor["full_name"],
+                    "amount": amount,
+                }
+            )
+        creditor["balance"] -= amount
+        debtor["balance"] += amount
+        if creditor["balance"] == 0:
+            ci += 1
+        if debtor["balance"] == 0:
+            di += 1
+
+    return transfers
 
 
 async def get_settlement(db: AsyncSession, household_id, month: str | None = None):
