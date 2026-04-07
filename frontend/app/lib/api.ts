@@ -234,6 +234,11 @@ export interface BankAccountRow {
   error_code: string | null;
 }
 
+export interface RecentCharge {
+  date: string;
+  amount: number;
+}
+
 export interface RecurringExpense {
   merchant_name: string;
   category: string | null;
@@ -241,12 +246,15 @@ export interface RecurringExpense {
   last_amount: number;
   previous_amount: number | null;
   last_charge_date: string;
-  predicted_next_date: string;
+  next_charge_day: number;
   frequency: string;
   trend: "stable" | "increased" | "decreased";
   trend_pct: number | null;
   months_seen: number;
   split_type: string;
+  currency: string;
+  status: string;
+  recent_charges: RecentCharge[];
 }
 
 export interface SubscriptionsSummary {
@@ -258,7 +266,15 @@ export interface SubscriptionsSummary {
 
 export interface SubscriptionsResponse {
   items: RecurringExpense[];
-  summary: SubscriptionsSummary;
+  summary_by_currency: Record<string, SubscriptionsSummary>;
+  computed_at: string | null;
+}
+
+export interface SubscriptionOverrideBody {
+  merchant_key: string;
+  status?: string | null;
+  category?: string | null;
+  next_charge_day?: number | null;
 }
 
 // --- Luka Connect ---
@@ -604,6 +620,15 @@ export const api = {
 
   getSubscriptions: (monthsBack?: number) =>
     apiFetch<SubscriptionsResponse>(`/subscriptions/detected${monthsBack ? `?months_back=${monthsBack}` : ""}`),
+
+  refreshSubscriptions: () =>
+    apiFetch<SubscriptionsResponse>("/subscriptions/refresh", { method: "POST" }),
+
+  upsertSubscriptionOverride: (body: SubscriptionOverrideBody) =>
+    apiFetch<{ ok: boolean }>("/subscriptions/override", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 
   // --- Notifications ---
   getNotifications: () => apiFetch<NotificationItem[]>("/notifications"),
