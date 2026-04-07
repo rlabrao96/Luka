@@ -97,9 +97,24 @@ def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, househol
 
 
 def is_plaid_transfer(plaid_tx) -> bool:
-    """Check if Plaid's personal_finance_category indicates a transfer."""
+    """Check if Plaid transaction is an internal transfer (not person-to-person).
+
+    Zelle/Venmo are categorized by Plaid as TRANSFER_IN/OUT but are real
+    expenses/income to other people — not internal account transfers.
+    Only flag as "transfer" for CC payments, loan payments, and account moves.
+    """
     pfc = getattr(plaid_tx, "personal_finance_category", None)
     if not pfc:
         return False
     primary = getattr(pfc, "primary", "")
-    return primary in ("TRANSFER_IN", "TRANSFER_OUT", "LOAN_PAYMENTS")
+    if primary not in ("TRANSFER_IN", "TRANSFER_OUT", "LOAN_PAYMENTS"):
+        return False
+
+    # Exclude person-to-person payments (Zelle, Venmo, CashApp)
+    name = (plaid_tx.name or "").lower()
+    merchant = (plaid_tx.merchant_name or "").lower()
+    p2p_keywords = ("zelle", "venmo", "cashapp", "cash app", "paypal")
+    if any(kw in name or kw in merchant for kw in p2p_keywords):
+        return False
+
+    return True
