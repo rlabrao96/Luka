@@ -1,3 +1,4 @@
+import json
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -23,7 +24,7 @@ async def create_household(
 
 
 async def create_invite(
-    db: AsyncSession, household: Household, invited_by: User, invited_email: str
+    db: AsyncSession, household: Household, invited_by: User, invited_email: str | None
 ) -> HouseholdInvite:
     invite = HouseholdInvite(
         household_id=household.id,
@@ -53,21 +54,177 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
         )
 
     # Prevent user who is already a member of this household
-    existing = await db.execute(
+    existing_in_target = await db.execute(
         select(HouseholdMember).where(
             HouseholdMember.household_id == invite.household_id,
             HouseholdMember.user_id == user.id,
+            HouseholdMember.left_at.is_(None),
         )
     )
-    if existing.scalar_one_or_none():
+    if existing_in_target.scalar_one_or_none():
         raise ValueError("Ya eres miembro de este hogar.")
+
+    # Max 5 members check
+    active_count_result = await db.execute(
+        text(
+            "SELECT COUNT(*) FROM household_members WHERE household_id = :hid AND left_at IS NULL"
+        ),
+        {"hid": str(invite.household_id)},
+    )
+    if active_count_result.scalar() >= 5:
+        raise ValueError("Este grupo ya tiene el máximo de 5 miembros.")
+
+    # If user is in another group, auto-leave their individual household (only if individual)
+    existing_elsewhere = await db.execute(
+        select(HouseholdMember).where(
+            HouseholdMember.user_id == user.id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    current_membership = existing_elsewhere.scalar_one_or_none()
+    if current_membership:
+        # Check if it's an individual household — if so, soft-leave it
+        h_result = await db.execute(
+            select(Household).where(Household.id == current_membership.household_id)
+        )
+        current_household = h_result.scalar_one_or_none()
+        if current_household and current_household.type == "individual":
+            current_membership.left_at = datetime.now(timezone.utc)
+        else:
+            raise ValueError(
+                "Ya eres miembro de otro grupo. Debes salir de ese grupo antes de unirte a uno nuevo."
+            )
 
     invite.accepted_at = datetime.now(timezone.utc)
     member = HouseholdMember(household_id=invite.household_id, user_id=user.id, role="member")
     db.add(member)
+
+    # Auto-adjust split ratio to equal shares for new member count
+    new_count_result = await db.execute(
+        text(
+            "SELECT COUNT(*) FROM household_members WHERE household_id = :hid AND left_at IS NULL"
+        ),
+        {"hid": str(invite.household_id)},
+    )
+    # +1 for the member we just added (not yet committed)
+    new_count = new_count_result.scalar() + 1
+    equal_ratio = _equal_ratio(new_count)
+    await db.execute(
+        text("UPDATE households SET split_ratio = :ratio WHERE id = :id"),
+        {"ratio": json.dumps(equal_ratio), "id": str(invite.household_id)},
+    )
+
     await db.commit()
     await db.refresh(invite)
     return invite
+
+
+async def remove_member(
+    db: AsyncSession, household_id: uuid.UUID, member_id: uuid.UUID
+) -> uuid.UUID:
+    """Soft-delete a member from a household. Returns the new individual household id."""
+    member_result = await db.execute(
+        select(HouseholdMember).where(
+            HouseholdMember.id == member_id,
+            HouseholdMember.household_id == household_id,
+        )
+    )
+    member = member_result.scalar_one_or_none()
+    if not member:
+        raise ValueError("Member not found in this household")
+
+    removed_user_id = member.user_id
+
+    # Soft-delete the membership
+    member.left_at = datetime.now(timezone.utc)
+
+    # Deactivate bank accounts belonging to this user in this household
+    await db.execute(
+        text(
+            "UPDATE bank_accounts SET is_active = false WHERE user_id = :uid AND household_id = :hid"
+        ),
+        {"uid": str(removed_user_id), "hid": str(household_id)},
+    )
+
+    # Create a new individual household for the removed user
+    user_result = await db.execute(
+        text("SELECT full_name FROM users WHERE id = :id"),
+        {"id": str(removed_user_id)},
+    )
+    user_row = user_result.one_or_none()
+    new_name = f"Personal de {user_row.full_name}" if user_row else "Mi cuenta personal"
+    new_household = Household(name=new_name, type="individual")
+    db.add(new_household)
+    await db.flush()
+
+    new_member = HouseholdMember(
+        household_id=new_household.id, user_id=removed_user_id, role="owner"
+    )
+    db.add(new_member)
+
+    # Auto-adjust split ratio for remaining members
+    remaining_result = await db.execute(
+        text(
+            "SELECT COUNT(*) FROM household_members WHERE household_id = :hid AND left_at IS NULL"
+        ),
+        {"hid": str(household_id)},
+    )
+    # -1 for the member we just soft-deleted (not yet committed)
+    remaining_count = remaining_result.scalar() - 1
+    if remaining_count >= 2:
+        equal_ratio = _equal_ratio(remaining_count)
+        await db.execute(
+            text("UPDATE households SET split_ratio = :ratio WHERE id = :id"),
+            {"ratio": json.dumps(equal_ratio), "id": str(household_id)},
+        )
+
+    await db.commit()
+    await db.refresh(new_household)
+    return new_household.id
+
+
+async def get_household_members(db: AsyncSession, household_id: uuid.UUID) -> list[dict]:
+    """Return active members with their roles."""
+    result = await db.execute(
+        text("""
+            SELECT hm.id, hm.user_id, hm.role, hm.joined_at,
+                   u.full_name, u.email
+            FROM household_members hm
+            JOIN users u ON u.id = hm.user_id
+            WHERE hm.household_id = :hid AND hm.left_at IS NULL
+            ORDER BY hm.joined_at ASC
+        """),
+        {"hid": str(household_id)},
+    )
+    return [dict(row._mapping) for row in result.all()]
+
+
+async def get_pending_invites(db: AsyncSession, household_id: uuid.UUID) -> list[dict]:
+    """Return non-accepted, non-expired invites."""
+    result = await db.execute(
+        text("""
+            SELECT hi.id, hi.token, hi.invited_email, hi.expires_at, hi.created_at,
+                   u.full_name AS invited_by_name
+            FROM household_invites hi
+            JOIN users u ON u.id = hi.invited_by
+            WHERE hi.household_id = :hid
+              AND hi.accepted_at IS NULL
+              AND hi.expires_at > NOW()
+            ORDER BY hi.created_at DESC
+        """),
+        {"hid": str(household_id)},
+    )
+    return [dict(row._mapping) for row in result.all()]
+
+
+def _equal_ratio(n: int) -> list[int]:
+    """Return equal split ratio for n members summing to 100."""
+    base = 100 // n
+    remainder = 100 % n
+    ratio = [base] * n
+    for i in range(remainder):
+        ratio[i] += 1
+    return ratio
 
 
 async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) -> list[dict]:
