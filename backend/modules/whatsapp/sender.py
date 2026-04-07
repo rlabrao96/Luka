@@ -21,7 +21,9 @@ def _format_amount(amount: float, currency: str = "CLP") -> str:
 
     USD amounts are stored as cents (e.g. $7.00 → 700).
     CLP amounts are stored as integers (e.g. $15.990 → 15990).
+    Always uses abs() since expenses are stored as negative amounts.
     """
+    amount = abs(amount)
     if currency == "USD":
         dollars = amount / 100
         return f"US${dollars:,.2f}"
