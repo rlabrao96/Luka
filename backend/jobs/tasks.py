@@ -12,6 +12,7 @@ from modules.email.bank_registry_service import (
 )
 from modules.email.models import ParsedEmailLog
 from modules.merchants.service import lookup_merchant
+from modules.merchants.normalizer import normalize_merchant
 from modules.whatsapp.sender import send_expense_alert
 from modules.whatsapp.session import WhatsAppSession, save_session, save_msgid
 from modules.transactions.models import Transaction, TransactionSplit, ProcessedWebhook, FailedJob
@@ -665,7 +666,12 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 else:
                     names_to_process.append(name)
                     if not merchant:
-                        db.add(Merchant(raw_name=name, normalized_name=name))
+                        db.add(
+                            Merchant(
+                                raw_name=name,
+                                normalized_name=normalize_merchant(name),
+                            )
+                        )
                         await db.flush()
 
             # Phase 1: LLM grouping for truly new merchants

@@ -16,6 +16,7 @@ class ReviewCardResponse(BaseModel):
     transactions: list[ReviewTransactionInfo] = []
     transaction_count: int = 0
     total_amount: float = 0.0
+    currency: str = "CLP"
     is_verified: bool = False
 
     model_config = {"from_attributes": True}

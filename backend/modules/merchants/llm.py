@@ -42,8 +42,8 @@ _INCOME_CATEGORIES = [
 ]
 
 _SYSTEM_PROMPT = (
-    "Eres un asistente de finanzas personales chileno. "
-    "Cuando recibas el nombre de un comercio de un banco chileno, "
+    "Eres un asistente de finanzas personales. "
+    "Cuando recibas el nombre de un comercio (de Chile, EE.UU. u otro país), "
     "elige las 3 categorías más apropiadas de esta lista EXACTA de categorías de gastos: "
     f"{', '.join(_EXPENSE_CATEGORIES)}. "
     "No inventes categorías nuevas. Responde ÚNICAMENTE con un JSON. "
