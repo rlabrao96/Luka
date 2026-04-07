@@ -29,8 +29,8 @@ _EXPENSE_CATEGORIES = [
     "Educación",
     "Viajes",
     "Servicios",
-    "Suscripciones",
-    "Mascotas",
+    "Cuentas",
+    "Inversiones",
     "Otros",
 ]
 

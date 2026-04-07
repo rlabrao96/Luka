@@ -21,7 +21,7 @@ _DEFAULT_CATEGORIES = [
     ("Educación", "expense", 12),
     ("Viajes", "expense", 13),
     ("Servicios", "expense", 14),
-    ("Suscripciones", "expense", 15),
+    ("Cuentas", "expense", 15),
     ("Otros", "expense", 16),
     ("Sueldo", "income", 0),
     ("Freelance", "income", 1),
