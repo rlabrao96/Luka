@@ -76,6 +76,10 @@ def detect_from_rows(rows: list[dict]) -> list[dict]:
             continue
 
         sorted_txns = sorted(txns, key=lambda t: t["tx_date"], reverse=True)
+        # Ensure tx_date is a plain date (DB may return datetime with tz)
+        for t in sorted_txns:
+            if hasattr(t["tx_date"], "date"):
+                t["tx_date"] = t["tx_date"].date()
         latest = sorted_txns[0]
         previous = sorted_txns[1] if len(sorted_txns) > 1 else None
 
