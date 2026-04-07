@@ -261,6 +261,12 @@ async def process_email(
 
                 # Parse email (three-layer: template → LLM → regex)
                 stripped = _strip_html(raw_email.body)
+                if not stripped.strip():
+                    logger.warning(
+                        "process_email: empty email body for %s, skipping", raw_email.message_id
+                    )
+                    continue
+
                 parsed, parser_used, depth, model_used = await parse_bank_email(
                     raw_email.body,
                     stripped,
