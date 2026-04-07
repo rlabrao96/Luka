@@ -317,6 +317,10 @@ async def process_email(
                     continue
 
                 txn_status = "pending"
+                tx_type = getattr(parsed, "transaction_type", None) or "expense"
+
+                # Store expenses as negative, income as positive (matches Plaid/Connect convention)
+                stored_amount = -abs(parsed.amount) if tx_type == "expense" else abs(parsed.amount)
 
                 # Create pending transaction
                 txn = Transaction(
@@ -324,12 +328,13 @@ async def process_email(
                     household_id=household_id,
                     bank_account_id=bank_account.id if bank_account else None,
                     raw_merchant_name=parsed.raw_merchant,
-                    amount=parsed.amount,
+                    amount=stored_amount,
                     currency=parsed.currency,
                     transaction_date=parsed.transaction_date,
                     source=provider,
                     source_bank_name=inferred_bank,
                     status=txn_status,
+                    transaction_type=tx_type,
                     raw_email_text=raw_email.body,
                 )
 
