@@ -101,6 +101,13 @@ async def send_category_list(to: str, categories: list[str], context_msg: str | 
     return data["messages"][0]["id"]
 
 
+async def send_transfer_alert(to: str, amount: int, merchant: str, currency: str = "CLP") -> str:
+    """Send informational transfer alert (no split buttons). Returns message ID."""
+    formatted = _format_amount(amount, currency)
+    body = f"_Luka registró una transferencia_\n*Destino:* {merchant}\n*Monto:* {formatted}"
+    return await send_text(to, body)
+
+
 async def send_text(to: str, body: str) -> str:
     """Send a simple text message. Returns message ID."""
     payload = {

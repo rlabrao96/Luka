@@ -13,7 +13,7 @@ from modules.email.bank_registry_service import (
 from modules.email.models import ParsedEmailLog
 from modules.merchants.service import lookup_merchant
 from modules.merchants.normalizer import normalize_merchant
-from modules.whatsapp.sender import send_expense_alert
+from modules.whatsapp.sender import send_expense_alert, send_transfer_alert
 from modules.whatsapp.session import WhatsAppSession, save_session, save_msgid
 from modules.transactions.models import Transaction, TransactionSplit, ProcessedWebhook, FailedJob
 from modules.auth.models import User
@@ -319,8 +319,8 @@ async def process_email(
                 txn_status = "pending"
                 tx_type = getattr(parsed, "transaction_type", None) or "expense"
 
-                # Store expenses as negative, income as positive (matches Plaid/Connect convention)
-                stored_amount = -abs(parsed.amount) if tx_type == "expense" else abs(parsed.amount)
+                # Store expenses/transfers as negative, income as positive (matches Plaid/Connect convention)
+                stored_amount = abs(parsed.amount) if tx_type == "income" else -abs(parsed.amount)
 
                 # Create pending transaction
                 txn = Transaction(
@@ -373,7 +373,7 @@ async def process_email(
 
                 # Add transaction split AFTER commit so txn.id exists
                 is_joint = bank_account and bank_account.account_type == "joint"
-                if is_joint:
+                if is_joint and tx_type != "transfer":
                     # Auto-classify as shared, just ask for category
                     split = TransactionSplit(
                         transaction_id=txn.id,
@@ -389,6 +389,18 @@ async def process_email(
                         "process_email: user %s has no phone, skipping WhatsApp", user.email
                     )
                     continue
+
+                # Transfers (inter-account, CC payments) get informational message only
+                if tx_type == "transfer":
+                    msg_id = await send_transfer_alert(
+                        to=phone,
+                        amount=parsed.amount,
+                        merchant=parsed.raw_merchant,
+                        currency=parsed.currency,
+                    )
+                    await save_msgid(msg_id, str(txn.id), redis_client)
+                    continue
+
                 session = WhatsAppSession(
                     transaction_id=str(txn.id),
                     step="awaiting_category" if is_joint else "awaiting_split",

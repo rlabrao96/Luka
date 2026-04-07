@@ -59,6 +59,14 @@ _TRANSFER_PATTERNS = [
     rf"Datos de destino\s+Nombre\s+({_NAME_ANY}?)\s+RUT",
 ]
 
+# Credit card payment patterns — detect CC payments and extract card info
+_CC_PAYMENT_PATTERNS = [
+    # "pago a la tarjeta de crédito Visa Signature Titular terminación ****5032"
+    r"pago a la tarjeta de cr[eé]dito\s+(.+?)\s*(?:,|por\s+un\s+monto|$)",
+    # "Comprobante Pago Tarjeta" with card ending
+    r"[Cc]omprobante [Pp]ago [Tt]arjeta",
+]
+
 # US merchant patterns — BofA uses "Where: MERCHANT_NAME"
 # Merchant names can be mixed case (Spotify), contain @ (BA@PENNPRETCAFE), etc.
 _US_MERCHANT_PATTERNS = [
@@ -112,6 +120,29 @@ def _parse_amount(text: str) -> tuple[int, str] | tuple[None, None]:
             except ValueError:
                 continue
     return None, None
+
+
+def _parse_cc_payment(text: str) -> str | None:
+    """Detect credit card payment emails and return card description as merchant."""
+    # Look for "pago a la tarjeta de crédito ... terminación ****XXXX"
+    match = re.search(
+        r"pago a la tarjeta de cr[eé]dito\s+(.+?)terminaci[oó]n\s+\*{0,4}(\d{4})",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        card_type = match.group(1).strip().rstrip(",").strip()
+        # Remove "Titular" noise from card description
+        card_type = re.sub(r"\s+[Tt]itular\s*$", "", card_type).strip()
+        last_four = match.group(2)
+        return f"Pago Tarjeta {card_type} ****{last_four}".strip()
+    # "Comprobante Pago Tarjeta" subject pattern
+    if re.search(r"[Cc]omprobante [Pp]ago [Tt]arjeta", text):
+        card_match = re.search(r"terminaci[oó]n\s+\*{0,4}(\d{4})", text)
+        if card_match:
+            return f"Pago Tarjeta ****{card_match.group(1)}"
+        return "Pago Tarjeta"
+    return None
 
 
 def _parse_transfer_recipient(text: str) -> str | None:
@@ -197,9 +228,13 @@ def parse_bank_email_regex(raw_text: str) -> ParsedEmail | None:
     if amount is None:
         return None
 
-    # Try transfer patterns first (e.g. "transferencia de fondos a Juan Jose Lamarca")
-    transfer_recipient = _parse_transfer_recipient(text)
-    if transfer_recipient:
+    # Try CC payment first (e.g. "pago a la tarjeta de crédito Visa ****5032")
+    cc_merchant = _parse_cc_payment(text)
+    if cc_merchant:
+        merchant = cc_merchant
+        transaction_type = "transfer"
+    # Then try transfer patterns (e.g. "transferencia de fondos a Juan Jose Lamarca")
+    elif transfer_recipient := _parse_transfer_recipient(text):
         merchant = transfer_recipient
         transaction_type = "transfer"
     else:
