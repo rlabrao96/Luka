@@ -331,11 +331,14 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
                     </span>
                   </div>
 
-                  {/* Line 2: Bank name + Category + Split + Action */}
+                  {/* Line 2: Bank name + Date + Category + Split + Action */}
                   <div className="flex justify-between items-center mt-1">
                     <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
                       <span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
                         {bankName ? toTitleCase(bankName) : "—"}
+                      </span>
+                      <span className="text-[9px] sm:text-[10px] text-slate-300 shrink-0">
+                        {new Date(txn.transaction_date).toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}
                       </span>
                       {txn.transaction_type === "transfer" ? (
                         <span className="text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
