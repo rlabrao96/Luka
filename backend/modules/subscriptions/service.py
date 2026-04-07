@@ -123,7 +123,7 @@ def detect_from_rows(rows: list[dict]) -> list[dict]:
 
 
 def _cache_key(user_id) -> str:
-    return f"subscriptions:{user_id}"
+    return f"subscriptions:v2:{user_id}"
 
 
 async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int = 6) -> dict:
