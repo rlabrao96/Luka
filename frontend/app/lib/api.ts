@@ -53,6 +53,7 @@ export interface Transaction {
   bank_account_id: string | null;
   account_kind: string | null;
   transaction_type: string | null;
+  source_type: string | null;
   display_name: string | null;
 }
 

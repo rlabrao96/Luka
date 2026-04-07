@@ -311,8 +311,11 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
                   {/* Line 1: Email badge + Merchant + Amount */}
                   <div className="flex justify-between items-baseline gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[8px] sm:text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-500 font-medium shrink-0">
-                        email
+                      <span className={cn(
+                        "text-[8px] sm:text-[9px] px-1 py-0.5 rounded font-medium shrink-0",
+                        txn.source_type === "plaid" ? "bg-emerald-50 text-emerald-500" : "bg-blue-50 text-blue-500"
+                      )}>
+                        {txn.source_type === "plaid" ? "bank" : "email"}
                       </span>
                       <p className="text-[13px] sm:text-sm font-semibold text-luka-dark truncate">
                         {toTitleCase(txn.raw_merchant_name)}

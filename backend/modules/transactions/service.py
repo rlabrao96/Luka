@@ -217,8 +217,9 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
     """
     # All pending transactions (email + plaid processing)
     email_pending_result = await db.execute(
-        select(Transaction, TransactionSplit)
+        select(Transaction, TransactionSplit, BankAccount.bank_name)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .where(
             Transaction.user_id == user_id,
             Transaction.source.in_(["gmail", "outlook", "plaid"]),
@@ -230,8 +231,9 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
 
     # Connect transactions needing classification
     needs_class_result = await db.execute(
-        select(Transaction, TransactionSplit)
+        select(Transaction, TransactionSplit, BankAccount.bank_name)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .where(
             Transaction.user_id == user_id,
             Transaction.source == "connect",
@@ -242,9 +244,13 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
     )
     needs_class_rows = needs_class_result.all()
 
-    # All email-pending txns go to awaiting_reconciliation (sync tracking removed with Fintoc)
-    awaiting = [_txn_to_dict(txn, split) for txn, split in email_pending_rows]
-    needs_classification = [_txn_to_dict(txn, split) for txn, split in needs_class_rows]
+    def _pending_to_dict(txn, split, bank_name):
+        d = _txn_to_dict(txn, split)
+        d["bank_name"] = bank_name or txn.source_bank_name
+        return d
+
+    awaiting = [_pending_to_dict(txn, split, bn) for txn, split, bn in email_pending_rows]
+    needs_classification = [_pending_to_dict(txn, split, bn) for txn, split, bn in needs_class_rows]
 
     return {
         "awaiting_reconciliation": awaiting,
