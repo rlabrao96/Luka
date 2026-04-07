@@ -68,9 +68,8 @@ def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, househol
     if zelle_person:
         raw_name = zelle_person
     elif _is_cc_payment(full_name):
-        # Credit card payments → use issuer name, mark as transfer
+        # Credit card payments → extract issuer name (caller decides if transfer)
         raw_name = full_name.split(" DES:")[0].strip().title()
-        transaction_type = "transfer"
     else:
         # Default: prefer merchant_name, fall back to name
         raw_name = plaid_tx.merchant_name or plaid_tx.name or "Unknown"

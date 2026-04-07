@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, delete
+from sqlalchemy import func as sa_func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.encryption import decrypt_token
@@ -90,9 +90,21 @@ async def run_plaid_sync(
             plaid_tx, str(bank_account_id), str(item.user_id), str(item.household_id)
         )
 
-        # Check if Plaid flags this as a transfer
+        # Only mark as transfer if both sides exist in the system
         if is_plaid_transfer(plaid_tx):
-            tx_data["transaction_type"] = "transfer"
+            # Check if the counterpart account exists (e.g. Amex card for Amex payments)
+            merchant_name = tx_data["raw_merchant_name"].lower()
+            counterpart = await session.execute(
+                select(BankAccount.id)
+                .where(
+                    BankAccount.household_id == item.household_id,
+                    BankAccount.is_active.is_(True),
+                    sa_func.lower(BankAccount.bank_name).contains(merchant_name),
+                )
+                .limit(1)
+            )
+            if counterpart.scalar_one_or_none():
+                tx_data["transaction_type"] = "transfer"
 
         # Try to match against email transactions
         match = await find_email_match(
