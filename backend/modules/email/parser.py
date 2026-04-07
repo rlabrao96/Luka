@@ -160,6 +160,31 @@ def _parse_date(text: str) -> datetime | None:
     return None
 
 
+_EXPENSE_TEXT_PATTERNS = re.compile(
+    r"withdrawal|purchase|charge|debit|payment was made|compra|cargo|pago",
+    re.IGNORECASE,
+)
+_INCOME_TEXT_PATTERNS = re.compile(
+    r"deposit|credit was posted|received|abono|depósito|ingreso",
+    re.IGNORECASE,
+)
+_TRANSFER_TEXT_PATTERNS = re.compile(
+    r"transfer between|moved between|traspaso entre",
+    re.IGNORECASE,
+)
+
+
+def _infer_transaction_type(text: str) -> str:
+    """Infer transaction type from email text keywords."""
+    if _TRANSFER_TEXT_PATTERNS.search(text):
+        return "transfer"
+    if _INCOME_TEXT_PATTERNS.search(text):
+        return "income"
+    if _EXPENSE_TEXT_PATTERNS.search(text):
+        return "expense"
+    return "expense"
+
+
 def parse_bank_email_regex(raw_text: str) -> ParsedEmail | None:
     """Parse a bank email alert (Chilean or US). Returns None if not a transaction email."""
     # Strip HTML if the email body contains HTML tags
@@ -179,7 +204,7 @@ def parse_bank_email_regex(raw_text: str) -> ParsedEmail | None:
         transaction_type = "transfer"
     else:
         merchant = _parse_merchant(text)
-        transaction_type = "expense"
+        transaction_type = _infer_transaction_type(text)
 
     if merchant is None:
         return None
