@@ -77,10 +77,11 @@ Return ONLY valid JSON with this exact schema:
 }}
 
 Rules:
-- merchant: exact merchant/store name from the email, cleaned of location suffixes
+- merchant: exact merchant/store name from the email, cleaned of location suffixes.
+  For transfers, use the RECIPIENT PERSON NAME (e.g. "Camila Chahuan"), NOT the bank name.
 - amount: integer in the smallest currency unit as specified above
 - transaction_type: "expense" for purchases, "transfer" for transfers, "income" for deposits/inflows
-- transfer_recipient: only if transaction_type is "transfer"
+- transfer_recipient: the person/entity name when transaction_type is "transfer" (same as merchant)
 - confidence: 0.0 to 1.0 — how certain you are about the extraction accuracy
 - If you cannot extract a required field, set confidence below 0.3
 """
@@ -113,9 +114,14 @@ def _extraction_to_parsed_email(data: dict) -> ParsedEmail:
     if isinstance(tx_date, str):
         tx_date = datetime.fromisoformat(tx_date)
 
+    # For transfers, prefer recipient name over generic bank name as merchant
+    merchant = data["merchant"]
+    if data.get("transaction_type") == "transfer" and data.get("transfer_recipient"):
+        merchant = data["transfer_recipient"]
+
     return ParsedEmail(
         amount=int(data["amount"]),
-        raw_merchant=data["merchant"],
+        raw_merchant=merchant,
         transaction_date=tx_date,
         bank_name="",
         transaction_type=data.get("transaction_type", "expense"),
