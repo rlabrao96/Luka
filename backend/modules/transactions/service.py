@@ -286,25 +286,53 @@ async def delete_transaction(
     return "deleted"
 
 
-async def is_duplicate_transaction(db: AsyncSession, user_id: uuid.UUID, amount: int) -> bool:
+async def is_duplicate_transaction(
+    db: AsyncSession, user_id: uuid.UUID, amount: int, bank_name: str | None = None
+) -> bool:
     """
-    Check if a pending transaction with the same absolute amount was created in the last 24 hours.
-    Sign-agnostic: works whether the stored amount is negative (expense) or positive (income).
-    Covers both fast duplicates (BChile compra+comprobante seconds apart) and slow
-    duplicates (BofA purchase alert + PayPal processor alert hours apart).
+    Two-tier dedup for email transactions:
+    1. Same amount + SAME bank within 5 min → duplicate (BChile compra+comprobante)
+    2. Same amount + DIFFERENT bank within 24h → duplicate (BofA + PayPal for same charge)
+
+    Tier 1 catches fast duplicates from the same sender.
+    Tier 2 catches slow cross-sender duplicates (e.g. PayPal alert hours after BofA alert).
+    Neither blocks legitimate repeat purchases (3 beers at $7 from the same bank).
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-    result = await db.execute(
+    now = datetime.now(timezone.utc)
+
+    # Tier 1: same bank, 5-min window (BChile compra + comprobante)
+    fast_cutoff = now - timedelta(minutes=5)
+    fast_result = await db.execute(
         select(Transaction)
         .where(
             Transaction.user_id == user_id,
             func.abs(Transaction.amount) == abs(amount),
             Transaction.status == "pending",
-            Transaction.created_at >= cutoff,
+            Transaction.created_at >= fast_cutoff,
         )
         .limit(1)
     )
-    return result.scalar_one_or_none() is not None
+    if fast_result.scalar_one_or_none():
+        return True
+
+    # Tier 2: different bank, 24h window (BofA alert + PayPal alert for same charge)
+    if bank_name:
+        slow_cutoff = now - timedelta(hours=24)
+        slow_result = await db.execute(
+            select(Transaction)
+            .where(
+                Transaction.user_id == user_id,
+                func.abs(Transaction.amount) == abs(amount),
+                Transaction.status == "pending",
+                Transaction.created_at >= slow_cutoff,
+                Transaction.source_bank_name != bank_name,
+            )
+            .limit(1)
+        )
+        if slow_result.scalar_one_or_none():
+            return True
+
+    return False
 
 
 def _txn_to_dict(txn: Transaction, split: TransactionSplit | None) -> dict:

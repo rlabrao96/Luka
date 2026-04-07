@@ -314,8 +314,8 @@ async def process_email(
                 # Lookup merchant categories (to provide options via WhatsApp)
                 categories = await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
 
-                # Cross-sender dedup: skip if same amount was created in last 5 min
-                if await is_duplicate_transaction(db, user.id, parsed.amount):
+                # Cross-sender dedup: same bank 5min OR different bank 24h
+                if await is_duplicate_transaction(db, user.id, parsed.amount, inferred_bank):
                     print(
                         f"[PROCESS_EMAIL] skipping duplicate transaction ${parsed.amount} for {user.email}",
                         flush=True,
