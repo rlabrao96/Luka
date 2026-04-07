@@ -2,6 +2,8 @@
 
 Chilean personal finance SaaS for individuals and couples. Captures bank transactions via email push notifications (Gmail/Outlook), bank scraping (Luka Connect for Chile), and open banking (Plaid for US). Categorizes transactions via LLM, enables actions via WhatsApp, and visualizes spending on a responsive web dashboard.
 
+**LATAM expansion ready:** Three-layer email parser (declarative templates, Gemini LLM waterfall, legacy regex) with 101 banks seeded across 6 countries (CL, CO, MX, PE, BR, US).
+
 ## Tech Stack
 
 **Backend**
@@ -9,6 +11,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 - SQLAlchemy 2.0 async + asyncpg (PostgreSQL ORM)
 - ARQ async job queue (two-tier: fast + slow workers)
 - Redis (caching + job queue)
+- Google Gemini (LLM email parsing + merchant categorization)
 
 **Frontend**
 - Next.js 16 (App Router) + React 19
@@ -19,7 +22,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 
 **Database**
 - Supabase PostgreSQL 15
-- Alembic migrations (29 versions)
+- Alembic migrations (30 versions)
 
 **Auth**
 - Supabase Auth — Google OAuth (Gmail users) + Microsoft OAuth (Outlook users)
@@ -64,7 +67,7 @@ cd backend && uvicorn main:app --reload     # http://localhost:8000
 
 # ARQ workers (separate terminals)
 arq worker.FastWorkerSettings               # email processing, light cron
-arq worker.SlowWorkerSettings               # bank syncs, LLM, reconciliation
+arq worker.SlowWorkerSettings               # bank syncs, LLM, reconciliation, template agent
 
 # Frontend
 cd frontend && npm run dev                  # http://localhost:3000
@@ -74,13 +77,13 @@ cd frontend && npm run dev                  # http://localhost:3000
 
 ```
 backend/
-  main.py             FastAPI app factory + 13 routers
+  main.py             FastAPI app factory + 14 routers
   worker.py           ARQ FastWorkerSettings + SlowWorkerSettings
   core/               Config, database, security (PyJWT), cache (Redis)
   modules/            Feature modules (see "What Luka Does" below)
   jobs/               ARQ task definitions + queue routing
-  alembic/            Database migrations (29 versions)
-  tests/              Test suite
+  alembic/            Database migrations (30 versions)
+  tests/              46 test files
 
 frontend/
   app/
@@ -89,7 +92,7 @@ frontend/
     (public)/         Privacy policy, terms, data-deletion
     lib/              API client, Zustand store, React Query hooks, Supabase clients
 
-docs/                 Architecture docs, API reference, deployment guide
+docs/                 Architecture docs, design specs, research
 ```
 
 ## Environment Variables
@@ -107,7 +110,7 @@ docs/                 Architecture docs, API reference, deployment guide
 | `WHATSAPP_APP_SECRET` | Yes | Meta WhatsApp Cloud API secret |
 | `WHATSAPP_PHONE_NUMBER_ID` | Yes | WhatsApp sender phone number ID |
 | `WHATSAPP_ACCESS_TOKEN` | Yes | WhatsApp Cloud API access token |
-| `GEMINI_API_KEY` | Yes | Google Gemini for merchant categorization |
+| `GEMINI_API_KEY` | Yes | Google Gemini for email parsing + merchant categorization |
 | `OPENAI_API_KEY` | No | OpenAI fallback for categorization |
 | `PLAID_CLIENT_ID` | No | Plaid client ID (US bank connections) |
 | `PLAID_SECRET` | No | Plaid API secret |
@@ -115,6 +118,9 @@ docs/                 Architecture docs, API reference, deployment guide
 | `MICROSOFT_CLIENT_ID` | No | Azure app for Outlook integration |
 | `MICROSOFT_CLIENT_SECRET` | No | Azure app secret |
 | `OUTLOOK_CLIENT_STATE` | No | Outlook webhook verification secret |
+| `LLM_WATERFALL_THRESHOLDS` | No | Confidence thresholds per model (default: 0.9,0.8,0.7,0.0) |
+| `LLM_SHADOW_VALIDATION_RATE` | No | Shadow validation sample rate (default: 0.25) |
+| `TEMPLATE_AGENT_MIN_EMAILS` | No | Min LLM-parsed emails before template generation (default: 20) |
 | `ENVIRONMENT` | No | `development` or `production` (default: development) |
 
 ## What Luka Does
@@ -126,19 +132,30 @@ Handles user registration via Supabase OAuth (Google/Microsoft), profile managem
 Supports individual and couple households. Partners can be invited via shareable links. Manages split ratios, contribution tracking, settlement calculations, and category breakdowns between partners. No debt ledger — contributions are computed via aggregate queries.
 
 **Email Pipeline** (`backend/modules/email/`)
-Receives Gmail push notifications via Google Cloud Pub/Sub and Outlook webhooks via Microsoft Graph. Fetches email content, pre-filters with 27 Spanish financial keywords, parses bank transaction data from HTML (Banco de Chile formats supported), deduplicates cross-sender within 5-minute windows, and routes to the transaction processing pipeline.
+Three-layer email parsing system for LATAM expansion:
+1. **Layer 1 — Declarative Templates:** Auto-generated JSON extraction templates (CSS selectors + regex + fixed transforms). Zero LLM cost per email once promoted.
+2. **Layer 2 — Gemini LLM Waterfall:** Confidence-based model escalation (3.1 Flash Lite -> 2.5 Flash -> 3 Flash -> 2.5 Pro). Circuit breaker for API outages (50% error rate -> 15min cooldown).
+3. **Layer 3 — Legacy Regex:** Fallback for Banco de Chile formats.
+
+Receives Gmail push notifications via Google Cloud Pub/Sub and Outlook webhooks via Microsoft Graph. DB-backed bank registry (101 banks across CL, CO, MX, PE, BR, US) with Redis-cached lookups replaces hardcoded sender domains. Financial keyword filter now supports Spanish, English, and Portuguese.
+
+**Template Agent** (`backend/modules/email/template_agent.py`)
+Autonomous ARQ cron job (daily 2am on slow worker). Discovers banks with sufficient LLM-parsed emails but no active template, generates declarative templates via Gemini, validates against LLM ground truth (100% amount match, 95% merchant match required), promotes to production, and auto-retires on shadow validation drift.
+
+**Bank Registry** (`backend/modules/email/bank_registry_service.py`)
+DB-backed bank registry with Redis cache (24h TTL). 101 banks seeded across 6 countries. Supports exact domain match + subdomain fallback. Stores known subjects, notification types, and active template references per bank.
 
 **Bank Connect — Chile** (`backend/modules/bank_connect/`)
 Integrates with Luka Connect, a standalone bank scraping service (separate repo). Stores AES-256-GCM encrypted bank credentials, triggers scraping jobs, maps scraped movements to Luka transactions with deduplication. Scheduled syncs run every 6 hours.
 
 **Bank Connect — US** (`backend/modules/plaid/`)
-Plaid Link integration for US bank accounts. Handles link token creation, public token exchange, transaction sync with cursor pagination, and account kind detection. Scheduled syncs run daily.
+Plaid Link integration for US bank accounts. Handles link token creation, public token exchange, transaction sync with cursor pagination, and account kind detection. Amounts stored in cents. Scheduled syncs run daily.
 
 **Transaction Processing** (`backend/modules/transactions/`)
 Core transaction storage with support for personal, partner, and shared split types. Tracks transaction type (income/expense/transfer), source (email/bank_connect/plaid/whatsapp/manual), and reconciliation status. Optimistic category updates with merchant feedback loops.
 
 **Reconciliation** (`backend/modules/reconciliation/`)
-Matches email-sourced transactions with bank-sourced transactions using 3-tier priority matching (exact → fuzzy → sum-match). Enriches bank transactions with user-edited categories from email txs. Also detects transfers between accounts (same-amount opposite-sign pairs).
+Matches email-sourced transactions with bank-sourced transactions using 3-tier priority matching (exact -> fuzzy -> sum-match). Enriches bank transactions with user-edited categories from email txs. Also detects transfers between accounts (same-amount opposite-sign pairs).
 
 **Merchant Categorization** (`backend/modules/merchants/`, `backend/modules/merchant_review/`)
 Two-tier system: known merchants resolve instantly from a global DB cache, new merchants get 3 LLM-suggested categories (Gemini 2.5 Flash). Canonical merchant grouping via LLM batching. Training UI at `/train` for local admin use. User category selections feed back into the merchant database.
@@ -166,3 +183,4 @@ User notification preferences, custom category ordering with drag-and-drop, cate
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System design, data model, API endpoints, worker jobs
 - [NEXT-STEPS.md](NEXT-STEPS.md) — Pending work, known issues, future ideas
 - [Design Specs](docs/superpowers/specs/) — Original design documents
+- [Bank Email Research](docs/bank-email-notifications-research.md) — 30 banks across 6 LATAM countries
