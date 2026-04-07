@@ -10,11 +10,7 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache import cache_get, cache_set, cache_delete
-
 logger = logging.getLogger(__name__)
-
-CACHE_TTL = 3 * 24 * 3600  # 3 days
 
 
 def predict_next_date(last_date: date) -> date:
@@ -128,26 +124,81 @@ def detect_from_rows(rows: list[dict]) -> list[dict]:
     return results
 
 
-def _cache_key(user_id) -> str:
-    return f"subscriptions:v2:{user_id}"
-
-
 async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int = 6) -> dict:
-    """Return cached subscriptions, or compute and cache if miss."""
-    cached = await cache_get(_cache_key(user_id))
-    if cached:
-        return cached
+    """Read from DB cache, compute on first access. Merge overrides at read time."""
+    # Check DB cache
+    cache_row = await db.execute(
+        text(
+            "SELECT result_json, computed_at FROM detected_subscriptions_cache WHERE user_id = :uid"
+        ),
+        {"uid": str(user_id)},
+    )
+    row = cache_row.first()
 
-    return await _compute_and_cache(db, user_id, months_back)
+    if row:
+        raw_items = row.result_json if isinstance(row.result_json, list) else row.result_json
+        computed_at = row.computed_at
+    else:
+        # First access — compute and store
+        raw_items, computed_at = await _compute_and_store(db, user_id, months_back)
+
+    # Merge overrides
+    items = await _merge_overrides(db, user_id, raw_items)
+
+    # Filter out dismissed items
+    visible_items = [i for i in items if i.get("status") != "dismissed"]
+
+    # Compute summary per currency (only active items)
+    summary_by_currency = await _compute_summary_by_currency(db, user_id, visible_items)
+
+    return {
+        "items": visible_items,
+        "summary_by_currency": summary_by_currency,
+        "computed_at": computed_at,
+    }
 
 
-async def invalidate_subscriptions_cache(user_id) -> None:
-    """Call this when new transactions arrive (webhook, sync) to bust the cache."""
-    await cache_delete(_cache_key(user_id))
+async def refresh_subscriptions(db: AsyncSession, user_id, months_back: int = 6) -> dict:
+    """Force recompute and return fresh data."""
+    await _compute_and_store(db, user_id, months_back)
+    return await get_detected_subscriptions(db, user_id, months_back)
 
 
-async def _compute_and_cache(db: AsyncSession, user_id, months_back: int = 6) -> dict:
-    """Heavy computation: query transactions, detect patterns, cache result."""
+async def upsert_override(
+    db: AsyncSession,
+    user_id,
+    merchant_key: str,
+    status: str | None,
+    category: str | None,
+    next_charge_day: int | None,
+) -> None:
+    """Create or update a subscription override."""
+    await db.execute(
+        text("""
+            INSERT INTO subscription_overrides (user_id, merchant_key, status, category, next_charge_day, updated_at)
+            VALUES (:uid, :mk, COALESCE(:status, 'active'), :cat, :day, NOW())
+            ON CONFLICT (user_id, merchant_key)
+            DO UPDATE SET
+                status = COALESCE(:status, subscription_overrides.status),
+                category = CASE WHEN :cat IS NOT NULL THEN :cat ELSE subscription_overrides.category END,
+                next_charge_day = CASE WHEN :day IS NOT NULL THEN :day ELSE subscription_overrides.next_charge_day END,
+                updated_at = NOW()
+        """),
+        {
+            "uid": str(user_id),
+            "mk": merchant_key,
+            "status": status,
+            "cat": category,
+            "day": next_charge_day,
+        },
+    )
+    await db.commit()
+
+
+async def _compute_and_store(
+    db: AsyncSession, user_id, months_back: int = 6
+) -> tuple[list[dict], object]:
+    """Heavy computation: query transactions, detect patterns, store in DB cache."""
     sql = text("""
         SELECT
             COALESCE(m.normalized_name, t.raw_merchant_name) AS merchant_key,
@@ -155,7 +206,8 @@ async def _compute_and_cache(db: AsyncSession, user_id, months_back: int = 6) ->
             ABS(t.amount) AS amount,
             t.transaction_date AS tx_date,
             TO_CHAR(t.transaction_date, 'YYYY-MM') AS month,
-            COALESCE(ts.split_type, 'personal') AS split_type
+            COALESCE(ts.split_type, 'personal') AS split_type,
+            t.currency
         FROM transactions t
         LEFT JOIN merchants m ON m.id = t.merchant_id
         LEFT JOIN transaction_splits ts ON ts.transaction_id = t.id
@@ -168,31 +220,101 @@ async def _compute_and_cache(db: AsyncSession, user_id, months_back: int = 6) ->
     rows = [dict(r._mapping) for r in result.all()]
     items = detect_from_rows(rows)
 
-    # Calculate summary in backend so frontend doesn't need all transactions
-    total_recurring = sum(i["last_amount"] for i in items)
+    # Upsert into DB cache (store raw items, before override merging)
+    import json
 
-    monthly_total_sql = text("""
-        SELECT COALESCE(SUM(ABS(t.amount)), 0) AS total
-        FROM transactions t
-        WHERE t.user_id = :user_id
-          AND t.transaction_type = 'expense'
-          AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
-    """)
-    monthly_result = await db.execute(monthly_total_sql, {"user_id": str(user_id)})
-    monthly_total = monthly_result.scalar() or Decimal("0")
-
-    pct_of_total = (
-        round(float(total_recurring) / float(monthly_total) * 100, 1) if monthly_total > 0 else 0
+    items_json = json.dumps(items, default=str)
+    await db.execute(
+        text("""
+            INSERT INTO detected_subscriptions_cache (user_id, result_json, computed_at)
+            VALUES (:uid, :data::jsonb, NOW())
+            ON CONFLICT (user_id)
+            DO UPDATE SET result_json = :data::jsonb, computed_at = NOW()
+        """),
+        {"uid": str(user_id), "data": items_json},
     )
+    await db.commit()
 
-    result = {
-        "items": items,
-        "summary": {
+    # Get the computed_at timestamp
+    ts_row = await db.execute(
+        text("SELECT computed_at FROM detected_subscriptions_cache WHERE user_id = :uid"),
+        {"uid": str(user_id)},
+    )
+    computed_at = ts_row.scalar()
+
+    return items, computed_at
+
+
+async def _merge_overrides(db: AsyncSession, user_id, raw_items: list[dict]) -> list[dict]:
+    """Apply subscription_overrides on top of raw detected items."""
+    result = await db.execute(
+        text(
+            "SELECT merchant_key, status, category, next_charge_day FROM subscription_overrides WHERE user_id = :uid"
+        ),
+        {"uid": str(user_id)},
+    )
+    overrides = {row.merchant_key: row for row in result.all()}
+
+    merged = []
+    for item in raw_items:
+        item = dict(item)  # copy
+        override = overrides.get(item["merchant_name"])
+        if override:
+            item["status"] = override.status
+            if override.category:
+                item["category"] = override.category
+            if override.next_charge_day:
+                item["next_charge_day"] = override.next_charge_day
+        merged.append(item)
+    return merged
+
+
+async def _compute_summary_by_currency(db: AsyncSession, user_id, active_items: list[dict]) -> dict:
+    """Compute SubscriptionsSummary per currency."""
+    from collections import defaultdict
+    from decimal import Decimal
+
+    by_currency: dict[str, list[dict]] = defaultdict(list)
+    for item in active_items:
+        if item.get("status") == "active":
+            by_currency[item.get("currency", "CLP")].append(item)
+
+    summary = {}
+    for currency, items in by_currency.items():
+        total_recurring = sum(Decimal(str(i["last_amount"])) for i in items)
+
+        # Get total monthly expenses for this currency
+        monthly_total_sql = text("""
+            SELECT COALESCE(SUM(ABS(t.amount)), 0) AS total
+            FROM transactions t
+            WHERE t.user_id = :user_id
+              AND t.transaction_type = 'expense'
+              AND t.currency = :currency
+              AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
+        """)
+        monthly_result = await db.execute(
+            monthly_total_sql, {"user_id": str(user_id), "currency": currency}
+        )
+        monthly_total = monthly_result.scalar() or Decimal("0")
+
+        pct_of_total = (
+            round(float(total_recurring) / float(monthly_total) * 100, 1)
+            if monthly_total > 0
+            else 0
+        )
+
+        summary[currency] = {
             "total_recurring": total_recurring,
             "monthly_total": monthly_total,
             "pct_of_total": pct_of_total,
             "count": len(items),
-        },
-    }
-    await cache_set(_cache_key(user_id), result, CACHE_TTL)
-    return result
+        }
+
+    return summary
+
+
+async def invalidate_subscriptions_cache(user_id) -> None:
+    """Legacy: kept for backward compat. Will clean up old Redis keys."""
+    from core.cache import cache_delete
+
+    await cache_delete(f"subscriptions:v2:{user_id}")
