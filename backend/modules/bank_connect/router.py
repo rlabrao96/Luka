@@ -321,13 +321,15 @@ async def _process_movements(
             skipped += 1
             continue
 
-        # Check for email match (amount exact + date ±1 day)
+        # Check for email match (abs amount exact + date ±1 day)
+        from sqlalchemy import func as sa_func
+
         email_match = await db.execute(
             select(Transaction)
             .where(
                 Transaction.user_id == cred.user_id,
                 Transaction.source_type == "email",
-                Transaction.amount == mov["amount"],
+                sa_func.abs(Transaction.amount) == abs(mov["amount"]),
                 Transaction.transaction_date >= mov_date - timedelta(days=1),
                 Transaction.transaction_date <= mov_date + timedelta(days=1),
             )
