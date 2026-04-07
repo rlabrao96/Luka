@@ -6,7 +6,7 @@ import { api } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 import { ProfileSection } from "./components/ProfileSection";
 import { BankAccountsSection } from "./components/BankAccountsSection";
-import { HogarSection } from "./components/HogarSection";
+import { CompartidoSection } from "./components/CompartidoSection";
 import { NotificationsSection } from "./components/NotificationsSection";
 import { CategoriesSection } from "./components/CategoriesSection";
 import { TransactionsConfigSection } from "./components/TransactionsConfigSection";
@@ -62,7 +62,7 @@ export default function SettingsPage() {
 
         <BankAccountsSection householdId={householdId} />
 
-        <HogarSection />
+        <CompartidoSection />
 
         <NotificationsSection />
 

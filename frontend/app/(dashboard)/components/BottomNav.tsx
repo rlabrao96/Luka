@@ -8,7 +8,7 @@ import { useUnreadCount } from "@/app/lib/hooks/useNotifications";
 const NAV = [
   { href: "/",             label: "Inicio",      icon: LayoutDashboard },
   { href: "/transactions", label: "Gastos",       icon: CreditCard      },
-  { href: "/household",    label: "Hogar",         icon: Users           },
+  { href: "/household",    label: "Compartido",    icon: Users           },
   { href: "/budgets",      label: "Presupuesto",  icon: Wallet          },
   { href: "/notifications", label: "Notif.",       icon: Bell            },
   { href: "/settings",     label: "Config",        icon: Settings        },

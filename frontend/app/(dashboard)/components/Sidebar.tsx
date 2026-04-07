@@ -20,7 +20,7 @@ import { NotificationBadge } from "./NotificationBadge";
 const NAV = [
   { href: "/",             label: "Dashboard",      icon: LayoutDashboard },
   { href: "/transactions", label: "Transacciones",  icon: CreditCard      },
-  { href: "/household",    label: "Hogar",           icon: Users           },
+  { href: "/household",    label: "Compartido",      icon: Users           },
   { href: "/budgets",      label: "Presupuesto",     icon: Wallet          },
   { href: "/subscriptions", label: "Suscripciones",  icon: Repeat          },
   { href: "/settings",     label: "Configuración",   icon: Settings        },
