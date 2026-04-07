@@ -22,9 +22,9 @@ _CIRCUIT_BREAKER_WINDOW = 20
 _CIRCUIT_BREAKER_COOLDOWN = 900  # 15 min
 
 WATERFALL_MODELS = [
-    {"name": "gemini-3.1-flash-lite", "threshold": 0.9},
+    {"name": "gemini-2.5-flash-lite", "threshold": 0.9},
     {"name": "gemini-2.5-flash", "threshold": 0.8},
-    {"name": "gemini-3-flash", "threshold": 0.7},
+    {"name": "gemini-2.0-flash", "threshold": 0.7},
     {"name": "gemini-2.5-pro", "threshold": 0.0},
 ]
 
@@ -157,7 +157,11 @@ async def parse_with_llm(
                         max_output_tokens=512,
                     ),
                 )
-                data = _parse_llm_response(response.text)
+                raw_text = response.text if response.text else None
+                if not raw_text:
+                    logger.warning("Empty LLM response from %s, escalating", model_name)
+                    break
+                data = _parse_llm_response(raw_text)
                 if data is None:
                     logger.warning("Malformed LLM response from %s, escalating", model_name)
                     break
