@@ -143,21 +143,17 @@ async def _find_single_match(
         else True,
     ]
 
+    from sqlalchemy import func as sa_func
+
+    abs_amount = abs(amount)
     if amount_tolerance == 0.0:
-        conditions.append(Transaction.amount == amount)
+        # Compare absolute values — email stores positive, Plaid stores negative
+        conditions.append(sa_func.abs(Transaction.amount) == abs_amount)
     else:
-        abs_amount = abs(amount)
         lower = abs_amount * (1 - amount_tolerance)
         upper = abs_amount * (1 + amount_tolerance)
-        from sqlalchemy import func as sa_func
-
         conditions.append(sa_func.abs(Transaction.amount) >= lower)
         conditions.append(sa_func.abs(Transaction.amount) <= upper)
-        # Same sign
-        if amount < 0:
-            conditions.append(Transaction.amount < 0)
-        else:
-            conditions.append(Transaction.amount > 0)
 
     result = await session.execute(select(Transaction).where(and_(*conditions)).limit(1))
     return result.scalar_one_or_none()
