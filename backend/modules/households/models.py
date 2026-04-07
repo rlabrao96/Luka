@@ -12,9 +12,12 @@ class Household(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    type: Mapped[str] = mapped_column(String, nullable=False)  # 'individual' | 'couple'
+    type: Mapped[str] = mapped_column(String, nullable=False)  # 'individual' | 'group'
     split_ratio = mapped_column(JSONB, nullable=False, server_default="[50, 50]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    settlement_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=sa.text("true")
+    )
 
 
 class HouseholdMember(Base):
@@ -25,6 +28,7 @@ class HouseholdMember(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     role: Mapped[str] = mapped_column(String, default="member")  # 'owner' | 'member'
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class HouseholdInvite(Base):
@@ -33,7 +37,7 @@ class HouseholdInvite(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     household_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("households.id"), nullable=False)
     invited_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    invited_email: Mapped[str] = mapped_column(String, nullable=False)
+    invited_email: Mapped[str | None] = mapped_column(String, nullable=True)
     token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
