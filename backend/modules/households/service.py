@@ -84,8 +84,10 @@ async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) ->
         FROM transactions t
         JOIN transaction_splits ts ON ts.transaction_id = t.id
         JOIN users u ON u.id = t.user_id
+        JOIN household_members hm ON hm.user_id = u.id AND hm.household_id = t.household_id
         WHERE t.household_id = :household_id
           AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
+          AND hm.left_at IS NULL
         GROUP BY t.user_id, u.full_name, u.email
         """),
         {"household_id": str(household_id)},
@@ -148,9 +150,11 @@ async def get_category_breakdown(db: AsyncSession, household_id, month: str | No
         FROM transactions t
         JOIN transaction_splits ts ON ts.transaction_id = t.id
         JOIN users u ON u.id = t.user_id
+        JOIN household_members hm ON hm.user_id = u.id AND hm.household_id = t.household_id
         WHERE t.household_id = :household_id
           AND ts.split_type = 'shared'
           AND t.transaction_type = 'expense'
+          AND hm.left_at IS NULL
           AND {month_clause}
         GROUP BY u.id, u.full_name, COALESCE(t.category, 'Sin categoría')
         ORDER BY amount DESC
@@ -237,9 +241,11 @@ async def get_settlement(db: AsyncSession, household_id, month: str | None = Non
         FROM transactions t
         JOIN transaction_splits ts ON ts.transaction_id = t.id
         JOIN users u ON u.id = t.user_id
+        JOIN household_members hm ON hm.user_id = u.id AND hm.household_id = t.household_id
         WHERE t.household_id = :household_id
           AND ts.split_type = 'shared'
           AND t.transaction_type = 'expense'
+          AND hm.left_at IS NULL
           AND {month_clause}
         GROUP BY u.id, u.full_name
         ORDER BY total DESC
@@ -248,16 +254,21 @@ async def get_settlement(db: AsyncSession, household_id, month: str | None = Non
     members = [dict(r._mapping) for r in result.all()]
 
     h_result = await db.execute(
-        text("SELECT split_ratio FROM households WHERE id = :id"),
+        text("SELECT split_ratio, settlement_enabled FROM households WHERE id = :id"),
         {"id": str(household_id)},
     )
-    row = h_result.scalar_one_or_none()
-    split_ratio = row if row else [50, 50]
+    row = h_result.one_or_none()
+    split_ratio = row.split_ratio if row and row.split_ratio else [50, 50]
+    settlement_enabled = row.settlement_enabled if row else True
 
-    settlement = calculate_settlement(members, split_ratio)
-    settlement["split_ratio"] = split_ratio
-    settlement["month"] = month or "current"
-    return settlement
+    transfers = calculate_settlement(members, split_ratio) if settlement_enabled else []
+
+    return {
+        "settlement_enabled": settlement_enabled,
+        "transfers": transfers,
+        "split_ratio": split_ratio,
+        "month": month or "current",
+    }
 
 
 async def get_partner_stats(

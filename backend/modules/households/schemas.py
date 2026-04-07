@@ -5,11 +5,11 @@ from pydantic import BaseModel, EmailStr
 
 class CreateHouseholdRequest(BaseModel):
     name: str
-    type: str  # 'individual' | 'couple'
+    type: str  # 'individual' | 'group'
 
 
 class InviteRequest(BaseModel):
-    email: EmailStr
+    email: EmailStr | None = None  # nullable for link-only invites
 
 
 class HouseholdResponse(BaseModel):
@@ -40,12 +40,17 @@ class HouseholdSummaryResponse(BaseModel):
     by_category: list[CategoryBreakdownRow]
 
 
-class SettlementResponse(BaseModel):
+class SettlementTransfer(BaseModel):
     from_user_id: str
     from_user_name: str
     to_user_id: str
     to_user_name: str
     amount: Decimal
+
+
+class SettlementResponse(BaseModel):
+    settlement_enabled: bool
+    transfers: list[SettlementTransfer]
     split_ratio: list[int]
     month: str
 
@@ -56,3 +61,11 @@ class SplitRatioRequest(BaseModel):
 
 class SplitRatioResponse(BaseModel):
     split_ratio: list[int]
+
+
+class SettlementEnabledRequest(BaseModel):
+    enabled: bool
+
+
+class MemberRoleRequest(BaseModel):
+    role: str  # 'owner' | 'member'

@@ -12,9 +12,9 @@ from modules.households.schemas import (
     CreateHouseholdRequest,
     HouseholdResponse,
     InviteRequest,
+    SettlementResponse,
     SplitRatioRequest,
     SplitRatioResponse,
-    SettlementResponse,
 )
 from modules.households.auth import require_membership
 
@@ -145,8 +145,30 @@ async def update_split_ratio(
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    if len(body.ratio) != 2 or sum(body.ratio) != 100 or any(r < 0 for r in body.ratio):
-        raise HTTPException(400, "Ratio must be two non-negative integers summing to 100")
+
+    # Validate: 2-5 elements, all non-negative, sum to 100
+    if (
+        len(body.ratio) < 2
+        or len(body.ratio) > 5
+        or sum(body.ratio) != 100
+        or any(r < 0 for r in body.ratio)
+    ):
+        raise HTTPException(400, "Ratio must be 2-5 non-negative integers summing to 100")
+
+    # Validate length matches active member count
+    active_count_result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM household_members
+            WHERE household_id = :hid AND left_at IS NULL
+        """),
+        {"hid": str(household_id)},
+    )
+    active_count = active_count_result.scalar()
+    if len(body.ratio) != active_count:
+        raise HTTPException(
+            400, f"Ratio length ({len(body.ratio)}) must match active member count ({active_count})"
+        )
+
     await db.execute(
         text("UPDATE households SET split_ratio = :ratio WHERE id = :id"),
         {"ratio": json.dumps(body.ratio), "id": str(household_id)},
