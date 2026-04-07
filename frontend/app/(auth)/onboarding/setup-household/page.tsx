@@ -2,9 +2,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
-
 import { useLukaStore } from "@/app/lib/store";
 
 export default function SetupHouseholdPage() {
@@ -12,37 +10,53 @@ export default function SetupHouseholdPage() {
   const setOnboardingDraft = useLukaStore((s) => s.setOnboardingDraft);
   const draft = useLukaStore((s) => s.onboardingDraft);
 
-  const [type, setType] = useState<"individual" | "couple" | null>(draft?.type || null);
-  const [partnerEmail, setPartnerEmail] = useState(draft?.partnerEmail || "");
+  // Check if user came from an invite link — skip this question
+  const inviteToken = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("invite_token") ||
+      localStorage.getItem("pending_invite_token")
+    : null;
+
+  if (inviteToken) {
+    setOnboardingDraft({ type: "individual", partnerEmail: "" });
+    router.push("/onboarding/verify-whatsapp");
+    return null;
+  }
+
+  const [wantsShared, setWantsShared] = useState<boolean | null>(
+    draft?.type === "individual" ? false : draft?.type ? true : null
+  );
 
   const nextStep = () => {
-    setOnboardingDraft({ type, partnerEmail });
+    setOnboardingDraft({
+      type: wantsShared ? "group" : "individual",
+      partnerEmail: "",
+    });
     router.push("/onboarding/verify-whatsapp");
   };
 
   return (
     <Card className="w-full shadow-sm">
-      <CardHeader><CardTitle className="text-luka-dark">¿Cómo usarás Luka?</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-luka-dark">¿Vas a compartir gastos?</CardTitle>
+      </CardHeader>
       <CardContent className="space-y-3">
-        <Button variant={type === "individual" ? "default" : "outline"}
-          className="w-full rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" onClick={() => setType("individual")}>
-          Solo — quiero controlar mis gastos
+        <Button
+          variant={wantsShared === true ? "default" : "outline"}
+          className="w-full rounded-xl"
+          onClick={() => setWantsShared(true)}
+        >
+          Sí — quiero dividir gastos con otros
         </Button>
-        <Button variant={type === "couple" ? "default" : "outline"}
-          className="w-full rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" onClick={() => setType("couple")}>
-          En pareja — compartir con mi pareja
+        <Button
+          variant={wantsShared === false ? "default" : "outline"}
+          className="w-full rounded-xl"
+          onClick={() => setWantsShared(false)}
+        >
+          No — solo quiero controlar mis gastos
         </Button>
-        {type === "couple" && (
-          <Input
-            placeholder="Email de tu pareja"
-            value={partnerEmail}
-            onChange={e => setPartnerEmail(e.target.value)}
-            className="rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-          />
-        )}
-        {type && (
+        {wantsShared !== null && (
           <Button
-            className="w-full bg-luka-primary text-white hover:bg-blue-700 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            className="w-full bg-luka-primary text-white hover:bg-blue-700 rounded-xl"
             onClick={nextStep}
           >
             Continuar →
