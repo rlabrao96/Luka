@@ -430,7 +430,7 @@ export function CategoriesSection() {
 
         {/* Counter line */}
         <p className="text-xs text-slate-400 mb-4">
-          Gastos: {expenseCats.length}/10 · Ingresos: {incomeCats.length}/10
+          Gastos: {expenseCats.length}/20 · Ingresos: {incomeCats.length}/20
         </p>
 
         {/* Two-column grid */}

@@ -7,22 +7,29 @@ from modules.settings.models import NotificationPreference, UserCategoryPreferen
 
 _DEFAULT_CATEGORIES = [
     ("Alimentación", "expense", 0),
-    ("Transporte", "expense", 1),
-    ("Entretenimiento", "expense", 2),
-    ("Salud", "expense", 3),
-    ("Hogar", "expense", 4),
-    ("Ropa", "expense", 5),
-    ("Educación", "expense", 6),
-    ("Viajes", "expense", 7),
-    ("Otros", "expense", 8),
+    ("Supermercado", "expense", 1),
+    ("Transporte", "expense", 2),
+    ("Combustible", "expense", 3),
+    ("Arriendo", "expense", 4),
+    ("Hogar", "expense", 5),
+    ("Entretenimiento", "expense", 6),
+    ("Deporte", "expense", 7),
+    ("Salud", "expense", 8),
+    ("Farmacia", "expense", 9),
+    ("Ropa", "expense", 10),
+    ("Tecnología", "expense", 11),
+    ("Educación", "expense", 12),
+    ("Viajes", "expense", 13),
+    ("Servicios", "expense", 14),
+    ("Suscripciones", "expense", 15),
+    ("Otros", "expense", 16),
     ("Sueldo", "income", 0),
     ("Freelance", "income", 1),
     ("Inversiones", "income", 2),
-    ("Arriendo", "income", 3),
-    ("Bono", "income", 4),
-    ("Transferencia de terceros", "income", 5),
-    ("Deuda pendiente", "income", 6),
-    ("Otros ingresos", "income", 7),
+    ("Bono", "income", 3),
+    ("Transferencia de terceros", "income", 4),
+    ("Deuda pendiente", "income", 5),
+    ("Otros ingresos", "income", 6),
 ]
 
 
@@ -115,8 +122,8 @@ async def add_category(
             UserCategoryPreference.category_type == category_type,
         )
     )
-    if (count_result.scalar() or 0) >= 10:
-        raise ValueError(f"Limit of 10 {category_type} categories reached")
+    if (count_result.scalar() or 0) >= 20:
+        raise ValueError(f"Limit of 20 {category_type} categories reached")
 
     dup_result = await db.execute(
         select(UserCategoryPreference).where(
@@ -149,9 +156,7 @@ async def add_category(
     return _pref_to_dict(pref)
 
 
-async def reorder_categories(
-    db: AsyncSession, user_id: uuid.UUID, items: list[dict]
-) -> list[dict]:
+async def reorder_categories(db: AsyncSession, user_id: uuid.UUID, items: list[dict]) -> list[dict]:
     result = await db.execute(
         select(UserCategoryPreference).where(UserCategoryPreference.user_id == user_id)
     )
@@ -159,7 +164,9 @@ async def reorder_categories(
 
     submitted = {item["category"] for item in items}
     if submitted != set(existing.keys()):
-        raise ValueError("Submitted categories do not match existing set (no additions or deletions allowed)")
+        raise ValueError(
+            "Submitted categories do not match existing set (no additions or deletions allowed)"
+        )
 
     for item in items:
         existing[item["category"]].sort_order = item["sort_order"]

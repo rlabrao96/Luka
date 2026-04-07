@@ -19,14 +19,18 @@ _EXPENSE_CATEGORIES = [
     "Transporte",
     "Combustible",
     "Entretenimiento",
+    "Deporte",
     "Salud",
     "Farmacia",
     "Hogar",
+    "Arriendo",
     "Ropa",
     "Tecnología",
     "Educación",
     "Viajes",
     "Servicios",
+    "Suscripciones",
+    "Mascotas",
     "Otros",
 ]
 
