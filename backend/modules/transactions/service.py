@@ -215,13 +215,13 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
     - awaiting_reconciliation: email txns, pending, no connect sync has run since creation
     - unmatched_email: email txns, pending, at least 1 connect sync ran since creation
     """
-    # All pending email transactions
+    # All pending transactions (email + plaid processing)
     email_pending_result = await db.execute(
         select(Transaction, TransactionSplit)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .where(
             Transaction.user_id == user_id,
-            Transaction.source.in_(["gmail", "outlook"]),
+            Transaction.source.in_(["gmail", "outlook", "plaid"]),
             Transaction.status == "pending",
         )
         .order_by(Transaction.transaction_date.desc())
