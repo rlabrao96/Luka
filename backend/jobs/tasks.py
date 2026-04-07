@@ -24,7 +24,7 @@ from modules.merchant_review.llm_grouping import group_raw_merchants
 from modules.merchant_review.service import create_canonicals_from_groups
 from modules.merchant_review.models import CanonicalMerchant, MerchantReviewJob
 from modules.notifications.models import Notification
-from sqlalchemy import select, and_, delete, update
+from sqlalchemy import select, and_, delete, update, text
 from datetime import datetime, timedelta, timezone
 import uuid
 import smtplib
@@ -568,18 +568,46 @@ async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> No
 
 
 async def refresh_subscriptions_cache(ctx: dict) -> None:
-    """Daily cron: recompute subscription detection for all active users."""
-    from modules.subscriptions.service import _compute_and_cache
+    """Periodic cron: recompute subscription detection for all active users (batched)."""
+    from modules.subscriptions.service import _compute_and_store
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(User.id))
+        result = await db.execute(
+            text("""
+                SELECT DISTINCT u.id FROM users u
+                JOIN bank_accounts ba ON ba.user_id = u.id
+                WHERE ba.is_active = true
+            """)
+        )
         user_ids = [row[0] for row in result.all()]
         logger.info("Refreshing subscriptions cache for %d users", len(user_ids))
-        for uid in user_ids:
-            try:
-                await _compute_and_cache(db, uid)
-            except Exception:
-                logger.warning("Failed to refresh subscriptions for user %s", uid, exc_info=True)
+
+        batch_size = 50
+        for i in range(0, len(user_ids), batch_size):
+            batch = user_ids[i : i + batch_size]
+            for uid in batch:
+                try:
+                    await _compute_and_store(db, uid)
+                except Exception:
+                    logger.warning(
+                        "Failed to refresh subscriptions for user %s", uid, exc_info=True
+                    )
+            if i + batch_size < len(user_ids):
+                import asyncio
+
+                await asyncio.sleep(2)
+
+
+async def refresh_subscriptions_for_user(ctx: dict, user_id: str) -> None:
+    """Triggered after new bank account — recompute subscriptions for one user."""
+    from modules.subscriptions.service import _compute_and_store
+
+    async with AsyncSessionLocal() as db:
+        try:
+            await _compute_and_store(db, user_id)
+            logger.info("Refreshed subscriptions for user %s after bank link", user_id)
+        except Exception:
+            logger.warning("Failed to refresh subscriptions for user %s", user_id, exc_info=True)
 
 
 async def process_merchant_review(ctx: dict, job_id: str) -> None:

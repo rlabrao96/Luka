@@ -85,6 +85,10 @@ async def create_bank_account(
     db.add(bank_account)
     await db.commit()
     await db.refresh(bank_account)
+    # Trigger subscription recomputation 30 min after bank link
+    from jobs.queue import enqueue_job
+
+    await enqueue_job("refresh_subscriptions_for_user", str(current_user.id), _defer_by=1800)
     return {
         "id": str(bank_account.id),
         "bank_name": bank_account.bank_name,

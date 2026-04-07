@@ -12,6 +12,7 @@ from jobs.tasks import (
     schedule_connect_syncs,
     run_connect_sync,
     refresh_subscriptions_cache,
+    refresh_subscriptions_for_user,
     process_merchant_review,
     run_plaid_sync_job,
     schedule_plaid_syncs,
@@ -34,6 +35,7 @@ class FastWorkerSettings:
     functions = [
         process_email,
         send_invite_email,
+        refresh_subscriptions_for_user,
     ]
     cron_jobs = [
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
@@ -41,7 +43,7 @@ class FastWorkerSettings:
         cron(purge_email_logs, hour=2, minute=0),  # 2am daily
         cron(cleanup_processed_webhooks, hour=4, minute=0),  # 4am daily
         cron(schedule_connect_syncs, hour={0, 6, 12, 18}, minute=0),  # every 6h
-        cron(refresh_subscriptions_cache, hour=5, minute=30),  # 5:30am daily
+        cron(refresh_subscriptions_cache, day={1, 11, 21}, hour=5, minute=30),  # ~every 10 days
         cron(schedule_plaid_syncs, hour=3, minute=30),  # 3:30am daily
     ]
     on_startup = startup
