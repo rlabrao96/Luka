@@ -237,15 +237,18 @@ export default function SubscriptionsPage() {
                 return entries.map((entry, idx) => {
                   if (entry.type === "today") {
                     return (
-                      <div key="today-marker" className="relative flex items-center">
-                        <div className="absolute -left-[31px] w-5 h-5 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center">
+                      <div key="today-marker" className="relative">
+                        <div className="absolute -left-[36px] top-0 w-5 h-5 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center z-10">
                           <span className="text-[8px] font-extrabold text-white">
                             {today}
                           </span>
                         </div>
-                        <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wide">
-                          Hoy — Día {today}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wide leading-5">
+                            Hoy — Día {today}
+                          </p>
+                          <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-600 to-transparent" />
+                        </div>
                       </div>
                     );
                   }
