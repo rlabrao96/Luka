@@ -15,6 +15,7 @@ def test_fast_worker_functions():
     assert _func_names(FastWorkerSettings) == {
         "process_email",
         "send_invite_email",
+        "refresh_subscriptions_for_user",
     }
 
 

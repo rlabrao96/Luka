@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export interface OnboardingDraft {
-  type: "individual" | "couple" | null;
+  type: "individual" | "group" | null;
   partnerEmail: string;
 }
 

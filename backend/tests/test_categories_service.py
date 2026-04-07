@@ -39,6 +39,7 @@ def _execute_returning(scalars_list=None, scalar_val=_UNSET):
 # get_category_preferences
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_category_preferences_seeds_when_empty():
     """User with no rows gets default 22 categories seeded."""
@@ -55,6 +56,7 @@ async def test_get_category_preferences_seeds_when_empty():
     ]
 
     call_count = 0
+
     async def mock_execute(stmt):
         nonlocal call_count
         call_count += 1
@@ -99,6 +101,7 @@ async def test_get_category_preferences_expense_before_income():
 # add_category
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_add_category_happy_path():
     """Valid new category is inserted with is_custom=True."""
@@ -107,11 +110,13 @@ async def test_add_category_happy_path():
     user_id = uuid.uuid4()
     db = _mock_db()
 
-    execute_responses = iter([
-        _execute_returning(scalar_val=5),   # count query → 5 existing
-        _execute_returning(scalar_val=None), # duplicate check → not found
-        _execute_returning(scalar_val=4),   # max sort_order → 4
-    ])
+    execute_responses = iter(
+        [
+            _execute_returning(scalar_val=5),  # count query → 5 existing
+            _execute_returning(scalar_val=None),  # duplicate check → not found
+            _execute_returning(scalar_val=4),  # max sort_order → 4
+        ]
+    )
     db.execute = AsyncMock(side_effect=lambda _: next(execute_responses))
 
     result = await add_category(db, user_id, "Mascotas", "expense")
@@ -129,9 +134,9 @@ async def test_add_category_at_limit_raises():
 
     user_id = uuid.uuid4()
     db = _mock_db()
-    db.execute = AsyncMock(return_value=_execute_returning(scalar_val=19))
+    db.execute = AsyncMock(return_value=_execute_returning(scalar_val=20))
 
-    with pytest.raises(ValueError, match="19"):
+    with pytest.raises(ValueError, match="20"):
         await add_category(db, user_id, "Nueva", "expense")
 
 
@@ -144,10 +149,12 @@ async def test_add_category_duplicate_raises():
     db = _mock_db()
 
     existing_pref = _make_pref("Alimentación", "expense")
-    execute_responses = iter([
-        _execute_returning(scalar_val=5),          # count → 5
-        _execute_returning(scalar_val=existing_pref),  # duplicate check → found
-    ])
+    execute_responses = iter(
+        [
+            _execute_returning(scalar_val=5),  # count → 5
+            _execute_returning(scalar_val=existing_pref),  # duplicate check → found
+        ]
+    )
     db.execute = AsyncMock(side_effect=lambda _: next(execute_responses))
 
     with pytest.raises(ValueError, match="[Dd]uplicate"):
@@ -168,6 +175,7 @@ async def test_add_category_empty_name_raises():
 # reorder_categories
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_reorder_categories_valid():
     """Valid reorder updates sort_order on existing rows."""
@@ -180,10 +188,12 @@ async def test_reorder_categories_valid():
     pref_b = _make_pref("Hogar", "expense", 1)
 
     # First execute: existing rows; second execute: re-fetch after commit
-    execute_responses = iter([
-        _execute_returning(scalars_list=[pref_a, pref_b]),
-        _execute_returning(scalars_list=[pref_b, pref_a]),  # after reorder
-    ])
+    execute_responses = iter(
+        [
+            _execute_returning(scalars_list=[pref_a, pref_b]),
+            _execute_returning(scalars_list=[pref_b, pref_a]),  # after reorder
+        ]
+    )
     db.execute = AsyncMock(side_effect=lambda _: next(execute_responses))
 
     items = [
@@ -220,6 +230,7 @@ async def test_reorder_categories_mismatch_raises():
 # get_category_usage
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_category_usage_returns_count():
     """Returns count of TransactionSplit rows with matching category."""
@@ -236,6 +247,7 @@ async def test_get_category_usage_returns_count():
 # ---------------------------------------------------------------------------
 # delete_category
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_delete_category_no_reclassify():
@@ -263,13 +275,15 @@ async def test_delete_category_with_reclassify():
 
     # First execute: validate reclassify_to exists
     target_pref = _make_pref("Otros", "expense")
-    execute_responses = iter([
-        _execute_returning(scalar_val=target_pref),  # reclassify_to validation
-        MagicMock(),  # update splits
-        MagicMock(),  # update transactions
-        MagicMock(),  # delete merchant selections
-        MagicMock(),  # delete preference
-    ])
+    execute_responses = iter(
+        [
+            _execute_returning(scalar_val=target_pref),  # reclassify_to validation
+            MagicMock(),  # update splits
+            MagicMock(),  # update transactions
+            MagicMock(),  # delete merchant selections
+            MagicMock(),  # delete preference
+        ]
+    )
     db.execute = AsyncMock(side_effect=lambda _: next(execute_responses))
 
     await delete_category(db, user_id, "Hogar", reclassify_to="Otros")

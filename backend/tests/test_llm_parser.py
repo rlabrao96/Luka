@@ -140,7 +140,7 @@ async def test_parse_with_llm_success():
     assert result.card_last_four == "4532"
     assert result.confidence == 0.95
     assert depth == 1
-    assert model_name == "gemini-3.1-flash-lite"
+    assert model_name == "gemini-2.5-flash-lite"
 
 
 @pytest.mark.asyncio

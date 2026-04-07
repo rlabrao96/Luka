@@ -165,7 +165,7 @@ def parse_manual_expense(text: str, currency: str = "CLP") -> tuple[int, str] | 
     amount = _parse_amount(match.group(1), currency)
     if amount is None:
         return None
-    merchant = match.group(2).strip().title()
+    merchant = match.group(2).strip()
     if not merchant:
         return None
     return (amount, merchant)
@@ -327,6 +327,12 @@ async def _handle_manual_expense_trigger(
 ) -> None:
     """Create a manual transaction from a parsed expense message and start the session."""
     print(f"[MANUAL_EXPENSE] received from={phone} text={text!r}", flush=True)
+
+    # Quick pre-check with default currency — avoids a DB hit on unparseable messages.
+    # We re-parse below with the user's actual currency once we know it.
+    if not parse_manual_expense(text):
+        print("[MANUAL_EXPENSE] parse failed (pre-check), ignoring", flush=True)
+        return
 
     user_row = await _get_user_and_household_by_phone(phone, db)
     if not user_row:
