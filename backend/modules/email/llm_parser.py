@@ -78,12 +78,15 @@ Return ONLY valid JSON with this exact schema:
 
 Rules:
 - merchant: exact merchant/store name from the email, cleaned of location suffixes.
-  For person-to-person transfers, use the RECIPIENT PERSON NAME (e.g. "Camila Chahuan"), NOT the bank name.
+  For person-to-person payments (Zelle, bank transfers to other people), use the PERSON NAME (e.g. "Camila Chahuan"), NOT the bank name.
   For credit card payments ("pago a tarjeta", "Comprobante Pago Tarjeta"), use "Pago Tarjeta" + card info (e.g. "Pago Tarjeta Visa ****5032").
 - amount: integer in the smallest currency unit as specified above
-- transaction_type: "expense" for purchases, "transfer" for inter-account moves AND credit card payments, "income" for deposits/inflows
-- transfer_recipient: the person/entity name when transaction_type is "transfer" (same as merchant).
-  For CC payments, use the card description (e.g. "Pago Tarjeta Visa ****5032").
+- transaction_type:
+  "expense" = purchases AND person-to-person outgoing payments (Zelle sent, bank transfers to other people)
+  "transfer" = ONLY between the user's own accounts: credit card payments, checking↔savings moves, ATM cash
+  "income" = deposits, direct deposits, AND person-to-person incoming payments (Zelle received, incoming transfers)
+  IMPORTANT: "transferencia de fondos a [PERSON NAME]" is an EXPENSE, not a transfer. It's money leaving to another person.
+- transfer_recipient: null for expenses/income. Only set for transaction_type "transfer" (e.g. "Pago Tarjeta Visa ****5032").
 - confidence: 0.0 to 1.0 — how certain you are about the extraction accuracy
 - If you cannot extract a required field, set confidence below 0.3
 """

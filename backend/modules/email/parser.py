@@ -32,24 +32,19 @@ _CLP_AMOUNT_PATTERNS = [
     r"\$\s*([\d\.]+)",  # $15.990 or $ 15.990
 ]
 
-# Transfer patterns — detect transfers and extract the counterparty name.
-# Outgoing: Banco de Chile "transferencia de fondos a {NAME}, el dia..."
-# Outgoing: Santander "Datos de destino Nombre {NAME} RUT"
-# Incoming: Edwards "cliente {NAME} ha efectuado una transferencia"
+# Person-to-person payment patterns — these are expenses (outgoing) or income (incoming),
+# NOT inter-account transfers. "transfer" is reserved for own-account moves (CC payments, etc).
 _NAME_UPPER_START = r"[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{2,60}"  # must start uppercase
 _NAME_ANY = r"[A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ ]{2,60}"
-_TRANSFER_PATTERNS = [
+
+# Outgoing person-to-person → expense
+_OUTGOING_PERSON_PATTERNS = [
     # US — Zelle (BofA): "payment of $... to BENJAMIN BRAITHWAITE has been sent"
     r"payment of \$[\d,]+\.\d{2} to\s+([A-Z][A-Z ]{2,60}?)\s+has been sent",
     # US — Zelle (PNC subject): "You sent a Zelle® payment to NAME"
     r"sent a Zelle.*?payment to\s+([A-Z][A-Z ]{2,60})",
     # US — Zelle (PNC body): "You Sent a Payment to RAFAEL LABRA OETTINGER"
     r"[Ss]ent a [Pp]ayment to\s+([A-Z][A-Z ]{2,60})",
-    # US — Zelle (PNC incoming): "You Received a Payment from NAME"
-    r"[Rr]eceived a [Pp]ayment from\s+([A-Z][A-Z ]{2,60})",
-    # Incoming — "cliente {NAME} ha efectuado una transferencia" (Edwards)
-    # Must be before outgoing prose patterns to avoid matching "a tu cuenta"
-    rf"cliente\s+({_NAME_ANY}?)\s+ha efectuado una transferencia",
     # Outgoing — name in prose (uppercase start to skip "a tu cuenta con el")
     rf"transferencia de fondos a\s+({_NAME_UPPER_START}?)(?:\s*,|\s+el\s)",
     rf"transferencia a\s+({_NAME_UPPER_START}?)(?:\s*,|\s+el\s|\s+por\s)",
@@ -57,6 +52,14 @@ _TRANSFER_PATTERNS = [
     rf"Datos del Destinatario\s+Nombre\s+({_NAME_ANY}?)\s+Rut",
     # Outgoing — name in "Datos de destino" table (Santander)
     rf"Datos de destino\s+Nombre\s+({_NAME_ANY}?)\s+RUT",
+]
+
+# Incoming person-to-person → income
+_INCOMING_PERSON_PATTERNS = [
+    # US — Zelle (PNC incoming): "You Received a Payment from NAME"
+    r"[Rr]eceived a [Pp]ayment from\s+([A-Z][A-Z ]{2,60})",
+    # Incoming — "cliente {NAME} ha efectuado una transferencia" (Edwards)
+    rf"cliente\s+({_NAME_ANY}?)\s+ha efectuado una transferencia",
 ]
 
 # Credit card payment patterns — detect CC payments and extract card info
@@ -145,12 +148,19 @@ def _parse_cc_payment(text: str) -> str | None:
     return None
 
 
-def _parse_transfer_recipient(text: str) -> str | None:
-    """Extract recipient name from transfer emails (e.g. Banco de Chile fund transfers)."""
-    for pattern in _TRANSFER_PATTERNS:
+def _parse_person_payment(text: str) -> tuple[str, str] | None:
+    """Extract person name and direction from person-to-person payment emails.
+
+    Returns (name, "expense"|"income") or None.
+    """
+    for pattern in _INCOMING_PERSON_PATTERNS:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
-            return match.group(1).strip().title()
+            return match.group(1).strip().title(), "income"
+    for pattern in _OUTGOING_PERSON_PATTERNS:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip().title(), "expense"
     return None
 
 
@@ -228,15 +238,14 @@ def parse_bank_email_regex(raw_text: str) -> ParsedEmail | None:
     if amount is None:
         return None
 
-    # Try CC payment first (e.g. "pago a la tarjeta de crédito Visa ****5032")
+    # Try CC payment first — inter-account transfer (e.g. "pago a tarjeta Visa ****5032")
     cc_merchant = _parse_cc_payment(text)
     if cc_merchant:
         merchant = cc_merchant
         transaction_type = "transfer"
-    # Then try transfer patterns (e.g. "transferencia de fondos a Juan Jose Lamarca")
-    elif transfer_recipient := _parse_transfer_recipient(text):
-        merchant = transfer_recipient
-        transaction_type = "transfer"
+    # Person-to-person payments — expense (outgoing) or income (incoming)
+    elif person_result := _parse_person_payment(text):
+        merchant, transaction_type = person_result
     else:
         merchant = _parse_merchant(text)
         transaction_type = _infer_transaction_type(text)

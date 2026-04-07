@@ -121,7 +121,7 @@ def test_parse_bchile_transfer():
     result = parse_bank_email(BCHILE_TRANSFER)
     assert result is not None
     assert result.amount == 95600
-    assert result.transaction_type == "transfer"
+    assert result.transaction_type == "expense"  # person-to-person outgoing = expense
     assert "Juan Jose Lamarca" in result.raw_merchant
     assert result.transaction_date.day == 28
 
@@ -153,7 +153,7 @@ def test_parse_edwards_transfer_incoming():
     result = parse_bank_email(EDWARDS_TRANSFER_INCOMING)
     assert result is not None
     assert result.amount == 180000
-    assert result.transaction_type == "transfer"
+    assert result.transaction_type == "income"  # incoming person-to-person = income
     assert "Catalina" in result.raw_merchant
     assert "Droppelmann" in result.raw_merchant
     assert result.transaction_date.day == 20
@@ -180,7 +180,7 @@ def test_parse_santander_transfer_outgoing():
     result = parse_bank_email(SANTANDER_TRANSFER_OUTGOING)
     assert result is not None
     assert result.amount == 8226
-    assert result.transaction_type == "transfer"
+    assert result.transaction_type == "expense"  # person-to-person outgoing = expense
     assert "Unired" in result.raw_merchant
     assert result.transaction_date.day == 3
 
@@ -253,7 +253,7 @@ def test_parse_bofa_zelle():
     assert result is not None
     assert result.amount == 200000  # $2,000.00 stored as cents
     assert result.currency == "USD"
-    assert result.transaction_type == "transfer"
+    assert result.transaction_type == "expense"  # Zelle sent = expense
     assert "Benjamin Braithwaite" in result.raw_merchant
 
 
@@ -271,7 +271,7 @@ def test_parse_bofa_zelle_small_amount():
     assert result is not None
     assert result.amount == 5000  # $50.00 stored as cents
     assert result.currency == "USD"
-    assert result.transaction_type == "transfer"
+    assert result.transaction_type == "expense"  # Zelle sent = expense
     assert "Jane Doe" in result.raw_merchant
 
 
@@ -348,7 +348,7 @@ def test_parse_pnc_zelle_sent():
     assert result is not None
     assert result.amount == 50000  # $500.00 stored as cents
     assert result.currency == "USD"
-    assert result.transaction_type == "transfer"
+    assert result.transaction_type == "expense"  # Zelle sent = expense
     assert "Rafael Labra Oettinger" in result.raw_merchant
     assert result.transaction_date.month == 4
     assert result.transaction_date.day == 6
@@ -371,7 +371,7 @@ def test_parse_pnc_zelle_received():
     assert result is not None
     assert result.amount == 7550  # $75.50 stored as cents
     assert result.currency == "USD"
-    assert result.transaction_type == "transfer"
+    assert result.transaction_type == "income"  # Zelle received = income
     assert "Jane Doe" in result.raw_merchant
     assert result.transaction_date.month == 3
     assert result.transaction_date.day == 28
