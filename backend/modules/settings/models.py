@@ -23,7 +23,9 @@ class NotificationPreference(Base):
 
 class UserCategoryPreference(Base):
     __tablename__ = "user_category_preferences"
-    __table_args__ = (sa.UniqueConstraint("user_id", "category", name="uq_user_category_prefs"),)
+    __table_args__ = (
+        sa.UniqueConstraint("user_id", "category", "category_type", name="uq_user_category_prefs"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
