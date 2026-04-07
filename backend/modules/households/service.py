@@ -428,13 +428,22 @@ async def get_settlement(db: AsyncSession, household_id, month: str | None = Non
     }
 
 
-async def get_partner_stats(
+async def get_member_stats(
     db: AsyncSession, household_id: uuid.UUID, requester_id: uuid.UUID
-) -> dict:
-    """Aggregate stats for partner only — no individual transaction rows."""
+) -> list[dict]:
+    """Aggregate stats for all active members — no individual transaction rows."""
     result = await db.execute(
-        text("SELECT get_partner_stats(:household_id, :viewer_id)"),
+        text("""
+            SELECT u.id AS user_id, u.full_name,
+                   COALESCE(SUM(ABS(t.amount)) FILTER (WHERE t.transaction_type = 'expense'), 0) AS total_spent
+            FROM household_members hm
+            JOIN users u ON u.id = hm.user_id
+            LEFT JOIN transactions t ON t.user_id = u.id AND t.household_id = :household_id
+            WHERE hm.household_id = :household_id
+              AND hm.left_at IS NULL
+              AND hm.user_id != :viewer_id
+            GROUP BY u.id, u.full_name
+        """),
         {"household_id": str(household_id), "viewer_id": str(requester_id)},
     )
-    data = result.scalar()
-    return data if data is not None else {"total_spent": 0, "by_category": []}
+    return [dict(r._mapping) for r in result.all()]

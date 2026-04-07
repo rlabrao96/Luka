@@ -72,9 +72,10 @@ export interface HouseholdSummaryRow {
   personal_paid: number;
 }
 
-export interface PartnerStats {
+export interface MemberStats {
+  user_id: string;
+  full_name: string;
   total_spent: number;
-  by_category: Array<{ category: string; amount: number }>;
 }
 
 export interface MemberTotal {
@@ -407,8 +408,8 @@ export const api = {
   getHouseholdSummary: (householdId: string) =>
     apiFetch<HouseholdSummaryRow[]>(`/households/${householdId}/summary`),
 
-  getPartnerStats: (householdId: string) =>
-    apiFetch<PartnerStats>(`/households/${householdId}/partner-stats`),
+  getMemberStats: (householdId: string) =>
+    apiFetch<MemberStats[]>(`/households/${householdId}/member-stats`),
 
   getCategoryBreakdown: (householdId: string, month?: string) =>
     apiFetch<CategoryBreakdownRow[]>(

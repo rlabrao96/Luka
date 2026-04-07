@@ -222,14 +222,14 @@ async def household_summary(
     return await service.get_contribution_summary(db, household_id)
 
 
-@router.get("/{household_id}/partner-stats")
-async def partner_stats(
+@router.get("/{household_id}/member-stats")
+async def member_stats(
     household_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    return await service.get_partner_stats(db, household_id, current_user.id)
+    return await service.get_member_stats(db, household_id, current_user.id)
 
 
 @router.get("/{household_id}/category-breakdown")

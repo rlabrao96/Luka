@@ -11,11 +11,11 @@ export function useHouseholdSummary() {
   });
 }
 
-export function usePartnerStats() {
+export function useMemberStats() {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["household", "partner-stats", householdId],
-    queryFn: () => api.getPartnerStats(householdId!),
+    queryKey: ["household", "member-stats", householdId],
+    queryFn: () => api.getMemberStats(householdId!),
     enabled: !!householdId,
   });
 }

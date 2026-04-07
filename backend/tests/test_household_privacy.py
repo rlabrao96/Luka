@@ -1,5 +1,5 @@
 import pytest
-from modules.households.service import get_contribution_summary, get_partner_stats
+from modules.households.service import get_contribution_summary, get_member_stats
 
 
 @pytest.mark.skip(reason="Requires live Supabase DATABASE_URL")
@@ -14,9 +14,11 @@ async def test_contribution_summary_returns_both_users(db, mock_user, mock_partn
 
 @pytest.mark.skip(reason="Requires live Supabase DATABASE_URL")
 @pytest.mark.asyncio
-async def test_partner_stats_returns_only_aggregates(db, mock_user, mock_partner, mock_household):
-    stats = await get_partner_stats(db, household_id=mock_household.id, requester_id=mock_user.id)
-    assert "total_spent" in stats
-    assert "by_category" in stats
-    # Must NOT contain individual transaction rows
-    assert "transactions" not in stats
+async def test_member_stats_returns_only_aggregates(db, mock_user, mock_partner, mock_household):
+    stats = await get_member_stats(db, household_id=mock_household.id, requester_id=mock_user.id)
+    assert isinstance(stats, list)
+    # Must return list of members with aggregate data, not individual transaction rows
+    for member in stats:
+        assert "user_id" in member
+        assert "full_name" in member
+        assert "total_spent" in member
