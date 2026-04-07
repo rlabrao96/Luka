@@ -110,7 +110,7 @@ function CategoryCell({ txn }: CategoryCellProps) {
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
 
   const { expense: expenseCats, income: incomeCats } = useCategories();
-  const isIncome = txn.transaction_type === "income";
+  const isIncome = Number(txn.amount) > 0;
   const categories = isIncome ? incomeCats : expenseCats;
 
   async function handleSelect(cat: string | null) {
@@ -231,7 +231,7 @@ export function RecentTransactions({
 
               /* Mobile non-compact: card layout with bottom sheet for category, SplitTypeEditor for split */
               if (isMobile) {
-                const isOutflow = txn.transaction_type !== "income";
+                const isOutflow = Number(txn.amount) < 0;
                 return (
                   <div
                     key={txn.id}
@@ -280,7 +280,7 @@ export function RecentTransactions({
               }
 
               /* Desktop non-compact: card layout with inline CategoryCell and SplitTypeEditor */
-              const isOutflow = txn.transaction_type !== "income";
+              const isOutflow = Number(txn.amount) < 0;
               return (
                 <div
                   key={txn.id}

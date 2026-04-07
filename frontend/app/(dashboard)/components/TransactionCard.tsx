@@ -42,7 +42,7 @@ export function TransactionCard({
   onCategoryTap,
   onSplitTap,
 }: TransactionCardProps) {
-  const isOutflow = txn.transaction_type !== "income";
+  const isOutflow = Number(txn.amount) < 0;
   const split = SPLIT_STYLES[txn.split_type ?? "personal"] ?? SPLIT_STYLES.personal;
   const category = currentCategory !== undefined ? currentCategory : txn.category;
 

@@ -267,7 +267,7 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
       <div className="space-y-2">
         {transactions.map((txn) => {
           const amount = Number(txn.amount);
-          const isOutflow = txn.transaction_type !== "income";
+          const isOutflow = Number(txn.amount) < 0;
           const currency = txn.currency ?? "CLP";
           const formattedAmount = isOutflow
             ? `(${formatAmount(amount, currency)})`
