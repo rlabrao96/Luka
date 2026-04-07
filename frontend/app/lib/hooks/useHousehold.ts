@@ -57,3 +57,58 @@ export function useUpdateSplitRatio() {
     },
   });
 }
+
+export function useHouseholdMembers() {
+  const householdId = useLukaStore((s) => s.householdId);
+  return useQuery({
+    queryKey: ["household", "members", householdId],
+    queryFn: () => api.getHouseholdMembers(householdId!),
+    enabled: !!householdId,
+  });
+}
+
+export function useCreateAndInvite() {
+  const queryClient = useQueryClient();
+  const setHousehold = useLukaStore((s) => s.setHousehold);
+  return useMutation({
+    mutationFn: () => api.createAndInvite(),
+    onSuccess: (data) => {
+      setHousehold(data.household_id);
+      queryClient.invalidateQueries({ queryKey: ["household"] });
+    },
+  });
+}
+
+export function useUpdateSettlementEnabled() {
+  const householdId = useLukaStore((s) => s.householdId);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => api.updateSettlementEnabled(householdId!, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["household"] });
+    },
+  });
+}
+
+export function useRemoveMember() {
+  const householdId = useLukaStore((s) => s.householdId);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (memberId: string) => api.removeMember(householdId!, memberId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["household"] });
+    },
+  });
+}
+
+export function useUpdateMemberRole() {
+  const householdId = useLukaStore((s) => s.householdId);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ memberId, role }: { memberId: string; role: string }) =>
+      api.updateMemberRole(householdId!, memberId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["household"] });
+    },
+  });
+}

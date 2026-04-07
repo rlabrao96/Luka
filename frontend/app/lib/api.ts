@@ -91,18 +91,45 @@ export interface CategoryBreakdownRow {
   pct_of_overall: number;
 }
 
-export interface SettlementResponse {
+export interface SettlementTransfer {
   from_user_id: string;
   from_user_name: string;
   to_user_id: string;
   to_user_name: string;
   amount: number;
+}
+
+export interface SettlementResponse {
+  settlement_enabled: boolean;
+  transfers: SettlementTransfer[];
   split_ratio: number[];
   month: string;
 }
 
 export interface SplitRatioResponse {
   split_ratio: number[];
+}
+
+export interface HouseholdMember {
+  member_id: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  role: "owner" | "member";
+  joined_at: string;
+}
+
+export interface PendingInvite {
+  id: string;
+  token: string;
+  invited_email: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface HouseholdMembersResponse {
+  members: HouseholdMember[];
+  pending_invites: PendingInvite[];
 }
 
 export interface MonthlySpendingPoint {
@@ -428,16 +455,43 @@ export const api = {
   getMonthlySpending: (householdId: string) =>
     apiFetch<MonthlySpendingPoint[]>(`/transactions/monthly-summary?household_id=${householdId}`),
 
-  createHousehold: (name: string, type: "individual" | "couple") =>
+  createHousehold: (name: string, type: "individual" | "group") =>
     apiFetch<{ id: string; name: string; type: string }>("/households", {
       method: "POST",
       body: JSON.stringify({ name, type }),
     }),
 
-  invitePartner: (householdId: string, email: string) =>
+  inviteMember: (householdId: string) =>
     apiFetch<{ token: string; expires_at: string }>(
       `/households/${householdId}/invite`,
-      { method: "POST", body: JSON.stringify({ email }) }
+      { method: "POST", body: JSON.stringify({}) }
+    ),
+
+  getHouseholdMembers: (householdId: string) =>
+    apiFetch<HouseholdMembersResponse>(`/households/${householdId}/members`),
+
+  createAndInvite: () =>
+    apiFetch<{ household_id: string; token: string; expires_at: string }>(
+      "/households/create-and-invite",
+      { method: "POST" }
+    ),
+
+  updateSettlementEnabled: (householdId: string, enabled: boolean) =>
+    apiFetch<{ settlement_enabled: boolean }>(
+      `/households/${householdId}/settlement-enabled`,
+      { method: "PATCH", body: JSON.stringify({ enabled }) }
+    ),
+
+  updateMemberRole: (householdId: string, memberId: string, role: string) =>
+    apiFetch<{ ok: boolean }>(
+      `/households/${householdId}/members/${memberId}/role`,
+      { method: "PATCH", body: JSON.stringify({ role }) }
+    ),
+
+  removeMember: (householdId: string, memberId: string) =>
+    apiFetch<{ ok: boolean; new_household_id: string }>(
+      `/households/${householdId}/members/${memberId}`,
+      { method: "DELETE" }
     ),
 
   getBankAccounts: (householdId: string) =>
