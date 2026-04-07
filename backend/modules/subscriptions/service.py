@@ -101,6 +101,9 @@ def detect_from_rows(rows: list[dict]) -> list[dict]:
             trend = "stable"
             change_pct = None
 
+        # Build recent charges (last 3 transactions)
+        recent_charges = [{"date": t["tx_date"], "amount": t["amount"]} for t in sorted_txns[:3]]
+
         results.append(
             {
                 "merchant_name": merchant_key,
@@ -109,12 +112,15 @@ def detect_from_rows(rows: list[dict]) -> list[dict]:
                 "last_amount": last_amount,
                 "previous_amount": previous_amount,
                 "last_charge_date": latest["tx_date"],
-                "predicted_next_date": predict_next_date(latest["tx_date"]),
+                "next_charge_day": latest["tx_date"].day,
                 "frequency": "monthly",
                 "trend": trend,
                 "trend_pct": change_pct,
                 "months_seen": consecutive,
                 "split_type": latest["split_type"],
+                "currency": latest.get("currency", "CLP"),
+                "status": "active",
+                "recent_charges": recent_charges,
             }
         )
 
