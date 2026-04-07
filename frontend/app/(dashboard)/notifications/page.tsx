@@ -34,7 +34,7 @@ export default function NotificationsPage() {
     notifications
       .filter((n) => n.type === "merchant_review" && n.payload?.sync_job_id)
       .forEach((n) => {
-        const jobId = n.payload.sync_job_id;
+        const jobId = n.payload!.sync_job_id as string;
         queryClient.prefetchQuery({
           queryKey: ["merchant-review", jobId],
           queryFn: () => api.getReviewCards(jobId),
