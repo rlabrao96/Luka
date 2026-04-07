@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction, type PendingTransactions } from "@/app/lib/api";
 import { Trash2, ChevronDown, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCategories } from "@/app/lib/hooks/useCategories";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
 
@@ -21,16 +22,6 @@ function useIsMobile() {
   return mobile;
 }
 
-const EXPENSE_CATEGORIES = [
-  "Alimentación", "Supermercado", "Transporte", "Combustible",
-  "Entretenimiento", "Salud", "Farmacia", "Hogar",
-  "Ropa", "Tecnología", "Educación", "Viajes", "Servicios", "Otros",
-];
-
-const INCOME_CATEGORIES = [
-  "Sueldo", "Freelance", "Inversiones", "Arriendo",
-  "Bono", "Transferencia de terceros", "Deuda pendiente", "Otros ingresos",
-];
 
 function toTitleCase(str: string) {
   return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
@@ -57,8 +48,9 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
 
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
 
+  const { expense: expenseCats, income: incomeCats } = useCategories();
   const isIncome = Number(txn.amount) < 0;
-  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories = isIncome ? incomeCats : expenseCats;
 
   async function handleSelect(cat: string | null) {
     setOpen(false);

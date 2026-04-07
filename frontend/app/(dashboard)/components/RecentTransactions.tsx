@@ -4,37 +4,11 @@ import { TrendingDown, TrendingUp, ChevronDown } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Transaction, api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
+import { useCategories } from "@/app/lib/hooks/useCategories";
 import { TransactionCard } from "./TransactionCard";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
 
-const EXPENSE_CATEGORIES = [
-  "Alimentación",
-  "Supermercado",
-  "Transporte",
-  "Combustible",
-  "Entretenimiento",
-  "Salud",
-  "Farmacia",
-  "Hogar",
-  "Ropa",
-  "Tecnología",
-  "Educación",
-  "Viajes",
-  "Servicios",
-  "Otros",
-];
-
-const INCOME_CATEGORIES = [
-  "Sueldo",
-  "Freelance",
-  "Inversiones",
-  "Arriendo",
-  "Bono",
-  "Transferencia de terceros",
-  "Deuda pendiente",
-  "Otros ingresos",
-];
 
 function toTitleCase(str: string) {
   return str
@@ -135,8 +109,9 @@ function CategoryCell({ txn }: CategoryCellProps) {
   // Sync if parent passes updated txn (e.g. after refetch)
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
 
+  const { expense: expenseCats, income: incomeCats } = useCategories();
   const isIncome = txn.transaction_type === "income";
-  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories = isIncome ? incomeCats : expenseCats;
 
   async function handleSelect(cat: string | null) {
     setOpen(false);

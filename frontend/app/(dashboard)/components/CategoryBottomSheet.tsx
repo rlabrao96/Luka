@@ -1,17 +1,7 @@
 "use client";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { cn } from "@/lib/utils";
-
-const EXPENSE_CATEGORIES = [
-  "Alimentación", "Supermercado", "Transporte", "Combustible",
-  "Entretenimiento", "Salud", "Farmacia", "Hogar",
-  "Ropa", "Tecnología", "Educación", "Viajes", "Servicios", "Otros",
-];
-
-const INCOME_CATEGORIES = [
-  "Sueldo", "Freelance", "Inversiones", "Arriendo",
-  "Bono", "Transferencia de terceros", "Deuda pendiente", "Otros ingresos",
-];
+import { useCategories } from "@/app/lib/hooks/useCategories";
 
 interface CategoryBottomSheetProps {
   open: boolean;
@@ -28,7 +18,8 @@ export function CategoryBottomSheet({
   isIncome,
   onSelect,
 }: CategoryBottomSheetProps) {
-  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const { expense: expenseCats, income: incomeCats } = useCategories();
+  const categories = isIncome ? incomeCats : expenseCats;
 
   function handleSelect(cat: string | null) {
     onSelect(cat);
