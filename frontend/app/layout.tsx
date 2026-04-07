@@ -20,7 +20,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "Luka — Finanzas personales",
-  description: "Control de gastos personales y en pareja",
+  description: "Control de gastos personales y compartidos",
   icons: {
     icon: "/icon-192x192.png",
     apple: "/apple-touch-icon.png",

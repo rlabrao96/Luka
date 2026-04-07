@@ -17,7 +17,7 @@ export default function SetupHouseholdPage() {
     : null;
 
   if (inviteToken) {
-    setOnboardingDraft({ type: "individual", partnerEmail: "" });
+    setOnboardingDraft({ type: "individual", memberEmail: "" });
     router.push("/onboarding/verify-whatsapp");
     return null;
   }
@@ -29,7 +29,7 @@ export default function SetupHouseholdPage() {
   const nextStep = () => {
     setOnboardingDraft({
       type: wantsShared ? "group" : "individual",
-      partnerEmail: "",
+      memberEmail: "",
     });
     router.push("/onboarding/verify-whatsapp");
   };

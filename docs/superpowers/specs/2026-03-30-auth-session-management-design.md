@@ -18,7 +18,7 @@ Two issues with the current auth/session flow:
 
 **Mechanism:** Cookie-based fresh-login flag.
 
-- In `auth/callback/route.ts`, after successful `exchangeCodeForSession`, set a cookie: `luka-fresh-login=1` (max-age 60s, path `/`, SameSite Lax).
+- In `auth/callback/route.ts`, after successful `exchangeCodeForSession`, set a cookie: `luka-fresh-login=1` (max-age=60, path=/, SameSite=Lax, httpOnly=false, secure=true). Must be `httpOnly=false` so `SessionGuard` can read it client-side.
 - In `SessionGuard` (renamed from `InactivityGuard`), on mount: check for the `luka-fresh-login` cookie. If present:
   - Clear stale `luka_last_active` from localStorage
   - Write fresh `Date.now()` timestamp
@@ -28,7 +28,7 @@ Two issues with the current auth/session flow:
 
 **Edge cases:**
 - Explicit sign-out ("Cerrar sesión") already clears `luka_last_active` — no issue on immediate re-login.
-- The bug only triggers when session expires without going through the sign-out flow (token expiry, cookie clearing, refresh token revocation).
+- The bug only triggers when session expires without going through the sign-out flow (token expiry, cookie clearing, refresh token revocation). The fresh-login cookie covers all these cases.
 
 ### 2. PWA Detection & Conditional Timeout
 

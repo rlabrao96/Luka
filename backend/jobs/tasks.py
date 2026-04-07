@@ -419,7 +419,7 @@ async def process_email(
                     to=phone,
                     amount=parsed.amount,
                     merchant=parsed.raw_merchant,
-                    partner_name="tu pareja",
+                    partner_name="otro miembro",
                     is_joint=is_joint,
                     categories=categories,
                     transaction_type=parsed.transaction_type,

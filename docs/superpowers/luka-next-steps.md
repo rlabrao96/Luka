@@ -1,5 +1,5 @@
 # Luka — What Needs Your Input & How to Continue
-**Date:** 2026-04-05 (session 16)
+**Date:** 2026-04-06 (session 17)
 
 This document walks through every decision and credential that requires your input before Luka can go live, ordered by dependency.
 
@@ -8,7 +8,7 @@ This document walks through every decision and credential that requires your inp
 - **Supabase** — project live, all credentials loaded
 - **Redis** — Railway add-on configured
 - **OpenAI** — API key loaded in Railway
-- **Database migrations** — all 9 migrations at `009 head` (008: performance indexes, 009: last_synced_at + import_started_at on bank_accounts)
+- **Database migrations** — all 30 migrations at `030 head` (030: email_templates, bank_registry, parsed_email_log + 101 bank seeds)
 - **Note:** run future migrations manually: `cd backend && python3 -m alembic upgrade head`
 - **Railway backend** — live at `https://luka-production-eb87.up.railway.app`
 - **Vercel frontend** — live at `https://luka-lovat.vercel.app`
@@ -213,9 +213,9 @@ Railway add-on configured. `REDIS_URL` auto-injected.
 
 ---
 
-### 1.6 Gemini — LLM for Transaction Categorization ✅ DONE
+### 1.6 Gemini — LLM for Transaction Categorization + Email Parsing ✅ DONE
 
-Swapped from OpenAI gpt-4o-mini to Google Gemini 2.0 Flash (cheaper, async SDK). API key loaded locally. **TODO:** Add `GEMINI_API_KEY` to Railway env vars.
+Gemini now used for both merchant categorization (Flash Lite) and email parsing (confidence waterfall: 3.1 Flash Lite → 2.5 Flash → 3 Flash → 2.5 Pro). API key loaded in Railway. Live in production — first LLM-parsed transactions confirmed 2026-04-06.
 
 ---
 
@@ -233,7 +233,7 @@ Fintoc has been removed and replaced by **Luka Connect** — a standalone bank s
 
 ## Phase 2: Infrastructure Setup ✅ COMPLETE
 
-- **2.1** Database migrations — done (`028 head`)
+- **2.1** Database migrations — done (`030 head`)
 - **2.2** Railway backend — live at `https://luka-production-eb87.up.railway.app`
 - **2.3** Vercel frontend — live at `https://luka-lovat.vercel.app`
 - **2.4** Supabase redirect URL configured for Vercel callback

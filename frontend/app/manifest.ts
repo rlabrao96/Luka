@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Luka — Finanzas personales",
     short_name: "Luka",
-    description: "Control de gastos personales y en pareja",
+    description: "Control de gastos personales y compartidos",
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",

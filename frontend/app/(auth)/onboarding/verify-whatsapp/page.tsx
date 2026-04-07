@@ -30,7 +30,7 @@ export default function VerifyWhatsAppPage() {
         const household = await api.createHousehold("Mi Hogar", onboardingDraft.type);
         if (household.id) {
           setHousehold(household.id);
-          if (onboardingDraft.type === "group" && onboardingDraft.partnerEmail) {
+          if (onboardingDraft.type === "group" && onboardingDraft.memberEmail) {
             try {
               await api.inviteMember(household.id);
             } catch (inviteError) {

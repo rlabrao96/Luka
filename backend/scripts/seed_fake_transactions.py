@@ -8,6 +8,7 @@ send_expense_alert() call so the messages land on the phone.
 Usage (from /backend):
     python scripts/seed_fake_transactions.py
 """
+
 import asyncio
 import sys
 import os
@@ -66,13 +67,15 @@ async def main() -> None:
         bank_result = await db.execute(
             select(BankAccount).where(
                 BankAccount.user_id == user.id,
-                BankAccount.is_active == True,
+                BankAccount.is_active is True,
             )
         )
         bank_account = bank_result.scalars().first()
         bank_account_id = bank_account.id if bank_account else None
         is_joint = bank_account.account_type == "joint" if bank_account else False
-        print(f"Bank account: {bank_account.bank_name if bank_account else 'none'} (joint={is_joint})")
+        print(
+            f"Bank account: {bank_account.bank_name if bank_account else 'none'} (joint={is_joint})"
+        )
 
         # 4. Open Redis
         redis_client = await aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -95,7 +98,9 @@ async def main() -> None:
             db.add(txn)
             await db.commit()
             await db.refresh(txn)
-            print(f"\n[{i}/3] Created transaction {txn.id} — {fake['merchant']} ${fake['amount']:,}")
+            print(
+                f"\n[{i}/3] Created transaction {txn.id} — {fake['merchant']} ${fake['amount']:,}"
+            )
 
             # Build WhatsApp session
             session = WhatsAppSession(
@@ -113,7 +118,7 @@ async def main() -> None:
                 to=user.phone_whatsapp,
                 amount=fake["amount"],
                 merchant=fake["merchant"],
-                partner_name="tu pareja",
+                partner_name="otro miembro",
                 is_joint=is_joint,
                 categories=categories,
             )

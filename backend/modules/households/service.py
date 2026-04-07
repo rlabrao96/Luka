@@ -50,7 +50,7 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
     # Prevent inviter from accepting their own invite
     if invite.invited_by == user.id:
         raise ValueError(
-            "No puedes aceptar tu propia invitación. Abre el enlace en el navegador de tu pareja."
+            "No puedes aceptar tu propia invitación. Abre el enlace en el navegador del otro miembro."
         )
 
     # Prevent user who is already a member of this household

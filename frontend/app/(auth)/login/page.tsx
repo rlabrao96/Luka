@@ -113,7 +113,7 @@ export default function LoginPage() {
             Tus finanzas,<br />en un solo lugar.
           </h2>
           <p className="text-base text-slate-200/90 drop-shadow-md font-medium">
-            Captura tus gastos automáticamente y coordina con tu pareja — sin esfuerzo.
+            Captura tus gastos automáticamente y coordina con otros — sin esfuerzo.
           </p>
         </div>
 
@@ -130,7 +130,7 @@ export default function LoginPage() {
                 priority
               />
             </div>
-            <p className="text-sm text-slate-500 lg:text-luka-muted mt-2 lg:mt-1 font-medium lg:font-normal">Finanzas personales y en pareja</p>
+            <p className="text-sm text-slate-500 lg:text-luka-muted mt-2 lg:mt-1 font-medium lg:font-normal">Finanzas personales y compartidas</p>
           </div>
 
           {/* Heading */}
@@ -201,7 +201,7 @@ export default function LoginPage() {
             Tus finanzas,<br />en un solo lugar.
           </h2>
           <p className="text-lg text-slate-300 max-w-md leading-relaxed">
-            Captura tus gastos automáticamente, visualiza tus patrones y coordina con tu pareja — todo sin esfuerzo.
+            Captura tus gastos automáticamente, visualiza tus patrones y coordina con otros — todo sin esfuerzo.
           </p>
           <div className="flex gap-2 mt-8">
             <span className="w-8 h-1.5 rounded-full bg-luka-primary" />

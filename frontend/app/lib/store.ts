@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 
 export interface OnboardingDraft {
   type: "individual" | "group" | null;
-  partnerEmail: string;
+  memberEmail: string;
 }
 
 interface LukaStore {
@@ -41,6 +41,7 @@ export const useLukaStore = create<LukaStore>()(
         householdId: state.householdId,
         userId: state.userId,
         userFullName: state.userFullName,
+        onboardingDraft: state.onboardingDraft,
       }),
     }
   )

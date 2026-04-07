@@ -71,7 +71,7 @@ async def send_test_transaction(
         to=phone,
         amount=amount,
         merchant=merchant,
-        partner_name="tu pareja",
+        partner_name="otro miembro",
         is_joint=False,
         categories=categories,
         currency=currency,
