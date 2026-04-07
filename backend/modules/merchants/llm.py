@@ -23,7 +23,7 @@ _EXPENSE_CATEGORIES = [
     "Salud",
     "Farmacia",
     "Hogar",
-    "Arriendo",
+    "Arriendo/Hipoteca",
     "Ropa",
     "Tecnología",
     "Educación",

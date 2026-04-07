@@ -7,7 +7,7 @@ from modules.settings.models import NotificationPreference, UserCategoryPreferen
 
 _DEFAULT_CATEGORIES = [
     ("Alimentación", "expense", 0),
-    ("Arriendo", "expense", 1),
+    ("Arriendo/Hipoteca", "expense", 1),
     ("Cuentas", "expense", 2),
     ("Combustible", "expense", 3),
     ("Deporte", "expense", 4),
