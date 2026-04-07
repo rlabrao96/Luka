@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, delete as sql_delete
+from sqlalchemy import func, select, text, delete as sql_delete
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount
 from modules.merchants.models import Merchant
@@ -165,7 +165,9 @@ async def update_category(
     # Train merchant data: record this user correction for future suggestions
     if category:
         try:
-            await record_category_selection(txn.raw_merchant_name, category, db, _get_redis(), user_id=user_id)
+            await record_category_selection(
+                txn.raw_merchant_name, category, db, _get_redis(), user_id=user_id
+            )
         except Exception:
             pass  # never block the category save if training fails
     return True
@@ -280,7 +282,8 @@ async def delete_transaction(
 
 async def is_duplicate_transaction(db: AsyncSession, user_id: uuid.UUID, amount: int) -> bool:
     """
-    Check if a pending transaction with the same amount was created in the last 5 minutes.
+    Check if a pending transaction with the same absolute amount was created in the last 5 minutes.
+    Sign-agnostic: works whether the stored amount is negative (expense) or positive (income).
     Used to deduplicate Banco de Chile compra + comprobante email pairs.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
@@ -288,7 +291,7 @@ async def is_duplicate_transaction(db: AsyncSession, user_id: uuid.UUID, amount:
         select(Transaction)
         .where(
             Transaction.user_id == user_id,
-            Transaction.amount == amount,
+            func.abs(Transaction.amount) == abs(amount),
             Transaction.status == "pending",
             Transaction.created_at >= cutoff,
         )
