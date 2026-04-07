@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pydantic import BaseModel
+
+
+class RecentCharge(BaseModel):
+    date: date
+    amount: Decimal
 
 
 class RecurringExpenseItem(BaseModel):
@@ -12,12 +17,15 @@ class RecurringExpenseItem(BaseModel):
     last_amount: Decimal
     previous_amount: Decimal | None
     last_charge_date: date
-    predicted_next_date: date
+    next_charge_day: int
     frequency: str
     trend: str
     trend_pct: float | None
     months_seen: int
     split_type: str
+    currency: str
+    status: str
+    recent_charges: list[RecentCharge]
 
 
 class SubscriptionsSummary(BaseModel):
@@ -29,4 +37,12 @@ class SubscriptionsSummary(BaseModel):
 
 class SubscriptionsResponse(BaseModel):
     items: list[RecurringExpenseItem]
-    summary: SubscriptionsSummary
+    summary_by_currency: dict[str, SubscriptionsSummary]
+    computed_at: datetime | None
+
+
+class SubscriptionOverrideRequest(BaseModel):
+    merchant_key: str
+    status: str | None = None
+    category: str | None = None
+    next_charge_day: int | None = None
