@@ -146,17 +146,24 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 5. Reconciliation job (6am daily) matches email and bank-sourced transactions
 
 ### Plaid Sync Flow
-1. User connects via Plaid Link widget -> public token exchanged for access token
+1. User connects via Plaid Link widget (production) -> public token exchanged for access token
 2. `schedule_plaid_syncs` cron (3:30am daily) enqueues `run_plaid_sync_job`
 3. Slow worker calls Plaid Sync API with cursor pagination
-4. Mapper detects account kind, maps Plaid transactions (amounts in cents) -> saved to DB
+4. Smart mapper (`backend/modules/plaid/mapper.py`):
+   - Extracts person names from Zelle descriptions ("Zelle payment to JOHN DOE Conf#..." → "John Doe")
+   - Detects CC bill payments (Amex ACH, Chase, etc.) → only flags as "transfer" if the target card account exists in the system; otherwise treated as expense
+   - Excludes P2P services (Zelle, Venmo, CashApp, PayPal) from transfer classification
+   - Amounts stored in cents (Plaid sends dollars × 100)
+5. Reconciliation: `find_email_match()` checks for matching pending email transactions and merges them
 
 ### Reconciliation Flow
-1. `run_reconciliation_job` cron (6am daily) scans recent bank-sourced transactions
-2. For each bank tx, `find_email_match()` uses 3-tier priority matching:
-   - **Exact:** same merchant (ilike), +/-2 days, 0% amount tolerance
-   - **Fuzzy:** +/-3 days, 30% amount tolerance
+Reconciliation runs in two places: inline during Plaid/Connect sync (immediate) and via `run_reconciliation_job` cron (6am daily, catches stragglers).
+
+1. For each bank tx, `find_email_match()` uses 3-tier priority matching:
+   - **Exact:** same merchant (ilike), +/-2 days, exact absolute amount
+   - **Fuzzy:** +/-3 days, 30% amount tolerance (absolute)
    - **Sum match:** N email txs from same merchant whose amounts sum to bank tx (5% tolerance)
+2. All comparisons use `abs(amount)` — email stores positive, Plaid/Connect store negative
 3. On match: copies merchant_id, category, transaction_type from email tx -> bank tx; re-links splits; deletes email tx
 4. `detect_transfers()` finds same-amount opposite-sign pairs across accounts within +/-2 days, marks both as transfer
 

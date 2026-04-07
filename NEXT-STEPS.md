@@ -1,10 +1,11 @@
 # Next Steps
 
-_Last updated: 2026-04-06_
+_Last updated: 2026-04-07_
 
 ## In Progress
 
 - **Template Agent production monitoring** — Template agent deployed (2am daily cron on slow worker). Monitoring first autonomous template generations and shadow validations. First LLM-parsed transactions confirmed live (BofA via gemini-2.5-flash, 0.98 confidence).
+- **Plaid production rollout** — Plaid production credentials configured and deployed. BofA connected successfully, 290 transactions synced. Zelle person extraction and CC payment detection working. OAuth redirect URIs configured.
 
 ## Pending
 
@@ -22,6 +23,9 @@ _Last updated: 2026-04-06_
 - **Collect real email samples** — Bank registry has 101 banks seeded but most lack real email samples for template generation. Priority: Chilean banks (Banco Falabella, BCI, Banco Estado, Banco Itau, Scotiabank), then Colombian and Mexican banks.
 - **Template Agent tuning** — Adjust `TEMPLATE_AGENT_MIN_EMAILS` (currently 20) and `TEMPLATE_AGENT_RECENCY_DAYS` (14) based on real-world email volume per bank.
 
+### Multi-Card Reconciliation
+- **Cross-account transfer matching** — When a user connects a second card (e.g. Amex), existing CC payment transactions should auto-reclassify from "expense" to "transfer" and reconcile against the card-side entries.
+
 ## Known Issues
 
 - **WhatsApp Business API approval** — Currently using test/dev mode. For multi-user production use, Meta's official WhatsApp Business API approval process is needed.
@@ -36,7 +40,6 @@ _Last updated: 2026-04-06_
 ## Future Ideas
 
 - Category budget alerts via WhatsApp (notify when spending approaches category limit)
-- Plaid production credentials (currently sandbox; upgrade when ready for real US users)
 - Template Agent dashboard — admin UI to view template status, accuracy, shadow validation results per bank
 - Multi-currency budget support (currently assumes single currency per household)
 - Bank registry admin API — CRUD endpoints for managing bank_registry entries
