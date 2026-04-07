@@ -221,18 +221,38 @@ export default function SubscriptionsPage() {
               Calendario de cobros
             </p>
             <div className="relative border-l-2 border-blue-100 ml-3 pl-6 space-y-4">
-              {timelineSorted.map((sub, idx) => {
-                const isBeforeToday = sub.next_charge_day <= today;
-                const nextIsAfterToday =
-                  idx < timelineSorted.length - 1 &&
-                  timelineSorted[idx + 1].next_charge_day > today;
-                const isLastBeforeToday =
-                  isBeforeToday &&
-                  (nextIsAfterToday || idx === timelineSorted.length - 1);
+              {(() => {
+                // Build timeline entries: charges + today marker as peers
+                const entries: ({ type: "charge"; sub: typeof timelineSorted[0] } | { type: "today" })[] = [];
+                let todayInserted = false;
+                for (const sub of timelineSorted) {
+                  if (!todayInserted && sub.next_charge_day > today) {
+                    entries.push({ type: "today" });
+                    todayInserted = true;
+                  }
+                  entries.push({ type: "charge", sub });
+                }
+                if (!todayInserted) entries.push({ type: "today" });
 
-                return (
-                  <div key={sub.merchant_name}>
-                    <div className="relative">
+                return entries.map((entry, idx) => {
+                  if (entry.type === "today") {
+                    return (
+                      <div key="today-marker" className="relative flex items-center">
+                        <div className="absolute -left-[31px] w-5 h-5 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center">
+                          <span className="text-[8px] font-extrabold text-white">
+                            {today}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wide">
+                          Hoy — Día {today}
+                        </p>
+                      </div>
+                    );
+                  }
+                  const { sub } = entry;
+                  const isBeforeToday = sub.next_charge_day <= today;
+                  return (
+                    <div key={sub.merchant_name} className="relative">
                       <div
                         className={`absolute -left-[31px] top-1 h-2.5 w-2.5 rounded-full border-2 border-white ${
                           isBeforeToday ? "bg-blue-600" : "bg-blue-400"
@@ -254,26 +274,9 @@ export default function SubscriptionsPage() {
                         </span>
                       </div>
                     </div>
-
-                    {/* Today marker — after last item before today */}
-                    {isLastBeforeToday && (
-                      <div className="relative mt-4 mb-2">
-                        <div className="absolute -left-[36px] flex items-center right-0">
-                          <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
-                            <span className="text-[8px] font-extrabold text-white">
-                              {today}
-                            </span>
-                          </div>
-                          <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-600 to-transparent" />
-                          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wide shrink-0 ml-2">
-                            Hoy
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
 
