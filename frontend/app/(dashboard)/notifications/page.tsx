@@ -1,4 +1,5 @@
 "use client";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Store, CheckCircle, AlertTriangle, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -27,6 +28,20 @@ export default function NotificationsPage() {
   const updateNotification = useUpdateNotification();
   const deleteNotification = useDeleteNotification();
   const queryClient = useQueryClient();
+
+  // Prefetch review cards for all merchant_review notifications
+  useEffect(() => {
+    notifications
+      .filter((n) => n.type === "merchant_review" && n.payload?.sync_job_id)
+      .forEach((n) => {
+        const jobId = n.payload.sync_job_id;
+        queryClient.prefetchQuery({
+          queryKey: ["merchant-review", jobId],
+          queryFn: () => api.getReviewCards(jobId),
+          staleTime: 30 * 1000,
+        });
+      });
+  }, [notifications, queryClient]);
 
   const dismissReview = useMutation({
     mutationFn: (jobId: string) => api.dismissReview(jobId),
