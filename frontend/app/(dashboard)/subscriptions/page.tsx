@@ -258,17 +258,17 @@ export default function SubscriptionsPage() {
                     {/* Today marker — after last item before today */}
                     {isLastBeforeToday && (
                       <div className="relative mt-4 mb-2">
-                        <div className="absolute -left-[36px] flex items-center gap-0 right-0">
-                          <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center">
+                        <div className="absolute -left-[36px] flex items-center right-0">
+                          <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
                             <span className="text-[8px] font-extrabold text-white">
                               {today}
                             </span>
                           </div>
                           <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-600 to-transparent" />
+                          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wide shrink-0 ml-2">
+                            Hoy
+                          </span>
                         </div>
-                        <p className="pl-1 pt-0.5 text-[10px] font-bold text-blue-600 uppercase tracking-wide">
-                          ← Hoy
-                        </p>
                       </div>
                     )}
                   </div>
