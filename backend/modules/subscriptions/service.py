@@ -227,9 +227,9 @@ async def _compute_and_store(
     await db.execute(
         text("""
             INSERT INTO detected_subscriptions_cache (user_id, result_json, computed_at)
-            VALUES (:uid, :data::jsonb, NOW())
+            VALUES (:uid, CAST(:data AS jsonb), NOW())
             ON CONFLICT (user_id)
-            DO UPDATE SET result_json = :data::jsonb, computed_at = NOW()
+            DO UPDATE SET result_json = CAST(:data AS jsonb), computed_at = NOW()
         """),
         {"uid": str(user_id), "data": items_json},
     )
