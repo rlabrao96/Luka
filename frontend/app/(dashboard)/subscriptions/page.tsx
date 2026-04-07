@@ -300,9 +300,10 @@ export default function SubscriptionsPage() {
                 <span />
               </div>
 
-              {/* Rows */}
-              {items
+              {/* Rows — sorted by next_charge_day */}
+              {[...items]
                 .filter((s) => s.status !== "dismissed")
+                .sort((a, b) => a.next_charge_day - b.next_charge_day)
                 .map((sub) => {
                   const isExpanded = expandedRow === sub.merchant_name;
                   const isInactive = sub.status === "inactive";
@@ -402,9 +403,8 @@ export default function SubscriptionsPage() {
           currency={currency}
           onClose={() => setEditingItem(null)}
           onSave={(body) => {
-            overrideMutation.mutate(body, {
-              onSuccess: () => setEditingItem(null),
-            });
+            setEditingItem(null);
+            overrideMutation.mutate(body);
           }}
         />
       )}
