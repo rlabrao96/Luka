@@ -288,11 +288,12 @@ async def delete_transaction(
 
 async def is_duplicate_transaction(db: AsyncSession, user_id: uuid.UUID, amount: int) -> bool:
     """
-    Check if a pending transaction with the same absolute amount was created in the last 5 minutes.
+    Check if a pending transaction with the same absolute amount was created in the last 24 hours.
     Sign-agnostic: works whether the stored amount is negative (expense) or positive (income).
-    Used to deduplicate Banco de Chile compra + comprobante email pairs.
+    Covers both fast duplicates (BChile compra+comprobante seconds apart) and slow
+    duplicates (BofA purchase alert + PayPal processor alert hours apart).
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     result = await db.execute(
         select(Transaction)
         .where(
