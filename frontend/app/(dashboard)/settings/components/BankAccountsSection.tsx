@@ -748,9 +748,14 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
     queryFn: () => api.getPlaidItems(),
     staleTime: 10_000,
     refetchInterval: (query) => {
-      // Poll every 5s while any item has no last_sync_at (initial sync in progress)
+      // Poll every 5s while any item is syncing (initial or manual)
       const items = query.state.data;
-      if (items?.some((i) => !i.last_sync_at && !i.error_code)) return 5_000;
+      const stillSyncing = items?.some(
+        (i) =>
+          !i.error_code &&
+          (!i.last_sync_at || i.last_sync_status === "in_progress"),
+      );
+      if (stillSyncing) return 5_000;
       return false;
     },
   });

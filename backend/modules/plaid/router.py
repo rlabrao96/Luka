@@ -165,6 +165,11 @@ async def manual_sync_endpoint(
     if not item:
         raise HTTPException(status_code=404, detail="Plaid item not found")
 
+    # Mark as in_progress immediately so the UI reflects the sync starting.
+    # The background job will update to "success" or "failed" on completion.
+    item.last_sync_status = "in_progress"
+    await session.commit()
+
     await enqueue_job("run_plaid_sync_job", plaid_item_id=str(item.id), initial=False)
 
     return {"status": "syncing"}
