@@ -32,7 +32,7 @@ export default function VerifyWhatsAppPage() {
           setHousehold(household.id);
           if (onboardingDraft.type === "group" && onboardingDraft.memberEmail) {
             try {
-              await api.inviteMember(household.id);
+              await api.inviteMember(household.id, onboardingDraft.memberEmail);
             } catch (inviteError) {
               console.error("Member invite failed, continuing...", inviteError);
             }
