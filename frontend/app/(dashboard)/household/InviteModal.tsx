@@ -31,8 +31,9 @@ export default function InviteModal({ open, onOpenChange, householdId }: Props) 
     },
     onSuccess: (data) => {
       setInviteLink(`${window.location.origin}/invite/${data.token}`);
-      if ("household_id" in data) {
-        setHousehold(data.household_id);
+      const hid = (data as { household_id?: string }).household_id;
+      if (hid) {
+        setHousehold(hid);
         queryClient.invalidateQueries({ queryKey: ["household"] });
       }
     },
