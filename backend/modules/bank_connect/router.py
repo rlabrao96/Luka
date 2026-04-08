@@ -322,7 +322,7 @@ async def _process_movements(
             continue
 
         # Check for email match (abs amount exact + date ±1 day)
-        from sqlalchemy import func as sa_func
+        from sqlalchemy import func as sa_func, update as sql_update
 
         email_match = await db.execute(
             select(Transaction)
@@ -337,32 +337,47 @@ async def _process_movements(
         )
         email_txn = email_match.scalar_one_or_none()
 
+        # Resolve bank account for the movement
+        acct_name = mov.get("accountName", "")
+        currency = mov.get("currency", "CLP")
+        source = mov.get("source", "")
+        if source in ("credit_card_billed", "credit_card_unbilled"):
+            ba_id = _resolve_cc_account(mov, ba_map)
+        else:
+            ba_id = ba_map.get((acct_name, currency))
+
+        # Create the new Connect transaction
+        txn_data = map_movement_to_transaction(
+            movement=mov,
+            user_id=str(cred.user_id),
+            household_id=str(household_id),
+            bank_account_id=str(ba_id) if ba_id else None,
+        )
+        txn = Transaction(**txn_data)
+        db.add(txn)
+        await db.flush()
+
         if email_txn:
-            email_txn.transaction_date = mov_date
-            # Also link to bank account
-            ba_id_for_email = _resolve_account(mov, ba_map)
-            email_txn.bank_account_id = ba_id_for_email
+            # Transfer enrichment from the email to the new Connect transaction
+            if email_txn.category and not txn.category:
+                txn.category = email_txn.category
+            if email_txn.merchant_id and not txn.merchant_id:
+                txn.merchant_id = email_txn.merchant_id
+            # Preserve the cleaner merchant name from the email (e.g. "Camila Chahuan"
+            # instead of "Traspaso A:Camila Chahuan")
+            if email_txn.raw_merchant_name:
+                txn.raw_merchant_name = email_txn.raw_merchant_name
+            # Re-link the email's splits to the new Connect transaction
+            await db.execute(
+                sql_update(TransactionSplit)
+                .where(TransactionSplit.transaction_id == email_txn.id)
+                .values(transaction_id=txn.id)
+            )
+            # Delete the email transaction
+            await db.execute(delete(Transaction).where(Transaction.id == email_txn.id))
             enriched += 1
         else:
-            acct_name = mov.get("accountName", "")
-            currency = mov.get("currency", "CLP")
-            source = mov.get("source", "")
-
-            if source in ("credit_card_billed", "credit_card_unbilled"):
-                ba_id = _resolve_cc_account(mov, ba_map)
-            else:
-                ba_id = ba_map.get((acct_name, currency))
-
-            txn_data = map_movement_to_transaction(
-                movement=mov,
-                user_id=str(cred.user_id),
-                household_id=str(household_id),
-                bank_account_id=str(ba_id) if ba_id else None,
-            )
-            txn = Transaction(**txn_data)
-            db.add(txn)
-            await db.flush()
             db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
-            created += 1
+        created += 1
 
     return created, enriched, skipped
