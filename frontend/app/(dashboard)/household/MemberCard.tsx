@@ -18,10 +18,12 @@ interface Props {
 }
 
 function fmt(n: number, currency: string = "CLP") {
+  const isDecimal = currency !== "CLP";
+  const displayVal = isDecimal ? Math.abs(n) / 100 : Math.abs(n);
   if (currency === "USD") {
-    return `US$${Math.round(Math.abs(n)).toLocaleString("en-US")}`;
+    return `US$${displayVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
-  return `$${Math.round(Math.abs(n)).toLocaleString("es-CL")}`;
+  return `$${Math.round(displayVal).toLocaleString("es-CL")}`;
 }
 
 export default function MemberCard({

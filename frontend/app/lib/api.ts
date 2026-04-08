@@ -405,20 +405,28 @@ export const api = {
       body: JSON.stringify({ category }),
     }),
 
-  getHouseholdSummary: (householdId: string) =>
-    apiFetch<HouseholdSummaryRow[]>(`/households/${householdId}/summary`),
+  getHouseholdSummary: (householdId: string, currency?: string) => {
+    const params = currency ? `?currency=${currency}` : "";
+    return apiFetch<HouseholdSummaryRow[]>(`/households/${householdId}/summary${params}`);
+  },
 
   getMemberStats: (householdId: string) =>
     apiFetch<MemberStats[]>(`/households/${householdId}/member-stats`),
 
-  getCategoryBreakdown: (householdId: string, month?: string) =>
-    apiFetch<CategoryBreakdownRow[]>(
-      `/households/${householdId}/category-breakdown${month ? `?month=${month}` : ""}`
-    ),
-  getSettlement: (householdId: string, month?: string) =>
-    apiFetch<SettlementResponse>(
-      `/households/${householdId}/settlement${month ? `?month=${month}` : ""}`
-    ),
+  getCategoryBreakdown: (householdId: string, month?: string, currency?: string) => {
+    const parts: string[] = [];
+    if (month) parts.push(`month=${month}`);
+    if (currency) parts.push(`currency=${currency}`);
+    const qs = parts.length ? `?${parts.join("&")}` : "";
+    return apiFetch<CategoryBreakdownRow[]>(`/households/${householdId}/category-breakdown${qs}`);
+  },
+  getSettlement: (householdId: string, month?: string, currency?: string) => {
+    const parts: string[] = [];
+    if (month) parts.push(`month=${month}`);
+    if (currency) parts.push(`currency=${currency}`);
+    const qs = parts.length ? `?${parts.join("&")}` : "";
+    return apiFetch<SettlementResponse>(`/households/${householdId}/settlement${qs}`);
+  },
   getSplitRatio: (householdId: string) =>
     apiFetch<SplitRatioResponse>(`/households/${householdId}/split-ratio`),
   updateSplitRatio: (householdId: string, ratio: number[]) =>

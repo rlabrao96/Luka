@@ -215,11 +215,12 @@ async def remove_member_endpoint(
 @router.get("/{household_id}/summary")
 async def household_summary(
     household_id: uuid.UUID,
+    currency: str = Query(default=None, description="Filter by currency (CLP, USD)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    return await service.get_contribution_summary(db, household_id)
+    return await service.get_contribution_summary(db, household_id, currency)
 
 
 @router.get("/{household_id}/member-stats")
@@ -236,11 +237,12 @@ async def member_stats(
 async def category_breakdown(
     household_id: uuid.UUID,
     month: str = Query(default=None, description="YYYY-MM format"),
+    currency: str = Query(default=None, description="Filter by currency (CLP, USD)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    data = await service.get_category_breakdown(db, household_id, month)
+    data = await service.get_category_breakdown(db, household_id, month, currency)
     return data
 
 
@@ -248,11 +250,12 @@ async def category_breakdown(
 async def settlement(
     household_id: uuid.UUID,
     month: str = Query(default=None, description="YYYY-MM format"),
+    currency: str = Query(default=None, description="Filter by currency (CLP, USD)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    return await service.get_settlement(db, household_id, month)
+    return await service.get_settlement(db, household_id, month, currency)
 
 
 @router.get("/{household_id}/split-ratio", response_model=SplitRatioResponse)

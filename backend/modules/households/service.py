@@ -227,10 +227,16 @@ def _equal_ratio(n: int) -> list[int]:
     return ratio
 
 
-async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) -> list[dict]:
+async def get_contribution_summary(
+    db: AsyncSession, household_id: uuid.UUID, currency: str | None = None
+) -> list[dict]:
     """Monthly household spending by member. No privacy restriction — both members see this."""
+    currency_clause = "AND t.currency = :currency" if currency else ""
+    params: dict = {"household_id": str(household_id)}
+    if currency:
+        params["currency"] = currency
     result = await db.execute(
-        text("""
+        text(f"""
         SELECT
             t.user_id,
             u.full_name,
@@ -245,9 +251,10 @@ async def get_contribution_summary(db: AsyncSession, household_id: uuid.UUID) ->
         WHERE t.household_id = :household_id
           AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
           AND hm.left_at IS NULL
+          {currency_clause}
         GROUP BY t.user_id, u.full_name, u.email
         """),
-        {"household_id": str(household_id)},
+        params,
     )
     return [dict(row._mapping) for row in result.all()]
 
@@ -289,7 +296,9 @@ def build_category_breakdown(rows: list[dict]) -> list[dict]:
     return result
 
 
-async def get_category_breakdown(db: AsyncSession, household_id, month: str | None = None):
+async def get_category_breakdown(
+    db: AsyncSession, household_id, month: str | None = None, currency: str | None = None
+):
     """Returns per-category spending breakdown for shared transactions."""
     params: dict = {"household_id": str(household_id)}
     if month:
@@ -299,6 +308,10 @@ async def get_category_breakdown(db: AsyncSession, household_id, month: str | No
         month_clause = (
             "DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)"
         )
+    currency_clause = ""
+    if currency:
+        currency_clause = "AND t.currency = :currency"
+        params["currency"] = currency
 
     sql = text(f"""
         SELECT u.id AS user_id, u.full_name,
@@ -313,6 +326,7 @@ async def get_category_breakdown(db: AsyncSession, household_id, month: str | No
           AND t.transaction_type = 'expense'
           AND hm.left_at IS NULL
           AND {month_clause}
+          {currency_clause}
         GROUP BY u.id, u.full_name, COALESCE(t.category, 'Sin categoría')
         ORDER BY amount DESC
     """)
@@ -381,7 +395,9 @@ def calculate_settlement(members: list[dict], split_ratio: list[int]) -> list[di
     return transfers
 
 
-async def get_settlement(db: AsyncSession, household_id, month: str | None = None):
+async def get_settlement(
+    db: AsyncSession, household_id, month: str | None = None, currency: str | None = None
+):
     """Returns settlement suggestion for the household."""
     params: dict = {"household_id": str(household_id)}
     if month:
@@ -391,6 +407,10 @@ async def get_settlement(db: AsyncSession, household_id, month: str | None = Non
         month_clause = (
             "DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)"
         )
+    currency_clause = ""
+    if currency:
+        currency_clause = "AND t.currency = :currency"
+        params["currency"] = currency
 
     sql = text(f"""
         SELECT u.id AS user_id, u.full_name,
@@ -404,6 +424,7 @@ async def get_settlement(db: AsyncSession, household_id, month: str | None = Non
           AND t.transaction_type = 'expense'
           AND hm.left_at IS NULL
           AND {month_clause}
+          {currency_clause}
         GROUP BY u.id, u.full_name
         ORDER BY total DESC
     """)

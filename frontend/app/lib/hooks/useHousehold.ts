@@ -2,11 +2,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 
-export function useHouseholdSummary() {
+export function useHouseholdSummary(currency?: string) {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["household", "summary", householdId],
-    queryFn: () => api.getHouseholdSummary(householdId!),
+    queryKey: ["household", "summary", householdId, currency],
+    queryFn: () => api.getHouseholdSummary(householdId!, currency),
     enabled: !!householdId,
   });
 }
@@ -20,20 +20,20 @@ export function useMemberStats() {
   });
 }
 
-export function useCategoryBreakdown(month?: string) {
+export function useCategoryBreakdown(month?: string, currency?: string) {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["household", "category-breakdown", householdId, month],
-    queryFn: () => api.getCategoryBreakdown(householdId!, month),
+    queryKey: ["household", "category-breakdown", householdId, month, currency],
+    queryFn: () => api.getCategoryBreakdown(householdId!, month, currency),
     enabled: !!householdId,
   });
 }
 
-export function useSettlement(month?: string) {
+export function useSettlement(month?: string, currency?: string) {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["household", "settlement", householdId, month],
-    queryFn: () => api.getSettlement(householdId!, month),
+    queryKey: ["household", "settlement", householdId, month, currency],
+    queryFn: () => api.getSettlement(householdId!, month, currency),
     enabled: !!householdId,
   });
 }

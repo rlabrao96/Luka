@@ -20,8 +20,12 @@ import InviteModal from "./InviteModal";
 import MemberCard from "./MemberCard";
 
 function fmt(n: number, currency: string = "CLP") {
-  if (currency === "USD") return `US$${Math.round(n).toLocaleString("en-US")}`;
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
+  const isDecimal = currency !== "CLP";
+  const displayVal = isDecimal ? Math.abs(n) / 100 : Math.abs(n);
+  const formatted = currency === "USD"
+    ? `US$${displayVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : `$${Math.round(displayVal).toLocaleString("es-CL")}`;
+  return n < 0 ? `(${formatted})` : formatted;
 }
 
 const MONTH_NAMES = [
@@ -53,9 +57,9 @@ export default function CompartidoPage() {
   const [currency, setCurrency] = useState("CLP");
 
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: api.getMe });
-  const { data: summary = [], isLoading: loadingSummary } = useHouseholdSummary();
-  const { data: breakdown = [], isLoading: loadingBreakdown } = useCategoryBreakdown(selectedMonth);
-  const { data: settlement } = useSettlement(selectedMonth);
+  const { data: summary = [], isLoading: loadingSummary } = useHouseholdSummary(currency);
+  const { data: breakdown = [], isLoading: loadingBreakdown } = useCategoryBreakdown(selectedMonth, currency);
+  const { data: settlement } = useSettlement(selectedMonth, currency);
   const { data: splitRatio } = useSplitRatio();
   const { data: membersData } = useHouseholdMembers();
 
@@ -111,7 +115,8 @@ export default function CompartidoPage() {
     );
   }
 
-  if (!householdId || summary.length === 0) {
+  // Show empty state if no household, no data, or only yourself (no compartido group)
+  if (!householdId || summary.length === 0 || members.length <= 1) {
     return (
       <div className="space-y-6">
         <div>
