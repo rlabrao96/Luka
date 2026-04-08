@@ -11,7 +11,7 @@ from modules.plaid.models import PlaidItem
 from modules.plaid.mapper import map_plaid_transaction, map_account_kind, is_plaid_transfer
 from modules.plaid.service import sync_transactions
 from modules.households.models import BankAccount
-from modules.transactions.models import Transaction
+from modules.transactions.models import Transaction, TransactionSplit
 from modules.reconciliation.dedup import find_email_match, apply_match_and_delete_emails
 
 
@@ -144,12 +144,20 @@ async def run_plaid_sync(
         tx.raw_merchant_name = plaid_tx.merchant_name or plaid_tx.name or tx.raw_merchant_name
         stats["modified"] += 1
 
-    # Process removed transactions
+    # Process removed transactions — delete splits first to avoid FK violation
     for plaid_tx in all_removed:
-        await session.execute(
-            delete(Transaction).where(Transaction.plaid_transaction_id == plaid_tx.transaction_id)
+        tx_id_result = await session.execute(
+            select(Transaction.id).where(
+                Transaction.plaid_transaction_id == plaid_tx.transaction_id
+            )
         )
-        stats["removed"] += 1
+        tx_id = tx_id_result.scalar_one_or_none()
+        if tx_id is not None:
+            await session.execute(
+                delete(TransactionSplit).where(TransactionSplit.transaction_id == tx_id)
+            )
+            await session.execute(delete(Transaction).where(Transaction.id == tx_id))
+            stats["removed"] += 1
 
     # Update item state
     item.cursor = cursor

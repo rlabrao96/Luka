@@ -245,9 +245,9 @@ async def run_shadow_validation(*, db: AsyncSession) -> None:
 
 async def run_template_agent(ctx: dict) -> None:
     """Main entry point — runs daily as ARQ cron job."""
-    from core.database import get_db_session
+    from core.database import AsyncSessionLocal
 
-    async with get_db_session() as db:
+    async with AsyncSessionLocal() as db:
         await run_shadow_validation(db=db)
 
         candidates = await discover_candidate_banks(db=db)
