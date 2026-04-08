@@ -37,6 +37,7 @@ async def create_household(
 # IMPORTANT: create-and-invite must be defined BEFORE /{household_id}/... routes
 @router.post("/create-and-invite")
 async def create_and_invite(
+    body: InviteRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -54,7 +55,7 @@ async def create_and_invite(
         household_id = household.id
     h_result = await db.execute(select(Household).where(Household.id == household_id))
     household_obj = h_result.scalar_one()
-    invite = await service.create_invite(db, household_obj, current_user, None)
+    invite = await service.create_invite(db, household_obj, current_user, body.email)
     return {
         "household_id": str(household_id),
         "token": invite.token,

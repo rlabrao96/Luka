@@ -470,19 +470,19 @@ export const api = {
       body: JSON.stringify({ name, type }),
     }),
 
-  inviteMember: (householdId: string) =>
+  inviteMember: (householdId: string, email: string) =>
     apiFetch<{ token: string; expires_at: string }>(
       `/households/${householdId}/invite`,
-      { method: "POST", body: JSON.stringify({}) }
+      { method: "POST", body: JSON.stringify({ email }) }
     ),
 
   getHouseholdMembers: (householdId: string) =>
     apiFetch<HouseholdMembersResponse>(`/households/${householdId}/members`),
 
-  createAndInvite: () =>
+  createAndInvite: (email: string) =>
     apiFetch<{ household_id: string; token: string; expires_at: string }>(
       "/households/create-and-invite",
-      { method: "POST" }
+      { method: "POST", body: JSON.stringify({ email }) }
     ),
 
   updateSettlementEnabled: (householdId: string, enabled: boolean) =>

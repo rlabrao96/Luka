@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useMutation } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/app/lib/api";
 import { Link2, Check, Copy } from "lucide-react";
+import { useLukaStore } from "@/app/lib/store";
 
 interface Props {
   open: boolean;
@@ -14,21 +16,29 @@ interface Props {
 }
 
 export default function InviteModal({ open, onOpenChange, householdId }: Props) {
+  const [email, setEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const setHousehold = useLukaStore((s) => s.setHousehold);
+  const queryClient = useQueryClient();
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
       if (!householdId) {
-        // Create household and invite atomically
-        return await api.createAndInvite();
+        return await api.createAndInvite(email);
       }
-      return await api.inviteMember(householdId);
+      return await api.inviteMember(householdId, email);
     },
     onSuccess: (data) => {
       setInviteLink(`${window.location.origin}/invite/${data.token}`);
+      if ("household_id" in data) {
+        setHousehold(data.household_id);
+        queryClient.invalidateQueries({ queryKey: ["household"] });
+      }
     },
   });
+
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   async function handleCopy() {
     if (!inviteLink) return;
@@ -41,6 +51,7 @@ export default function InviteModal({ open, onOpenChange, householdId }: Props) 
     if (!open) {
       setInviteLink(null);
       setCopied(false);
+      setEmail("");
     }
     onOpenChange(open);
   }
@@ -55,15 +66,22 @@ export default function InviteModal({ open, onOpenChange, householdId }: Props) 
           {!inviteLink ? (
             <>
               <p className="text-sm text-slate-500">
-                Genera un enlace de invitación para compartir con quien quieras agregar al grupo.
+                Ingresa el email del miembro que quieres agregar al grupo.
               </p>
+              <Input
+                type="email"
+                placeholder="Email del miembro"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="rounded-xl"
+              />
               <Button
                 onClick={() => inviteMutation.mutate()}
-                disabled={inviteMutation.isPending}
+                disabled={!validEmail || inviteMutation.isPending}
                 className="w-full bg-luka-primary hover:bg-blue-700"
               >
                 <Link2 size={14} className="mr-2" />
-                {inviteMutation.isPending ? "Generando..." : "Generar enlace"}
+                {inviteMutation.isPending ? "Generando..." : "Generar enlace de invitación"}
               </Button>
               {inviteMutation.isError && (
                 <p className="text-xs text-red-500">Error al generar invitación. Intenta de nuevo.</p>
@@ -72,7 +90,7 @@ export default function InviteModal({ open, onOpenChange, householdId }: Props) 
           ) : (
             <>
               <p className="text-sm text-emerald-600 font-medium">
-                Enlace creado. Compártelo con el nuevo miembro:
+                Enlace creado para {email}. Compártelo:
               </p>
               <div className="flex gap-2">
                 <input
