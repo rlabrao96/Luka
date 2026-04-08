@@ -305,25 +305,37 @@ async def _process_movements(
             skipped += 1
             continue
 
-        # Check for exact duplicate (same movement already imported via connect)
-        existing = await db.execute(
-            select(Transaction.id)
-            .where(
-                Transaction.user_id == cred.user_id,
-                Transaction.source_type == "connect",
-                Transaction.raw_merchant_name == mov["description"],
-                Transaction.amount == mov["amount"],
-                Transaction.transaction_date == mov_date,
-            )
-            .limit(1)
-        )
+        from sqlalchemy import func as sa_func, update as sql_update
+
+        # Resolve bank account for the movement
+        acct_name = mov.get("accountName", "")
+        currency = mov.get("currency", "CLP")
+        source = mov.get("source", "")
+        if source in ("credit_card_billed", "credit_card_unbilled"):
+            ba_id = _resolve_cc_account(mov, ba_map)
+        else:
+            ba_id = ba_map.get((acct_name, currency))
+
+        # Dedup: check for an existing connect transaction with same bank_account,
+        # same amount, and same exact timestamp. This catches both:
+        # (a) re-runs of the same scrape (identical rows)
+        # (b) previously-promoted email transactions whose name may now differ
+        #     from the scraper's bank description (e.g. "Camila Chahuan" vs
+        #     "Traspaso A:Camila Chahuan")
+        dedup_conditions = [
+            Transaction.user_id == cred.user_id,
+            Transaction.source == "connect",
+            Transaction.amount == mov["amount"],
+            Transaction.transaction_date == mov_date,
+        ]
+        if ba_id:
+            dedup_conditions.append(Transaction.bank_account_id == ba_id)
+        existing = await db.execute(select(Transaction.id).where(*dedup_conditions).limit(1))
         if existing.scalar_one_or_none():
             skipped += 1
             continue
 
         # Check for email match (abs amount exact + date ±1 day)
-        from sqlalchemy import func as sa_func, update as sql_update
-
         email_match = await db.execute(
             select(Transaction)
             .where(
@@ -337,15 +349,6 @@ async def _process_movements(
         )
         email_txn = email_match.scalar_one_or_none()
 
-        # Resolve bank account for the movement
-        acct_name = mov.get("accountName", "")
-        currency = mov.get("currency", "CLP")
-        source = mov.get("source", "")
-        if source in ("credit_card_billed", "credit_card_unbilled"):
-            ba_id = _resolve_cc_account(mov, ba_map)
-        else:
-            ba_id = ba_map.get((acct_name, currency))
-
         # Create the new Connect transaction
         txn_data = map_movement_to_transaction(
             movement=mov,
@@ -357,26 +360,37 @@ async def _process_movements(
         db.add(txn)
         await db.flush()
 
+        is_transfer = txn.transaction_type == "transfer"
+
         if email_txn:
-            # Transfer enrichment from the email to the new Connect transaction
-            if email_txn.category and not txn.category:
-                txn.category = email_txn.category
-            if email_txn.merchant_id and not txn.merchant_id:
-                txn.merchant_id = email_txn.merchant_id
+            # Transfer enrichment from the email to the new Connect transaction.
+            # For transfers (CC payments, own-account moves), don't copy category
+            # or splits — transfers are displayed as "Ajuste entre cuentas".
+            if not is_transfer:
+                if email_txn.category and not txn.category:
+                    txn.category = email_txn.category
+                if email_txn.merchant_id and not txn.merchant_id:
+                    txn.merchant_id = email_txn.merchant_id
+                # Re-link the email's splits to the new Connect transaction
+                await db.execute(
+                    sql_update(TransactionSplit)
+                    .where(TransactionSplit.transaction_id == email_txn.id)
+                    .values(transaction_id=txn.id)
+                )
+            else:
+                # Transfer: drop the email's splits (if any) since transfers have none
+                await db.execute(
+                    delete(TransactionSplit).where(TransactionSplit.transaction_id == email_txn.id)
+                )
             # Preserve the cleaner merchant name from the email (e.g. "Camila Chahuan"
             # instead of "Traspaso A:Camila Chahuan")
             if email_txn.raw_merchant_name:
                 txn.raw_merchant_name = email_txn.raw_merchant_name
-            # Re-link the email's splits to the new Connect transaction
-            await db.execute(
-                sql_update(TransactionSplit)
-                .where(TransactionSplit.transaction_id == email_txn.id)
-                .values(transaction_id=txn.id)
-            )
             # Delete the email transaction
             await db.execute(delete(Transaction).where(Transaction.id == email_txn.id))
             enriched += 1
-        else:
+        elif not is_transfer:
+            # Regular expense/income without email match → create a default split
             db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
         created += 1
 

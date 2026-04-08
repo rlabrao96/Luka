@@ -1,5 +1,6 @@
 from datetime import timezone
 from modules.bank_connect.mapper import (
+    is_inter_account_transfer,
     map_movement_to_transaction,
     normalize_description,
     dedup_key,
@@ -84,3 +85,53 @@ def test_dedup_key_different_inputs():
     key1 = dedup_key("18-03-2026", "compra starbucks", -3500, "baid")
     key2 = dedup_key("19-03-2026", "compra starbucks", -3500, "baid")
     assert key1 != key2
+
+
+def test_is_inter_account_transfer_cc_payment():
+    assert is_inter_account_transfer("Pago Tarjeta Visa ****5032")
+    assert is_inter_account_transfer("PAGO TARJETA CMR")
+    assert is_inter_account_transfer("Pago Tarjeta De Credito")
+    assert is_inter_account_transfer("Pago Pesos TEF PAGO NORMAL")
+    assert is_inter_account_transfer("Pago Pesos TEF")
+
+
+def test_is_inter_account_transfer_own_account():
+    # Banco de Chile intra-account moves use its own RUT (96571220-8)
+    assert is_inter_account_transfer("Traspaso A 96571220-8 Dolar")
+    assert is_inter_account_transfer("Traspaso De 96571220-8 Fmu")
+
+
+def test_is_inter_account_transfer_person_not_transfer():
+    # Person-to-person transfers are NOT inter-account → expense/income
+    assert not is_inter_account_transfer("Traspaso A:Camila Chahuan")
+    assert not is_inter_account_transfer("Traspaso De:Javier Jorge Guerraty Korner")
+    assert not is_inter_account_transfer("Compra en STARBUCKS")
+    assert not is_inter_account_transfer("Deposito")
+
+
+def test_map_movement_cc_payment_is_transfer():
+    movement = {
+        "date": "07-04-2026",
+        "time": "13:51",
+        "description": "Pago Tarjeta Visa ****5032",
+        "amount": -881210,
+        "source": "account",
+    }
+    result = map_movement_to_transaction(
+        movement, user_id="uid", household_id="hid", bank_account_id="baid"
+    )
+    assert result["transaction_type"] == "transfer"
+
+
+def test_map_movement_person_transfer_is_expense():
+    movement = {
+        "date": "07-04-2026",
+        "time": "13:47",
+        "description": "Traspaso A:Camila Chahuan",
+        "amount": -685000,
+        "source": "account",
+    }
+    result = map_movement_to_transaction(
+        movement, user_id="uid", household_id="hid", bank_account_id="baid"
+    )
+    assert result["transaction_type"] == "expense"

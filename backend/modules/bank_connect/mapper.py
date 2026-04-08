@@ -1,5 +1,23 @@
 import hashlib
+import re
 from datetime import datetime, timezone
+
+# Patterns that identify inter-account movements (CC payments, same-bank transfers).
+# These should always be marked as transaction_type="transfer" with no category.
+# NOTE: person-to-person transfers ("Traspaso A:Name") are NOT in this list — they
+# are expense/income based on direction.
+_INTER_ACCOUNT_PATTERNS = [
+    re.compile(r"pago\s+tarjeta", re.IGNORECASE),
+    re.compile(r"pago\s+pesos\s+tef", re.IGNORECASE),
+    # Own-account transfers use a RUT or account number instead of a person name.
+    # Pattern: "Traspaso A <digits>-<digit>" or "Traspaso De <digits>-<digit>"
+    re.compile(r"traspaso\s+(a|de)\s+\d{5,}-[\dk]", re.IGNORECASE),
+]
+
+
+def is_inter_account_transfer(description: str) -> bool:
+    """Return True if the movement description matches a known inter-account pattern."""
+    return any(p.search(description) for p in _INTER_ACCOUNT_PATTERNS)
 
 
 def normalize_description(desc: str) -> str:
@@ -51,16 +69,25 @@ def map_movement_to_transaction(
     bank_account_id: str | None,
 ) -> dict:
     """Map a raw Luka Connect movement to transaction fields."""
+    description = movement["description"]
+    amount = movement["amount"]
+
+    # Inter-account movements (CC payments, same-bank own-account moves) → transfer
+    if is_inter_account_transfer(description):
+        tx_type = "transfer"
+    else:
+        tx_type = "expense" if amount < 0 else "income"
+
     return {
         "user_id": user_id,
         "household_id": household_id,
         "bank_account_id": bank_account_id,
-        "raw_merchant_name": movement["description"],
-        "amount": movement["amount"],
+        "raw_merchant_name": description,
+        "amount": amount,
         "currency": movement.get("currency", "CLP"),
         "transaction_date": parse_movement_date(movement["date"], movement.get("time")),
         "source": "connect",
         "source_type": "connect",
         "status": "settled",
-        "transaction_type": "expense" if movement["amount"] < 0 else "income",
+        "transaction_type": tx_type,
     }
