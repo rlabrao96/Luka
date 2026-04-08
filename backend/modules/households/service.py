@@ -110,7 +110,7 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
     new_count = new_count_result.scalar() + 1
     equal_ratio = _equal_ratio(new_count)
     await db.execute(
-        text("UPDATE households SET split_ratio = :ratio WHERE id = :id"),
+        text("UPDATE households SET split_ratio = :ratio, type = 'group' WHERE id = :id"),
         {"ratio": json.dumps(equal_ratio), "id": str(invite.household_id)},
     )
 
