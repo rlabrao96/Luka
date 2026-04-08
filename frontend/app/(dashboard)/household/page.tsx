@@ -115,8 +115,8 @@ export default function CompartidoPage() {
     );
   }
 
-  // Show empty state if no household, no data, or only yourself (no compartido group)
-  if (!householdId || summary.length === 0 || members.length <= 1) {
+  // Show empty state if no household, or solo with no pending invites
+  if (!householdId || (members.length <= 1 && pendingInvites.length === 0)) {
     return (
       <div className="space-y-6">
         <div>
