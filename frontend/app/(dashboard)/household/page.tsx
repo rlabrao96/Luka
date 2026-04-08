@@ -90,6 +90,10 @@ export default function CompartidoPage() {
 
   const totalShared = summary.reduce((sum, r) => sum + r.shared_paid, 0);
 
+  // Build amount lookup from summary (members with transactions)
+  const summaryByUser: Record<string, { shared_paid: number }> = {};
+  for (const s of summary) summaryByUser[s.user_id] = { shared_paid: s.shared_paid };
+
   const breakdownTotalByMember: Record<string, number> = {};
   let breakdownGrandTotal = 0;
   for (const row of breakdown) {
@@ -99,9 +103,11 @@ export default function CompartidoPage() {
     }
   }
 
-  const memberOrder = summary.map((s) => s.user_id);
+  // Use members (from membership data) as source of truth — not summary (transaction data)
+  // Members with 0 transactions still appear
+  const memberOrder = members.map((m) => m.user_id);
   const memberNameMap: Record<string, string> = {};
-  for (const s of summary) memberNameMap[s.user_id] = s.full_name;
+  for (const m of members) memberNameMap[m.user_id] = m.full_name;
 
   if (loadingSummary) {
     return (
@@ -166,17 +172,20 @@ export default function CompartidoPage() {
         </div>
       </div>
 
-      {/* Member cards */}
+      {/* Member cards — rendered from members (membership), not summary (transactions) */}
       <div className="flex gap-3 overflow-x-auto pb-1">
-        {summary.map((member, i) => (
-          <MemberCard key={member.user_id} name={member.full_name} amount={member.shared_paid}
-            percentage={totalShared > 0 ? Math.round((member.shared_paid / totalShared) * 100) : 0}
-            color={MEMBER_COLORS[i % MEMBER_COLORS.length]} balance={memberBalances[member.user_id]}
-            settlementEnabled={settlementEnabled} currency={currency} isOwner={isOwner}
-            memberId={members.find((m) => m.user_id === member.user_id)?.member_id}
-            memberRole={members.find((m) => m.user_id === member.user_id)?.role}
-            isSelf={member.user_id === userId} />
-        ))}
+        {members.map((member, i) => {
+          const amount = summaryByUser[member.user_id]?.shared_paid ?? 0;
+          return (
+            <MemberCard key={member.user_id} name={member.full_name} amount={amount}
+              percentage={totalShared > 0 ? Math.round((amount / totalShared) * 100) : 0}
+              color={MEMBER_COLORS[i % MEMBER_COLORS.length]} balance={memberBalances[member.user_id]}
+              settlementEnabled={settlementEnabled} currency={currency} isOwner={isOwner}
+              memberId={member.member_id}
+              memberRole={member.role}
+              isSelf={member.user_id === userId} />
+          );
+        })}
         {pendingInvites.map((invite) => (
           <div key={invite.id} className="flex-shrink-0 w-48 rounded-xl border-2 border-dashed border-slate-300 p-4 text-center opacity-50">
             <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center mx-auto mb-2 text-sm font-bold">?</div>

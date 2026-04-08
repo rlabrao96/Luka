@@ -32,7 +32,10 @@ async def get_me(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(HouseholdMember.household_id).where(HouseholdMember.user_id == current_user.id)
+        select(HouseholdMember.household_id).where(
+            HouseholdMember.user_id == current_user.id,
+            HouseholdMember.left_at.is_(None),
+        )
     )
     row = result.first()
     household_id = row[0] if row else None
@@ -76,7 +79,10 @@ async def update_profile(
     await db.refresh(user)
 
     result = await db.execute(
-        select(HouseholdMember.household_id).where(HouseholdMember.user_id == user.id)
+        select(HouseholdMember.household_id).where(
+            HouseholdMember.user_id == user.id,
+            HouseholdMember.left_at.is_(None),
+        )
     )
     row = result.first()
     household_id = row[0] if row else None
