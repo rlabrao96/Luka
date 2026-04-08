@@ -71,7 +71,7 @@ export function useCreateAndInvite() {
   const queryClient = useQueryClient();
   const setHousehold = useLukaStore((s) => s.setHousehold);
   return useMutation({
-    mutationFn: () => api.createAndInvite(),
+    mutationFn: (email: string) => api.createAndInvite(email),
     onSuccess: (data) => {
       setHousehold(data.household_id);
       queryClient.invalidateQueries({ queryKey: ["household"] });
