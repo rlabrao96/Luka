@@ -1,9 +1,9 @@
 """Plaid transaction sync: fetches transactions via cursor, creates accounts, maps and deduplicates."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func as sa_func, select, delete
+from sqlalchemy import func as sa_func, select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.encryption import decrypt_token
@@ -144,20 +144,58 @@ async def run_plaid_sync(
         tx.raw_merchant_name = plaid_tx.merchant_name or plaid_tx.name or tx.raw_merchant_name
         stats["modified"] += 1
 
-    # Process removed transactions — delete splits first to avoid FK violation
+    # Process removed transactions — Plaid sends "removed" when a pending tx settles
+    # and is replaced by a new confirmed one (different plaid_transaction_id).
+    # Transfer enrichment (splits, category, merchant_id) from the old one to the
+    # matching new tx before deleting, so the user doesn't lose their categorization.
     for plaid_tx in all_removed:
-        tx_id_result = await session.execute(
-            select(Transaction.id).where(
-                Transaction.plaid_transaction_id == plaid_tx.transaction_id
-            )
+        old_tx_result = await session.execute(
+            select(Transaction).where(Transaction.plaid_transaction_id == plaid_tx.transaction_id)
         )
-        tx_id = tx_id_result.scalar_one_or_none()
-        if tx_id is not None:
-            await session.execute(
-                delete(TransactionSplit).where(TransactionSplit.transaction_id == tx_id)
+        old_tx = old_tx_result.scalar_one_or_none()
+        if old_tx is None:
+            continue
+
+        # Find the replacement Plaid transaction: same user, same bank_account,
+        # same absolute amount, transaction_date within ±3 days, different plaid_id.
+        date_min = old_tx.transaction_date - timedelta(days=3)
+        date_max = old_tx.transaction_date + timedelta(days=3)
+        replacement_result = await session.execute(
+            select(Transaction)
+            .where(
+                Transaction.user_id == old_tx.user_id,
+                Transaction.bank_account_id == old_tx.bank_account_id,
+                Transaction.source == "plaid",
+                Transaction.plaid_transaction_id != plaid_tx.transaction_id,
+                sa_func.abs(Transaction.amount) == abs(old_tx.amount),
+                Transaction.transaction_date >= date_min,
+                Transaction.transaction_date <= date_max,
             )
-            await session.execute(delete(Transaction).where(Transaction.id == tx_id))
-            stats["removed"] += 1
+            .order_by(Transaction.created_at.desc())
+            .limit(1)
+        )
+        replacement = replacement_result.scalar_one_or_none()
+
+        if replacement is not None:
+            # Re-link splits to the new transaction
+            await session.execute(
+                update(TransactionSplit)
+                .where(TransactionSplit.transaction_id == old_tx.id)
+                .values(transaction_id=replacement.id)
+            )
+            # Copy enrichment fields if the replacement doesn't have them yet
+            if old_tx.category and not replacement.category:
+                replacement.category = old_tx.category
+            if old_tx.merchant_id and not replacement.merchant_id:
+                replacement.merchant_id = old_tx.merchant_id
+        else:
+            # No replacement found — just drop the splits (rare)
+            await session.execute(
+                delete(TransactionSplit).where(TransactionSplit.transaction_id == old_tx.id)
+            )
+
+        await session.execute(delete(Transaction).where(Transaction.id == old_tx.id))
+        stats["removed"] += 1
 
     # Update item state
     item.cursor = cursor
