@@ -2,7 +2,7 @@ import uuid
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -21,12 +21,25 @@ async def list_bank_accounts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all connected bank accounts for a household (active and inactive)."""
+    """List bank accounts visible to the current user in this household.
+
+    Returns:
+      - Accounts owned by the current user (user_id == current_user.id)
+      - Joint household accounts (account_type == 'joint'), regardless of owner
+
+    A partner's personal/partner accounts are NEVER returned. This endpoint
+    backs the home BalanceCard and the settings BankAccountsSection — neither
+    should ever expose a partner's raw balance.
+    """
     await require_membership(household_id, current_user.id, db)
 
     result = await db.execute(
         select(BankAccount).where(
             BankAccount.household_id == household_id,
+            or_(
+                BankAccount.user_id == current_user.id,
+                BankAccount.account_type == "joint",
+            ),
         )
     )
     accounts = result.scalars().all()

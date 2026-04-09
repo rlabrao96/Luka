@@ -156,3 +156,48 @@ async def test_list_bank_accounts_returns_inactive_accounts(
     data = response.json()
     assert len(data) == 1
     assert data[0]["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_bank_accounts_filters_partner_personal_accounts(
+    http_client, override_auth, override_db, mock_current_user
+):
+    """Regression: `/bank-accounts` must NEVER return a partner's personal or
+    partner-type accounts to another household member. Only the current user's
+    own accounts plus household joint accounts should come back.
+
+    Context: Camila saw Rafael's Bank of America balance on her dashboard's
+    BalanceCard because this endpoint filtered by household_id only.
+    """
+    mock_member = MagicMock()
+    member_result = _make_execute_result(mock_member)
+
+    accounts_result = MagicMock()
+    accounts_result.scalars.return_value.all.return_value = []
+
+    captured: list = []
+
+    async def capturing_execute(stmt, *args, **kwargs):
+        captured.append(stmt)
+        # Return the member result for the first call, accounts for the second.
+        return member_result if len(captured) == 1 else accounts_result
+
+    override_db.execute = capturing_execute
+
+    response = await http_client.get(f"/bank-accounts?household_id={HOUSEHOLD_ID}")
+    assert response.status_code == 200
+
+    # The second execute call is the bank-accounts select. Compile its WHERE
+    # clause and verify it contains both the user-ownership filter and the
+    # joint-account escape hatch.
+    assert len(captured) >= 2
+    compiled = str(captured[1].compile(compile_kwargs={"literal_binds": True})).lower()
+    assert "bank_accounts.household_id" in compiled
+    assert "bank_accounts.user_id" in compiled, (
+        "SELECT on /bank-accounts is missing the user_id filter — "
+        "partner accounts will leak across the household."
+    )
+    assert "'joint'" in compiled, (
+        "SELECT on /bank-accounts is missing the account_type='joint' filter — "
+        "joint household accounts will be hidden from non-owners."
+    )
