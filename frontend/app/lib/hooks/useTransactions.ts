@@ -28,11 +28,11 @@ export function useSharedTransactions() {
   });
 }
 
-export function useMonthlySpending() {
+export function useMonthlySpending(currency?: string) {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["transactions", "monthly-summary", householdId],
-    queryFn: () => api.getMonthlySpending(householdId!),
+    queryKey: ["transactions", "monthly-summary", householdId, currency],
+    queryFn: () => api.getMonthlySpending(householdId!, currency),
     enabled: !!householdId,
   });
 }

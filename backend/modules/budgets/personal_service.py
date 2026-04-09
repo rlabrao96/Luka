@@ -74,7 +74,15 @@ async def get_personal_budget(
     household_id: uuid.UUID,
     user_id: uuid.UUID,
     month: date,
+    currency: str | None = None,
 ) -> dict:
+    """Build the personal budget view for a single currency.
+
+    When ``currency`` is provided every transaction aggregate (income,
+    transfers, household shared spend, personal spend, daily pace) is scoped
+    to transactions in that currency. Mixing CLP and USD produces nonsense
+    ceilings — the user-facing CLP/USD toggle relies on this being set.
+    """
     first_day = datetime(month.year, month.month, 1, tzinfo=timezone.utc)
     last_day_num = calendar.monthrange(month.year, month.month)[1]
     next_month_year = month.year + 1 if month.month == 12 else month.year
@@ -115,24 +123,26 @@ async def get_personal_budget(
     personal_account_ids = list(personal_account_ids_result.scalars().all())
 
     if personal_account_ids:
-        income_result = await db.execute(
-            select(func.sum(Transaction.amount)).where(
-                Transaction.bank_account_id.in_(personal_account_ids),
-                Transaction.transaction_type == "income",
-                Transaction.transaction_date >= first_day,
-                Transaction.transaction_date < first_day_next,
-            )
+        income_query = select(func.sum(Transaction.amount)).where(
+            Transaction.bank_account_id.in_(personal_account_ids),
+            Transaction.transaction_type == "income",
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
         )
+        if currency:
+            income_query = income_query.where(Transaction.currency == currency)
+        income_result = await db.execute(income_query)
         income = float(income_result.scalar() or 0)
 
-        user_deposited_result = await db.execute(
-            select(func.sum(Transaction.amount)).where(
-                Transaction.bank_account_id.in_(personal_account_ids),
-                Transaction.transaction_type == "transfer",
-                Transaction.transaction_date >= first_day,
-                Transaction.transaction_date < first_day_next,
-            )
+        user_deposited_query = select(func.sum(Transaction.amount)).where(
+            Transaction.bank_account_id.in_(personal_account_ids),
+            Transaction.transaction_type == "transfer",
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
         )
+        if currency:
+            user_deposited_query = user_deposited_query.where(Transaction.currency == currency)
+        user_deposited_result = await db.execute(user_deposited_query)
         user_deposited = float(user_deposited_result.scalar() or 0)
     else:
         income = 0.0
@@ -152,20 +162,23 @@ async def get_personal_budget(
         all_personal_ids = list(all_member_accounts_result.scalars().all())
 
         if all_personal_ids:
-            total_deposited_result = await db.execute(
-                select(func.sum(Transaction.amount)).where(
-                    Transaction.bank_account_id.in_(all_personal_ids),
-                    Transaction.transaction_type == "transfer",
-                    Transaction.transaction_date >= first_day,
-                    Transaction.transaction_date < first_day_next,
-                )
+            total_deposited_query = select(func.sum(Transaction.amount)).where(
+                Transaction.bank_account_id.in_(all_personal_ids),
+                Transaction.transaction_type == "transfer",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
             )
+            if currency:
+                total_deposited_query = total_deposited_query.where(
+                    Transaction.currency == currency
+                )
+            total_deposited_result = await db.execute(total_deposited_query)
             total_deposited = float(total_deposited_result.scalar() or 0)
         else:
             total_deposited = 0.0
 
         # Household spending (shared splits on any account in household)
-        household_spent_result = await db.execute(
+        household_spent_query = (
             select(func.sum(Transaction.amount))
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
@@ -176,6 +189,9 @@ async def get_personal_budget(
                 Transaction.transaction_type == "expense",
             )
         )
+        if currency:
+            household_spent_query = household_spent_query.where(Transaction.currency == currency)
+        household_spent_result = await db.execute(household_spent_query)
         household_spent = float(household_spent_result.scalar() or 0)
 
         if total_deposited > 0:
@@ -195,7 +211,7 @@ async def get_personal_budget(
 
     # Personal spending breakdown
     if personal_account_ids:
-        personal_shared_result = await db.execute(
+        personal_shared_query = (
             select(func.sum(Transaction.amount))
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
@@ -206,9 +222,12 @@ async def get_personal_budget(
                 Transaction.transaction_date < first_day_next,
             )
         )
+        if currency:
+            personal_shared_query = personal_shared_query.where(Transaction.currency == currency)
+        personal_shared_result = await db.execute(personal_shared_query)
         breakdown_household = float(personal_shared_result.scalar() or 0)
 
-        personal_only_result = await db.execute(
+        personal_only_query = (
             select(func.sum(Transaction.amount))
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
@@ -219,6 +238,9 @@ async def get_personal_budget(
                 Transaction.transaction_date < first_day_next,
             )
         )
+        if currency:
+            personal_only_query = personal_only_query.where(Transaction.currency == currency)
+        personal_only_result = await db.execute(personal_only_query)
         breakdown_personal = float(personal_only_result.scalar() or 0)
     else:
         breakdown_household = 0.0
@@ -235,8 +257,16 @@ async def get_personal_budget(
     # Pace — pure SQL to avoid SQLAlchemy injecting ORM entity columns into SELECT
     if personal_account_ids:
         account_id_strings = [str(aid) for aid in personal_account_ids]
+        pace_currency_clause = "AND t.currency = :currency" if currency else ""
+        pace_params: dict = {
+            "account_ids": account_id_strings,
+            "first_day": first_day,
+            "first_day_next": first_day_next,
+        }
+        if currency:
+            pace_params["currency"] = currency
         all_spending_result = await db.execute(
-            text("""
+            text(f"""
                 SELECT date_part('day', t.transaction_date) AS day,
                        SUM(t.amount) AS total
                 FROM transactions t
@@ -245,13 +275,10 @@ async def get_personal_budget(
                   AND t.transaction_type = 'expense'
                   AND t.transaction_date >= :first_day
                   AND t.transaction_date < :first_day_next
+                  {pace_currency_clause}
                 GROUP BY date_part('day', t.transaction_date)
             """),
-            {
-                "account_ids": account_id_strings,
-                "first_day": first_day,
-                "first_day_next": first_day_next,
-            },
+            pace_params,
         )
         daily_raw = {int(row.day): float(row.total) for row in all_spending_result}
     else:

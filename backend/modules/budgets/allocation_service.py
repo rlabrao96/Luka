@@ -38,7 +38,18 @@ def compute_historical_suggestion(
     return {"hogar_pct": hogar, "ahorro_pct": ahorro, "personal_pct": personal}
 
 
-async def get_allocation(db: AsyncSession, household_id: uuid.UUID, month: date) -> dict:
+async def get_allocation(
+    db: AsyncSession,
+    household_id: uuid.UUID,
+    month: date,
+    currency: str | None = None,
+) -> dict:
+    """Return current allocation + a historical 50/20/30 suggestion.
+
+    When ``currency`` is provided, the historical averages are computed from
+    transactions in that currency only. Without the filter, CLP and USD would
+    be summed together and the suggested percentages would be meaningless.
+    """
     result = await db.execute(
         select(HouseholdBudgetAllocation).where(
             HouseholdBudgetAllocation.household_id == household_id,
@@ -82,17 +93,18 @@ async def get_allocation(db: AsyncSession, household_id: uuid.UUID, month: date)
         next_y = y if m < 12 else y + 1
         first_next = datetime(next_y, next_m, 1, tzinfo=timezone.utc)
 
-        inc_r = await db.execute(
-            select(func.sum(Transaction.amount)).where(
-                Transaction.bank_account_id.in_(personal_ids),
-                Transaction.transaction_type == "income",
-                Transaction.transaction_date >= first,
-                Transaction.transaction_date < first_next,
-            )
+        inc_q = select(func.sum(Transaction.amount)).where(
+            Transaction.bank_account_id.in_(personal_ids),
+            Transaction.transaction_type == "income",
+            Transaction.transaction_date >= first,
+            Transaction.transaction_date < first_next,
         )
+        if currency:
+            inc_q = inc_q.where(Transaction.currency == currency)
+        inc_r = await db.execute(inc_q)
         income = float(inc_r.scalar() or 0)
 
-        hogar_r = await db.execute(
+        hogar_q = (
             select(func.sum(Transaction.amount))
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
@@ -103,9 +115,12 @@ async def get_allocation(db: AsyncSession, household_id: uuid.UUID, month: date)
                 Transaction.transaction_date < first_next,
             )
         )
+        if currency:
+            hogar_q = hogar_q.where(Transaction.currency == currency)
+        hogar_r = await db.execute(hogar_q)
         hogar_spent = float(hogar_r.scalar() or 0)
 
-        personal_r = await db.execute(
+        personal_q = (
             select(func.sum(Transaction.amount))
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
@@ -116,6 +131,9 @@ async def get_allocation(db: AsyncSession, household_id: uuid.UUID, month: date)
                 Transaction.transaction_date < first_next,
             )
         )
+        if currency:
+            personal_q = personal_q.where(Transaction.currency == currency)
+        personal_r = await db.execute(personal_q)
         personal_spent = float(personal_r.scalar() or 0)
 
         monthly_data.append(

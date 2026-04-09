@@ -72,8 +72,8 @@ export default function DashboardPage() {
   // ── Data ──
   const { data: myTxns = [] } = useMyTransactions();
   const { data: pendingData } = usePendingTransactions();
-  const { data: monthlySpending = [] } = useMonthlySpending();
-  const { data: budget } = useBudgetStatus(selectedMonth);
+  const { data: monthlySpending = [] } = useMonthlySpending(selectedCurrency);
+  const { data: budget } = useBudgetStatus(selectedMonth, selectedCurrency);
   const { data: catBudgets } = useCategoryBudgets(selectedMonth);
   const { data: accounts = [] } = useQuery<BankAccountRow[]>({
     queryKey: ["bank-accounts", householdId],

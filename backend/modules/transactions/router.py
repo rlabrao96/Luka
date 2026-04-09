@@ -34,11 +34,12 @@ async def my_transactions(
 @router.get("/monthly-summary")
 async def monthly_summary(
     household_id: uuid.UUID,
+    currency: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    return await service.get_monthly_summary(db, household_id, current_user.id)
+    return await service.get_monthly_summary(db, household_id, current_user.id, currency=currency)
 
 
 @router.get("/shared", response_model=list[TransactionResponse])

@@ -10,9 +10,13 @@ async def get_budget_status(
     db: AsyncSession,
     household_id: uuid.UUID,
     month: date,
+    currency: str | None = None,
 ) -> dict:
-    # Sum all budgets for joint accounts this month
-    budget_result = await db.execute(
+    # Sum all budgets for joint accounts this month.
+    # Budgets are per bank_account, and each account has a single currency.
+    # When a currency is supplied, restrict both the budgeted and spent totals
+    # to that currency — mixing CLP and USD produces meaningless totals.
+    budget_query = (
         select(func.sum(HouseholdBudget.budgeted))
         .join(BankAccount, BankAccount.id == HouseholdBudget.bank_account_id)
         .where(
@@ -21,6 +25,9 @@ async def get_budget_status(
             BankAccount.account_type == "joint",
         )
     )
+    if currency:
+        budget_query = budget_query.where(BankAccount.currency == currency)
+    budget_result = await db.execute(budget_query)
     total_budgeted = float(budget_result.scalar() or 0)
 
     # Sum all shared spending this month (range filter avoids date_trunc type issues)
@@ -29,7 +36,7 @@ async def get_budget_status(
     next_month_num = 1 if month.month == 12 else month.month + 1
     first_day_next = datetime(next_month_year, next_month_num, 1, tzinfo=timezone.utc)
 
-    spent_result = await db.execute(
+    spent_query = (
         select(func.sum(Transaction.amount))
         .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .where(
@@ -39,6 +46,9 @@ async def get_budget_status(
             Transaction.transaction_date < first_day_next,
         )
     )
+    if currency:
+        spent_query = spent_query.where(Transaction.currency == currency)
+    spent_result = await db.execute(spent_query)
     total_spent = float(spent_result.scalar() or 0)
 
     return {

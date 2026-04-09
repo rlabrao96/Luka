@@ -2,11 +2,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type SetAllocationPayload, type CategoryBudgetItem } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 
-export function useBudgetStatus(month?: string) {
+export function useBudgetStatus(month?: string, currency?: string) {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["budget", householdId, month],
-    queryFn: () => api.getBudgetStatus(householdId!, month),
+    queryKey: ["budget", householdId, month, currency],
+    queryFn: () => api.getBudgetStatus(householdId!, month, currency),
     enabled: !!householdId,
   });
 }
@@ -23,20 +23,20 @@ export function useSetBudget() {
   });
 }
 
-export function usePersonalBudget(month?: string) {
+export function usePersonalBudget(month?: string, currency?: string) {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["personalBudget", householdId, month],
-    queryFn: () => api.getPersonalBudget(householdId!, month),
+    queryKey: ["personalBudget", householdId, month, currency],
+    queryFn: () => api.getPersonalBudget(householdId!, month, currency),
     enabled: !!householdId,
   });
 }
 
-export function useAllocation(month?: string) {
+export function useAllocation(month?: string, currency?: string) {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["allocation", householdId, month],
-    queryFn: () => api.getAllocation(householdId!, month),
+    queryKey: ["allocation", householdId, month, currency],
+    queryFn: () => api.getAllocation(householdId!, month, currency),
     enabled: !!householdId,
   });
 }

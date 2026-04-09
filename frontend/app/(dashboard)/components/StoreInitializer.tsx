@@ -63,29 +63,11 @@ export function StoreInitializer({ userId, householdId, userFullName }: Props) {
         queryFn: () => api.getHouseholdSummary(householdId),
         staleTime,
       });
-      queryClient.prefetchQuery({
-        queryKey: ["budget", householdId, undefined],
-        queryFn: () => api.getBudgetStatus(householdId),
-        staleTime,
-      });
-      // Prefetch budget data for current month + 2 previous months
-      const budgetMonths = [0, -1, -2].map((offset) => {
-        const d = new Date();
-        d.setMonth(d.getMonth() + offset);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-      });
-      for (const m of budgetMonths) {
-        queryClient.prefetchQuery({
-          queryKey: ["personalBudget", householdId, m],
-          queryFn: () => api.getPersonalBudget(householdId, m),
-          staleTime,
-        });
-        queryClient.prefetchQuery({
-          queryKey: ["allocation", householdId, m],
-          queryFn: () => api.getAllocation(householdId, m),
-          staleTime,
-        });
-      }
+      // Note: budget/personalBudget/allocation are NOT prefetched here because
+      // their query keys now include the active currency (CLP/USD), which isn't
+      // known until the `me` query loads. Prefetching with `undefined` would
+      // never match the real hook call's cache key. The consuming pages fetch
+      // on mount — one extra round-trip is cheap vs. serving mixed-currency data.
       queryClient.prefetchQuery({
         queryKey: ["bank-accounts", householdId],
         queryFn: () => api.getBankAccounts(householdId),

@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import dynamic from "next/dynamic";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/app/lib/api";
 import { usePersonalBudget, useAllocation, useSaveAllocation } from "@/app/lib/hooks/useBudget";
 import AllocationCard from "@/app/(dashboard)/components/AllocationCard";
 import WaterfallCards from "@/app/(dashboard)/components/WaterfallCards";
@@ -25,8 +27,18 @@ export default function BudgetsPage() {
   );
   const monthParam = getMonthParam(selectedMonth);
 
-  const { data: budget, isLoading: budgetLoading } = usePersonalBudget(monthParam);
-  const { data: allocation, isLoading: allocLoading } = useAllocation(monthParam);
+  // Scope every aggregate to a single currency — the backend would otherwise
+  // sum CLP and USD together and the numbers would be meaningless. This page
+  // doesn't have its own toggle yet, so we use the user's preferred currency.
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.getMe(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const currency = me?.preferred_currency ?? "CLP";
+
+  const { data: budget, isLoading: budgetLoading } = usePersonalBudget(monthParam, currency);
+  const { data: allocation, isLoading: allocLoading } = useAllocation(monthParam, currency);
   const { mutate: saveAllocation, isPending: isSaving } = useSaveAllocation();
 
   function prevMonth() {

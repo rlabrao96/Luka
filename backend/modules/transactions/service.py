@@ -44,7 +44,10 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
 
 
 async def get_monthly_summary(
-    db: AsyncSession, household_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession,
+    household_id: uuid.UUID,
+    user_id: uuid.UUID,
+    currency: str | None = None,
 ) -> list[dict]:
     MONTH_ABBR = [
         "Ene",
@@ -60,8 +63,15 @@ async def get_monthly_summary(
         "Nov",
         "Dic",
     ]
+    # Currency filter: summing CLP and USD together produces nonsense.
+    # When `currency` is provided (via the CLP/USD toggle), restrict both
+    # aggregates to transactions in that currency.
+    currency_clause = "AND t.currency = :currency" if currency else ""
+    params: dict = {"household_id": str(household_id), "user_id": str(user_id)}
+    if currency:
+        params["currency"] = currency
     result = await db.execute(
-        text("""
+        text(f"""
         WITH months AS (
             SELECT generate_series(
                 DATE_TRUNC('month', NOW()) - INTERVAL '5 months',
@@ -79,6 +89,7 @@ async def get_monthly_summary(
             WHERE t.user_id = :user_id
               AND t.household_id = :household_id
               AND ts.split_type = 'personal'
+              {currency_clause}
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
         ),
         shared_agg AS (
@@ -90,6 +101,7 @@ async def get_monthly_summary(
             JOIN bank_accounts ba ON ba.id = t.bank_account_id AND ba.is_active = TRUE
             WHERE t.household_id = :household_id
               AND ts.split_type = 'shared'
+              {currency_clause}
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
         )
         SELECT
@@ -101,7 +113,7 @@ async def get_monthly_summary(
         LEFT JOIN shared_agg s ON s.month_start = m.month_start
         ORDER BY m.month_start ASC
         """),
-        {"household_id": str(household_id), "user_id": str(user_id)},
+        params,
     )
     rows = result.all()
     return [

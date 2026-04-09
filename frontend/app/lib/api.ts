@@ -435,8 +435,13 @@ export const api = {
       body: JSON.stringify({ ratio }),
     }),
 
-  getBudgetStatus: (householdId: string, month?: string) =>
-    apiFetch<BudgetStatus>(`/budgets/monthly/${householdId}${month ? `?month=${month}` : ""}`),
+  getBudgetStatus: (householdId: string, month?: string, currency?: string) => {
+    const parts: string[] = [];
+    if (month) parts.push(`month=${month}`);
+    if (currency) parts.push(`currency=${currency}`);
+    const qs = parts.length ? `?${parts.join("&")}` : "";
+    return apiFetch<BudgetStatus>(`/budgets/monthly/${householdId}${qs}`);
+  },
 
   getCategoryBudgets: (householdId: string, month?: string) =>
     apiFetch<CategoryBudgetResponse>(
@@ -461,8 +466,13 @@ export const api = {
   acceptInvite: (token: string) =>
     apiFetch<{ household_id: string; accepted_at: string }>(`/invite/${token}`),
 
-  getMonthlySpending: (householdId: string) =>
-    apiFetch<MonthlySpendingPoint[]>(`/transactions/monthly-summary?household_id=${householdId}`),
+  getMonthlySpending: (householdId: string, currency?: string) => {
+    const parts: string[] = [`household_id=${householdId}`];
+    if (currency) parts.push(`currency=${currency}`);
+    return apiFetch<MonthlySpendingPoint[]>(
+      `/transactions/monthly-summary?${parts.join("&")}`
+    );
+  },
 
   createHousehold: (name: string, type: "individual" | "group") =>
     apiFetch<{ id: string; name: string; type: string }>("/households", {
@@ -538,15 +548,21 @@ export const api = {
       body: JSON.stringify({ split_type: splitType }),
     }),
 
-  getPersonalBudget: (householdId: string, month?: string) =>
-    apiFetch<PersonalBudgetResponse>(
-      `/budgets/personal/${householdId}${month ? `?month=${month}` : ""}`
-    ),
+  getPersonalBudget: (householdId: string, month?: string, currency?: string) => {
+    const parts: string[] = [];
+    if (month) parts.push(`month=${month}`);
+    if (currency) parts.push(`currency=${currency}`);
+    const qs = parts.length ? `?${parts.join("&")}` : "";
+    return apiFetch<PersonalBudgetResponse>(`/budgets/personal/${householdId}${qs}`);
+  },
 
-  getAllocation: (householdId: string, month?: string) =>
-    apiFetch<AllocationResponse>(
-      `/budgets/allocation/${householdId}${month ? `?month=${month}` : ""}`
-    ),
+  getAllocation: (householdId: string, month?: string, currency?: string) => {
+    const parts: string[] = [];
+    if (month) parts.push(`month=${month}`);
+    if (currency) parts.push(`currency=${currency}`);
+    const qs = parts.length ? `?${parts.join("&")}` : "";
+    return apiFetch<AllocationResponse>(`/budgets/allocation/${householdId}${qs}`);
+  },
 
   setAllocation: (householdId: string, payload: SetAllocationPayload) =>
     apiFetch<AllocationBlock>(`/budgets/allocation/${householdId}`, {

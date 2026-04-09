@@ -1,6 +1,6 @@
 import uuid
 from datetime import date
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import get_current_user
@@ -28,6 +28,7 @@ router = APIRouter(prefix="/budgets", tags=["budgets"])
 async def monthly_budget(
     household_id: uuid.UUID,
     month: date | None = None,
+    currency: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -35,7 +36,7 @@ async def monthly_budget(
     if not month:
         today = date.today()
         month = date(today.year, today.month, 1)
-    return await service.get_budget_status(db, household_id, month)
+    return await service.get_budget_status(db, household_id, month, currency=currency)
 
 
 @router.post("/monthly/{household_id}", response_model=BudgetStatusResponse)
@@ -57,6 +58,7 @@ async def set_budget(
 async def personal_budget(
     household_id: uuid.UUID,
     month: date | None = None,
+    currency: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -66,13 +68,14 @@ async def personal_budget(
         month = date(today.year, today.month, 1)
     else:
         month = date(month.year, month.month, 1)
-    return await get_personal_budget(db, household_id, current_user.id, month)
+    return await get_personal_budget(db, household_id, current_user.id, month, currency=currency)
 
 
 @router.get("/allocation/{household_id}", response_model=AllocationResponse)
 async def get_budget_allocation(
     household_id: uuid.UUID,
     month: date | None = None,
+    currency: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -82,7 +85,7 @@ async def get_budget_allocation(
         month = date(today.year, today.month, 1)
     else:
         month = date(month.year, month.month, 1)
-    return await get_allocation(db, household_id, month)
+    return await get_allocation(db, household_id, month, currency=currency)
 
 
 @router.post("/allocation/{household_id}", response_model=AllocationBlock)
