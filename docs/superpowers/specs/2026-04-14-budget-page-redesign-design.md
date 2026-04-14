@@ -543,7 +543,10 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
     - New `cuota_purchases` table + indexes (§5.3)
   - Decide `counts_as_savings` location (categories table vs hardcoded set in `backend/modules/transactions/categories.py` or equivalent)
   - Seed `counts_as_savings=true` for Inversión
+  - **Verification seed script**: `backend/scripts/seed_budget_test_fixtures.py` creating the test users/households described in §11.4 shared setup
+  - **Verification orchestrator**: `backend/scripts/run_chunk_verifications.sh` that each downstream chunk uses to launch its checkpoint agent
   - Run locally against dev DB and verify clean rollback (`alembic downgrade -1`)
+- **Verification:** §11.4 "Chunk 0 — Migrations" row (bash-only, no browser)
 
 ### Chunk A — Currency fix + page scaffolding
 - **Duration:** ~1 day
@@ -554,7 +557,7 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
   - Rescaffold `/budgets/page.tsx` as two stacked sections (empty placeholders)
   - Auto-hide toggle when single-currency (check via `useQuery` on user's distinct currencies this month)
 - **Parallel with:** everything after Chunk 0
-- **Verifies:** currency bug fixed; page shell renders
+- **Verification:** §11.4 "Chunk A" row — browser agent (`chrome-devtools-mcp` + `browser-use`) validates `formatMoney` output, toggle visibility logic, and re-render on toggle click
 
 ### Chunk B — Sankey component
 - **Duration:** ~1.5 days
@@ -565,6 +568,7 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
   - Color rules: neutral for bills/savings, red tint for risk categories, accent for spendable
   - Build a storybook-style dev page with fake data for iteration
 - **Parallel with:** Chunks A, C, D, E, F
+- **Verification:** §11.4 "Chunk B" row — screenshot agent renders Sankey at desktop and mobile viewports, commits PNGs to `docs/superpowers/specs/screenshots/`
 
 ### Chunk C — Backend budget v2 endpoint
 - **Duration:** ~2 days
@@ -585,6 +589,7 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
   - Unit tests with synthetic data (deterministic)
 - **Parallel with:** Chunks A, B, D, E, F (after Chunk 0)
 - **Note:** this chunk is the **critical path** — all frontend chunks consume its payload
+- **Verification:** §11.4 "Chunk C" row — bash agent runs `curl` + JSON-schema validator against seeded test users, including the privacy recursive-walk assertion
 
 ### Chunk D — Contribution modes
 - **Duration:** ~1 day
@@ -595,6 +600,7 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
   - Frontend: `useBudgetSettings` hook
   - Privacy test: verify a fixed-mode member's real income is NOT exposed in any `view=household` response
 - **Parallel with:** B, C, E, F
+- **Verification:** §11.4 "Chunk D" row — browser agent changes contribution mode in Settings, reloads budget page, uses Chrome DevTools Network tab to inspect every response body for the real-income value
 
 ### Chunk E — Cuotas (manual entry only)
 - **Duration:** ~1 day
@@ -607,6 +613,7 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
   - Frontend: `useCuotas` hook for list/create/cancel
 - **Parallel with:** B, C, D, F
 - **Out of scope:** auto-detection from email parser (Phase 2)
+- **Verification:** §11.4 "Chunk E" row — browser agent marks a transaction as cuota via the UI, then asserts the resulting aggregate values (`this_month`, `future_total`, `active_count`) match the expected math
 
 ### Chunk F — Savings target + investment-as-savings
 - **Duration:** ~0.5 day
@@ -618,6 +625,7 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
   - Frontend: savings target rendered as a Sankey bucket, carved out of the ceiling before spendable
 - **Parallel with:** B, C, D, E
 - **Schema owned by:** Chunk 0 (`user_budget_settings` table)
+- **Verification:** §11.4 "Chunk F" row — browser agent sets the savings target, verifies the Sankey bucket appears and `spendable.amount` is reduced by the target amount; also categorizes a tx as `Inversión` and verifies it counts toward `savings_target.progress`, not `spendable.spent`
 
 ### Chunk G — Risk alert band (inline intervention)
 - **Duration:** ~0.5 day
@@ -627,6 +635,7 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
   - Copy: "⚠️ [Category] va al X% de su límite con N días por delante. Al ritmo actual, el mes cerraría en $Y (límite: $Z)."
   - Silent when empty
 - **Parallel with:** B (after Chunk C's endpoint shape is stable)
+- **Verification:** §11.4 "Chunk G" row — browser agent seeds a high-risk scenario and a calm scenario, takes screenshots of both states, asserts band appears/disappears correctly
 
 ### Chunk H — Runway card
 - **Duration:** ~0.5 day
@@ -637,6 +646,7 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
   - Frontend: add payday input to the same Settings section as the savings target
 - **Parallel with:** B, C, D, E, F, G
 - **Schema owned by:** Chunk 0
+- **Verification:** §11.4 "Chunk H" row — browser agent sets payday, seeds a runway-exceeds-payday scenario and a healthy scenario, asserts card color (red vs neutral) via computed styles
 
 ### Out of scope in v1 (explicit Phase 2 chunks)
 - **Chunk I (Sunday email recap)** — deferred entirely to Phase 2 per user decision
@@ -650,12 +660,12 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
 
 | Day | Parallelized work | Serial requirements |
 |---|---|---|
-| **Day 1 AM** | Chunk 0 (migrations) | Must complete first |
-| **Day 1 PM → Day 3** | Chunks A, B, C, D, E, F in parallel across 6 agents; G and H start as soon as C's API contract is stable (Day 2) | None |
-| **Day 4** | Merge + end-to-end integration testing against staging DB | All chunks merged |
+| **Day 1 AM** | Chunk 0 (migrations + seed fixtures + orchestrator script) | Must complete first |
+| **Day 1 PM → Day 3** | Chunks A, B, C, D, E, F in parallel across 6 agents; G and H start as soon as C's API contract is stable (Day 2). Each chunk runs its §11.4 per-chunk verification before being marked complete. | None |
+| **Day 4** | Merge + Day-4 integration verification agent (§11.4) end-to-end against staging DB | All chunks merged + per-chunk checkpoints green |
 | **Day 5** | User acceptance testing with real transactions (CLP, USD, mixed, couples, cuotas) + bug-fix pass | |
-| **Day 6** | Frontend polish, copy review, mobile testing | |
-| **Day 7** | Ship to production (Railway + Vercel) | |
+| **Day 6** | Day-6 UX / design consistency pass (§11.4) — agent reviews visual consistency with rest of Luka app, produces the UX review markdown + screenshots. Fix any blockers. | Day 4 integration green |
+| **Day 7** | Ship to production (Railway + Vercel) | Day 6 UX review: no blocking fails |
 
 **Critical path:** Chunk 0 → Chunk C → frontend chunks that consume Chunk C's payload (B, G, H).
 **Non-critical parallel path:** A, D, E, F — each independent of C beyond the data model.
@@ -688,6 +698,93 @@ Each chunk is self-contained enough to run in a separate worktree with a dedicat
 
 ### 11.3 Frontend testing
 No automated frontend tests (Luka doesn't have a frontend test infrastructure — §NEXT-STEPS). Manual QA only for v1.
+
+### 11.4 Agent-driven verification checkpoints
+
+We replace the missing frontend test infrastructure with **browser-driven verification agents** that run at each chunk boundary. The agents use the `browser-use` skill (for interactive flows) and `chrome-devtools-mcp` (for network, console, screenshots, accessibility audits). Each checkpoint is a pass/fail gate — the chunk is not considered merged until its checkpoint passes.
+
+**Shared agent setup (run once before any chunk verifies):**
+- Start dev backend: `cd backend && uvicorn main:app --reload`
+- Start dev frontend: `cd frontend && npm run dev`
+- Authenticate the browser session using the preferred Google OAuth account (stored in user memory) so the agent doesn't get blocked at login
+- Seed test data via a new `backend/scripts/seed_budget_test_fixtures.py` (Chunk 0 deliverable) that creates: one individual-household user, one couple household with full/full members, one couple with full/fixed (real income $1,800,000, fixed contribution $800,000), one couple with full/reimbursement, and a cuota purchase (12 installments, $50k/mo)
+- Navigate to `http://localhost:3000/budgets` as each test user in turn
+
+**Per-chunk verification:**
+
+| Chunk | Verification agent checks (pass/fail) | Tooling |
+|---|---|---|
+| **0 — Migrations** | Alembic upgrade + downgrade both succeed against a fresh DB; no orphan columns; seeded fixtures load cleanly | Bash (no browser) |
+| **A — Currency fix + scaffolding** | Budget page renders without errors. Console is free of warnings. `formatMoney(150000, 'CLP')` produces `$150.000`; `formatMoney(150.50, 'USD')` produces `$150.50`. For a single-currency user the toggle is NOT in the DOM; for a mixed-currency user it IS in the DOM. Clicking the toggle re-queries and re-renders every number on the page. | `chrome-devtools-mcp` (console, DOM, screenshots) + `browser-use` (click flow) |
+| **B — Sankey component** | On the dev fixture page, the Sankey renders with all expected nodes (Income, Known bills, Cuotas, Savings, Spendable, risk categories). Mobile viewport (375×667) allows horizontal scroll without overflow of sibling elements. Colors: risk-flagged nodes render red-tinted; savings/bills neutral; spendable accent. Take and commit a screenshot to `docs/superpowers/specs/screenshots/sankey-v1-{desktop,mobile}.png`. | `chrome-devtools-mcp` (screenshot, `resize_page`, `take_snapshot`) |
+| **C — Backend v2 endpoint** | `curl` the endpoint for each test user. Response matches §7.1 shape exactly (JSON schema validation via `jsonschema` in Python). For the full/fixed couple in `view=household`, recursively walk the JSON and assert no field equals `1800000`. Response time under 500ms on a warm cache. | Bash + Python (no browser) |
+| **D — Contribution modes** | Load Settings page, change mode from `Completa` → `Fija`, enter $800k, save. Verify: (1) Settings persists after reload, (2) `/budgets` Household section updates to show `$800k` as the contribution (not the real income), (3) **Chrome DevTools Network tab** — inspect every `GET /budgets/v2/...?view=household` response and grep-assert no real-income value appears anywhere in the response body. | `browser-use` (click flow) + `chrome-devtools-mcp` (`list_network_requests` + `get_network_request` body inspection) |
+| **E — Cuotas** | Open a transaction, click "Marcar como compra en cuotas", fill form (12 installments, first cuota = today), save. Verify: (1) a new `cuota_purchases` row exists (via API GET), (2) the budget page's `cuotas.this_month` increments by `total_amount / 12`, (3) the Sankey's "Cuotas del mes" bucket grows, (4) `cuotas.future_total` equals `11 × (total_amount / 12)`. | `browser-use` |
+| **F — Savings target + investment-as-savings** | In Settings, set savings target to $300k. Verify: (1) Sankey shows a $300k "Meta de ahorro" bucket, (2) `spendable.amount` is reduced by $300k from its pre-target value. Manually categorize a transaction as `Inversión` → verify: (3) it is NOT counted in `spendable.spent`, (4) it IS counted in `savings_target.progress`. | `browser-use` + API assertions |
+| **G — Risk alert band** | Seed a test user with historical data such that Restaurantes has `p_overshoot = 0.82` this month. Load `/budgets`. Verify: (1) yellow alert band appears above the Hogar section, (2) copy matches the template (§4.3), (3) band is absent when seeded with a calm month (`p_overshoot < 0.70`). Take screenshots of both states. | `browser-use` + `chrome-devtools-mcp` (screenshot) |
+| **H — Runway card** | Set `payday_day_of_month = 25` in Settings. With synthetic spending that yields `runway_days = 8` and `days_to_payday = 12`, verify the Runway card is red and displays both numbers correctly. With `runway_days = 20`, verify it is the neutral/accent color. | `browser-use` + `chrome-devtools-mcp` (computed styles) |
+
+**Day 4 — Integration verification agent**
+
+Runs all per-chunk checkpoints sequentially in a single browser session, plus an end-to-end flow:
+
+1. Log in as the full/fixed couple (Rafael's real account + a seeded test partner)
+2. Navigate to `/budgets` — verify Hogar and Personal sections both render with real data
+3. Flip the currency toggle CLP ↔ USD — verify every number re-renders (no stale values)
+4. Edit one category on a transaction from the page's transaction list (if surfaced) — verify the budget page invalidates and refetches within 2 seconds
+5. Open Settings, change contribution mode, return to budgets — verify Hogar section reflects the change
+6. Create a cuota manually — verify it appears in the Sankey on the next load
+7. Inspect all network requests for the session; assert no 4xx/5xx responses, no PII leak in `view=household` responses
+8. Lighthouse performance audit (`chrome-devtools-mcp:lighthouse_audit`) — require: LCP < 2.5s, CLS < 0.1, no accessibility violations of severity ≥ "serious"
+
+**Day 6 — UX / design consistency pass**
+
+A dedicated agent runs a visual consistency review against the rest of the Luka web app. This is the "does it feel like Luka?" gate.
+
+**Reference pages for consistency comparison:**
+- `/` (home dashboard)
+- `/transactions`
+- `/household`
+- `/settings`
+
+**Agent procedure:**
+1. Take desktop (1440×900) and mobile (375×667) screenshots of `/budgets` and each reference page
+2. Compare side-by-side:
+   - **Typography scale** — H1/H2/body/small all match (Tailwind tokens, not inline overrides)
+   - **Color palette** — primary `#2563EB`, background `#EFF6FF`, card shadows match `var(--shadow-card)` seen in existing components (e.g., `frontend/app/(dashboard)/components/TransactionCard.tsx`)
+   - **Card radius** — same `rounded-xl` across pages
+   - **Border treatment** — `border-slate-100` or equivalent on cards
+   - **Spacing rhythm** — `space-y-5` or `space-y-6` between top-level blocks, matching dashboard home
+   - **Header pattern** — page title `text-2xl font-bold text-gray-900 tracking-tight` + subtitle `text-sm text-gray-400 mt-0.5` (pattern from current `budgets/page.tsx:63–65`)
+3. Readability checks:
+   - Body copy contrast ratio ≥ 4.5 against background (WCAG AA)
+   - Spanish copy passes a readability check: no sentence over 20 words in headings or cards; passive voice avoided
+   - Currency numbers use tabular-nums (so columns align) — same as existing `TransactionCard` treatment
+4. Interaction consistency:
+   - Hover states match (card hover border transition matches `hover:border-luka-primary`)
+   - Bottom sheets on mobile use same animation as existing filter sheets
+   - Segmented toggle (currency) visually matches existing MonthSelector style on the same page
+5. Loading and empty states:
+   - Skeleton loaders use the same `animate-pulse bg-slate-100` pattern as existing `budgets/page.tsx:13`
+   - Empty state for new users (no history for risk categories) has friendly Spanish copy, not a generic error
+
+**Deliverables of the UX pass:**
+- A Markdown report at `docs/superpowers/specs/reviews/2026-04-14-budget-ux-review.md` listing each check with pass/fail and screenshots
+- Any fail is blocked from Day 7 ship until addressed
+- A "design token drift" log: any inline styles or one-off colors that don't come from Tailwind tokens are flagged for cleanup
+
+**Rollback criteria (any chunk → abort merge)**
+- Console errors in the browser during the checkpoint flow
+- Network requests returning 5xx
+- Privacy leak in `view=household` (real income value appears in response)
+- Lighthouse CLS > 0.25 or LCP > 4s
+- Any severity-`serious` accessibility violation
+
+### 11.5 Running the verification agents
+
+Each checkpoint is dispatched as a background subagent (the `Agent` tool with `subagent_type: general-purpose`, or `browser-use` directly when available as a skill), with an explicit brief that includes the chunk number, the checks to run, and where to write the screenshot deliverables. The spec is the single source of truth — the agent's brief is a short pointer to the relevant row of the table in §11.4, not a re-explanation.
+
+A convenience script `backend/scripts/run_chunk_verifications.sh {chunk-letter}` is added as part of Chunk 0 to orchestrate the shared setup, then launch the appropriate agent with the correct brief.
 
 ---
 
