@@ -11,6 +11,7 @@ import { ContributionSection } from "./components/ContributionSection";
 import { NotificationsSection } from "./components/NotificationsSection";
 import { CategoriesSection } from "./components/CategoriesSection";
 import { TransactionsConfigSection } from "./components/TransactionsConfigSection";
+import { BudgetSettingsSection } from "./components/BudgetSettingsSection";
 import { PrivacySection } from "./components/PrivacySection";
 import { DeleteAccountSection } from "./components/DeleteAccountSection";
 
@@ -60,6 +61,8 @@ export default function SettingsPage() {
         />
 
         <TransactionsConfigSection preferredCurrency={me.preferred_currency ?? "CLP"} />
+
+        <BudgetSettingsSection />
 
         <BankAccountsSection householdId={householdId} />
 

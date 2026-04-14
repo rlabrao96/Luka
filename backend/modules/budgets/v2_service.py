@@ -44,7 +44,11 @@ from modules.budgets.forecast import (
     spendable_ceiling,
 )
 from modules.budgets.savings_categories import is_savings_category
-from modules.budgets.user_budget_settings_models import UserBudgetSettings
+from modules.budgets.user_budget_settings_service import (
+    get_household_savings_target,
+    get_payday_day_of_month,
+    get_savings_target,
+)
 from modules.budgets.v2_schemas import (
     BudgetV2Response,
     CuotasBlock,
@@ -308,18 +312,11 @@ async def _personal_savings_target(
     user_id: uuid.UUID,
     currency: str,
 ) -> Decimal:
-    """Read the caller's savings target from `user_budget_settings`.
+    """Read the caller's savings target via `user_budget_settings_service`.
 
     Returns Decimal('0') if no row exists or the row is in a different currency.
     """
-    row = await db.execute(select(UserBudgetSettings).where(UserBudgetSettings.user_id == user_id))
-    settings = row.scalar_one_or_none()
-    if settings is None or settings.savings_target_amount is None:
-        return _ZERO
-    # If the stored target is in a different currency, ignore it for this view.
-    if settings.savings_target_currency and settings.savings_target_currency != currency:
-        return _ZERO
-    return Decimal(str(settings.savings_target_amount))
+    return await get_savings_target(db, user_id=user_id, currency=currency)
 
 
 async def _household_savings_target(
@@ -327,18 +324,12 @@ async def _household_savings_target(
     household_id: uuid.UUID,
     currency: str,
 ) -> Decimal:
-    """Sum of savings targets across members whose contribution_mode ∈ {full, fixed}."""
-    member_rows = await db.execute(
-        select(HouseholdMember.user_id, HouseholdMember.contribution_mode).where(
-            HouseholdMember.household_id == household_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
-    total = _ZERO
-    for user_id, mode in member_rows:
-        if mode in ("full", "fixed"):
-            total += await _personal_savings_target(db, user_id, currency)
-    return total
+    """Sum savings targets across members whose contribution_mode ∈ {full, fixed}.
+
+    Delegates to `user_budget_settings_service.get_household_savings_target`,
+    which excludes reimbursement members per spec Section 5.2.
+    """
+    return await get_household_savings_target(db, household_id=household_id, currency=currency)
 
 
 # -------------------------------------------------- payday → days_to_payday
@@ -355,10 +346,7 @@ async def _days_to_payday(
     If `user_budget_settings.payday_day_of_month` is unset we fall back to
     end-of-month. Clamps to `days_in_month` for short months (e.g. feb 30→28).
     """
-    row = await db.execute(
-        select(UserBudgetSettings.payday_day_of_month).where(UserBudgetSettings.user_id == user_id)
-    )
-    payday_day = row.scalar()
+    payday_day = await get_payday_day_of_month(db, user_id=user_id)
     today = datetime.now(timezone.utc).date()
     # If we're not viewing the current month, return days_in_month as a stub.
     if not (today.year == month.year and today.month == month.month):
