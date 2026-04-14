@@ -1,46 +1,43 @@
 "use client";
-import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/app/lib/api";
-import { usePersonalBudget, useAllocation, useSaveAllocation } from "@/app/lib/hooks/useBudget";
-import AllocationCard from "@/app/(dashboard)/components/AllocationCard";
-import WaterfallCards from "@/app/(dashboard)/components/WaterfallCards";
+import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
+import type { Currency } from "@/app/lib/format";
 
-const PaceChart = dynamic(
-  () => import("@/app/(dashboard)/components/PaceChart"),
-  { ssr: false, loading: () => <div className="h-[250px] animate-pulse bg-slate-100 rounded-xl" /> },
-);
-
-function CLP(n: number) {
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
-}
-
-function getMonthParam(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
+// NOTE: formatMoney is imported by downstream chunks (B: Sankey, G: risk band,
+// H: runway card) once they render monetary values. Keeping the runtime export
+// out of this scaffold avoids a TS6133 unused-import warning on `npm run build`.
 
 export default function BudgetsPage() {
+  // ── Controls ──
   const [selectedMonth, setSelectedMonth] = useState<Date>(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
-  const monthParam = getMonthParam(selectedMonth);
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>("CLP");
 
-  // Scope every aggregate to a single currency — the backend would otherwise
-  // sum CLP and USD together and the numbers would be meaningless. This page
-  // doesn't have its own toggle yet, so we use the user's preferred currency.
+  // Default currency from user preference
   const { data: me } = useQuery({
     queryKey: ["me"],
     queryFn: () => api.getMe(),
     staleTime: 5 * 60 * 1000,
   });
-  const currency = me?.preferred_currency ?? "CLP";
+  useEffect(() => {
+    if (me?.preferred_currency === "CLP" || me?.preferred_currency === "USD") {
+      setSelectedCurrency(me.preferred_currency);
+    }
+  }, [me?.preferred_currency]);
 
-  const { data: budget, isLoading: budgetLoading } = usePersonalBudget(monthParam, currency);
-  const { data: allocation, isLoading: allocLoading } = useAllocation(monthParam, currency);
-  const { mutate: saveAllocation, isPending: isSaving } = useSaveAllocation();
+  // TODO(Chunk C): wire /budgets/v2/{household_id} response here. The shape
+  // will include `currencies_available: string[]` so the toggle auto-hides
+  // when the household only transacts in one currency. Until then,
+  // `budgetV2Data` is undefined and `showToggle` defaults to true.
+  type BudgetV2Response = { currencies_available?: string[] };
+  const budgetV2Data = undefined as BudgetV2Response | undefined;
+  const showToggle = (budgetV2Data?.currencies_available?.length ?? 2) > 1;
 
+  // ── Month nav ──
   function prevMonth() {
     setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
   }
@@ -52,21 +49,27 @@ export default function BudgetsPage() {
     selectedMonth.getFullYear() === new Date().getFullYear() &&
     selectedMonth.getMonth() === new Date().getMonth();
 
-  if (budgetLoading || allocLoading) {
-    return <p className="text-gray-400">Cargando...</p>;
-  }
-
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Presupuesto</h2>
-        <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Presupuesto</h2>
+          <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
+        </div>
+        {showToggle && (
+          <CurrencyToggle
+            value={selectedCurrency}
+            onChange={(c) => setSelectedCurrency(c as Currency)}
+          />
+        )}
       </div>
 
       {/* Month selector */}
       <div className="flex items-center gap-3">
         <button
+          type="button"
+          aria-label="Mes anterior"
           onClick={prevMonth}
           className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:border-luka-primary transition-colors shadow-[var(--shadow-card)]"
         >
@@ -76,6 +79,8 @@ export default function BudgetsPage() {
           {selectedMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
         </span>
         <button
+          type="button"
+          aria-label="Mes siguiente"
           onClick={nextMonth}
           disabled={isCurrentMonth}
           className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:border-luka-primary disabled:opacity-30 transition-colors shadow-[var(--shadow-card)]"
@@ -84,41 +89,35 @@ export default function BudgetsPage() {
         </button>
       </div>
 
-      {/* Income card */}
-      {budget && budget.income > 0 ? (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
-          <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">Ingresos del mes</p>
-          <p className="text-[22px] font-bold text-luka-dark mt-1 tabular-nums">{CLP(budget.income)}</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
-          <p className="text-sm text-slate-400">Conecta tu banco para ver tus ingresos</p>
-        </div>
-      )}
+      {/* Chunk G will mount <RiskAlertBand> above the HOGAR section. */}
 
-      {/* Pace chart */}
-      {budget?.pace && (
+      {/* HOGAR section — Chunk B renders BudgetSankey (household) inside the card. */}
+      <section aria-labelledby="household-budget-heading" className="space-y-3">
+        <h3
+          id="household-budget-heading"
+          className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+        >
+          Hogar
+        </h3>
         <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-            Ritmo de gastos
-          </p>
-          <PaceChart pace={budget.pace} />
+          <p className="text-sm text-slate-400">Flujo del hogar — Chunk B</p>
         </div>
-      )}
+      </section>
 
-      {/* Allocation card */}
-      {allocation && budget && (
-        <AllocationCard
-          allocation={allocation}
-          income={budget.income}
-          month={monthParam}
-          onSave={saveAllocation}
-          isSaving={isSaving}
-        />
-      )}
+      {/* PERSONAL section — Chunk B renders BudgetSankey (personal) inside the card. */}
+      <section aria-labelledby="personal-budget-heading" className="space-y-3">
+        <h3
+          id="personal-budget-heading"
+          className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+        >
+          Personal
+        </h3>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
+          <p className="text-sm text-slate-400">Flujo personal — Chunk B</p>
+        </div>
+      </section>
 
-      {/* Waterfall cards */}
-      {budget && <WaterfallCards budget={budget} />}
+      {/* Chunk H will mount <RunwayCard> below the PERSONAL section. */}
     </div>
   );
 }
