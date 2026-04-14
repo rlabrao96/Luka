@@ -55,15 +55,19 @@ async def patch_budget_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Update savings target if either field was provided in the payload.
-    if payload.savings_target_amount is not None or payload.savings_target_currency is not None:
+    # Use model_fields_set so we can distinguish "field omitted" from
+    # "field explicitly sent as null". `null` means "clear this value" —
+    # checking `is not None` would lose that semantic and silently ignore
+    # clear operations from the UI.
+    provided = payload.model_fields_set
+    if "savings_target_amount" in provided or "savings_target_currency" in provided:
         await update_savings_target(
             db,
             user_id=current_user.id,
             amount=payload.savings_target_amount,
             currency=payload.savings_target_currency,
         )
-    if payload.payday_day_of_month is not None:
+    if "payday_day_of_month" in provided:
         try:
             await update_payday(db, user_id=current_user.id, day=payload.payday_day_of_month)
         except ValueError as e:
