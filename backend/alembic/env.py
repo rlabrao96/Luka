@@ -11,6 +11,8 @@ import modules.auth.models  # noqa: F401
 import modules.households.models  # noqa: F401
 import modules.merchants.models  # noqa: F401
 import modules.transactions.models  # noqa: F401
+import modules.budgets.user_budget_settings_models  # noqa: F401
+import modules.budgets.cuota_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

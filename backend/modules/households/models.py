@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, date
+from decimal import Decimal
 import sqlalchemy as sa
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -29,6 +30,11 @@ class HouseholdMember(Base):
     role: Mapped[str] = mapped_column(String, default="member")  # 'owner' | 'member'
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    contribution_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="full"
+    )
+    fixed_contribution_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    fixed_contribution_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
 
 
 class HouseholdInvite(Base):
