@@ -1,7 +1,9 @@
 "use client";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { useState } from "react";
+import { CreditCard, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Transaction } from "@/app/lib/api";
+import { MarkAsCuotaDialog } from "./MarkAsCuotaDialog";
 
 const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
   personal: { label: "Personal", className: "bg-blue-50 text-blue-600" },
@@ -33,6 +35,12 @@ interface TransactionCardProps {
   currentCategory?: string | null;
   onCategoryTap?: (txn: Transaction) => void;
   onSplitTap?: (txn: Transaction) => void;
+  /**
+   * Chunk E — show a "Marcar como cuota" action that opens MarkAsCuotaDialog.
+   * Opt-in so existing callers (subscriptions, settlement, etc.) aren't
+   * spammed with the affordance. Only non-compact mode renders the button.
+   */
+  enableMarkCuota?: boolean;
 }
 
 export function TransactionCard({
@@ -41,13 +49,33 @@ export function TransactionCard({
   currentCategory,
   onCategoryTap,
   onSplitTap,
+  enableMarkCuota = false,
 }: TransactionCardProps) {
   const isOutflow = Number(txn.amount) < 0;
   const split = SPLIT_STYLES[txn.split_type ?? "personal"] ?? SPLIT_STYLES.personal;
   const category = currentCategory !== undefined ? currentCategory : txn.category;
+  const [cuotaOpen, setCuotaOpen] = useState(false);
+
+  // Only let outflow transactions become cuotas — cuotas model credit-card
+  // installment debt, which is by definition an expense.
+  const canMarkCuota = enableMarkCuota && !compact && isOutflow;
+  const currencyForCuota: "CLP" | "USD" =
+    (txn.currency ?? "CLP").toUpperCase() === "USD" ? "USD" : "CLP";
 
   return (
     <div className="bg-white rounded-xl p-3 sm:p-3.5 border border-slate-100 shadow-[var(--shadow-card)]">
+      {canMarkCuota && (
+        <MarkAsCuotaDialog
+          open={cuotaOpen}
+          onClose={() => setCuotaOpen(false)}
+          transaction={{
+            id: txn.id,
+            merchant_name: txn.raw_merchant_name,
+            amount: Math.abs(Number(txn.amount) || 0),
+            currency: currencyForCuota,
+          }}
+        />
+      )}
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Direction icon — hidden on mobile */}
         <div
@@ -100,15 +128,31 @@ export function TransactionCard({
                 </button>
               )}
             </div>
-            {compact ? (
-              <span className={cn("text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 text-center", split.className)}>
-                {split.label}
-              </span>
-            ) : (
-              <button onClick={() => onSplitTap?.(txn)} className={cn("text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 text-center cursor-pointer hover:opacity-80", split.className)}>
-                {split.label}
-              </button>
-            )}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+              {canMarkCuota && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCuotaOpen(true);
+                  }}
+                  title="Marcar como cuota"
+                  className="flex items-center gap-0.5 text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded bg-luka-primary/10 text-luka-primary hover:bg-luka-primary/15"
+                >
+                  <CreditCard size={10} strokeWidth={2.5} />
+                  <span className="hidden sm:inline">Cuota</span>
+                </button>
+              )}
+              {compact ? (
+                <span className={cn("text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 text-center", split.className)}>
+                  {split.label}
+                </span>
+              ) : (
+                <button onClick={() => onSplitTap?.(txn)} className={cn("text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 text-center cursor-pointer hover:opacity-80", split.className)}>
+                  {split.label}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
