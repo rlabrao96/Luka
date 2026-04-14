@@ -3,12 +3,34 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/app/lib/api";
-import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
 import type { Currency } from "@/app/lib/format";
+import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
+import BudgetSankey from "@/app/(dashboard)/components/BudgetSankey";
+import { RiskAlertBand } from "@/app/(dashboard)/components/RiskAlertBand";
+import { RunwayCard } from "@/app/(dashboard)/components/RunwayCard";
 
-// NOTE: formatMoney is imported by downstream chunks (B: Sankey, G: risk band,
-// H: runway card) once they render monetary values. Keeping the runtime export
-// out of this scaffold avoids a TS6133 unused-import warning on `npm run build`.
+function monthParam(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function SectionSkeleton() {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-[var(--shadow-card)]">
+      <div className="animate-pulse space-y-2">
+        <div className="h-4 w-1/3 rounded bg-slate-100" />
+        <div className="h-40 rounded bg-slate-100" />
+      </div>
+    </div>
+  );
+}
+
+function SectionError({ message }: { message: string }) {
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      {message}
+    </div>
+  );
+}
 
 export default function BudgetsPage() {
   // ── Controls ──
@@ -29,13 +51,34 @@ export default function BudgetsPage() {
     }
   }, [me?.preferred_currency]);
 
-  // TODO(Chunk C): wire /budgets/v2/{household_id} response here. The shape
-  // will include `currencies_available: string[]` so the toggle auto-hides
-  // when the household only transacts in one currency. Until then,
-  // `budgetV2Data` is undefined and `showToggle` defaults to true.
-  type BudgetV2Response = { currencies_available?: string[] };
-  const budgetV2Data = undefined as BudgetV2Response | undefined;
-  const showToggle = (budgetV2Data?.currencies_available?.length ?? 2) > 1;
+  const householdId = me?.household_id ?? null;
+  const monthStr = monthParam(selectedMonth);
+
+  const household = useQuery({
+    queryKey: ["budget-v2", householdId, monthStr, selectedCurrency, "household"],
+    queryFn: () =>
+      api.getBudgetV2(householdId as string, {
+        month: monthStr,
+        currency: selectedCurrency,
+        view: "household",
+      }),
+    enabled: !!householdId,
+    staleTime: 60 * 1000,
+  });
+  const personal = useQuery({
+    queryKey: ["budget-v2", householdId, monthStr, selectedCurrency, "personal"],
+    queryFn: () =>
+      api.getBudgetV2(householdId as string, {
+        month: monthStr,
+        currency: selectedCurrency,
+        view: "personal",
+      }),
+    enabled: !!householdId,
+    staleTime: 60 * 1000,
+  });
+
+  const currenciesAvailable = household.data?.currencies_available ?? ["CLP"];
+  const showToggle = currenciesAvailable.length > 1;
 
   // ── Month nav ──
   function prevMonth() {
@@ -48,6 +91,21 @@ export default function BudgetsPage() {
   const isCurrentMonth =
     selectedMonth.getFullYear() === new Date().getFullYear() &&
     selectedMonth.getMonth() === new Date().getMonth();
+
+  // Empty state: user has no household
+  if (me && !householdId) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Presupuesto</h2>
+          <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
+        </div>
+        <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-[var(--shadow-card)] text-center text-sm text-slate-500">
+          Crea o únete a un hogar para ver tu presupuesto.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -89,9 +147,15 @@ export default function BudgetsPage() {
         </button>
       </div>
 
-      {/* Chunk G will mount <RiskAlertBand> above the HOGAR section. */}
+      {/* Risk alert band — silent when no alerts */}
+      {household.data && (
+        <RiskAlertBand
+          riskCategories={household.data.risk_categories}
+          currency={selectedCurrency}
+        />
+      )}
 
-      {/* HOGAR section — Chunk B renders BudgetSankey (household) inside the card. */}
+      {/* HOGAR section */}
       <section aria-labelledby="household-budget-heading" className="space-y-3">
         <h3
           id="household-budget-heading"
@@ -99,12 +163,27 @@ export default function BudgetsPage() {
         >
           Hogar
         </h3>
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
-          <p className="text-sm text-slate-400">Flujo del hogar — Chunk B</p>
-        </div>
+        {household.isPending ? (
+          <SectionSkeleton />
+        ) : household.isError ? (
+          <SectionError message="No se pudo cargar el hogar." />
+        ) : (
+          <div className="space-y-3">
+            {household.data && household.data.sankey.nodes.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
+                <BudgetSankey
+                  nodes={household.data.sankey.nodes}
+                  links={household.data.sankey.links}
+                  currency={selectedCurrency}
+                />
+              </div>
+            )}
+            {household.data && <RunwayCard runway={household.data.runway} />}
+          </div>
+        )}
       </section>
 
-      {/* PERSONAL section — Chunk B renders BudgetSankey (personal) inside the card. */}
+      {/* PERSONAL section */}
       <section aria-labelledby="personal-budget-heading" className="space-y-3">
         <h3
           id="personal-budget-heading"
@@ -112,12 +191,25 @@ export default function BudgetsPage() {
         >
           Personal
         </h3>
-        <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
-          <p className="text-sm text-slate-400">Flujo personal — Chunk B</p>
-        </div>
+        {personal.isPending ? (
+          <SectionSkeleton />
+        ) : personal.isError ? (
+          <SectionError message="No se pudo cargar tu vista personal." />
+        ) : (
+          <div className="space-y-3">
+            {personal.data && personal.data.sankey.nodes.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
+                <BudgetSankey
+                  nodes={personal.data.sankey.nodes}
+                  links={personal.data.sankey.links}
+                  currency={selectedCurrency}
+                />
+              </div>
+            )}
+            {personal.data && <RunwayCard runway={personal.data.runway} />}
+          </div>
+        )}
       </section>
-
-      {/* Chunk H will mount <RunwayCard> below the PERSONAL section. */}
     </div>
   );
 }
