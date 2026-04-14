@@ -233,7 +233,9 @@ async def _ensure_cuota(
     for _ in range(total_installments - 1):
         y = last.year + (1 if last.month == 12 else 0)
         m = 1 if last.month == 12 else last.month + 1
-        last = last.replace(year=y, month=m)
+        # day=1 is explicit so future callers that change `first` to a non-day-1
+        # date don't blow up on Jan 31 → Feb 31 style transitions.
+        last = last.replace(year=y, month=m, day=1)
     cuota = CuotaPurchase(
         id=uuid.uuid4(),
         user_id=user.id,
