@@ -19,6 +19,8 @@ from modules.budgets.schemas import (
 from modules.budgets.personal_service import get_personal_budget
 from modules.budgets.allocation_service import get_allocation, upsert_allocation
 from modules.budgets.category_service import get_category_budgets, set_category_budgets
+from modules.budgets.v2_schemas import BudgetV2Response
+from modules.budgets.v2_service import get_budget_v2
 from modules.households.auth import require_membership
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
@@ -129,4 +131,29 @@ async def set_cat_budgets(
     month = date(body.month.year, body.month.month, 1)
     return await set_category_budgets(
         db, household_id, month, [b.model_dump() for b in body.budgets]
+    )
+
+
+@router.get("/v2/{household_id}", response_model=BudgetV2Response)
+async def budget_v2(
+    household_id: uuid.UUID,
+    month: date | None = Query(default=None),
+    currency: str | None = Query(default=None),
+    view: str = Query(default="personal", pattern="^(personal|household)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_membership(household_id, current_user.id, db)
+    if month is None:
+        today = date.today()
+        month = date(today.year, today.month, 1)
+    else:
+        month = date(month.year, month.month, 1)
+    return await get_budget_v2(
+        db,
+        household_id=household_id,
+        user_id=current_user.id,
+        month=month,
+        currency=currency,
+        view=view,
     )
