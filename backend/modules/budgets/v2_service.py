@@ -5,15 +5,17 @@ Built from three pillars:
 - `cuota_service.get_active_cuotas_summary` — cuotas aggregate block
 - `subscriptions.read.get_user_known_bills` / `_household_known_bills` — known bills
 
-Chunk C owns this file first. Downstream coordination:
-- Chunk D will replace the inline income computation with calls to
-  `contribution_service.income_for_household_view(...)` /
-  `income_for_personal_view(...)`. Until then we compute income inline.
-- Chunk F will tighten the savings-category exclusion and the
-  `user_budget_settings` reads. We correctly implement both inline today
-  so F can refactor without breaking semantics.
+Income is delegated to `modules.households.contribution_service` — that
+module owns the contribution-mode dispatch (full / fixed / reimbursement)
+and is the single enforcement point for the privacy invariant. Do NOT
+re-inline income queries here; add them over there and call them from here.
 
-Privacy invariant (enforced here, regression-tested in Chunk D):
+Chunk F will tighten the savings-category exclusion and the
+`user_budget_settings` reads. We correctly implement both inline today
+so F can refactor without breaking semantics.
+
+Privacy invariant (regression-tested in `tests/test_budget_v2_endpoint.py`
+and `tests/test_contribution_modes.py`):
 - When `view="household"` and any member has `contribution_mode="fixed"`,
   that member's REAL income must never appear anywhere in the response.
   Only their `fixed_contribution_amount` counts toward household income.
@@ -53,6 +55,10 @@ from modules.budgets.v2_schemas import (
     SankeyNode,
     SavingsTargetBlock,
     SpendableBlock,
+)
+from modules.households.contribution_service import (
+    income_for_household_view,
+    income_for_personal_view,
 )
 from modules.households.models import (
     BankAccount,
@@ -108,78 +114,6 @@ def _today_day_in_month(month: date, days_in_month: int) -> int:
         return min(today.day, days_in_month)
     # Historical month — treat as fully observed
     return days_in_month
-
-
-# ---------------------------------------------------------------- income
-
-
-async def _real_income_for_user(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    household_id: uuid.UUID,
-    month: date,
-    currency: str,
-) -> Decimal:
-    """Sum of positive income transactions in the month for (user, currency).
-
-    Inline for Chunk C; Chunk D will swap in `contribution_service`. Uses
-    `transaction_type='income'` (the convention in `personal_service.py`
-    and `allocation_service.py`).
-    """
-    first_day, first_day_next, _ = _month_bounds_datetime(month)
-    q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-        Transaction.user_id == user_id,
-        Transaction.household_id == household_id,
-        Transaction.transaction_type == "income",
-        Transaction.currency == currency,
-        Transaction.transaction_date >= first_day,
-        Transaction.transaction_date < first_day_next,
-    )
-    r = await db.execute(q)
-    raw = r.scalar() or 0
-    return Decimal(str(raw))
-
-
-async def _household_income(
-    db: AsyncSession,
-    household_id: uuid.UUID,
-    month: date,
-    currency: str,
-) -> Decimal:
-    """Household income, contribution-mode-aware.
-
-    full         → member's real income in `currency`
-    fixed        → member's `fixed_contribution_amount` (if fixed_contribution_currency matches)
-    reimbursement → 0
-
-    The privacy invariant is enforced by never reading a `fixed` member's
-    real income in the first place.
-    """
-    member_rows = await db.execute(
-        select(
-            HouseholdMember.user_id,
-            HouseholdMember.contribution_mode,
-            HouseholdMember.fixed_contribution_amount,
-            HouseholdMember.fixed_contribution_currency,
-        ).where(
-            HouseholdMember.household_id == household_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
-
-    total = _ZERO
-    for user_id, mode, fixed_amount, fixed_currency in member_rows:
-        if mode == "full":
-            total += await _real_income_for_user(db, user_id, household_id, month, currency)
-        elif mode == "fixed":
-            # Only count the fixed contribution if it's in the requested currency.
-            if fixed_amount is not None and fixed_currency == currency:
-                total += Decimal(str(fixed_amount))
-            # PRIVACY: we never touch the fixed member's real income here.
-        else:
-            # reimbursement → 0
-            continue
-    return total
 
 
 # ---------------------------------------------------------- reimbursement bills
@@ -599,10 +533,24 @@ async def get_budget_v2(
         savings_target_amount = await _household_savings_target(db, household_id, currency)
 
     # ---- income ----------------------------------------------------------
+    # Contribution-mode dispatch lives in `contribution_service`; this file
+    # is a pure caller so the privacy invariant has exactly one enforcement
+    # point. Do NOT reintroduce inline income queries here.
     if view == "personal":
-        income = await _real_income_for_user(db, user_id, household_id, month, currency)
+        income = await income_for_personal_view(
+            db,
+            user_id=user_id,
+            household_id=household_id,
+            month=month,
+            currency=currency,
+        )
     else:
-        income = await _household_income(db, household_id, month, currency)
+        income = await income_for_household_view(
+            db,
+            household_id=household_id,
+            month=month,
+            currency=currency,
+        )
 
     # ---- spent (excluding savings-equivalent categories) ----------------
     month_txns = await _fetch_month_transactions(

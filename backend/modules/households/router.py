@@ -1,12 +1,17 @@
 import json
 import uuid
+from decimal import Decimal
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import get_current_user
 from modules.auth.models import User
 from modules.households import service
+from modules.households.contribution_service import update_contribution
 from modules.households.models import Household, HouseholdMember
 from modules.households.schemas import (
     CreateHouseholdRequest,
@@ -32,6 +37,76 @@ async def create_household(
     current_user: User = Depends(get_current_user),
 ):
     return await service.create_household(db, current_user, body.name, body.type)
+
+
+# ------------------------------ contribution mode ----------------------------
+# IMPORTANT: /settings/contribution must be defined BEFORE the /{household_id}
+# catch-all routes, otherwise FastAPI matches `settings` as a UUID path param.
+
+
+class ContributionUpdateRequest(BaseModel):
+    mode: Literal["full", "fixed", "reimbursement"] = Field(
+        ..., description="Contribution mode for the calling user's household membership."
+    )
+    fixed_amount: Decimal | None = Field(
+        default=None, description="Required when mode='fixed'; ignored otherwise."
+    )
+    fixed_currency: str | None = Field(
+        default=None, description="ISO-4217 code. Required when mode='fixed'."
+    )
+
+
+class ContributionUpdateResponse(BaseModel):
+    mode: str
+    fixed_amount: Decimal | None
+    fixed_currency: str | None
+
+
+@router.patch("/settings/contribution", response_model=ContributionUpdateResponse)
+async def patch_contribution_settings(
+    payload: ContributionUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update the current user's contribution mode in their active household.
+
+    The three supported modes are:
+      - ``full`` — the caller's real income contributes to the household pot.
+      - ``fixed`` — a flat monthly amount (in the requested currency) counts
+        toward the pot instead of real income. The caller's real income is
+        PRIVATE and never surfaces in household-view responses.
+      - ``reimbursement`` — the caller contributes nothing to the pot and
+        their known bills are deducted from the household total.
+    """
+    # Find the caller's active household membership. We assume one active
+    # membership per user (the product only supports one group at a time).
+    row = await db.execute(
+        select(HouseholdMember).where(
+            HouseholdMember.user_id == current_user.id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    member = row.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(404, "No active household membership for this user")
+
+    try:
+        updated = await update_contribution(
+            db,
+            user_id=current_user.id,
+            household_id=member.household_id,
+            mode=payload.mode,
+            fixed_amount=payload.fixed_amount,
+            fixed_currency=payload.fixed_currency,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    await db.commit()
+    return ContributionUpdateResponse(
+        mode=updated.contribution_mode,
+        fixed_amount=updated.fixed_contribution_amount,
+        fixed_currency=updated.fixed_contribution_currency,
+    )
 
 
 # IMPORTANT: create-and-invite must be defined BEFORE /{household_id}/... routes

@@ -743,4 +743,19 @@ export const api = {
     });
     if (!res.ok) throw new Error(`API error ${res.status}: /auth/me`);
   },
+
+  // --- Contribution mode (Chunk D) ---
+  updateContribution: (payload: {
+    mode: "full" | "fixed" | "reimbursement";
+    fixed_amount: number | null;
+    fixed_currency: string | null;
+  }) =>
+    apiFetch<{
+      mode: string;
+      fixed_amount: number | null;
+      fixed_currency: string | null;
+    }>("/households/settings/contribution", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
 };
