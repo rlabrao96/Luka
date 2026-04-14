@@ -758,4 +758,25 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+
+  // --- Cuotas (Chunk E) ---
+  createCuota: (payload: {
+    merchant_name: string;
+    total_amount: number;
+    currency: "CLP" | "USD";
+    installments_total: number;
+    first_cuota_date: string;
+    split_type?: "personal" | "shared";
+    origin_transaction_id?: string | null;
+  }) =>
+    apiFetch<{ id: string }>("/cuotas", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  listCuotas: (scope: "personal" | "household" = "personal") =>
+    apiFetch<{ cuotas: unknown[] }>(`/cuotas?scope=${scope}`),
+
+  cancelCuota: (cuotaId: string) =>
+    apiFetch<{ ok: boolean }>(`/cuotas/${cuotaId}`, { method: "DELETE" }),
 };

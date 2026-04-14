@@ -229,6 +229,16 @@ export function RecentTransactions({
                 return <TransactionCard key={txn.id} txn={txn} compact />;
               }
 
+              // TODO(chunk-E): wire MarkAsCuotaDialog into the mobile / desktop
+              // non-compact transaction row. The dialog component lives at
+              // `./MarkAsCuotaDialog` and is already prefillable from a txn.
+              // The current non-compact layouts are inlined rather than
+              // delegating to TransactionCard, so exposing the "Marcar como
+              // cuota" affordance here requires adding a button adjacent to
+              // SplitTypeEditor / the desktop row actions and managing a
+              // per-txn open-state map. Deferring to a follow-up to avoid
+              // refactoring RecentTransactions during the parallel sprint.
+
               /* Mobile non-compact: card layout with bottom sheet for category, SplitTypeEditor for split */
               if (isMobile) {
                 const isOutflow = Number(txn.amount) < 0;
