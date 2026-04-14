@@ -4,17 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/app/lib/api";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
+import type { Currency } from "@/app/lib/format";
 
 // NOTE: formatMoney is imported by downstream chunks (B: Sankey, G: risk band,
-// H: runway card) once they render monetary values. Keeping it out of this
-// scaffold avoids a TS6133 unused-import warning on `npm run build`.
+// H: runway card) once they render monetary values. Keeping the runtime export
+// out of this scaffold avoids a TS6133 unused-import warning on `npm run build`.
 
 export default function BudgetsPage() {
   // ── Controls ──
   const [selectedMonth, setSelectedMonth] = useState<Date>(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
-  const [selectedCurrency, setSelectedCurrency] = useState<string>("CLP");
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>("CLP");
 
   // Default currency from user preference
   const { data: me } = useQuery({
@@ -23,7 +24,9 @@ export default function BudgetsPage() {
     staleTime: 5 * 60 * 1000,
   });
   useEffect(() => {
-    if (me?.preferred_currency) setSelectedCurrency(me.preferred_currency);
+    if (me?.preferred_currency === "CLP" || me?.preferred_currency === "USD") {
+      setSelectedCurrency(me.preferred_currency);
+    }
   }, [me?.preferred_currency]);
 
   // TODO(Chunk C): wire /budgets/v2/{household_id} response here. The shape
@@ -55,7 +58,10 @@ export default function BudgetsPage() {
           <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
         </div>
         {showToggle && (
-          <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
+          <CurrencyToggle
+            value={selectedCurrency}
+            onChange={(c) => setSelectedCurrency(c as Currency)}
+          />
         )}
       </div>
 
