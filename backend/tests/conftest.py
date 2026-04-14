@@ -21,7 +21,12 @@ async def db():
     Tests never write permanent rows — suite is fully repeatable.
     Requires a real DATABASE_URL in .env — skip if not configured.
     """
-    engine = create_async_engine(settings.database_url)
+    # statement_cache_size=0 is required for Supabase PgBouncer (port 6543, transaction mode);
+    # without it, repeated test runs collide on prepared statement names across pooled connections.
+    engine = create_async_engine(
+        settings.database_url,
+        connect_args={"statement_cache_size": 0},
+    )
     async with engine.connect() as conn:
         await conn.begin()
         session = AsyncSession(bind=conn, expire_on_commit=False)
