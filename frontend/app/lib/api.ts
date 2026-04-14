@@ -734,6 +734,28 @@ export const api = {
   dismissReview: (jobId: string) =>
     apiFetch<{ ok: boolean }>(`/merchant-review/${jobId}`, { method: "DELETE" }),
 
+  // --- Budget settings (savings target + payday) ---
+  getBudgetSettings: () =>
+    apiFetch<{
+      savings_target_amount: number | null;
+      savings_target_currency: string | null;
+      payday_day_of_month: number | null;
+    }>("/settings/budget"),
+
+  updateBudgetSettings: (payload: {
+    savings_target_amount: number | null;
+    savings_target_currency: string | null;
+    payday_day_of_month: number | null;
+  }) =>
+    apiFetch<{
+      savings_target_amount: number | null;
+      savings_target_currency: string | null;
+      payday_day_of_month: number | null;
+    }>("/settings/budget", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
   // --- Delete Account ---
   async deleteAccount() {
     const authHeader = await getAuthHeader();

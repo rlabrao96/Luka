@@ -1,0 +1,77 @@
+"""GET / PATCH /settings/budget — savings target + payday day-of-month.
+
+Thin layer over `user_budget_settings_service`. Mounted in `main.py`.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.database import get_db
+from core.security import get_current_user
+from modules.auth.models import User
+from modules.budgets.user_budget_settings_service import (
+    get_or_create,
+    update_payday,
+    update_savings_target,
+)
+
+router = APIRouter(prefix="/settings/budget", tags=["settings"])
+
+
+class BudgetSettingsRequest(BaseModel):
+    savings_target_amount: Decimal | None = None
+    savings_target_currency: str | None = Field(default=None, pattern="^(CLP|USD)$")
+    payday_day_of_month: int | None = None
+
+
+class BudgetSettingsResponse(BaseModel):
+    savings_target_amount: Decimal | None
+    savings_target_currency: str | None
+    payday_day_of_month: int | None
+
+
+@router.get("", response_model=BudgetSettingsResponse)
+async def get_budget_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = await get_or_create(db, user_id=current_user.id)
+    await db.commit()
+    return BudgetSettingsResponse(
+        savings_target_amount=row.savings_target_amount,
+        savings_target_currency=row.savings_target_currency,
+        payday_day_of_month=row.payday_day_of_month,
+    )
+
+
+@router.patch("", response_model=BudgetSettingsResponse)
+async def patch_budget_settings(
+    payload: BudgetSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Update savings target if either field was provided in the payload.
+    if payload.savings_target_amount is not None or payload.savings_target_currency is not None:
+        await update_savings_target(
+            db,
+            user_id=current_user.id,
+            amount=payload.savings_target_amount,
+            currency=payload.savings_target_currency,
+        )
+    if payload.payday_day_of_month is not None:
+        try:
+            await update_payday(db, user_id=current_user.id, day=payload.payday_day_of_month)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    await db.commit()
+    row = await get_or_create(db, user_id=current_user.id)
+    return BudgetSettingsResponse(
+        savings_target_amount=row.savings_target_amount,
+        savings_target_currency=row.savings_target_currency,
+        payday_day_of_month=row.payday_day_of_month,
+    )
