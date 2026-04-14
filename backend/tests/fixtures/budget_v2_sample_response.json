@@ -1,0 +1,71 @@
+{
+  "view": "personal",
+  "month": "2026-04-01",
+  "currency": "CLP",
+  "currencies_available": ["CLP", "USD"],
+  "sankey": {
+    "nodes": [
+      {"id": "income", "label": "Ingresos", "value": 1800000},
+      {"id": "known_bills", "label": "Gastos fijos", "value": 520000},
+      {"id": "cuotas", "label": "Cuotas del mes", "value": 120000},
+      {"id": "savings_target", "label": "Meta de ahorro", "value": 300000},
+      {"id": "spendable", "label": "Disponible", "value": 860000},
+      {"id": "spent_restaurants", "label": "Restaurantes", "value": 142000, "risk": true},
+      {"id": "spent_groceries", "label": "Supermercado", "value": 180000, "risk": true},
+      {"id": "spent_other", "label": "Otros", "value": 95000}
+    ],
+    "links": [
+      {"source": "income", "target": "known_bills", "value": 520000},
+      {"source": "income", "target": "cuotas", "value": 120000},
+      {"source": "income", "target": "savings_target", "value": 300000},
+      {"source": "income", "target": "spendable", "value": 860000},
+      {"source": "spendable", "target": "spent_restaurants", "value": 142000},
+      {"source": "spendable", "target": "spent_groceries", "value": 180000},
+      {"source": "spendable", "target": "spent_other", "value": 95000}
+    ]
+  },
+  "spendable": {
+    "amount": 860000,
+    "spent": 417000,
+    "remaining": 443000,
+    "pct_used": 0.485
+  },
+  "risk_categories": [
+    {
+      "name": "Restaurantes",
+      "spent": 142000,
+      "cap": 185000,
+      "historical_mean": 192000,
+      "historical_std": 34000,
+      "p_overshoot": 0.73,
+      "projected_final": 240000,
+      "alert": true
+    },
+    {
+      "name": "Supermercado",
+      "spent": 180000,
+      "cap": 220000,
+      "historical_mean": 215000,
+      "historical_std": 28000,
+      "p_overshoot": 0.71,
+      "projected_final": 248000,
+      "alert": true
+    }
+  ],
+  "runway": {
+    "days_remaining": 8,
+    "days_to_payday": 12,
+    "daily_burn_14d": 55000,
+    "alert": true
+  },
+  "cuotas": {
+    "this_month": 120000,
+    "future_total": 2100000,
+    "active_count": 4
+  },
+  "savings_target": {
+    "target": 300000,
+    "progress": 142000,
+    "pct_complete": 0.473
+  }
+}
