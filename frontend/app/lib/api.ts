@@ -801,4 +801,87 @@ export const api = {
 
   cancelCuota: (cuotaId: string) =>
     apiFetch<{ ok: boolean }>(`/cuotas/${cuotaId}`, { method: "DELETE" }),
+
+  // ── Budget V2 (redesign) ──────────────────────────────────────
+  getBudgetV2: (
+    householdId: string,
+    params: { month?: string; currency?: string; view?: "personal" | "household" } = {}
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.month) qs.set("month", params.month);
+    if (params.currency) qs.set("currency", params.currency);
+    if (params.view) qs.set("view", params.view);
+    const q = qs.toString();
+    return apiFetch<BudgetV2Response>(`/budgets/v2/${householdId}${q ? `?${q}` : ""}`);
+  },
 };
+
+// ── Budget V2 (redesign) types ────────────────────────────────
+
+export interface BudgetV2SankeyNode {
+  id: string;
+  label: string;
+  value: number;
+  risk?: boolean;
+}
+
+export interface BudgetV2SankeyLink {
+  source: string;
+  target: string;
+  value: number;
+}
+
+export interface BudgetV2SankeyBlock {
+  nodes: BudgetV2SankeyNode[];
+  links: BudgetV2SankeyLink[];
+}
+
+export interface BudgetV2SpendableBlock {
+  amount: number;
+  spent: number;
+  remaining: number;
+  pct_used: number;
+}
+
+export interface BudgetV2RiskCategory {
+  name: string;
+  spent: number;
+  cap: number;
+  historical_mean: number;
+  historical_std: number;
+  p_overshoot: number;
+  projected_final: number;
+  alert: boolean;
+}
+
+export interface BudgetV2RunwayBlock {
+  days_remaining: number;
+  days_to_payday: number;
+  daily_burn_14d: number;
+  alert: boolean;
+}
+
+export interface BudgetV2CuotasBlock {
+  this_month: number;
+  future_total: number;
+  active_count: number;
+}
+
+export interface BudgetV2SavingsTargetBlock {
+  target: number;
+  progress: number;
+  pct_complete: number;
+}
+
+export interface BudgetV2Response {
+  view: "personal" | "household";
+  month: string;
+  currency: string;
+  currencies_available: string[];
+  sankey: BudgetV2SankeyBlock;
+  spendable: BudgetV2SpendableBlock;
+  risk_categories: BudgetV2RiskCategory[];
+  runway: BudgetV2RunwayBlock;
+  cuotas: BudgetV2CuotasBlock;
+  savings_target: BudgetV2SavingsTargetBlock;
+}
