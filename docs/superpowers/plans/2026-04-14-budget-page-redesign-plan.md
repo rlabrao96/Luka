@@ -1603,23 +1603,70 @@
   ```
   Expected: all backend tests pass; frontend build succeeds.
 
-- [ ] **K.2 — Remove the `__dev/sankey` route**
+- [ ] **K.2 — Remove the `__dev/sankey` route + legacy budget components**
 
   **Note:** paths containing `(dashboard)` must be quoted in zsh/bash — the parentheses are shell metacharacters.
+
+  First, **verify no non-budget page still imports** these legacy components (they should all be dead after Task A rewrites `budgets/page.tsx`):
+  ```bash
+  cd frontend && grep -rn "AllocationCard\|WaterfallCards\|PaceChart\|BudgetBars" app/ \
+    --exclude-dir=node_modules \
+    | grep -v 'app/(dashboard)/components/AllocationCard\|app/(dashboard)/components/WaterfallCards\|app/(dashboard)/components/PaceChart\|app/(dashboard)/components/BudgetBars'
+  ```
+  Expected: **no matches** (or only matches inside the component files themselves). If a non-budget page imports any of these, **do not delete it** — tell Rafael instead. (Example exception: `PaceChart` may be kept if the dashboard top-merchants work — tracked separately — has already landed and is using it. If so, leave `PaceChart.tsx` in place.)
+
+  Then remove the dev fixtures and confirmed-dead components:
   ```bash
   git rm -r 'frontend/app/(dashboard)/__dev/'
   git rm 'frontend/app/(dashboard)/components/__sankey-dev.tsx'
-  git commit -m "chore(budget-v2): remove chunk B dev fixtures before ship
+  git rm 'frontend/app/(dashboard)/components/AllocationCard.tsx'
+  git rm 'frontend/app/(dashboard)/components/WaterfallCards.tsx'
+  git rm 'frontend/app/(dashboard)/components/BudgetBars.tsx'
+  # PaceChart only if not used by dashboard — otherwise leave it:
+  # git rm 'frontend/app/(dashboard)/components/PaceChart.tsx'
+  ```
+
+  Also remove the legacy hooks that only existed to feed the old page:
+  ```bash
+  # In useBudget.ts, delete: useBudgetStatus, useSetBudget, usePersonalBudget,
+  # useAllocation, useCategoryBudgets, useSaveAllocation — the new page uses useBudgetV2.
+  # Keep the file if any other page still imports from it; otherwise delete the whole file.
+  ```
+  Confirm no imports are broken:
+  ```bash
+  cd frontend && npm run build
+  ```
+  Expected: build succeeds.
+
+  Commit:
+  ```bash
+  git commit -m "chore(budget-v2): remove dev fixtures + legacy budget components
 
   Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
   git push origin main
   ```
 
+- [ ] **K.2.5 — Deprecate the legacy `/budgets/personal` endpoint**
+
+  The old `GET /budgets/personal/{household_id}` endpoint in `backend/modules/budgets/router.py` was kept alive during the transition. After K.2 confirms nothing imports `usePersonalBudget` / `useAllocation`, mark the old endpoint deprecated but **do not delete it yet** — wait for Week 2 stability before removing. Add a docstring and a deprecation warning:
+  ```python
+  @router.get("/personal/{household_id}", response_model=PersonalBudgetResponse, deprecated=True)
+  async def personal_budget(...):
+      """DEPRECATED: use GET /budgets/v2/{household_id}?view=personal instead.
+
+      Scheduled for removal after 2 weeks of v2 stability (target: 2026-04-28).
+      """
+      import warnings
+      warnings.warn("GET /budgets/personal is deprecated; use /budgets/v2", DeprecationWarning, stacklevel=2)
+      ...
+  ```
+  Same treatment for `GET /budgets/allocation/{household_id}` if it exists. The `household_budget_allocations` table stays untouched — removal is a Phase 2 task tracked separately.
+
 - [ ] **K.3 — Deploy backend (Railway picks up from main)** and **frontend (Vercel auto-deploys)**. Watch logs for migration application.
 
 - [ ] **K.4 — Post-ship smoke check in production** — log in with Rafael's real account, navigate to `/budgets`, verify Hogar + Personal sections render, currency toggle works, cuota can be created.
 
-- [ ] **K.5 — Update `NEXT-STEPS.md`** — mark budget redesign as shipped; surface Phase 2 parking lot items (spec §13) to the active roadmap.
+- [ ] **K.5 — Update `NEXT-STEPS.md`** — mark budget redesign as shipped; surface Phase 2 parking lot items (spec §13) to the active roadmap. Add explicit follow-up tasks for: (a) removing the legacy `/budgets/personal` endpoint + `household_budget_allocations` table after 2 weeks of stability, (b) Week-2 measurement of success criteria from spec §15.
 
 ---
 
