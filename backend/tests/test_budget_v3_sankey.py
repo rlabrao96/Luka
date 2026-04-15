@@ -7,6 +7,7 @@ from decimal import Decimal
 
 
 from modules.budgets.v2_schemas import SankeyNode
+from modules.budgets.v2_service import _pay_first_fit
 
 
 class TestSankeyNodeAdditiveFields:
@@ -37,3 +38,41 @@ class TestSankeyNodeAdditiveFields:
             member_id="00000000-0000-0000-0000-000000000001",
         )
         assert node.member_id == "00000000-0000-0000-0000-000000000001"
+
+
+class TestPayFirstFit:
+    def test_enough_income_covers_target(self):
+        from_income, from_otras, remaining = _pay_first_fit(
+            target=Decimal("100"),
+            remaining_income=Decimal("500"),
+        )
+        assert from_income == Decimal("100")
+        assert from_otras == Decimal("0")
+        assert remaining == Decimal("400")
+
+    def test_partial_income_splits_between_income_and_otras(self):
+        from_income, from_otras, remaining = _pay_first_fit(
+            target=Decimal("100"),
+            remaining_income=Decimal("30"),
+        )
+        assert from_income == Decimal("30")
+        assert from_otras == Decimal("70")
+        assert remaining == Decimal("0")
+
+    def test_zero_income_sends_full_target_to_otras(self):
+        from_income, from_otras, remaining = _pay_first_fit(
+            target=Decimal("100"),
+            remaining_income=Decimal("0"),
+        )
+        assert from_income == Decimal("0")
+        assert from_otras == Decimal("100")
+        assert remaining == Decimal("0")
+
+    def test_zero_target_returns_zero_zero(self):
+        from_income, from_otras, remaining = _pay_first_fit(
+            target=Decimal("0"),
+            remaining_income=Decimal("500"),
+        )
+        assert from_income == Decimal("0")
+        assert from_otras == Decimal("0")
+        assert remaining == Decimal("500")

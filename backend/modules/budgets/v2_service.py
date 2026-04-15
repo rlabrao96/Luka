@@ -395,6 +395,25 @@ def _slugify(text: str) -> str:
     )
 
 
+def _pay_first_fit(
+    *,
+    target: Decimal,
+    remaining_income: Decimal,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """First-fit routing primitive used by the Sankey builders.
+
+    Pays `target` out of `remaining_income`, sending the shortfall to
+    `otras_fuentes`. Returns `(from_income, from_otras, remaining_income_after)`.
+    Every non-trivial target maps to at most two inflow links; flow
+    conservation is preserved because from_income + from_otras == target.
+    """
+    if target <= _ZERO:
+        return _ZERO, _ZERO, remaining_income
+    from_income = min(remaining_income, target)
+    from_otras = target - from_income
+    return from_income, from_otras, remaining_income - from_income
+
+
 def _build_sankey(
     *,
     income: Decimal,
@@ -436,20 +455,19 @@ def _build_sankey(
     # Expand spendable in overspent months so the diagram stays balanced.
     sankey_spendable = total_spent if total_spent > spendable_amount else spendable_amount
 
-    # First-fit routing: pay each bucket from income, spill the rest to
-    # otras_fuentes. Returns (income_share, otras_share, remaining_income).
-    def _pay(target_value: Decimal, remaining: Decimal) -> tuple[Decimal, Decimal, Decimal]:
-        if target_value <= _ZERO:
-            return _ZERO, _ZERO, remaining
-        from_income = min(remaining, target_value)
-        from_otras = target_value - from_income
-        return from_income, from_otras, remaining - from_income
-
     remaining_income = income
-    inc_kb, ot_kb, remaining_income = _pay(known_bills, remaining_income)
-    inc_cu, ot_cu, remaining_income = _pay(cuotas_this_month, remaining_income)
-    inc_st, ot_st, remaining_income = _pay(savings_target, remaining_income)
-    inc_sp, ot_sp, remaining_income = _pay(sankey_spendable, remaining_income)
+    inc_kb, ot_kb, remaining_income = _pay_first_fit(
+        target=known_bills, remaining_income=remaining_income
+    )
+    inc_cu, ot_cu, remaining_income = _pay_first_fit(
+        target=cuotas_this_month, remaining_income=remaining_income
+    )
+    inc_st, ot_st, remaining_income = _pay_first_fit(
+        target=savings_target, remaining_income=remaining_income
+    )
+    inc_sp, ot_sp, remaining_income = _pay_first_fit(
+        target=sankey_spendable, remaining_income=remaining_income
+    )
 
     otras_fuentes = ot_kb + ot_cu + ot_st + ot_sp
 
