@@ -151,12 +151,18 @@ def spendable_ceiling(
     known_bills: Decimal,
     cuotas_this_month: Decimal,
     savings_target: Decimal,
+    personal_allocation: Decimal = _ZERO,
 ) -> Decimal:
     """Discretionary budget = income minus fixed commitments.
 
     Clamped to 0 — a negative ceiling is a signal to the user, not a usable
     number, and `v2_service` handles the overdraft story separately via
     `ceiling_clamped`-style flags in downstream blocks.
+
+    `personal_allocation` is new in v3; defaults to 0 for back-compat. This
+    is the sum of household members' `user_budget_settings.personal_allocation_amount`
+    in the current currency, treated as a fixed outflow that happens before
+    discretionary spending.
     """
-    ceiling = income - known_bills - cuotas_this_month - savings_target
+    ceiling = income - known_bills - cuotas_this_month - savings_target - personal_allocation
     return ceiling if ceiling > _ZERO else _ZERO

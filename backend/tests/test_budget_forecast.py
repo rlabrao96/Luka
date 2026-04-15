@@ -202,6 +202,41 @@ def test_spendable_ceiling_decimal_precision():
     assert ceiling == Decimal("884567.89")
 
 
+class TestSpendableCeilingPersonalAllocation:
+    def test_personal_allocation_subtracts_from_spendable(self):
+        result = spendable_ceiling(
+            income=Decimal("1000"),
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("100"),
+            personal_allocation=Decimal("150"),
+        )
+        # 1000 - 200 - 100 - 100 - 150 = 450
+        assert result == Decimal("450")
+
+    def test_personal_allocation_default_is_zero(self):
+        """Omitting the kwarg preserves back-compat with v2 callers."""
+        result = spendable_ceiling(
+            income=Decimal("1000"),
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("100"),
+        )
+        # 1000 - 200 - 100 - 100 - 0 = 600 (same as v2)
+        assert result == Decimal("600")
+
+    def test_personal_allocation_overspent_clamps_to_zero(self):
+        result = spendable_ceiling(
+            income=Decimal("500"),
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("100"),
+            personal_allocation=Decimal("200"),
+        )
+        # 500 - 200 - 100 - 100 - 200 = -100 -> clamped to 0
+        assert result == Decimal("0")
+
+
 # make pytest happy if file is executed directly
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
