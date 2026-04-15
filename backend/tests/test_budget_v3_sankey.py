@@ -3,11 +3,15 @@ flow conservation, personal allocation wiring."""
 
 from __future__ import annotations
 
+import uuid
 from decimal import Decimal
 
-
 from modules.budgets.v2_schemas import SankeyNode
-from modules.budgets.v2_service import _pay_first_fit
+from modules.budgets.v2_service import _build_hogar_sankey, _pay_first_fit
+from modules.households.contribution_service import (
+    HouseholdIncomeBreakdown,
+    OtherMemberContribution,
+)
 
 
 class TestSankeyNodeAdditiveFields:
@@ -76,3 +80,180 @@ class TestPayFirstFit:
         assert from_income == Decimal("0")
         assert from_otras == Decimal("0")
         assert remaining == Decimal("500")
+
+
+def _sample_breakdown_full_full() -> HouseholdIncomeBreakdown:
+    return HouseholdIncomeBreakdown(
+        total=Decimal("2000"),
+        caller_sources={"Sueldo": Decimal("1000"), "Bonus": Decimal("200")},
+        caller_other_income=Decimal("0"),
+        other_members=[
+            OtherMemberContribution(
+                user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+                display_name="Cami",
+                amount=Decimal("800"),
+                mode="full",
+            )
+        ],
+    )
+
+
+class TestBuildHogarSankey:
+    def test_emits_level_0_sources_for_caller(self):
+        bd = _sample_breakdown_full_full()
+        block = _build_hogar_sankey(
+            breakdown=bd,
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("300"),
+            personal_allocation=Decimal("400"),
+            spendable_amount=Decimal("1000"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo", "Bonus"],
+        )
+        node_ids = {n.id for n in block.nodes}
+        assert "src_sueldo" in node_ids
+        assert "src_bonus" in node_ids
+        assert "member_00000000-0000-0000-0000-000000000001" in node_ids
+        assert "ingresos_hogar" in node_ids
+
+    def test_level_0_nodes_have_level_zero_and_kind_source(self):
+        bd = _sample_breakdown_full_full()
+        block = _build_hogar_sankey(
+            breakdown=bd,
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("300"),
+            personal_allocation=Decimal("400"),
+            spendable_amount=Decimal("1000"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo", "Bonus"],
+        )
+        for node in block.nodes:
+            if node.id.startswith("src_") or node.id.startswith("member_"):
+                assert node.level == 0
+                assert node.kind == "source"
+
+    def test_ingresos_hogar_is_level_1_hub(self):
+        bd = _sample_breakdown_full_full()
+        block = _build_hogar_sankey(
+            breakdown=bd,
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("300"),
+            personal_allocation=Decimal("400"),
+            spendable_amount=Decimal("1000"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo", "Bonus"],
+        )
+        hub = next(n for n in block.nodes if n.id == "ingresos_hogar")
+        assert hub.level == 1
+        assert hub.kind == "hub"
+        assert hub.value == Decimal("2000")
+
+    def test_level_2_allocation_nodes_are_level_two(self):
+        bd = _sample_breakdown_full_full()
+        block = _build_hogar_sankey(
+            breakdown=bd,
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("300"),
+            personal_allocation=Decimal("400"),
+            spendable_amount=Decimal("1000"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo", "Bonus"],
+        )
+        allocation_ids = {
+            "meta_ahorro",
+            "gastos_fijos",
+            "cuotas",
+            "gasto_personal",
+            "disponible_hogar",
+        }
+        for node in block.nodes:
+            if node.id in allocation_ids:
+                assert node.level == 2
+                assert node.kind == "allocation"
+
+    def test_flow_conservation_each_intermediate(self):
+        """Every non-source / non-terminal node: inflow == outflow == value."""
+        bd = _sample_breakdown_full_full()
+        block = _build_hogar_sankey(
+            breakdown=bd,
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("300"),
+            personal_allocation=Decimal("400"),
+            spendable_amount=Decimal("1000"),
+            top_risk_totals=[("Supermercado", Decimal("300"))],
+            other_spent=Decimal("100"),
+            income_category_order=["Sueldo", "Bonus"],
+        )
+
+        inflows: dict[str, Decimal] = {}
+        outflows: dict[str, Decimal] = {}
+        for link in block.links:
+            outflows[link.source] = outflows.get(link.source, Decimal("0")) + link.value
+            inflows[link.target] = inflows.get(link.target, Decimal("0")) + link.value
+
+        # Ingresos Hogar (level 1 hub) must have inflow == outflow == its value
+        hub_inflow = inflows.get("ingresos_hogar", Decimal("0"))
+        hub_outflow = outflows.get("ingresos_hogar", Decimal("0"))
+        hub_node_value = next(n.value for n in block.nodes if n.id == "ingresos_hogar")
+        assert hub_inflow == hub_node_value == hub_outflow
+
+        # Disponible hogar (intermediate) must have inflow == outflow
+        disp_inflow = inflows.get("disponible_hogar", Decimal("0"))
+        disp_outflow = outflows.get("disponible_hogar", Decimal("0"))
+        assert disp_inflow == disp_outflow
+
+    def test_gasto_personal_hidden_when_zero(self):
+        bd = _sample_breakdown_full_full()
+        block = _build_hogar_sankey(
+            breakdown=bd,
+            known_bills=Decimal("200"),
+            cuotas_this_month=Decimal("100"),
+            savings_target=Decimal("300"),
+            personal_allocation=Decimal("0"),  # setting unset
+            spendable_amount=Decimal("1400"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo", "Bonus"],
+        )
+        node_ids = {n.id for n in block.nodes}
+        assert "gasto_personal" not in node_ids
+
+    def test_fixed_member_node_labeled_contribucion_fija(self):
+        bd = HouseholdIncomeBreakdown(
+            total=Decimal("1500"),
+            caller_sources={"Sueldo": Decimal("1000")},
+            caller_other_income=Decimal("0"),
+            other_members=[
+                OtherMemberContribution(
+                    user_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
+                    display_name="Cami",
+                    amount=Decimal("500"),
+                    mode="fixed",
+                )
+            ],
+        )
+        block = _build_hogar_sankey(
+            breakdown=bd,
+            known_bills=Decimal("100"),
+            cuotas_this_month=Decimal("0"),
+            savings_target=Decimal("200"),
+            personal_allocation=Decimal("0"),
+            spendable_amount=Decimal("1200"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo"],
+        )
+        cami_node = next(
+            n for n in block.nodes if n.id == "member_00000000-0000-0000-0000-000000000002"
+        )
+        assert "Contribución fija" in cami_node.label
+        assert "Cami" in cami_node.label
