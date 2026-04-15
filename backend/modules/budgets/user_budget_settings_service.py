@@ -122,7 +122,10 @@ async def get_personal_allocation(
 
     Returns Decimal('0') when no row exists or when the stored
     personal_allocation_currency does not match the requested currency.
-    Mirrors the semantics of `get_savings_target`.
+
+    Unlike `get_savings_target`, this helper is read-only: it does NOT
+    create a `user_budget_settings` row as a side effect. Callers that
+    expect auto-creation should explicitly upsert via the settings router.
     """
     row = await db.execute(
         text("""
