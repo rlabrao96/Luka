@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -46,3 +48,4 @@ class SubscriptionOverrideRequest(BaseModel):
     status: str | None = None
     category: str | None = None
     next_charge_day: int | None = None
+    split_type: Literal["personal", "shared"] | None = None
