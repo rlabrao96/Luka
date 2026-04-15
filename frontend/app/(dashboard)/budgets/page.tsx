@@ -98,6 +98,9 @@ function SectionFlowBody({
           label: n.label,
           value: Number(n.value),
           risk: n.risk ?? undefined,
+          level: n.level ?? undefined,
+          kind: n.kind ?? undefined,
+          member_id: n.member_id ?? undefined,
         }))}
         links={data.sankey.links.map((l) => ({
           source: l.source,

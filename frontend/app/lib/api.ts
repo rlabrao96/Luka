@@ -830,6 +830,10 @@ export interface BudgetV2SankeyNode {
   label: string;
   value: number;
   risk?: boolean;
+  // Budget v3 rank-based fields (null/absent on legacy responses)
+  level?: number | null;
+  kind?: "source" | "hub" | "allocation" | "spent" | null;
+  member_id?: string | null;
 }
 
 export interface BudgetV2SankeyLink {
