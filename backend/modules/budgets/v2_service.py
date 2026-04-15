@@ -775,6 +775,199 @@ def _build_hogar_sankey(
     return SankeyBlock(nodes=nodes, links=links)
 
 
+def _build_personal_sankey(
+    *,
+    caller_sources: dict[str, Decimal],
+    caller_other_income: Decimal,
+    known_bills: Decimal,
+    cuotas_this_month: Decimal,
+    savings_target: Decimal,
+    spendable_amount: Decimal,
+    top_risk_totals: list[tuple[str, Decimal]],
+    other_spent: Decimal,
+    income_category_order: list[str],
+) -> SankeyBlock:
+    """Build the Personal Sankey. Structurally identical to the Hogar builder
+    but scoped to caller-only income, no `Gasto personal` allocation, and
+    one fewer level of allocation nodes.
+
+    Uses a `ingresos_personales` hub at Level 1 for clean routing (mirrors
+    the hogar `ingresos_hogar` hub). Level 2 has the three allocation nodes
+    (meta_ahorro_personal, gastos_fijos_personal, cuotas_personal,
+    disponible_personal — cuotas hidden if zero). Level 3 has the
+    disponible_personal breakdown.
+    """
+    total_spent = sum((s for _, s in top_risk_totals), start=_ZERO) + other_spent
+    spent_remaining = spendable_amount - total_spent
+    if spent_remaining < _ZERO:
+        spent_remaining = _ZERO
+    sankey_spendable = total_spent if total_spent > spendable_amount else spendable_amount
+
+    income_total = sum(caller_sources.values(), start=_ZERO) + caller_other_income
+
+    remaining = income_total
+    inc_kb, ot_kb, remaining = _pay_first_fit(target=known_bills, remaining_income=remaining)
+    inc_cu, ot_cu, remaining = _pay_first_fit(target=cuotas_this_month, remaining_income=remaining)
+    inc_st, ot_st, remaining = _pay_first_fit(target=savings_target, remaining_income=remaining)
+    inc_sp, ot_sp, remaining = _pay_first_fit(target=sankey_spendable, remaining_income=remaining)
+
+    otras_fuentes_total = ot_kb + ot_cu + ot_st + ot_sp
+    hub_value = income_total + otras_fuentes_total
+
+    nodes: list[SankeyNode] = []
+
+    # Level 0: caller's own sources
+    for category in income_category_order:
+        amount = caller_sources.get(category, _ZERO)
+        if amount > _ZERO:
+            nodes.append(
+                SankeyNode(
+                    id=f"src_{_slugify(category)}",
+                    label=category,
+                    value=amount,
+                    level=0,
+                    kind="source",
+                )
+            )
+    if caller_other_income > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="src_otros_ingresos",
+                label="Otros ingresos",
+                value=caller_other_income,
+                level=0,
+                kind="source",
+            )
+        )
+    if otras_fuentes_total > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="otras_fuentes",
+                label="Otras fuentes",
+                value=otras_fuentes_total,
+                level=0,
+                kind="source",
+            )
+        )
+
+    # Level 1: hub
+    nodes.append(
+        SankeyNode(
+            id="ingresos_personales",
+            label="Mis ingresos",
+            value=hub_value,
+            level=1,
+            kind="hub",
+        )
+    )
+
+    # Level 2: 3 allocation nodes (cuotas only if non-zero, no gasto_personal)
+    if known_bills > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="gastos_fijos_personal",
+                label="Gastos fijos",
+                value=known_bills,
+                level=2,
+                kind="allocation",
+            )
+        )
+    if cuotas_this_month > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="cuotas_personal",
+                label="Cuotas del mes",
+                value=cuotas_this_month,
+                level=2,
+                kind="allocation",
+            )
+        )
+    if savings_target > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="meta_ahorro_personal",
+                label="Meta de ahorro",
+                value=savings_target,
+                level=2,
+                kind="allocation",
+            )
+        )
+    if sankey_spendable > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="disponible_personal",
+                label="Disponible personal",
+                value=sankey_spendable,
+                level=2,
+                kind="allocation",
+            )
+        )
+
+    # Level 3: disponible_personal breakdown
+    for category, spent in top_risk_totals:
+        if spent <= _ZERO:
+            continue
+        nodes.append(
+            SankeyNode(
+                id=f"spent_{_slugify(category)}",
+                label=category,
+                value=spent,
+                level=3,
+                kind="spent",
+                risk=True,
+            )
+        )
+    if other_spent > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="spent_other",
+                label="Otras categorías",
+                value=other_spent,
+                level=3,
+                kind="spent",
+            )
+        )
+    if spent_remaining > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="spent_remaining",
+                label="Aún disponible",
+                value=spent_remaining,
+                level=3,
+                kind="spent",
+            )
+        )
+
+    # Links
+    links: list[SankeyLink] = []
+
+    def _emit(source: str, target: str, value: Decimal) -> None:
+        if value > _ZERO:
+            links.append(SankeyLink(source=source, target=target, value=value))
+
+    # Level 0 -> Level 1 (hub)
+    for category in income_category_order:
+        amount = caller_sources.get(category, _ZERO)
+        _emit(f"src_{_slugify(category)}", "ingresos_personales", amount)
+    _emit("src_otros_ingresos", "ingresos_personales", caller_other_income)
+    _emit("otras_fuentes", "ingresos_personales", otras_fuentes_total)
+
+    # Level 1 -> Level 2
+    _emit("ingresos_personales", "gastos_fijos_personal", known_bills)
+    _emit("ingresos_personales", "cuotas_personal", cuotas_this_month)
+    _emit("ingresos_personales", "meta_ahorro_personal", savings_target)
+    _emit("ingresos_personales", "disponible_personal", sankey_spendable)
+
+    # Level 2 -> Level 3
+    for category, spent in top_risk_totals:
+        if spent > _ZERO:
+            _emit("disponible_personal", f"spent_{_slugify(category)}", spent)
+    _emit("disponible_personal", "spent_other", other_spent)
+    _emit("disponible_personal", "spent_remaining", spent_remaining)
+
+    return SankeyBlock(nodes=nodes, links=links)
+
+
 # -------------------------------------------------------------- entry point
 
 

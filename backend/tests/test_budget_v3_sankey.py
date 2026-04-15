@@ -7,7 +7,7 @@ import uuid
 from decimal import Decimal
 
 from modules.budgets.v2_schemas import SankeyNode
-from modules.budgets.v2_service import _build_hogar_sankey, _pay_first_fit
+from modules.budgets.v2_service import _build_hogar_sankey, _build_personal_sankey, _pay_first_fit
 from modules.households.contribution_service import (
     HouseholdIncomeBreakdown,
     OtherMemberContribution,
@@ -257,3 +257,93 @@ class TestBuildHogarSankey:
         )
         assert "Contribución fija" in cami_node.label
         assert "Cami" in cami_node.label
+
+
+class TestBuildPersonalSankey:
+    def test_level_0_is_caller_sources_only_no_other_members(self):
+        block = _build_personal_sankey(
+            caller_sources={"Sueldo": Decimal("1000"), "Bonus": Decimal("200")},
+            caller_other_income=Decimal("0"),
+            known_bills=Decimal("100"),
+            cuotas_this_month=Decimal("0"),
+            savings_target=Decimal("200"),
+            spendable_amount=Decimal("900"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo", "Bonus"],
+        )
+        node_ids = {n.id for n in block.nodes}
+        # No member_ nodes — personal view doesn't aggregate other members
+        assert not any(nid.startswith("member_") for nid in node_ids)
+        assert "src_sueldo" in node_ids
+        assert "src_bonus" in node_ids
+
+    def test_level_1_hub_exists(self):
+        block = _build_personal_sankey(
+            caller_sources={"Sueldo": Decimal("1000")},
+            caller_other_income=Decimal("0"),
+            known_bills=Decimal("100"),
+            cuotas_this_month=Decimal("0"),
+            savings_target=Decimal("200"),
+            spendable_amount=Decimal("700"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo"],
+        )
+        hub = next(n for n in block.nodes if n.id == "ingresos_personales")
+        assert hub.level == 1
+        assert hub.kind == "hub"
+
+    def test_level_2_has_three_allocation_nodes_no_gasto_personal(self):
+        """Personal view has meta_ahorro_personal / gastos_fijos_personal /
+        disponible_personal at level 2 — no gasto_personal node."""
+        block = _build_personal_sankey(
+            caller_sources={"Sueldo": Decimal("1000")},
+            caller_other_income=Decimal("0"),
+            known_bills=Decimal("100"),
+            cuotas_this_month=Decimal("0"),
+            savings_target=Decimal("200"),
+            spendable_amount=Decimal("700"),
+            top_risk_totals=[],
+            other_spent=Decimal("0"),
+            income_category_order=["Sueldo"],
+        )
+        node_ids = {n.id for n in block.nodes}
+        assert "gasto_personal" not in node_ids
+        assert "meta_ahorro_personal" in node_ids
+        assert "gastos_fijos_personal" in node_ids
+        assert "disponible_personal" in node_ids
+        # Allocation nodes should be level=2, kind=allocation
+        for nid in ["meta_ahorro_personal", "gastos_fijos_personal", "disponible_personal"]:
+            n = next(node for node in block.nodes if node.id == nid)
+            assert n.level == 2
+            assert n.kind == "allocation"
+
+    def test_flow_conservation(self):
+        block = _build_personal_sankey(
+            caller_sources={"Sueldo": Decimal("1000")},
+            caller_other_income=Decimal("0"),
+            known_bills=Decimal("100"),
+            cuotas_this_month=Decimal("50"),
+            savings_target=Decimal("200"),
+            spendable_amount=Decimal("650"),
+            top_risk_totals=[("Supermercado", Decimal("250"))],
+            other_spent=Decimal("100"),
+            income_category_order=["Sueldo"],
+        )
+        inflows: dict[str, Decimal] = {}
+        outflows: dict[str, Decimal] = {}
+        for link in block.links:
+            outflows[link.source] = outflows.get(link.source, Decimal("0")) + link.value
+            inflows[link.target] = inflows.get(link.target, Decimal("0")) + link.value
+
+        # ingresos_personales hub: in == out == its value
+        hub_inflow = inflows.get("ingresos_personales", Decimal("0"))
+        hub_outflow = outflows.get("ingresos_personales", Decimal("0"))
+        hub_value = next(n.value for n in block.nodes if n.id == "ingresos_personales")
+        assert hub_inflow == hub_value == hub_outflow
+
+        # disponible_personal is intermediate, inflow == outflow
+        assert inflows.get("disponible_personal", Decimal("0")) == outflows.get(
+            "disponible_personal", Decimal("0")
+        )
