@@ -189,8 +189,13 @@ async def income_breakdown_for_household_view(
                            their real income transactions
         * reimbursement -> skipped (contributes $0 to the pot)
     - `total` equals the sum of caller_sources + caller_other_income +
-      other_members amounts, and matches what `income_for_household_view`
-      returns (which is kept as a thin scalar accessor).
+      other_members amounts. Note this differs from `income_for_household_view`
+      when the caller's own contribution_mode is `fixed` or `reimbursement`:
+      the breakdown always shows the caller's REAL income (personal-view
+      semantics), whereas the scalar accessor would redact it down to the
+      fixed_contribution_amount or zero. The household-view Sankey (Task 9)
+      uses the breakdown value intentionally — the caller is allowed to see
+      their own real income because they're querying their own view.
     """
     first_day, first_day_next = _month_bounds_datetime(month)
 

@@ -393,3 +393,70 @@ class TestIncomeBreakdownForHouseholdView:
             + sum((m.amount for m in bd.other_members), start=Decimal("0"))
         )
         assert bd.total == components
+
+    @pytest.mark.asyncio
+    async def test_breakdown_never_reads_fixed_member_real_income(self, db):
+        """Privacy regression: fixed-mode member's real income must NEVER appear
+        in the breakdown — not in other_members.amount, not in total.
+
+        HOGAR FIXED setup:
+          rafa-fixed    -> full mode  (caller; sees their own real income)
+          partner-fixed -> fixed mode (fixed_contribution_amount = 800,000 CLP)
+
+        We seed a distinctive synthetic income (2,137,913 CLP) for partner-fixed.
+        The breakdown must use 800,000 for that member — not the real income —
+        and the forbidden value must be absent from every leaf of the breakdown.
+
+        This exercises the `elif row.contribution_mode == "fixed":` branch in
+        `income_breakdown_for_household_view`.
+        """
+        import dataclasses
+
+        from tests.helpers.json_walk import assert_value_absent
+
+        rafa = await _user_by_email(db, "rafa-fixed@luka.test")
+        partner = await _user_by_email(db, "partner-fixed@luka.test")
+        household = await _household_by_name(db, "HOGAR FIXED")
+
+        partner_real_income = Decimal("2137913")  # forbidden leak value
+        fixed_contribution_amount = Decimal("800000")
+
+        # Seed synthetic income for the fixed-mode partner only.
+        # The savepoint will roll back after the test — no permanent side-effects.
+        await _insert_income(
+            db, user_id=partner.id, household_id=household.id, amount=partner_real_income
+        )
+
+        month = _current_month()
+        bd = await income_breakdown_for_household_view(
+            db,
+            caller_id=rafa.id,
+            household_id=household.id,
+            month=month,
+            currency="CLP",
+        )
+
+        # 1. Fixed member must appear exactly once in other_members.
+        fixed_entries = [m for m in bd.other_members if m.user_id == partner.id]
+        assert len(fixed_entries) == 1, (
+            f"partner-fixed should appear exactly once in other_members, "
+            f"got {len(fixed_entries)}"
+        )
+
+        entry = fixed_entries[0]
+
+        # 2. The entry must be labelled as fixed mode.
+        assert (
+            entry.mode == "fixed"
+        ), f"partner-fixed entry should have mode='fixed', got {entry.mode!r}"
+
+        # 3. The amount must be the configured fixed contribution, NOT real income.
+        assert entry.amount == fixed_contribution_amount, (
+            f"fixed-mode member amount should be {fixed_contribution_amount} "
+            f"(fixed_contribution_amount), got {entry.amount}"
+        )
+
+        # 4. The forbidden real income value must be absent from EVERY leaf of
+        #    the breakdown — total included — via the project-standard walker.
+        bd_dict = dataclasses.asdict(bd)
+        assert_value_absent(bd_dict, partner_real_income)
