@@ -290,7 +290,7 @@ export default function SubscriptionsPage() {
             </p>
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               {/* Table header */}
-              <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_60px] gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+              <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_60px] gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase">
                   Servicio
                 </span>
@@ -302,6 +302,9 @@ export default function SubscriptionsPage() {
                 </span>
                 <span className="text-[11px] font-semibold text-slate-400 uppercase">
                   Categoría
+                </span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase">
+                  Clasificación
                 </span>
                 <span />
               </div>
@@ -323,7 +326,7 @@ export default function SubscriptionsPage() {
                     >
                       {/* Main row */}
                       <div
-                        className="grid grid-cols-[2fr_1fr_1fr_1fr_60px] gap-2 px-4 py-3 items-center cursor-pointer hover:bg-slate-50 transition-colors"
+                        className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_60px] gap-2 px-4 py-3 items-center cursor-pointer hover:bg-slate-50 transition-colors"
                         onClick={() =>
                           setExpandedRow(isExpanded ? null : sub.merchant_name)
                         }
@@ -362,6 +365,25 @@ export default function SubscriptionsPage() {
                         <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-center truncate">
                           {sub.category ?? "—"}
                         </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const nextType = sub.split_type === "shared" ? "personal" : "shared";
+                            overrideMutation.mutate({
+                              merchant_key: sub.merchant_name,
+                              split_type: nextType,
+                            });
+                          }}
+                          disabled={overrideMutation.isPending}
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full text-center transition-colors disabled:opacity-50 ${
+                            sub.split_type === "shared"
+                              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                          }`}
+                          title="Click para cambiar entre Personal y Compartido"
+                        >
+                          {sub.split_type === "shared" ? "Compartido" : "Personal"}
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
