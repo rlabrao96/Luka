@@ -27,11 +27,14 @@ async def upsert_override(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # If the caller set split_type, go through the reclassify service so
-    # the change cascades to the last 3 months of transaction_splits and
-    # the detected_subscriptions_cache gets invalidated in one atomic
-    # operation. reclassify also upserts the override row, so we don't
-    # call upsert_override separately in that branch.
+    # If the caller set split_type, go through reclassify so the change
+    # cascades to the last 3 months of transaction_splits and the
+    # detected_subscriptions_cache is invalidated. reclassify upserts the
+    # override row itself, so we don't call upsert_override for that field.
+    # If the request also carries status/category/next_charge_day, those
+    # are applied in a second service call below — note the two calls are
+    # NOT wrapped in a single transaction, but reclassify is idempotent on
+    # retry.
     if body.split_type is not None:
         await service.reclassify_subscription_split(
             db,
