@@ -17,6 +17,7 @@ from modules.auth.models import User
 from modules.budgets.user_budget_settings_service import (
     get_or_create,
     update_payday,
+    update_personal_allocation,
     update_savings_target,
 )
 
@@ -27,12 +28,16 @@ class BudgetSettingsRequest(BaseModel):
     savings_target_amount: Decimal | None = None
     savings_target_currency: str | None = Field(default=None, pattern="^(CLP|USD)$")
     payday_day_of_month: int | None = None
+    personal_allocation_amount: Decimal | None = None
+    personal_allocation_currency: str | None = Field(default=None, pattern="^(CLP|USD)$")
 
 
 class BudgetSettingsResponse(BaseModel):
     savings_target_amount: Decimal | None
     savings_target_currency: str | None
     payday_day_of_month: int | None
+    personal_allocation_amount: Decimal | None
+    personal_allocation_currency: str | None
 
 
 @router.get("", response_model=BudgetSettingsResponse)
@@ -46,6 +51,8 @@ async def get_budget_settings(
         savings_target_amount=row.savings_target_amount,
         savings_target_currency=row.savings_target_currency,
         payday_day_of_month=row.payday_day_of_month,
+        personal_allocation_amount=row.personal_allocation_amount,
+        personal_allocation_currency=row.personal_allocation_currency,
     )
 
 
@@ -72,10 +79,19 @@ async def patch_budget_settings(
             await update_payday(db, user_id=current_user.id, day=payload.payday_day_of_month)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
+    if "personal_allocation_amount" in provided or "personal_allocation_currency" in provided:
+        await update_personal_allocation(
+            db,
+            user_id=current_user.id,
+            amount=payload.personal_allocation_amount,
+            currency=payload.personal_allocation_currency,
+        )
     await db.commit()
     row = await get_or_create(db, user_id=current_user.id)
     return BudgetSettingsResponse(
         savings_target_amount=row.savings_target_amount,
         savings_target_currency=row.savings_target_currency,
         payday_day_of_month=row.payday_day_of_month,
+        personal_allocation_amount=row.personal_allocation_amount,
+        personal_allocation_currency=row.personal_allocation_currency,
     )

@@ -735,23 +735,29 @@ export const api = {
   dismissReview: (jobId: string) =>
     apiFetch<{ ok: boolean }>(`/merchant-review/${jobId}`, { method: "DELETE" }),
 
-  // --- Budget settings (savings target + payday) ---
+  // --- Budget settings (savings target + payday + personal allocation) ---
   getBudgetSettings: () =>
     apiFetch<{
       savings_target_amount: number | null;
       savings_target_currency: string | null;
       payday_day_of_month: number | null;
+      personal_allocation_amount: number | null;
+      personal_allocation_currency: string | null;
     }>("/settings/budget"),
 
   updateBudgetSettings: (payload: {
     savings_target_amount: number | null;
     savings_target_currency: string | null;
     payday_day_of_month: number | null;
+    personal_allocation_amount?: number | null;
+    personal_allocation_currency?: string | null;
   }) =>
     apiFetch<{
       savings_target_amount: number | null;
       savings_target_currency: string | null;
       payday_day_of_month: number | null;
+      personal_allocation_amount: number | null;
+      personal_allocation_currency: string | null;
     }>("/settings/budget", {
       method: "PATCH",
       body: JSON.stringify(payload),

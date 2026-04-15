@@ -56,6 +56,26 @@ async def update_savings_target(
     return row
 
 
+async def update_personal_allocation(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    amount: Decimal | None,
+    currency: str | None,
+) -> UserBudgetSettings:
+    """Set (or clear with ``amount=None``) the user's monthly personal spending allocation.
+
+    This value is used as the Level-2 ``Gasto personal`` node in the Sankey
+    when viewed in household mode. Passing ``amount=None`` removes the node
+    from the household Sankey for this user.
+    """
+    row = await get_or_create(db, user_id=user_id)
+    row.personal_allocation_amount = amount
+    row.personal_allocation_currency = currency
+    await db.flush()
+    return row
+
+
 async def update_payday(
     db: AsyncSession, *, user_id: uuid.UUID, day: int | None
 ) -> UserBudgetSettings:
