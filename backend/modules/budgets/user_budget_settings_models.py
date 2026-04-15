@@ -15,6 +15,10 @@ class UserBudgetSettings(Base):
     )
     savings_target_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     savings_target_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    personal_allocation_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
+    personal_allocation_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     payday_day_of_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
