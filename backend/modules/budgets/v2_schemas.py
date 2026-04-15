@@ -20,6 +20,9 @@ class SankeyNode(BaseModel):
     label: str
     value: Decimal
     risk: bool | None = None
+    level: int | None = None
+    kind: str | None = None
+    member_id: str | None = None
 
 
 class SankeyLink(BaseModel):
