@@ -2,7 +2,16 @@
 import { Sankey, Tooltip, ResponsiveContainer, Rectangle, Layer } from "recharts";
 import { formatMoney, type Currency } from "@/app/lib/format";
 
-type Node = { id: string; label: string; value: number; risk?: boolean };
+type Node = {
+  id: string;
+  label: string;
+  value: number;
+  risk?: boolean;
+  // Budget v3 rank-based fields (optional — absent on v2 responses)
+  level?: number | null;
+  kind?: "source" | "hub" | "allocation" | "spent" | null;
+  member_id?: string | null;
+};
 type Link = { source: string; target: string; value: number };
 
 interface Props {
@@ -23,6 +32,12 @@ const NODE_COLOR = {
 
 function colorFor(node: Node): string {
   if (node.risk) return NODE_COLOR.risk;
+  // v3: prefer kind-based color when available
+  if (node.kind === "hub") return "#2563EB";
+  if (node.kind === "source") return "#60A5FA";
+  if (node.kind === "allocation") return "#93C5FD";
+  if (node.kind === "spent") return "#BFDBFE";
+  // v2 fallback: id-based color
   if (node.id in NODE_COLOR) return NODE_COLOR[node.id as keyof typeof NODE_COLOR];
   return NODE_COLOR.other;
 }
@@ -94,16 +109,41 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
               if (!node || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
                 return <Layer key={`node-${index}`} />;
               }
-              const terminal = isTerminal.has(node.id);
-              const labelX = terminal ? x - 6 : x + width + 6;
-              const anchor = terminal ? "end" : "start";
+              // Rank-based label placement (v3): use `level` field when present.
+              // Backward-compat fallback (v2): use terminal-detection heuristic.
+              let labelX: number;
+              let labelY: number = y + height / 2;
+              let anchor: "start" | "end" | "middle";
+              let valueY: number = labelY + 14;
+
+              if (node.level === undefined || node.level === null) {
+                // v2 fallback: terminal nodes label left, non-terminal label right
+                const terminal = isTerminal.has(node.id);
+                labelX = terminal ? x - 6 : x + width + 6;
+                anchor = terminal ? "end" : "start";
+              } else if (node.level === 0) {
+                // Sources: label on the LEFT
+                anchor = "end";
+                labelX = x - 6;
+              } else if (node.level === 1) {
+                // Hub: label ABOVE, centered
+                anchor = "middle";
+                labelX = x + width / 2;
+                labelY = y - 18;
+                valueY = y - 6;
+              } else {
+                // Level 2 (allocations) and level 3 (breakdown): label on the RIGHT
+                anchor = "start";
+                labelX = x + width + 6;
+              }
+
               return (
                 <Layer key={`node-${index}`}>
                   <Rectangle x={x} y={y} width={width} height={height} fill={colorFor(node)} fillOpacity={0.9} />
-                  <text x={labelX} y={y + height / 2} dy="0.35em" textAnchor={anchor} className="text-xs fill-slate-700">
+                  <text x={labelX} y={labelY} dy="0.35em" textAnchor={anchor} className="text-xs fill-slate-700">
                     {node.label}
                   </text>
-                  <text x={labelX} y={y + height / 2 + 14} textAnchor={anchor} className="text-[10px] fill-slate-400 tabular-nums">
+                  <text x={labelX} y={valueY} textAnchor={anchor} className="text-[10px] fill-slate-400 tabular-nums">
                     {formatMoney(node.value, currency)}
                   </text>
                 </Layer>
@@ -111,7 +151,13 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
             }) as any}
             link={{ stroke: "#CBD5E1", strokeOpacity: 0.4 }}
           >
-            <Tooltip formatter={((value: unknown) => formatMoney(Number(value), currency)) as any} />
+            <Tooltip
+              formatter={((value: unknown, _name: unknown, props: any) => {
+                const payload = props?.payload as Node | undefined;
+                const label = payload?.label ?? "Valor";
+                return [formatMoney(Number(value), currency), label];
+              }) as any}
+            />
           </Sankey>
         </ResponsiveContainer>
       </div>
