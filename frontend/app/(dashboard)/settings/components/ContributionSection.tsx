@@ -138,7 +138,7 @@ export function ContributionSection({
           type="button"
           onClick={() => mutation.mutate()}
           disabled={mutation.isPending || fixedInvalid}
-          className="rounded-xl bg-luka-primary text-white px-4 py-2 text-sm font-semibold disabled:opacity-50 hover:bg-luka-primary/90 transition"
+          className="rounded-xl bg-luka-primary text-white px-4 py-2 text-sm font-semibold disabled:opacity-60 hover:bg-luka-primary/90 transition"
         >
           {mutation.isPending ? "Guardando…" : "Guardar"}
         </button>

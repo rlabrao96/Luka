@@ -235,7 +235,7 @@ export default function BudgetsPage() {
       <section aria-labelledby="household-budget-heading" className="space-y-3">
         <h3
           id="household-budget-heading"
-          className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+          className="text-xs font-semibold uppercase tracking-wide text-slate-400"
         >
           Hogar
         </h3>
@@ -246,7 +246,7 @@ export default function BudgetsPage() {
         ) : (
           <div className="space-y-3">
             {household.data && (
-              <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
+              <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
                 <SectionFlowBody data={household.data} currency={selectedCurrency} />
               </div>
             )}
@@ -267,7 +267,7 @@ export default function BudgetsPage() {
           household.data.sankey.nodes.length === personal.data.sankey.nodes.length;
         if (sameAsHogar) {
           return (
-            <p className="text-xs text-slate-400 italic">
+            <p className="text-xs text-slate-500">
               Tu vista personal coincide con la del hogar este mes — no hay aportes
               de otros miembros activos todavía.
             </p>
@@ -277,7 +277,7 @@ export default function BudgetsPage() {
           <section aria-labelledby="personal-budget-heading" className="space-y-3">
             <h3
               id="personal-budget-heading"
-              className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+              className="text-xs font-semibold uppercase tracking-wide text-slate-400"
             >
               Personal
             </h3>
@@ -288,7 +288,7 @@ export default function BudgetsPage() {
             ) : (
               <div className="space-y-3">
                 {personal.data && (
-                  <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
+                  <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
                     <SectionFlowBody data={personal.data} currency={selectedCurrency} />
                   </div>
                 )}

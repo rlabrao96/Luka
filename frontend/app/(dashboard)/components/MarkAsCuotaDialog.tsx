@@ -96,7 +96,7 @@ export function MarkAsCuotaDialog({ open, onClose, transaction }: Props) {
             max={60}
             value={installments}
             onChange={(e) => setInstallments(e.target.value)}
-            className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-luka-primary/20"
+            className="w-full mt-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           />
         </div>
 
@@ -108,7 +108,7 @@ export function MarkAsCuotaDialog({ open, onClose, transaction }: Props) {
             type="date"
             value={firstDate}
             onChange={(e) => setFirstDate(e.target.value)}
-            className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-luka-primary/20"
+            className="w-full mt-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           />
         </div>
 
@@ -160,7 +160,7 @@ export function MarkAsCuotaDialog({ open, onClose, transaction }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600"
+            className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-medium text-slate-600"
           >
             Cancelar
           </button>
@@ -168,7 +168,7 @@ export function MarkAsCuotaDialog({ open, onClose, transaction }: Props) {
             type="button"
             onClick={handleConfirm}
             disabled={disabled}
-            className="flex-1 rounded-lg bg-luka-primary py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="flex-1 rounded-xl bg-luka-primary py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
             {createCuota.isPending ? "Guardando..." : "Confirmar"}
           </button>

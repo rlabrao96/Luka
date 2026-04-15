@@ -7,11 +7,11 @@ export function RunwayCard({ runway }: { runway: BudgetV2RunwayBlock }) {
   const label = atRisk ? "text-red-700" : "text-luka-dark";
 
   return (
-    <div className={`rounded-xl border p-4 shadow-[var(--shadow-card)] ${border}`}>
+    <div className={`rounded-xl border p-5 shadow-[var(--shadow-card)] ${border}`}>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
         Próximo sueldo
       </p>
-      <p className={`text-lg font-bold tabular-nums ${label}`}>
+      <p className={`text-2xl font-bold tabular-nums mt-1 ${label}`}>
         {runway.days_to_payday} días
       </p>
       <p className="text-xs text-slate-500 mt-1 tabular-nums">
