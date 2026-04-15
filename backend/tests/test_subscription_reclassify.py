@@ -502,3 +502,61 @@ class TestKnownBillsFiltering:
         assert household_total == Decimal("56.20")
         # Only Netflix-bills-personal should be in personal total
         assert personal_total == Decimal("9.99")
+
+    @pytest.mark.asyncio
+    async def test_reimbursement_member_personal_bill_does_not_under_count_household(self, db):
+        """Regression test for the Task 6 reimbursement asymmetry bug:
+        a reimbursement member's personal bill must NOT be subtracted from
+        the household shared total. Only their shared bills should be
+        subtracted, because shared is what get_household_known_bills counts.
+
+        This test exercises get_user_shared_known_bills directly to confirm
+        the helper behaves symmetrically with get_user_personal_known_bills.
+        """
+        from modules.subscriptions.read import get_user_shared_known_bills
+
+        user = await _get_seed_user(db)
+        household_id = await _get_seed_household_id(db, user.id)
+        now = datetime.now(timezone.utc)
+
+        # Seed 3 months of a personal bill: AmazonPrime $7.94
+        for m in range(3):
+            tx = Transaction(
+                user_id=user.id,
+                household_id=household_id,
+                raw_merchant_name="AmazonPrime-reimb-personal",
+                amount=Decimal("-7.94"),
+                currency="USD",
+                transaction_date=now - timedelta(days=31 * m),
+                source="email",
+                transaction_type="expense",
+                category="Servicios",
+            )
+            db.add(tx)
+            await db.flush()
+            db.add(
+                TransactionSplit(
+                    transaction_id=tx.id,
+                    split_type="personal",
+                    decided_by_user_id=user.id,
+                )
+            )
+        await db.commit()
+
+        # Invalidate cache so detection picks up the new txns
+        await db.execute(
+            text("DELETE FROM detected_subscriptions_cache WHERE user_id = :uid"),
+            {"uid": str(user.id)},
+        )
+        await db.commit()
+
+        shared_total = await get_user_shared_known_bills(db, user.id, "USD")
+        personal_total = await get_user_personal_known_bills(db, user.id, "USD")
+
+        # Personal bill must show up in personal total only
+        assert shared_total == Decimal(
+            "0"
+        ), f"Personal bill leaked into shared total: {shared_total}"
+        assert personal_total >= Decimal(
+            "7.94"
+        ), f"Personal bill missing from personal total: {personal_total}"

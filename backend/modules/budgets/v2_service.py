@@ -73,6 +73,7 @@ from modules.households.models import (
 from modules.subscriptions.read import (
     get_household_known_bills,
     get_user_known_bills,
+    get_user_shared_known_bills,
 )
 from modules.transactions.models import Transaction
 
@@ -128,10 +129,14 @@ async def _reimbursement_members_known_bills(
     household_id: uuid.UUID,
     currency: str,
 ) -> Decimal:
-    """Sum of known_bills for members in `reimbursement` mode.
+    """Sum of SHARED known_bills for members in `reimbursement` mode.
 
     These bills don't hit the household pot — we subtract them from the
-    household known_bills sum in the household view.
+    household known_bills sum in the household view. Only the SHARED bills
+    are counted because Task 6 made `get_household_known_bills` shared-only,
+    so we must subtract the same quantity (shared-only) for symmetry.
+    Personal bills of reimbursement members were never in the household
+    total and don't need to be subtracted.
     """
     rows = await db.execute(
         select(HouseholdMember.user_id).where(
@@ -142,7 +147,7 @@ async def _reimbursement_members_known_bills(
     )
     total = _ZERO
     for (user_id,) in rows:
-        total += await get_user_known_bills(db, user_id, currency)
+        total += await get_user_shared_known_bills(db, user_id, currency)
     return total
 
 

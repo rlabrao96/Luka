@@ -80,6 +80,17 @@ async def get_user_personal_known_bills(
     return await _sum_user_bills_by_split_type(db, user_id, currency, "personal")
 
 
+async def get_user_shared_known_bills(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    currency: str,
+) -> Decimal:
+    """Sum of one user's recurring bills that are SHARED with the household.
+    Used by v2_service to symmetrically subtract reimbursement members'
+    contribution when computing household known_bills."""
+    return await _sum_user_bills_by_split_type(db, user_id, currency, "shared")
+
+
 async def get_household_known_bills(
     db: AsyncSession,
     household_id: uuid.UUID,
