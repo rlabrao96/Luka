@@ -14,7 +14,11 @@ import modules.merchants.models  # noqa: F401
 import modules.plaid.models  # noqa: F401
 from modules.auth.models import User
 from modules.subscriptions.schemas import SubscriptionOverrideRequest
-from modules.subscriptions.service import reclassify_subscription_split, upsert_override
+from modules.subscriptions.service import (
+    get_detected_subscriptions,
+    reclassify_subscription_split,
+    upsert_override,
+)
 from modules.transactions.models import Transaction, TransactionSplit
 
 
@@ -314,3 +318,108 @@ class TestReclassifySubscriptionSplit:
                 new_split_type="bogus",
                 window_months=3,
             )
+
+
+class TestOverrideWinsOverInferredSplitType:
+    @pytest.mark.asyncio
+    async def test_override_split_type_wins_over_inferred(self, db):
+        """When both an inferred split_type (from transaction_splits) and an
+        override (from subscription_overrides.split_type) exist, the override
+        value appears in the detected subscriptions payload."""
+        user = await _get_seed_user(db)
+        user_id = user.id
+        household_id = await _get_seed_household_id(db, user_id)
+        now = datetime.now(timezone.utc)
+        merchant_key = "Netflix-merge-override"
+
+        # Create 3 months of txns with transaction_splits='personal'
+        for months_ago in range(3):
+            tx = Transaction(
+                user_id=user_id,
+                household_id=household_id,
+                raw_merchant_name=merchant_key,
+                amount=Decimal("-9.99"),
+                currency="USD",
+                transaction_date=now - timedelta(days=30 * months_ago),
+                source="email",
+                transaction_type="expense",
+                category="Entretenimiento",
+            )
+            db.add(tx)
+            await db.flush()
+            db.add(
+                TransactionSplit(
+                    transaction_id=tx.id,
+                    split_type="personal",
+                    decided_by_user_id=user_id,
+                )
+            )
+        await db.commit()
+
+        # Manually insert the override with split_type='shared'
+        await db.execute(
+            text("""
+                INSERT INTO subscription_overrides
+                    (user_id, merchant_key, status, split_type, updated_at)
+                VALUES (:uid, :mk, 'active', 'shared', NOW())
+            """),
+            {"uid": str(user_id), "mk": merchant_key},
+        )
+        await db.commit()
+
+        # Invalidate cache so get_detected_subscriptions recomputes fresh
+        await db.execute(
+            text("DELETE FROM detected_subscriptions_cache WHERE user_id = :uid"),
+            {"uid": str(user_id)},
+        )
+        await db.commit()
+
+        payload = await get_detected_subscriptions(db, user_id)
+        netflix_items = [i for i in payload["items"] if i["merchant_name"] == merchant_key]
+        assert len(netflix_items) == 1
+        assert netflix_items[0]["split_type"] == "shared"  # override won
+
+    @pytest.mark.asyncio
+    async def test_no_override_falls_back_to_inferred(self, db):
+        """When no override exists, the inferred split_type from
+        transaction_splits wins."""
+        user = await _get_seed_user(db)
+        user_id = user.id
+        household_id = await _get_seed_household_id(db, user_id)
+        now = datetime.now(timezone.utc)
+        merchant_key = "Spotify-merge-noop"
+
+        for months_ago in range(3):
+            tx = Transaction(
+                user_id=user_id,
+                household_id=household_id,
+                raw_merchant_name=merchant_key,
+                amount=Decimal("-7.55"),
+                currency="USD",
+                transaction_date=now - timedelta(days=30 * months_ago),
+                source="email",
+                transaction_type="expense",
+                category="Entretenimiento",
+            )
+            db.add(tx)
+            await db.flush()
+            db.add(
+                TransactionSplit(
+                    transaction_id=tx.id,
+                    split_type="personal",
+                    decided_by_user_id=user_id,
+                )
+            )
+        await db.commit()
+
+        # Invalidate cache so get_detected_subscriptions recomputes fresh
+        await db.execute(
+            text("DELETE FROM detected_subscriptions_cache WHERE user_id = :uid"),
+            {"uid": str(user_id)},
+        )
+        await db.commit()
+
+        payload = await get_detected_subscriptions(db, user_id)
+        spotify_items = [i for i in payload["items"] if i["merchant_name"] == merchant_key]
+        assert len(spotify_items) == 1
+        assert spotify_items[0]["split_type"] == "personal"

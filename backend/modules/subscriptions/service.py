@@ -254,7 +254,8 @@ async def _merge_overrides(db: AsyncSession, user_id, raw_items: list[dict]) -> 
     """Apply subscription_overrides on top of raw detected items."""
     result = await db.execute(
         text(
-            "SELECT merchant_key, status, category, next_charge_day FROM subscription_overrides WHERE user_id = :uid"
+            "SELECT merchant_key, status, category, next_charge_day, split_type "
+            "FROM subscription_overrides WHERE user_id = :uid"
         ),
         {"uid": str(user_id)},
     )
@@ -270,6 +271,8 @@ async def _merge_overrides(db: AsyncSession, user_id, raw_items: list[dict]) -> 
                 item["category"] = override.category
             if override.next_charge_day:
                 item["next_charge_day"] = override.next_charge_day
+            if override.split_type:
+                item["split_type"] = override.split_type
         merged.append(item)
     return merged
 
