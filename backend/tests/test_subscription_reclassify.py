@@ -560,3 +560,103 @@ class TestKnownBillsFiltering:
         assert personal_total >= Decimal(
             "7.94"
         ), f"Personal bill missing from personal total: {personal_total}"
+
+
+class TestClassifyEndpoint:
+    @pytest.mark.asyncio
+    async def test_put_override_with_split_type_cascades(self, db):
+        """PUT /subscriptions/override with a split_type field routes the
+        request through reclassify_subscription_split (cascading to last
+        3 months of transaction_splits) AND persists the override row."""
+        user = await _get_seed_user(db)
+        household_id = await _get_seed_household_id(db, user.id)
+        now = datetime.now(timezone.utc)
+
+        # Seed a Netflix txn so reclassify has something to cascade over
+        tx = Transaction(
+            user_id=user.id,
+            household_id=household_id,
+            raw_merchant_name="Netflix-router-classify",
+            amount=Decimal("-9.99"),
+            currency="USD",
+            transaction_date=now - timedelta(days=10),
+            source="email",
+            transaction_type="expense",
+            category="Entretenimiento",
+        )
+        db.add(tx)
+        await db.flush()
+        db.add(
+            TransactionSplit(
+                transaction_id=tx.id,
+                split_type="personal",
+                decided_by_user_id=user.id,
+            )
+        )
+        await db.commit()
+
+        # Call the router function directly (bypassing HTTP transport,
+        # which is the conventional pattern for this project's router tests
+        # — see test_budget_v2_endpoint.py for the same pattern).
+        from modules.subscriptions.router import upsert_override as router_upsert
+        from modules.subscriptions.schemas import SubscriptionOverrideRequest
+
+        req = SubscriptionOverrideRequest(
+            merchant_key="Netflix-router-classify",
+            split_type="shared",
+        )
+        resp = await router_upsert(body=req, db=db, current_user=user)
+        assert resp == {"ok": True}
+
+        # Verify the cascade happened: transaction_splits now shows shared
+        row = await db.execute(
+            text("""
+                SELECT ts.split_type
+                FROM transaction_splits ts
+                JOIN transactions t ON t.id = ts.transaction_id
+                WHERE t.user_id = :uid
+                  AND t.raw_merchant_name = 'Netflix-router-classify'
+            """),
+            {"uid": str(user.id)},
+        )
+        assert row.scalar() == "shared"
+
+        # Verify the override row was upserted
+        row = await db.execute(
+            text("""
+                SELECT split_type FROM subscription_overrides
+                WHERE user_id = :uid AND merchant_key = 'Netflix-router-classify'
+            """),
+            {"uid": str(user.id)},
+        )
+        assert row.scalar() == "shared"
+
+    @pytest.mark.asyncio
+    async def test_put_override_without_split_type_uses_legacy_upsert_path(self, db):
+        """PUT /subscriptions/override without split_type should still work
+        (legacy callers from settings UI for category/status/next_charge_day
+        edits don't pass split_type)."""
+        user = await _get_seed_user(db)
+
+        from modules.subscriptions.router import upsert_override as router_upsert
+        from modules.subscriptions.schemas import SubscriptionOverrideRequest
+
+        req = SubscriptionOverrideRequest(
+            merchant_key="Spotify-router-legacy",
+            status="active",
+            category="Entretenimiento",
+        )
+        resp = await router_upsert(body=req, db=db, current_user=user)
+        assert resp == {"ok": True}
+
+        row = await db.execute(
+            text("""
+                SELECT status, category, split_type FROM subscription_overrides
+                WHERE user_id = :uid AND merchant_key = 'Spotify-router-legacy'
+            """),
+            {"uid": str(user.id)},
+        )
+        got = row.one()
+        assert got.status == "active"
+        assert got.category == "Entretenimiento"
+        assert got.split_type is None  # not set

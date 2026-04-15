@@ -27,14 +27,42 @@ async def upsert_override(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await service.upsert_override(
-        db,
-        current_user.id,
-        body.merchant_key,
-        body.status,
-        body.category,
-        body.next_charge_day,
-    )
+    # If the caller set split_type, go through the reclassify service so
+    # the change cascades to the last 3 months of transaction_splits and
+    # the detected_subscriptions_cache gets invalidated in one atomic
+    # operation. reclassify also upserts the override row, so we don't
+    # call upsert_override separately in that branch.
+    if body.split_type is not None:
+        await service.reclassify_subscription_split(
+            db,
+            user_id=current_user.id,
+            merchant_key=body.merchant_key,
+            new_split_type=body.split_type,
+            window_months=3,
+        )
+        # If the request ALSO carries other override fields (status,
+        # category, next_charge_day), apply them via upsert_override so
+        # they don't get lost.
+        if body.status is not None or body.category is not None or body.next_charge_day is not None:
+            await service.upsert_override(
+                db,
+                current_user.id,
+                body.merchant_key,
+                body.status,
+                body.category,
+                body.next_charge_day,
+                split_type=None,  # already applied above
+            )
+    else:
+        await service.upsert_override(
+            db,
+            current_user.id,
+            body.merchant_key,
+            body.status,
+            body.category,
+            body.next_charge_day,
+            split_type=None,
+        )
     return {"ok": True}
 
 
