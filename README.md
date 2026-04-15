@@ -22,7 +22,7 @@ Chilean personal finance SaaS for individuals and couples. Captures bank transac
 
 **Database**
 - Supabase PostgreSQL 15
-- Alembic migrations (32 versions)
+- Alembic migrations (37 versions)
 
 **Auth**
 - Supabase Auth — Google OAuth (Gmail users) + Microsoft OAuth (Outlook users)
@@ -77,13 +77,13 @@ cd frontend && npm run dev                  # http://localhost:3000
 
 ```
 backend/
-  main.py             FastAPI app factory + 14 routers
+  main.py             FastAPI app factory + 16 routers
   worker.py           ARQ FastWorkerSettings + SlowWorkerSettings
   core/               Config, database, security (PyJWT), cache (Redis)
   modules/            Feature modules (see "What Luka Does" below)
   jobs/               ARQ task definitions + queue routing
-  alembic/            Database migrations (32 versions)
-  tests/              50 test files
+  alembic/            Database migrations (37 versions)
+  tests/              56 test files (~401 tests)
 
 frontend/
   app/
@@ -164,13 +164,13 @@ Two-tier system: known merchants resolve instantly from a global DB cache, new m
 Full conversational flow via Meta WhatsApp Cloud API. Transaction alerts include sender, subject, and Chile-timezone time. Interactive split type selection (Personal/Hogar), category picker, and confirmation. Transfers (CC payments, own-account moves) receive an informational-only message with no split/category flow. Supports manual expense entry via natural language.
 
 **Budgets & Allocations** (`backend/modules/budgets/`)
-Monthly household budgets with waterfall ceiling logic. Personal budget service, 50/20/30 allocation suggestions (historical + recommended), per-category budgets. Frontend includes pace charts, allocation sliders, and waterfall cards.
+Monthly household budgets with waterfall ceiling logic and a multi-level Sankey flow visualization. The v3 `/budgets/v2/{household_id}` endpoint dispatches to two dedicated builders: `_build_hogar_sankey` (4 levels: per-source income → `Ingresos Hogar` hub → 5 allocation nodes including `Gastos fijos`/`Cuotas`/`Meta de ahorro`/`Gasto personal`/`Disponible hogar` → per-category breakdown) and `_build_personal_sankey` (3 allocation levels with its own `Mis ingresos` hub). Caller-relative privacy: each viewer sees their own income categories broken out at Level 0, while other members appear as one aggregated node per member (`Ingresos {Name}` for full mode, `Contribución fija {Name}` for fixed mode). Forecast engine, 50/20/30 allocation suggestions, per-category caps, cuotas (installment purchases), savings target + payday + personal allocation settings, contribution-mode dispatch (full / fixed / reimbursement) with privacy invariant enforced by construction in `contribution_service.income_breakdown_for_household_view`.
 
 **Notifications** (`backend/modules/notifications/`)
 In-app notification system with unread counts, per-user notification preferences (WhatsApp toggle), and CRUD operations.
 
 **Subscriptions** (`backend/modules/subscriptions/`)
-Automatic recurring transaction detection via computed view (no additional DB tables). Pre-cached daily for fast access.
+Automatic recurring transaction detection via DB-backed cache (refreshed on demand). Each detected subscription supports an explicit user-set classification (`Personal` or `Compartido` / shared) via a click-to-flip pill in the subscriptions detail table. Toggling the classification cascades to the last 3 months of underlying `transaction_splits` rows via `reclassify_subscription_split`, upserts the override, and invalidates the detection cache atomically. The household-bills aggregate filters by effective `split_type='shared'` so personal subscriptions are correctly excluded from the household pot — and a symmetric `get_user_shared_known_bills` helper preserves flow conservation when reimbursement-mode members have personal bills.
 
 **Bank Accounts** (`backend/modules/bank_accounts/`)
 Manual bank account creation and management. Supports personal, partner, and joint (hogar) account types. Balance tracking with sync timestamps.

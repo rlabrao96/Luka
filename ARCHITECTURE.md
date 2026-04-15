@@ -34,7 +34,7 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 
 ### FastAPI Backend (`backend/main.py`)
 - Entry point: `main:app`
-- 14 routers registered (auth, transactions, households, budgets, bank_accounts, bank_connect, plaid, subscriptions, notifications, settings, merchant_review, merchant_train, email webhooks, whatsapp webhooks)
+- 16 routers registered (auth, households, invite, email, whatsapp, transactions, budgets, cuota, user_budget_settings, bank_accounts, settings, bank_connect, subscriptions, notifications, merchant_review, train, plaid)
 - CacheHeaderMiddleware: `private, max-age=30` on GET endpoints
 - CORS: configured from `settings.cors_origins` env var
 - Health check: `GET /health`
@@ -79,7 +79,10 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 | `merchant_category_selections` | User category choices per merchant | -> merchants, users |
 | `household_budgets` | Monthly budget per account | -> households, bank_accounts |
 | `category_budgets` | Per-category monthly limits | -> household_budgets |
-| `household_budget_allocations` | Split % (hogar/ahorro/personal) | -> households |
+| `household_budget_allocations` | Legacy 50/20/30 split % (hogar/ahorro/personal) | -> households |
+| `user_budget_settings` | Per-user savings target, payday, personal allocation amount + currency | -> users |
+| `cuota_purchases` | Installment purchases (cuotas) tracked across months | -> users, households |
+| `subscription_overrides` | User overrides for detected subscriptions: status, category, next_charge_day, **split_type** (`personal`/`shared`) | -> users |
 | `bank_credentials` | AES-256-GCM encrypted Luka Connect creds | -> users |
 | `plaid_items` | Plaid connection state per user | -> users |
 | `notifications` | In-app notifications | -> users |
@@ -292,10 +295,13 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 ### Budgets (`/budgets`)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/budgets/monthly/{household_id}` | Monthly budget CRUD |
-| GET | `/budgets/personal/{household_id}` | Personal budget view |
-| GET/POST | `/budgets/allocation/{household_id}` | 50/20/30 allocation |
+| GET | `/budgets/v2/{household_id}` | v3 multi-level Sankey response: caller-relative income breakdown, 4-level hogar / 3-level personal builders, forecast block, risk categories, runway, cuotas, savings target |
+| GET/POST | `/budgets/monthly/{household_id}` | Legacy monthly budget CRUD |
+| GET | `/budgets/personal/{household_id}` | Legacy personal budget view |
+| GET/POST | `/budgets/allocation/{household_id}` | Legacy 50/20/30 allocation |
 | GET/POST | `/budgets/categories/{household_id}` | Per-category budgets |
+| GET/PATCH | `/budgets/settings` | User budget settings: savings_target_amount, savings_target_currency, payday_day_of_month, **personal_allocation_amount**, **personal_allocation_currency** |
+| POST/GET/DELETE | `/cuotas` | Installment purchases (cuotas) CRUD |
 
 ### Bank Accounts (`/bank-accounts`)
 | Method | Path | Description |
@@ -327,7 +333,9 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 ### Subscriptions (`/subscriptions`)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/subscriptions/detected` | Auto-detected recurring transactions |
+| GET | `/subscriptions/detected` | Auto-detected recurring transactions (override-merged) |
+| PUT | `/subscriptions/override` | Upsert override (status/category/next_charge_day/split_type). When `split_type` is set, routes through `reclassify_subscription_split` which cascades to the last 3 months of `transaction_splits` and invalidates the detection cache atomically. |
+| POST | `/subscriptions/refresh` | Force recompute of the detection cache |
 
 ### Notifications (`/notifications`)
 | Method | Path | Description |
@@ -419,10 +427,12 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 
 ## Testing
 
-**Backend:** 50 test files in `backend/tests/`, covering all major modules:
+**Backend:** 56 test files in `backend/tests/`, ~401 tests passing, covering all major modules:
 - Auth, transactions, budgets, households, email parsing, WhatsApp handler, merchant normalization
 - Bank connect encryption/mapping, queue routing, worker settings, notifications, categories, subscriptions, reconciliation
-- **New (session 17):** LLM parser, LLM parser integration, parser orchestrator, template executor, template agent, bank registry service
+- LLM parser, LLM parser integration, parser orchestrator, template executor, template agent, bank registry service
+- **Budget v2/v3:** `test_budget_v2_endpoint.py` (10 tests), `test_budget_v3_sankey.py` (~28 tests covering the 4-level hogar builder, 3-level personal builder, `_pay_first_fit` routing, caller-relative privacy regression, and a parametrized flow-conservation matrix across 6 seed/view combos), `test_budget_forecast.py` (22 tests), `test_user_budget_settings.py` (9 tests), `test_contribution_modes.py` (12 tests)
+- **Subscription classification:** `test_subscription_reclassify.py` (~20 tests covering the schema, upsert, 3-month cascade, override-wins, household/personal bill filters, and router endpoint integration)
 - Config: `asyncio_mode = "auto"`, testpaths = `["tests"]`
 - Run: `cd backend && pytest -v`
 
@@ -462,4 +472,8 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 
 **Per-user merchant overrides:** `merchant_category_selections` supports both global (shared dataset) and per-user category choices via nullable `user_id` FK. Users see their own overrides first, global selections second, LLM suggestions last.
 
-**Subscription detection without extra tables:** Recurring expenses are detected from transaction patterns (2+ consecutive months, +/-20% amount tolerance) using a computed view, cached in Redis for 3 days. No additional database tables needed.
+**Subscription detection with explicit classification override:** Recurring expenses are detected from transaction patterns (2+ consecutive months, +/-20% amount tolerance), cached in `detected_subscriptions_cache`, and refreshed on demand. Each detected subscription's `split_type` defaults to the inferred value from the underlying `transaction_splits` row, but users can explicitly override via a click-to-flip pill on the subscriptions page. The override is stored on `subscription_overrides.split_type` and cascades atomically to the last 3 months of `transaction_splits` via `reclassify_subscription_split` — so the next time the detection runs, the new classification is already reflected in the underlying data. The household-bills aggregate filters by effective shared-only, with a symmetric `get_user_shared_known_bills` helper used in `_reimbursement_members_known_bills` so flow conservation holds when reimbursement-mode members have personal bills.
+
+**v3 Sankey: caller-relative privacy by construction:** The household Sankey shows the viewer's own income categories broken out at Level 0, while other household members appear as exactly one aggregated node per member (`Ingresos {Name}` for full-mode members, `Contribución fija {Name}` for fixed-mode members). The privacy invariant — "fixed-mode members' real income is never read" — is enforced structurally in `contribution_service.income_breakdown_for_household_view`: the dispatch on `contribution_mode` happens before any non-caller transaction read, and the `fixed` branch reads only the `fixed_contribution_amount` from a single member-table SELECT result row, never querying the member's `transactions` table. This is verified end-to-end by `test_hogar_fixed_privacy_recursive_walk`, which seeds a synthetic forbidden value as a fixed-mode member's real income and walks every node and link in the response JSON to confirm the value never leaks.
+
+**v3 Sankey: hub-based flow routing:** Both the 4-level hogar builder and the 3-level personal builder collapse all sources through a single `ingresos_hogar` / `ingresos_personales` hub node at Level 1. This makes flow conservation trivial (every source emits one link to the hub; the hub emits one link per allocation; every allocation either terminates or fans out to a single breakdown level). When income can't cover all allocations, a synthetic `otras_fuentes` source enters at Level 0 alongside the real sources, absorbed via the `_pay_first_fit` routing primitive. Verified across 6 seeded household + view combos by `TestFlowConservationAllSeeds`.
