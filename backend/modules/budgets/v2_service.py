@@ -196,9 +196,12 @@ async def _three_month_category_stats(
         prior_start = _prior_month(month, offset)
         first_day, first_day_next, _ = _month_bounds_datetime(prior_start)
 
+        # Luka stores expense amounts as negative Decimals; take abs() so
+        # category totals come out positive and downstream share×CV math
+        # (mean/std/cap) works correctly.
         q = select(
             Transaction.category,
-            func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
         ).where(
             Transaction.household_id == household_id,
             Transaction.currency == currency,
@@ -274,7 +277,8 @@ async def _daily_burn_14d(
     for t in txns:
         if is_savings_category(t.category):
             continue
-        total += Decimal(str(t.amount))
+        # Expenses are stored as negative; abs() so the daily burn is positive.
+        total += abs(Decimal(str(t.amount)))
     return (total / Decimal("14")) if total > _ZERO else _ZERO
 
 
@@ -398,17 +402,46 @@ def _build_sankey(
 ) -> SankeyBlock:
     """Build the nodes/links block for the Sankey diagram.
 
-    Nodes: income, known_bills, cuotas, savings_target, spendable, then
-    one node per top-risk category plus an `spent_other` catch-all.
+    Flow conservation:
+      income → [known_bills, cuotas, savings_target, spendable]
+      spendable → [per-risk-category spent, other_spent, spent_remaining]
+
+    Overspent months (mtd_spent > spendable_amount): the excess came from
+    a non-income source (savings drawdown, credit, prior balance). We add
+    a synthetic `otras_fuentes` source node that feeds the extra into
+    spendable so the Sankey stays flow-conserving and the user sees the
+    shortfall visualized as a distinct inflow.
     """
+    total_spent = sum((s for _, s in top_risk_totals), start=_ZERO) + other_spent
+    spent_remaining = spendable_amount - total_spent
+    if spent_remaining < _ZERO:
+        spent_remaining = _ZERO
+
+    # Overspent case: spendable needs to expand to cover the actual outflows,
+    # so the Sankey conserves. The "extra" goes into otras_fuentes.
+    if total_spent > spendable_amount:
+        sankey_spendable = total_spent
+        otras_fuentes = total_spent - spendable_amount
+    else:
+        sankey_spendable = spendable_amount
+        otras_fuentes = _ZERO
+
     nodes: list[SankeyNode] = [
         SankeyNode(id="income", label="Ingresos", value=income),
-        SankeyNode(id="known_bills", label="Gastos fijos", value=known_bills),
-        SankeyNode(id="cuotas", label="Cuotas del mes", value=cuotas_this_month),
-        SankeyNode(id="savings_target", label="Meta de ahorro", value=savings_target),
-        SankeyNode(id="spendable", label="Disponible", value=spendable_amount),
     ]
+    if otras_fuentes > _ZERO:
+        nodes.append(SankeyNode(id="otras_fuentes", label="Otras fuentes", value=otras_fuentes))
+    if known_bills > _ZERO:
+        nodes.append(SankeyNode(id="known_bills", label="Gastos fijos", value=known_bills))
+    if cuotas_this_month > _ZERO:
+        nodes.append(SankeyNode(id="cuotas", label="Cuotas del mes", value=cuotas_this_month))
+    if savings_target > _ZERO:
+        nodes.append(SankeyNode(id="savings_target", label="Meta de ahorro", value=savings_target))
+    if sankey_spendable > _ZERO:
+        nodes.append(SankeyNode(id="spendable", label="Disponible", value=sankey_spendable))
     for category, spent in top_risk_totals:
+        if spent <= _ZERO:
+            continue  # drop zero-spend risk categories from the visualization
         nodes.append(
             SankeyNode(
                 id=f"spent_{_slugify(category)}",
@@ -418,15 +451,55 @@ def _build_sankey(
             )
         )
     if other_spent > _ZERO:
-        nodes.append(SankeyNode(id="spent_other", label="Otros", value=other_spent))
+        # Label as "Otras categorías" so it never collides with a category
+        # literally named "Otros" that made it into top_risk_totals.
+        nodes.append(SankeyNode(id="spent_other", label="Otras categorías", value=other_spent))
+    if spent_remaining > _ZERO:
+        nodes.append(
+            SankeyNode(id="spent_remaining", label="Aún disponible", value=spent_remaining)
+        )
 
-    links: list[SankeyLink] = [
-        SankeyLink(source="income", target="known_bills", value=known_bills),
-        SankeyLink(source="income", target="cuotas", value=cuotas_this_month),
-        SankeyLink(source="income", target="savings_target", value=savings_target),
-        SankeyLink(source="income", target="spendable", value=spendable_amount),
-    ]
+    # Income outflow must never exceed income itself. When known_bills +
+    # cuotas + savings_target > income (deep-overspent case), we can't
+    # honor all of them from income alone; clamp the income → spendable
+    # link to whatever income has left and route the rest via otras_fuentes.
+    fixed_outflow = known_bills + cuotas_this_month + savings_target
+    income_to_spendable = sankey_spendable
+    if fixed_outflow + sankey_spendable > income:
+        # Prefer honoring fixed_outflow (the user actually paid those);
+        # what's left of income flows to spendable, the rest comes from
+        # otras_fuentes.
+        income_to_spendable = max(_ZERO, income - fixed_outflow)
+        extra_needed_from_otras = sankey_spendable - income_to_spendable
+        if extra_needed_from_otras > otras_fuentes:
+            # The otras_fuentes sized by total_spent-spendable_amount isn't
+            # enough to cover this deeper case; expand it.
+            extra_otras = extra_needed_from_otras - otras_fuentes
+            otras_fuentes += extra_otras
+            # Update or insert the otras_fuentes node
+            for n in nodes:
+                if n.id == "otras_fuentes":
+                    n.value = otras_fuentes
+                    break
+            else:
+                nodes.insert(
+                    1, SankeyNode(id="otras_fuentes", label="Otras fuentes", value=otras_fuentes)
+                )
+
+    links: list[SankeyLink] = []
+    if known_bills > _ZERO:
+        links.append(SankeyLink(source="income", target="known_bills", value=known_bills))
+    if cuotas_this_month > _ZERO:
+        links.append(SankeyLink(source="income", target="cuotas", value=cuotas_this_month))
+    if savings_target > _ZERO:
+        links.append(SankeyLink(source="income", target="savings_target", value=savings_target))
+    if income_to_spendable > _ZERO:
+        links.append(SankeyLink(source="income", target="spendable", value=income_to_spendable))
+    if otras_fuentes > _ZERO:
+        links.append(SankeyLink(source="otras_fuentes", target="spendable", value=otras_fuentes))
     for category, spent in top_risk_totals:
+        if spent <= _ZERO:
+            continue
         links.append(
             SankeyLink(
                 source="spendable",
@@ -436,6 +509,10 @@ def _build_sankey(
         )
     if other_spent > _ZERO:
         links.append(SankeyLink(source="spendable", target="spent_other", value=other_spent))
+    if spent_remaining > _ZERO:
+        links.append(
+            SankeyLink(source="spendable", target="spent_remaining", value=spent_remaining)
+        )
 
     return SankeyBlock(nodes=nodes, links=links)
 
@@ -553,7 +630,9 @@ async def get_budget_v2(
     mtd_savings_progress = _ZERO
     mtd_by_category: dict[str, Decimal] = {}
     for t in month_txns:
-        amt = Decimal(str(t.amount))
+        # Luka stores expense amounts as negative; normalize to positive
+        # before aggregating so spent/category totals are outflows, not net.
+        amt = abs(Decimal(str(t.amount)))
         if is_savings_category(t.category):
             mtd_savings_progress += amt
             continue
@@ -621,12 +700,14 @@ async def get_budget_v2(
         )
         top_risk_totals.append((name, spent_this_month))
 
-    # "Other" bucket for the Sankey = all non-risk MTD spend
-    risk_names = {name for name, _ in top_risk_totals}
-    other_spent = sum(
-        (v for k, v in mtd_by_category.items() if k not in risk_names),
-        start=_ZERO,
-    )
+    # "Other" bucket for the Sankey = everything spent this month that isn't
+    # one of the top risk categories. Derive from mtd_spent (not
+    # mtd_by_category) so uncategorized transactions — which never make it
+    # into mtd_by_category but do count toward mtd_spent — still show up.
+    risk_totals_sum = sum((s for _, s in top_risk_totals), start=_ZERO)
+    other_spent = mtd_spent - risk_totals_sum
+    if other_spent < _ZERO:
+        other_spent = _ZERO
 
     # ---- runway ----------------------------------------------------------
     daily_burn = await _daily_burn_14d(

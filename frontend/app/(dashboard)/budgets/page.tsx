@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { api } from "@/app/lib/api";
-import type { Currency } from "@/app/lib/format";
+import { api, type BudgetV2Response } from "@/app/lib/api";
+import { formatMoney, type Currency } from "@/app/lib/format";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
 import BudgetSankey from "@/app/(dashboard)/components/BudgetSankey";
 import { RiskAlertBand } from "@/app/(dashboard)/components/RiskAlertBand";
@@ -29,6 +29,82 @@ function SectionError({ message }: { message: string }) {
     <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
       {message}
     </div>
+  );
+}
+
+function SectionFlowBody({
+  data,
+  currency,
+}: {
+  data: BudgetV2Response;
+  currency: Currency;
+}) {
+  const spendable = Number(data.spendable.amount);
+  const spent = Number(data.spendable.spent);
+  const income = Number(data.sankey.nodes.find((n) => n.id === "income")?.value ?? 0);
+  const knownBillsNode = data.sankey.nodes.find((n) => n.id === "known_bills");
+  const knownBills = Number(knownBillsNode?.value ?? 0);
+  const cuotas = Number(data.cuotas.this_month);
+  const savingsTarget = Number(data.savings_target.target);
+  // Overspent case: fixed bills (+ cuotas + savings target) meet or exceed
+  // income, so there's nothing left to visualize as a spendable flow. Show
+  // an explicit banner with the shortfall breakdown and an actionable
+  // next step instead of falling through to a degenerate Sankey.
+  if (spendable <= 0 && (spent > 0 || knownBills > 0)) {
+    const shortfall = Math.max(0, knownBills + cuotas + savingsTarget - income);
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 space-y-2">
+        <p className="font-semibold">Tus compromisos superan tu ingreso este mes.</p>
+        <div className="grid grid-cols-2 gap-y-1 text-red-700/90 tabular-nums">
+          <span>Ingreso:</span>
+          <span className="text-right">{formatMoney(income, currency)}</span>
+          <span>Gastos fijos:</span>
+          <span className="text-right">{formatMoney(knownBills, currency)}</span>
+          {cuotas > 0 && (
+            <>
+              <span>Cuotas del mes:</span>
+              <span className="text-right">{formatMoney(cuotas, currency)}</span>
+            </>
+          )}
+          {savingsTarget > 0 && (
+            <>
+              <span>Meta de ahorro:</span>
+              <span className="text-right">{formatMoney(savingsTarget, currency)}</span>
+            </>
+          )}
+          {shortfall > 0 && (
+            <>
+              <span className="font-semibold">Déficit:</span>
+              <span className="text-right font-semibold">
+                -{formatMoney(shortfall, currency)}
+              </span>
+            </>
+          )}
+          <span>Gastado este mes:</span>
+          <span className="text-right">{formatMoney(spent, currency)}</span>
+        </div>
+        <p className="text-xs text-red-700/80 pt-1">
+          Revisa tus gastos fijos o tu meta de ahorro en Configuración para
+          recuperar margen.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <BudgetSankey
+      nodes={data.sankey.nodes.map((n) => ({
+        id: n.id,
+        label: n.label,
+        value: Number(n.value),
+        risk: n.risk ?? undefined,
+      }))}
+      links={data.sankey.links.map((l) => ({
+        source: l.source,
+        target: l.target,
+        value: Number(l.value),
+      }))}
+      currency={currency}
+    />
   );
 }
 
@@ -169,13 +245,9 @@ export default function BudgetsPage() {
           <SectionError message="No se pudo cargar el hogar." />
         ) : (
           <div className="space-y-3">
-            {household.data && household.data.sankey.nodes.length > 0 && (
+            {household.data && (
               <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
-                <BudgetSankey
-                  nodes={household.data.sankey.nodes}
-                  links={household.data.sankey.links}
-                  currency={selectedCurrency}
-                />
+                <SectionFlowBody data={household.data} currency={selectedCurrency} />
               </div>
             )}
             {household.data && <RunwayCard runway={household.data.runway} />}
@@ -183,33 +255,49 @@ export default function BudgetsPage() {
         )}
       </section>
 
-      {/* PERSONAL section */}
-      <section aria-labelledby="personal-budget-heading" className="space-y-3">
-        <h3
-          id="personal-budget-heading"
-          className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
-        >
-          Personal
-        </h3>
-        {personal.isPending ? (
-          <SectionSkeleton />
-        ) : personal.isError ? (
-          <SectionError message="No se pudo cargar tu vista personal." />
-        ) : (
-          <div className="space-y-3">
-            {personal.data && personal.data.sankey.nodes.length > 0 && (
-              <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
-                <BudgetSankey
-                  nodes={personal.data.sankey.nodes}
-                  links={personal.data.sankey.links}
-                  currency={selectedCurrency}
-                />
+      {/* PERSONAL section — hidden when it's byte-identical to the Hogar view
+          (typically when the caller is the only active member with
+          transactions this month; showing two identical Sankeys is noise). */}
+      {(() => {
+        const sameAsHogar =
+          household.data &&
+          personal.data &&
+          Number(household.data.spendable.amount) === Number(personal.data.spendable.amount) &&
+          Number(household.data.spendable.spent) === Number(personal.data.spendable.spent) &&
+          household.data.sankey.nodes.length === personal.data.sankey.nodes.length;
+        if (sameAsHogar) {
+          return (
+            <p className="text-xs text-slate-400 italic">
+              Tu vista personal coincide con la del hogar este mes — no hay aportes
+              de otros miembros activos todavía.
+            </p>
+          );
+        }
+        return (
+          <section aria-labelledby="personal-budget-heading" className="space-y-3">
+            <h3
+              id="personal-budget-heading"
+              className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+            >
+              Personal
+            </h3>
+            {personal.isPending ? (
+              <SectionSkeleton />
+            ) : personal.isError ? (
+              <SectionError message="No se pudo cargar tu vista personal." />
+            ) : (
+              <div className="space-y-3">
+                {personal.data && (
+                  <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-4">
+                    <SectionFlowBody data={personal.data} currency={selectedCurrency} />
+                  </div>
+                )}
+                {personal.data && <RunwayCard runway={personal.data.runway} />}
               </div>
             )}
-            {personal.data && <RunwayCard runway={personal.data.runway} />}
-          </div>
-        )}
-      </section>
+          </section>
+        );
+      })()}
     </div>
   );
 }
