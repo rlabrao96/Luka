@@ -423,3 +423,82 @@ class TestOverrideWinsOverInferredSplitType:
         spotify_items = [i for i in payload["items"] if i["merchant_name"] == merchant_key]
         assert len(spotify_items) == 1
         assert spotify_items[0]["split_type"] == "personal"
+
+
+from modules.subscriptions.read import (  # noqa: E402
+    get_household_known_bills,
+    get_user_personal_known_bills,
+)
+
+
+class TestKnownBillsFiltering:
+    @pytest.mark.asyncio
+    async def test_household_known_bills_excludes_personal_subs(self, db):
+        """A subscription tagged split_type='personal' must NOT count toward
+        household known bills."""
+        user = await _get_seed_user(db)
+        user_id = user.id
+        household_id = await _get_seed_household_id(db, user_id)
+        now = datetime.now(timezone.utc)
+
+        # 3 months of a 'shared' bill: Comcast-bills-shared ~$56.20
+        for m in range(3):
+            tx = Transaction(
+                user_id=user_id,
+                household_id=household_id,
+                raw_merchant_name="Comcast-bills-shared",
+                amount=Decimal("-56.20"),
+                currency="USD",
+                transaction_date=now - timedelta(days=30 * m),
+                source="email",
+                transaction_type="expense",
+                category="Cuentas",
+            )
+            db.add(tx)
+            await db.flush()
+            db.add(
+                TransactionSplit(
+                    transaction_id=tx.id,
+                    split_type="shared",
+                    decided_by_user_id=user_id,
+                )
+            )
+
+        # 3 months of a 'personal' bill: Netflix-bills-personal ~$9.99
+        for m in range(3):
+            tx = Transaction(
+                user_id=user_id,
+                household_id=household_id,
+                raw_merchant_name="Netflix-bills-personal",
+                amount=Decimal("-9.99"),
+                currency="USD",
+                transaction_date=now - timedelta(days=30 * m),
+                source="email",
+                transaction_type="expense",
+                category="Entretenimiento",
+            )
+            db.add(tx)
+            await db.flush()
+            db.add(
+                TransactionSplit(
+                    transaction_id=tx.id,
+                    split_type="personal",
+                    decided_by_user_id=user_id,
+                )
+            )
+        await db.commit()
+
+        # Delete cache to force fresh recompute
+        await db.execute(
+            text("DELETE FROM detected_subscriptions_cache WHERE user_id = :uid"),
+            {"uid": str(user_id)},
+        )
+        await db.commit()
+
+        household_total = await get_household_known_bills(db, household_id, "USD")
+        personal_total = await get_user_personal_known_bills(db, user_id, "USD")
+
+        # Only Comcast-bills-shared should be in household total
+        assert household_total == Decimal("56.20")
+        # Only Netflix-bills-personal should be in personal total
+        assert personal_total == Decimal("9.99")

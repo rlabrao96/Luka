@@ -38,13 +38,35 @@ async def test_get_household_known_bills_sums_across_members(db, monkeypatch):
     assert len(members) >= 2, "HOGAR FIXED seed should have ≥2 active members"
 
     # Map user_id -> canned monthly totals (CLP and USD).
+    # `get_household_known_bills` now reads `payload["items"]` filtered to
+    # split_type='shared', so the canned data must include an `items` list.
+    # We also keep `summary_by_currency` so the `get_user_known_bills` path
+    # (which still reads that key) continues to work in the second test.
     canned: dict[str, dict] = {}
     for idx, (user_id, _email) in enumerate(members):
+        clp_amount = Decimal(str((idx + 1) * 100_000))
+        usd_amount = Decimal(str((idx + 1) * 50))
         canned[str(user_id)] = {
+            "items": [
+                {
+                    "merchant_name": f"BillCLP-member{idx}",
+                    "status": "active",
+                    "currency": "CLP",
+                    "split_type": "shared",
+                    "last_amount": clp_amount,
+                },
+                {
+                    "merchant_name": f"BillUSD-member{idx}",
+                    "status": "active",
+                    "currency": "USD",
+                    "split_type": "shared",
+                    "last_amount": usd_amount,
+                },
+            ],
             "summary_by_currency": {
-                "CLP": {"total_recurring": Decimal(str((idx + 1) * 100_000))},
-                "USD": {"total_recurring": Decimal(str((idx + 1) * 50))},
-            }
+                "CLP": {"total_recurring": clp_amount},
+                "USD": {"total_recurring": usd_amount},
+            },
         }
 
     async def _fake_detected(db_, user_id, months_back: int = 6):

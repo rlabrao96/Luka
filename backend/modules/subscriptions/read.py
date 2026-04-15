@@ -1,12 +1,18 @@
-"""Household-scoped `known_bills` reader for the budget-v2 endpoint.
+"""Household-scoped and personal-scoped `known_bills` readers for the budget endpoints.
 
 The existing `modules.subscriptions.service.get_detected_subscriptions` is
-strictly user-scoped. The budget-v2 endpoint needs both a user-scoped and a
-household-scoped sum, so we wrap the underlying helper here.
+strictly user-scoped. Budget-v2 / v3 need both a household-scoped and a
+user-scoped sum, each filtered by effective `split_type`:
 
-This module is intentionally thin — we do NOT filter on `contribution_mode`
-(that's `v2_service`'s job when it constructs the household-level aggregate).
-Here we just fan out to the subscriptions helper per active member.
+- Household known bills: subscriptions with effective `split_type='shared'`
+- Personal known bills: subscriptions with effective `split_type='personal'`
+
+"Effective" means: `subscription_overrides.split_type` if set, otherwise the
+raw `split_type` from `detect_from_rows` (which reads it from
+`transaction_splits.split_type` defaulting to 'personal').
+
+This module does NOT filter by `contribution_mode` (that's `v2_service`'s job
+when it constructs the household-level aggregate).
 """
 
 from __future__ import annotations
@@ -21,25 +27,57 @@ from modules.households.models import HouseholdMember
 from modules.subscriptions.service import get_detected_subscriptions
 
 
+_ZERO = Decimal("0")
+
+
+async def _sum_user_bills_by_split_type(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    currency: str,
+    wanted_split_type: str,
+) -> Decimal:
+    """Sum recurring bills for one user in `currency` where the effective
+    split_type matches `wanted_split_type`."""
+    payload = await get_detected_subscriptions(db, user_id)
+    total = _ZERO
+    for item in payload["items"]:
+        if item.get("status") != "active":
+            continue
+        if item.get("currency") != currency:
+            continue
+        # split_type was already resolved by _merge_overrides — override wins
+        # over inferred, so this read reflects the effective value.
+        if item["split_type"] == wanted_split_type:
+            last = item.get("last_amount") or _ZERO
+            total += last if isinstance(last, Decimal) else Decimal(str(last))
+    return total
+
+
 async def get_user_known_bills(
     db: AsyncSession,
     user_id: uuid.UUID,
     currency: str,
 ) -> Decimal:
-    """Sum the monthly total of detected recurring bills for one user in `currency`.
-
-    Returns Decimal('0') if there are no detected subscriptions in that
-    currency — the subscriptions service returns a dict keyed by currency
-    under `summary_by_currency`, so a missing currency key means "nothing".
-    """
+    """Sum the monthly total of ALL detected recurring bills for one user in
+    `currency`, regardless of split_type. Used by the legacy v2 personal view
+    entry points that don't yet discriminate between personal and shared."""
     payload = await get_detected_subscriptions(db, user_id)
     summary = payload.get("summary_by_currency") or {}
     curr_summary = summary.get(currency)
     if not curr_summary:
-        return Decimal("0")
-    total = curr_summary.get("total_recurring") or Decimal("0")
-    # The service returns Decimal already, but be defensive.
+        return _ZERO
+    total = curr_summary.get("total_recurring") or _ZERO
     return total if isinstance(total, Decimal) else Decimal(str(total))
+
+
+async def get_user_personal_known_bills(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    currency: str,
+) -> Decimal:
+    """Sum of one user's recurring bills that are PERSONAL (not shared with
+    the household). Used by the v3 personal view Sankey."""
+    return await _sum_user_bills_by_split_type(db, user_id, currency, "personal")
 
 
 async def get_household_known_bills(
@@ -47,11 +85,13 @@ async def get_household_known_bills(
     household_id: uuid.UUID,
     currency: str,
 ) -> Decimal:
-    """Sum known bills across every active member of a household in `currency`.
+    """Sum of household SHARED recurring bills across every active member
+    in `currency`. Active = `left_at IS NULL`. Only items whose effective
+    split_type is 'shared' contribute — personal-tagged subs are excluded.
 
-    Active = `left_at IS NULL`. The caller (`v2_service`) is responsible for
-    adjusting the result based on contribution_mode — e.g. subtracting
-    reimbursement members' bills, which don't hit the household pot.
+    The caller (`v2_service`) is responsible for adjusting the result based
+    on contribution_mode — e.g. subtracting reimbursement members' bills,
+    which don't hit the household pot.
     """
     member_rows = await db.execute(
         select(HouseholdMember.user_id).where(
@@ -59,7 +99,7 @@ async def get_household_known_bills(
             HouseholdMember.left_at.is_(None),
         )
     )
-    total = Decimal("0")
+    total = _ZERO
     for (user_id,) in member_rows:
-        total += await get_user_known_bills(db, user_id, currency)
+        total += await _sum_user_bills_by_split_type(db, user_id, currency, "shared")
     return total
