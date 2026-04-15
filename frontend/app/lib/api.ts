@@ -304,6 +304,7 @@ export interface SubscriptionOverrideBody {
   status?: string | null;
   category?: string | null;
   next_charge_day?: number | null;
+  split_type?: "personal" | "shared" | null;
 }
 
 // --- Luka Connect ---

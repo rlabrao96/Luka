@@ -45,6 +45,9 @@ export function useSubscriptionOverride() {
                   ...(body.next_charge_day != null && {
                     next_charge_day: body.next_charge_day,
                   }),
+                  ...(body.split_type != null && {
+                    split_type: body.split_type,
+                  }),
                 }
               : item,
           ),
@@ -63,6 +66,7 @@ export function useSubscriptionOverride() {
       // the optimistic update isn't immediately overwritten
       setTimeout(() => {
         qc.invalidateQueries({ queryKey: ["subscriptions"] });
+        qc.invalidateQueries({ queryKey: ["budget"] });
       }, 2000);
     },
   });
