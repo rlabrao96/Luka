@@ -66,7 +66,7 @@ export function useSubscriptionOverride() {
       // the optimistic update isn't immediately overwritten
       setTimeout(() => {
         qc.invalidateQueries({ queryKey: ["subscriptions"] });
-        qc.invalidateQueries({ queryKey: ["budget"] });
+        qc.invalidateQueries({ queryKey: ["budget-v2"] });
       }, 2000);
     },
   });
