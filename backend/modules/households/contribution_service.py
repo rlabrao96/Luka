@@ -26,10 +26,11 @@ from __future__ import annotations
 
 import calendar
 import uuid
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.households.models import HouseholdMember
@@ -57,6 +58,25 @@ def _month_bounds_datetime(month: date) -> tuple[datetime, datetime]:
     # Touch calendar to ensure the tuple is a valid month (no KeyError surprises).
     calendar.monthrange(month.year, month.month)
     return first_day, first_day_next
+
+
+# --------------------------------------------------------------- dataclasses
+
+
+@dataclass
+class OtherMemberContribution:
+    user_id: uuid.UUID
+    display_name: str
+    amount: Decimal
+    mode: str  # "full" | "fixed"
+
+
+@dataclass
+class HouseholdIncomeBreakdown:
+    total: Decimal
+    caller_sources: dict[str, Decimal] = field(default_factory=dict)
+    caller_other_income: Decimal = field(default_factory=lambda: _ZERO)
+    other_members: list[OtherMemberContribution] = field(default_factory=list)
 
 
 # --------------------------------------------------------------- personal view
@@ -144,6 +164,142 @@ async def income_for_household_view(
             # reimbursement (or any unknown future mode) -> 0
             continue
     return total
+
+
+# ------------------------------------------------ caller-relative breakdown
+
+
+async def income_breakdown_for_household_view(
+    db: AsyncSession,
+    *,
+    caller_id: uuid.UUID,
+    household_id: uuid.UUID,
+    month: date,
+    currency: str,
+) -> HouseholdIncomeBreakdown:
+    """Return a caller-relative breakdown of household income for the month.
+
+    PRIVACY INVARIANT
+    -----------------
+    - Caller's sources are computed from their own transactions + their own
+      user_category_preferences, so only the caller sees their category mix.
+    - For every non-caller active member:
+        * full          -> read real income via income_for_personal_view
+        * fixed         -> read fixed_contribution_amount only; NEVER touch
+                           their real income transactions
+        * reimbursement -> skipped (contributes $0 to the pot)
+    - `total` equals the sum of caller_sources + caller_other_income +
+      other_members amounts, and matches what `income_for_household_view`
+      returns (which is kept as a thin scalar accessor).
+    """
+    first_day, first_day_next = _month_bounds_datetime(month)
+
+    # 1. Caller's income transactions grouped by category.
+    caller_tx_rows = await db.execute(
+        select(
+            Transaction.category,
+            func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+        )
+        .where(
+            Transaction.user_id == caller_id,
+            Transaction.household_id == household_id,
+            Transaction.transaction_type == "income",
+            Transaction.currency == currency,
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
+        )
+        .group_by(Transaction.category)
+    )
+    raw_caller_totals: dict[str | None, Decimal] = {}
+    for category, total in caller_tx_rows:
+        raw_caller_totals[category] = Decimal(str(total))
+
+    # 2. Caller's income category preferences (drives source labeling).
+    #    Only categories configured by the user become named sources;
+    #    everything else drops into caller_other_income.
+    pref_rows = await db.execute(
+        text("""
+            SELECT category, sort_order
+            FROM user_category_preferences
+            WHERE user_id = :uid AND category_type = 'income'
+            ORDER BY sort_order
+        """),
+        {"uid": str(caller_id)},
+    )
+    known_income_categories = {row.category for row in pref_rows}
+
+    caller_sources: dict[str, Decimal] = {}
+    caller_other_income = _ZERO
+    for category, total in raw_caller_totals.items():
+        if category and category in known_income_categories and total > _ZERO:
+            caller_sources[category] = total
+        else:
+            caller_other_income += total
+
+    # 3. Other members (non-caller, active).
+    #    PRIVACY: the dispatch gates on contribution_mode BEFORE any
+    #    read of transaction data — it is structurally impossible for a
+    #    fixed-mode member's real income to be queried.
+    member_rows = await db.execute(
+        text("""
+            SELECT hm.user_id, u.full_name, hm.contribution_mode,
+                   hm.fixed_contribution_amount, hm.fixed_contribution_currency
+            FROM household_members hm
+            JOIN users u ON u.id = hm.user_id
+            WHERE hm.household_id = :hid
+              AND hm.left_at IS NULL
+              AND hm.user_id != :caller_id
+        """),
+        {"hid": str(household_id), "caller_id": str(caller_id)},
+    )
+    other_members: list[OtherMemberContribution] = []
+    for row in member_rows:
+        if row.contribution_mode == "full":
+            amt = await income_for_personal_view(
+                db,
+                user_id=row.user_id,
+                household_id=household_id,
+                month=month,
+                currency=currency,
+            )
+            if amt > _ZERO:
+                other_members.append(
+                    OtherMemberContribution(
+                        user_id=row.user_id,
+                        display_name=row.full_name,
+                        amount=amt,
+                        mode="full",
+                    )
+                )
+        elif row.contribution_mode == "fixed":
+            # PRIVACY: never query their real income transactions.
+            if (
+                row.fixed_contribution_amount is not None
+                and row.fixed_contribution_currency == currency
+            ):
+                other_members.append(
+                    OtherMemberContribution(
+                        user_id=row.user_id,
+                        display_name=row.full_name,
+                        amount=Decimal(str(row.fixed_contribution_amount)),
+                        mode="fixed",
+                    )
+                )
+        # reimbursement mode -> skip (contributes $0)
+
+    # 4. Compute the total.
+    total = (
+        sum(caller_sources.values(), start=_ZERO)
+        + caller_other_income
+        + sum((m.amount for m in other_members), start=_ZERO)
+    )
+
+    return HouseholdIncomeBreakdown(
+        total=total,
+        caller_sources=caller_sources,
+        caller_other_income=caller_other_income,
+        other_members=other_members,
+    )
 
 
 # ----------------------------------------------------------- update settings
