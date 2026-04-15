@@ -171,17 +171,21 @@ async def upsert_override(
     status: str | None,
     category: str | None,
     next_charge_day: int | None,
+    split_type: str | None = None,
 ) -> None:
     """Create or update a subscription override."""
     await db.execute(
         text("""
-            INSERT INTO subscription_overrides (user_id, merchant_key, status, category, next_charge_day, updated_at)
-            VALUES (:uid, :mk, COALESCE(:status, 'active'), :cat, :day, NOW())
+            INSERT INTO subscription_overrides (
+                user_id, merchant_key, status, category, next_charge_day, split_type, updated_at
+            )
+            VALUES (:uid, :mk, COALESCE(:status, 'active'), :cat, :day, :split_type, NOW())
             ON CONFLICT (user_id, merchant_key)
             DO UPDATE SET
                 status = COALESCE(:status, subscription_overrides.status),
                 category = CASE WHEN :cat IS NOT NULL THEN :cat ELSE subscription_overrides.category END,
                 next_charge_day = CASE WHEN :day IS NOT NULL THEN :day ELSE subscription_overrides.next_charge_day END,
+                split_type = CASE WHEN :split_type IS NOT NULL THEN :split_type ELSE subscription_overrides.split_type END,
                 updated_at = NOW()
         """),
         {
@@ -190,6 +194,7 @@ async def upsert_override(
             "status": status,
             "cat": category,
             "day": next_charge_day,
+            "split_type": split_type,
         },
     )
     await db.commit()
