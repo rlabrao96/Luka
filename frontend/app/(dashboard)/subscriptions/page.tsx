@@ -290,7 +290,7 @@ export default function SubscriptionsPage() {
             </p>
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               {/* Table header */}
-              <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_60px] gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+              <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_60px] gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase">
                   Servicio
                 </span>
@@ -302,9 +302,6 @@ export default function SubscriptionsPage() {
                 </span>
                 <span className="text-[11px] font-semibold text-slate-400 uppercase">
                   Categoría
-                </span>
-                <span className="text-[11px] font-semibold text-slate-400 uppercase">
-                  Clasificación
                 </span>
                 <span />
               </div>
@@ -326,19 +323,24 @@ export default function SubscriptionsPage() {
                     >
                       {/* Main row */}
                       <div
-                        className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_60px] gap-2 px-4 py-3 items-center cursor-pointer hover:bg-slate-50 transition-colors"
+                        className="grid grid-cols-[2fr_1fr_1fr_1fr_60px] gap-2 px-4 py-3 items-center cursor-pointer hover:bg-slate-50 transition-colors"
                         onClick={() =>
                           setExpandedRow(isExpanded ? null : sub.merchant_name)
                         }
                       >
-                        <div className="flex items-center gap-1.5">
-                          <div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {isExpanded ? (
+                            <ChevronUp size={14} className="text-slate-300 shrink-0" />
+                          ) : (
+                            <ChevronDown size={14} className="text-slate-300 shrink-0" />
+                          )}
+                          <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <p className="text-[13px] font-semibold text-gray-900">
+                              <p className="text-[13px] font-semibold text-gray-900 truncate">
                                 {sub.merchant_name}
                               </p>
                               {isInactive && (
-                                <span className="text-[9px] font-semibold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded uppercase">
+                                <span className="text-[9px] font-semibold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded uppercase shrink-0">
                                   Inactiva
                                 </span>
                               )}
@@ -347,11 +349,6 @@ export default function SubscriptionsPage() {
                               {sub.months_seen} meses · {sub.frequency}
                             </p>
                           </div>
-                          {isExpanded ? (
-                            <ChevronUp size={14} className="text-slate-300 ml-auto" />
-                          ) : (
-                            <ChevronDown size={14} className="text-slate-300 ml-auto" />
-                          )}
                         </div>
                         <span className="text-[13px] font-semibold text-gray-900 tabular-nums">
                           {formatAmount(sub.last_amount, currency)}
@@ -365,25 +362,6 @@ export default function SubscriptionsPage() {
                         <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-center truncate">
                           {sub.category ?? "—"}
                         </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const nextType = sub.split_type === "shared" ? "personal" : "shared";
-                            overrideMutation.mutate({
-                              merchant_key: sub.merchant_name,
-                              split_type: nextType,
-                            });
-                          }}
-                          disabled={overrideMutation.isPending}
-                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full text-center transition-colors disabled:opacity-50 ${
-                            sub.split_type === "shared"
-                              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                              : "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                          }`}
-                          title="Cambiar entre Personal y Compartido"
-                        >
-                          {sub.split_type === "shared" ? "Compartido" : "Personal"}
-                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -451,13 +429,22 @@ function EditModal({
   item: RecurringExpense;
   currency: string;
   onClose: () => void;
-  onSave: (body: { merchant_key: string; status?: string; category?: string; next_charge_day?: number | null }) => void;
+  onSave: (body: {
+    merchant_key: string;
+    status?: string;
+    category?: string;
+    next_charge_day?: number | null;
+    split_type?: "personal" | "shared";
+  }) => void;
 }) {
   const [status, setStatus] = useState(item.status);
   const [category, setCategory] = useState(item.category ?? "");
   const [chargeDay, setChargeDay] = useState<string>(
     item.next_charge_day ? String(item.next_charge_day) : "",
   );
+  const initialSplitType: "personal" | "shared" =
+    item.split_type === "shared" ? "shared" : "personal";
+  const [splitType, setSplitType] = useState<"personal" | "shared">(initialSplitType);
 
   const { data: categories } = useQuery({
     queryKey: ["categories", "preferences"],
@@ -523,6 +510,35 @@ function EditModal({
           </div>
         </div>
 
+        {/* Classification */}
+        <div className="mb-3">
+          <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
+            Clasificación
+          </label>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setSplitType("personal")}
+              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                splitType === "personal"
+                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                  : "bg-slate-100 text-slate-500 border border-slate-200"
+              }`}
+            >
+              Personal
+            </button>
+            <button
+              onClick={() => setSplitType("shared")}
+              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                splitType === "shared"
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : "bg-slate-100 text-slate-500 border border-slate-200"
+              }`}
+            >
+              Compartido
+            </button>
+          </div>
+        </div>
+
         {/* Next Charge Day */}
         <div className="mb-4">
           <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
@@ -548,6 +564,9 @@ function EditModal({
                 status,
                 category: category || undefined,
                 next_charge_day: chargeDay ? Number(chargeDay) : null,
+                // Only send split_type if it actually changed — avoids
+                // running the 3-month cascade on every Editar save.
+                ...(splitType !== initialSplitType && { split_type: splitType }),
               })
             }
             className="flex-1 px-4 py-2 rounded-lg bg-luka-primary text-white text-[13px] font-semibold hover:bg-blue-700 transition-colors"

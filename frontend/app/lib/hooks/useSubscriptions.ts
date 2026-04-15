@@ -62,12 +62,15 @@ export function useSubscriptionOverride() {
       }
     },
     onSettled: () => {
-      // Delay revalidation so the DB commit is visible and
-      // the optimistic update isn't immediately overwritten
+      // Short delay (300ms) buffers any PgBouncer transaction-pool edge case
+      // where the read connection hasn't seen the cascade commit yet. The
+      // optimistic update keeps the UI instant; this just reconciles in the
+      // background without making the user wait the full 2s the old delay
+      // imposed.
       setTimeout(() => {
         qc.invalidateQueries({ queryKey: ["subscriptions"] });
         qc.invalidateQueries({ queryKey: ["budget-v2"] });
-      }, 2000);
+      }, 300);
     },
   });
 }
