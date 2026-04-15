@@ -402,29 +402,51 @@ def _build_sankey(
 ) -> SankeyBlock:
     """Build the nodes/links block for the Sankey diagram.
 
-    Flow conservation:
-      income → [known_bills, cuotas, savings_target, spendable]
-      spendable → [per-risk-category spent, other_spent, spent_remaining]
+    Flow conservation invariant: every non-terminal node's inflow == outflow,
+    every terminal node's inflow == value, every source-only node's outflow
+    == value. This matters because Recharts Sankey draws impossible arrows
+    silently when conservation is violated.
 
-    Overspent months (mtd_spent > spendable_amount): the excess came from
-    a non-income source (savings drawdown, credit, prior balance). We add
-    a synthetic `otras_fuentes` source node that feeds the extra into
-    spendable so the Sankey stays flow-conserving and the user sees the
-    shortfall visualized as a distinct inflow.
+    Sizing:
+      - `sankey_spendable` = max(designed spendable_amount, mtd_spent)
+        so an overspent month still shows its full spend in the diagram.
+      - `otras_fuentes` = the synthetic source for any outflow that cannot
+        be covered by income. It absorbs:
+          1. the shortfall between `mtd_spent` and `spendable_amount`
+             (user overspent the discretionary budget from reserves/credit)
+          2. any fixed outflow (known_bills + cuotas + savings_target) that
+             income can't cover by itself (deep-overspent case)
+
+    Income routing uses first-fit in priority order: income pays
+    known_bills, then cuotas, then savings_target, then spendable. Each
+    step of the chain can split between `income → X` and `otras_fuentes → X`
+    when income runs out mid-step. This keeps every inflow to each
+    target == that target's value, split across two sources at most.
     """
     total_spent = sum((s for _, s in top_risk_totals), start=_ZERO) + other_spent
     spent_remaining = spendable_amount - total_spent
     if spent_remaining < _ZERO:
         spent_remaining = _ZERO
 
-    # Overspent case: spendable needs to expand to cover the actual outflows,
-    # so the Sankey conserves. The "extra" goes into otras_fuentes.
-    if total_spent > spendable_amount:
-        sankey_spendable = total_spent
-        otras_fuentes = total_spent - spendable_amount
-    else:
-        sankey_spendable = spendable_amount
-        otras_fuentes = _ZERO
+    # Expand spendable in overspent months so the diagram stays balanced.
+    sankey_spendable = total_spent if total_spent > spendable_amount else spendable_amount
+
+    # First-fit routing: pay each bucket from income, spill the rest to
+    # otras_fuentes. Returns (income_share, otras_share, remaining_income).
+    def _pay(target_value: Decimal, remaining: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+        if target_value <= _ZERO:
+            return _ZERO, _ZERO, remaining
+        from_income = min(remaining, target_value)
+        from_otras = target_value - from_income
+        return from_income, from_otras, remaining - from_income
+
+    remaining_income = income
+    inc_kb, ot_kb, remaining_income = _pay(known_bills, remaining_income)
+    inc_cu, ot_cu, remaining_income = _pay(cuotas_this_month, remaining_income)
+    inc_st, ot_st, remaining_income = _pay(savings_target, remaining_income)
+    inc_sp, ot_sp, remaining_income = _pay(sankey_spendable, remaining_income)
+
+    otras_fuentes = ot_kb + ot_cu + ot_st + ot_sp
 
     nodes: list[SankeyNode] = [
         SankeyNode(id="income", label="Ingresos", value=income),
@@ -459,60 +481,28 @@ def _build_sankey(
             SankeyNode(id="spent_remaining", label="Aún disponible", value=spent_remaining)
         )
 
-    # Income outflow must never exceed income itself. When known_bills +
-    # cuotas + savings_target > income (deep-overspent case), we can't
-    # honor all of them from income alone; clamp the income → spendable
-    # link to whatever income has left and route the rest via otras_fuentes.
-    fixed_outflow = known_bills + cuotas_this_month + savings_target
-    income_to_spendable = sankey_spendable
-    if fixed_outflow + sankey_spendable > income:
-        # Prefer honoring fixed_outflow (the user actually paid those);
-        # what's left of income flows to spendable, the rest comes from
-        # otras_fuentes.
-        income_to_spendable = max(_ZERO, income - fixed_outflow)
-        extra_needed_from_otras = sankey_spendable - income_to_spendable
-        if extra_needed_from_otras > otras_fuentes:
-            # The otras_fuentes sized by total_spent-spendable_amount isn't
-            # enough to cover this deeper case; expand it.
-            extra_otras = extra_needed_from_otras - otras_fuentes
-            otras_fuentes += extra_otras
-            # Update or insert the otras_fuentes node
-            for n in nodes:
-                if n.id == "otras_fuentes":
-                    n.value = otras_fuentes
-                    break
-            else:
-                nodes.insert(
-                    1, SankeyNode(id="otras_fuentes", label="Otras fuentes", value=otras_fuentes)
-                )
-
     links: list[SankeyLink] = []
-    if known_bills > _ZERO:
-        links.append(SankeyLink(source="income", target="known_bills", value=known_bills))
-    if cuotas_this_month > _ZERO:
-        links.append(SankeyLink(source="income", target="cuotas", value=cuotas_this_month))
-    if savings_target > _ZERO:
-        links.append(SankeyLink(source="income", target="savings_target", value=savings_target))
-    if income_to_spendable > _ZERO:
-        links.append(SankeyLink(source="income", target="spendable", value=income_to_spendable))
-    if otras_fuentes > _ZERO:
-        links.append(SankeyLink(source="otras_fuentes", target="spendable", value=otras_fuentes))
+
+    def _emit(source: str, target: str, value: Decimal) -> None:
+        if value > _ZERO:
+            links.append(SankeyLink(source=source, target=target, value=value))
+
+    # Fixed-outflow links, each potentially split across income + otras_fuentes.
+    _emit("income", "known_bills", inc_kb)
+    _emit("otras_fuentes", "known_bills", ot_kb)
+    _emit("income", "cuotas", inc_cu)
+    _emit("otras_fuentes", "cuotas", ot_cu)
+    _emit("income", "savings_target", inc_st)
+    _emit("otras_fuentes", "savings_target", ot_st)
+    _emit("income", "spendable", inc_sp)
+    _emit("otras_fuentes", "spendable", ot_sp)
+
     for category, spent in top_risk_totals:
         if spent <= _ZERO:
             continue
-        links.append(
-            SankeyLink(
-                source="spendable",
-                target=f"spent_{_slugify(category)}",
-                value=spent,
-            )
-        )
-    if other_spent > _ZERO:
-        links.append(SankeyLink(source="spendable", target="spent_other", value=other_spent))
-    if spent_remaining > _ZERO:
-        links.append(
-            SankeyLink(source="spendable", target="spent_remaining", value=spent_remaining)
-        )
+        _emit("spendable", f"spent_{_slugify(category)}", spent)
+    _emit("spendable", "spent_other", other_spent)
+    _emit("spendable", "spent_remaining", spent_remaining)
 
     return SankeyBlock(nodes=nodes, links=links)
 

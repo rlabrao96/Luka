@@ -322,3 +322,131 @@ async def test_savings_target_reads_from_user_budget_settings(db):
     assert resp.savings_target.target == Decimal("250000")
     # pct_complete = progress / target; progress comes from Inversión seed ≈ 80,000
     assert resp.savings_target.pct_complete > Decimal("0")
+
+
+# --------------------------------------------------- Sankey flow conservation
+#
+# Regression tests for `_build_sankey`: the clamp block used to emit
+# `income → known_bills` links with full known_bills values even when
+# income < known_bills, producing impossible flow (inflow/outflow mismatch)
+# that Recharts silently drew as bogus arrows. The first-fit routing now
+# splits each fixed-outflow link across `income` and `otras_fuentes` when
+# income runs out mid-payment.
+
+
+def _flow_conservation_errors(sankey) -> list[str]:
+    """Return a list of node ids where inflow/outflow don't match the node.
+
+    Intermediate nodes (appear as both source and target) must have
+    inflow == outflow == node.value. Source-only nodes must have
+    outflow == node.value. Sink-only nodes must have inflow == node.value.
+    """
+    d = sankey.model_dump(mode="json")
+    errors: list[str] = []
+    inflow: dict[str, Decimal] = {}
+    outflow: dict[str, Decimal] = {}
+    for link in d["links"]:
+        src, tgt, val = link["source"], link["target"], Decimal(str(link["value"]))
+        outflow[src] = outflow.get(src, Decimal("0")) + val
+        inflow[tgt] = inflow.get(tgt, Decimal("0")) + val
+    for node in d["nodes"]:
+        nid, value = node["id"], Decimal(str(node["value"]))
+        node_in = inflow.get(nid, Decimal("0"))
+        node_out = outflow.get(nid, Decimal("0"))
+        is_source = node_out > Decimal("0") and node_in == Decimal("0")
+        is_sink = node_in > Decimal("0") and node_out == Decimal("0")
+        is_intermediate = node_in > Decimal("0") and node_out > Decimal("0")
+        if is_source:
+            if abs(node_out - value) > Decimal("1"):
+                errors.append(f"{nid}: source outflow {node_out} != value {value}")
+        elif is_sink:
+            if abs(node_in - value) > Decimal("1"):
+                errors.append(f"{nid}: sink inflow {node_in} != value {value}")
+        elif is_intermediate:
+            if abs(node_in - value) > Decimal("1"):
+                errors.append(f"{nid}: intermediate inflow {node_in} != value {value}")
+            if abs(node_out - value) > Decimal("1"):
+                errors.append(f"{nid}: intermediate outflow {node_out} != value {value}")
+    return errors
+
+
+@pytest.mark.asyncio
+async def test_sankey_flow_conservation_overspent_hogar_full(db):
+    """Deep-overspent case: seeded HOGAR FULL has no income transactions
+    but subscriptions + cuotas exceed zero. Every node's inflow/outflow
+    must still balance. Before the fix, `income → known_bills` emitted
+    the full known_bills value even when income was 0, breaking
+    conservation silently."""
+    user = await _user_by_email(db, "rafa-full@luka.test")
+    household = await _household_by_name(db, "HOGAR FULL")
+    resp = await get_budget_v2(
+        db,
+        household_id=household.id,
+        user_id=user.id,
+        month=_current_month(),
+        currency="CLP",
+        view="household",
+    )
+    errors = _flow_conservation_errors(resp.sankey)
+    assert errors == [], f"flow conservation violated: {errors}"
+
+
+@pytest.mark.asyncio
+async def test_sankey_flow_conservation_fixed_outflow_exceeds_income(db):
+    """Even when income is positive but `known_bills + cuotas + savings_target`
+    together exceed it, every fixed outflow node must still be reachable
+    via a flow-conserving chain (income takes as much as it can; the rest
+    goes via otras_fuentes)."""
+    user = await _user_by_email(db, "rafa-solo@luka.test")
+    household = await _household_by_name(db, "HOGAR SOLO")
+
+    # Synthetic income so we're not at 0, but still smaller than the seeded
+    # subscriptions total for this fixture.
+    synthetic = Transaction(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        household_id=household.id,
+        raw_merchant_name="Regression Test Income",
+        amount=Decimal("50000"),
+        currency="CLP",
+        transaction_date=datetime(
+            _current_month().year,
+            _current_month().month,
+            10,
+            12,
+            0,
+            tzinfo=timezone.utc,
+        ),
+        category="Ingresos",
+        source="manual",
+        status="categorized",
+        transaction_type="income",
+    )
+    db.add(synthetic)
+    await db.flush()
+
+    # Install a savings target so fixed_outflow is guaranteed > income.
+    await db.execute(
+        text("DELETE FROM user_budget_settings WHERE user_id = :uid"),
+        {"uid": str(user.id)},
+    )
+    db.add(
+        UserBudgetSettings(
+            user_id=user.id,
+            savings_target_amount=Decimal("200000"),
+            savings_target_currency="CLP",
+            payday_day_of_month=25,
+        )
+    )
+    await db.flush()
+
+    resp = await get_budget_v2(
+        db,
+        household_id=household.id,
+        user_id=user.id,
+        month=_current_month(),
+        currency="CLP",
+        view="personal",
+    )
+    errors = _flow_conservation_errors(resp.sankey)
+    assert errors == [], f"flow conservation violated: {errors}"
