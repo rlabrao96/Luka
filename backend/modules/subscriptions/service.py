@@ -323,3 +323,88 @@ async def invalidate_subscriptions_cache(user_id) -> None:
     from core.cache import cache_delete
 
     await cache_delete(f"subscriptions:v2:{user_id}")
+
+
+async def reclassify_subscription_split(
+    db: AsyncSession,
+    user_id,
+    merchant_key: str,
+    new_split_type: str,
+    window_months: int = 3,
+) -> int:
+    """Reclassify a subscription's split_type and cascade the change to the
+    last `window_months` of underlying transaction_splits rows.
+
+    Steps:
+      1. Validate new_split_type in {'personal', 'shared'}
+      2. Find all transactions for this user matching merchant_key (by
+         normalized_name OR raw_merchant_name) with transaction_date within
+         the cascade window
+      3. For each tx: UPDATE transaction_splits.split_type if a row exists,
+         else INSERT one
+      4. Upsert subscription_overrides with the new split_type
+      5. Invalidate detected_subscriptions_cache for this user
+
+    Returns the count of transactions touched.
+    """
+    if new_split_type not in {"personal", "shared"}:
+        raise ValueError(f"invalid split_type: {new_split_type!r}")
+
+    # 2. Find candidate transactions in the window
+    rows = await db.execute(
+        text("""
+            SELECT t.id
+            FROM transactions t
+            LEFT JOIN merchants m ON m.id = t.merchant_id
+            WHERE t.user_id = :uid
+              AND COALESCE(m.normalized_name, t.raw_merchant_name) = :mk
+              AND t.transaction_date >= NOW() - (:months * INTERVAL '1 month')
+        """),
+        {"uid": str(user_id), "mk": merchant_key, "months": window_months},
+    )
+    tx_ids = [r[0] for r in rows]
+
+    affected = 0
+    for tx_id in tx_ids:
+        # Try update first
+        upd = await db.execute(
+            text("""
+                UPDATE transaction_splits
+                SET split_type = :new, decided_by_user_id = :uid, decided_at = NOW()
+                WHERE transaction_id = :tid
+            """),
+            {"new": new_split_type, "uid": str(user_id), "tid": str(tx_id)},
+        )
+        if upd.rowcount == 0:
+            # No existing split row — insert one
+            await db.execute(
+                text("""
+                    INSERT INTO transaction_splits
+                        (id, transaction_id, split_type, decided_by_user_id, decided_at, created_at)
+                    VALUES
+                        (gen_random_uuid(), :tid, :new, :uid, NOW(), NOW())
+                """),
+                {"tid": str(tx_id), "new": new_split_type, "uid": str(user_id)},
+            )
+        affected += 1
+
+    # 4. Upsert the override row
+    await db.execute(
+        text("""
+            INSERT INTO subscription_overrides
+                (user_id, merchant_key, status, split_type, updated_at)
+            VALUES (:uid, :mk, 'active', :new, NOW())
+            ON CONFLICT (user_id, merchant_key)
+            DO UPDATE SET split_type = :new, updated_at = NOW()
+        """),
+        {"uid": str(user_id), "mk": merchant_key, "new": new_split_type},
+    )
+
+    # 5. Invalidate the cache
+    await db.execute(
+        text("DELETE FROM detected_subscriptions_cache WHERE user_id = :uid"),
+        {"uid": str(user_id)},
+    )
+
+    await db.commit()
+    return affected
