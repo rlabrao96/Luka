@@ -570,15 +570,16 @@ def _build_hogar_sankey(
         spent_remaining = _ZERO
     sankey_spendable = total_spent if total_spent > spendable_amount else spendable_amount
 
-    # Pay each allocation from income via first-fit routing.
+    # Pay each allocation from income via first-fit routing. We only need
+    # the shortfall (`ot_*`) because `ingresos_hogar` collapses every source
+    # into a single hub — there's no per-allocation income/otras link split
+    # like in the legacy `_build_sankey`.
     remaining = breakdown.total
-    inc_kb, ot_kb, remaining = _pay_first_fit(target=known_bills, remaining_income=remaining)
-    inc_cu, ot_cu, remaining = _pay_first_fit(target=cuotas_this_month, remaining_income=remaining)
-    inc_st, ot_st, remaining = _pay_first_fit(target=savings_target, remaining_income=remaining)
-    inc_pa, ot_pa, remaining = _pay_first_fit(
-        target=personal_allocation, remaining_income=remaining
-    )
-    inc_sp, ot_sp, remaining = _pay_first_fit(target=sankey_spendable, remaining_income=remaining)
+    _, ot_kb, remaining = _pay_first_fit(target=known_bills, remaining_income=remaining)
+    _, ot_cu, remaining = _pay_first_fit(target=cuotas_this_month, remaining_income=remaining)
+    _, ot_st, remaining = _pay_first_fit(target=savings_target, remaining_income=remaining)
+    _, ot_pa, remaining = _pay_first_fit(target=personal_allocation, remaining_income=remaining)
+    _, ot_sp, remaining = _pay_first_fit(target=sankey_spendable, remaining_income=remaining)
 
     otras_fuentes_total = ot_kb + ot_cu + ot_st + ot_pa + ot_sp
     ingresos_hogar_value = breakdown.total + otras_fuentes_total
@@ -789,12 +790,12 @@ def _build_personal_sankey(
 ) -> SankeyBlock:
     """Build the Personal Sankey. Structurally identical to the Hogar builder
     but scoped to caller-only income, no `Gasto personal` allocation, and
-    one fewer level of allocation nodes.
+    no per-other-member nodes.
 
     Uses a `ingresos_personales` hub at Level 1 for clean routing (mirrors
-    the hogar `ingresos_hogar` hub). Level 2 has the three allocation nodes
-    (meta_ahorro_personal, gastos_fijos_personal, cuotas_personal,
-    disponible_personal — cuotas hidden if zero). Level 3 has the
+    the hogar `ingresos_hogar` hub). Level 2 has up to four allocation nodes
+    (gastos_fijos_personal, cuotas_personal, meta_ahorro_personal,
+    disponible_personal — each hidden if its value is zero). Level 3 has the
     disponible_personal breakdown.
     """
     total_spent = sum((s for _, s in top_risk_totals), start=_ZERO) + other_spent
@@ -805,11 +806,14 @@ def _build_personal_sankey(
 
     income_total = sum(caller_sources.values(), start=_ZERO) + caller_other_income
 
+    # Pay each allocation from income via first-fit routing. We only need
+    # the shortfall (`ot_*`) — the hub absorbs all sources and re-emits to
+    # allocations as a single link each.
     remaining = income_total
-    inc_kb, ot_kb, remaining = _pay_first_fit(target=known_bills, remaining_income=remaining)
-    inc_cu, ot_cu, remaining = _pay_first_fit(target=cuotas_this_month, remaining_income=remaining)
-    inc_st, ot_st, remaining = _pay_first_fit(target=savings_target, remaining_income=remaining)
-    inc_sp, ot_sp, remaining = _pay_first_fit(target=sankey_spendable, remaining_income=remaining)
+    _, ot_kb, remaining = _pay_first_fit(target=known_bills, remaining_income=remaining)
+    _, ot_cu, remaining = _pay_first_fit(target=cuotas_this_month, remaining_income=remaining)
+    _, ot_st, remaining = _pay_first_fit(target=savings_target, remaining_income=remaining)
+    _, ot_sp, remaining = _pay_first_fit(target=sankey_spendable, remaining_income=remaining)
 
     otras_fuentes_total = ot_kb + ot_cu + ot_st + ot_sp
     hub_value = income_total + otras_fuentes_total
