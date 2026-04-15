@@ -15,6 +15,7 @@ from modules.budgets.user_budget_settings_service import (
     get_household_personal_allocation,
     get_savings_target,
     update_payday,
+    update_personal_allocation,
     update_savings_target,
 )
 
@@ -155,3 +156,19 @@ class TestPersonalAllocation:
         # has only one member, result == 500000. If multiple full-mode members
         # exist with no allocation set, result is still just the seed user's.
         assert result >= Decimal("500000")
+
+    @pytest.mark.asyncio
+    async def test_update_personal_allocation_persists_and_clears(self, db):
+        """Write path: setting persists, clearing with amount=None removes."""
+        user = await _get_seed_user(db)
+        # Set the value
+        await update_personal_allocation(
+            db, user_id=user.id, amount=Decimal("250000"), currency="CLP"
+        )
+        result = await get_personal_allocation(db, user_id=user.id, currency="CLP")
+        assert result == Decimal("250000")
+
+        # Clear by passing amount=None
+        await update_personal_allocation(db, user_id=user.id, amount=None, currency=None)
+        cleared = await get_personal_allocation(db, user_id=user.id, currency="CLP")
+        assert cleared == Decimal("0")

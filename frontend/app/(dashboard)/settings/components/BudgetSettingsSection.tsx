@@ -54,6 +54,7 @@ export function BudgetSettingsSection() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budgetSettings"] });
+      queryClient.invalidateQueries({ queryKey: ["budget-v2"] });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
