@@ -91,20 +91,22 @@ function SectionFlowBody({
     );
   }
   return (
-    <BudgetSankey
-      nodes={data.sankey.nodes.map((n) => ({
-        id: n.id,
-        label: n.label,
-        value: Number(n.value),
-        risk: n.risk ?? undefined,
-      }))}
-      links={data.sankey.links.map((l) => ({
-        source: l.source,
-        target: l.target,
-        value: Number(l.value),
-      }))}
-      currency={currency}
-    />
+    <div className="min-h-[22rem] overflow-x-auto">
+      <BudgetSankey
+        nodes={data.sankey.nodes.map((n) => ({
+          id: n.id,
+          label: n.label,
+          value: Number(n.value),
+          risk: n.risk ?? undefined,
+        }))}
+        links={data.sankey.links.map((l) => ({
+          source: l.source,
+          target: l.target,
+          value: Number(l.value),
+        }))}
+        currency={currency}
+      />
+    </div>
   );
 }
 
