@@ -126,11 +126,12 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
                 anchor = "end";
                 labelX = x - 6;
               } else if (node.level === 1) {
-                // Hub: label ABOVE, centered
+                // Hub: label ABOVE, centered. Clamp to viewport so the label
+                // never clips when the hub is the topmost element in its column.
                 anchor = "middle";
                 labelX = x + width / 2;
-                labelY = y - 18;
-                valueY = y - 6;
+                labelY = Math.max(y - 18, 10);
+                valueY = labelY + 12;
               } else {
                 // Level 2 (allocations) and level 3 (breakdown): label on the RIGHT
                 anchor = "start";
@@ -140,10 +141,22 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
               return (
                 <Layer key={`node-${index}`}>
                   <Rectangle x={x} y={y} width={width} height={height} fill={colorFor(node)} fillOpacity={0.9} />
-                  <text x={labelX} y={labelY} dy="0.35em" textAnchor={anchor} className="text-xs fill-slate-700">
+                  <text
+                    x={labelX}
+                    y={labelY}
+                    dy={node.level === 1 ? "0" : "0.35em"}
+                    textAnchor={anchor}
+                    className="text-xs fill-slate-700"
+                  >
                     {node.label}
                   </text>
-                  <text x={labelX} y={valueY} textAnchor={anchor} className="text-[10px] fill-slate-400 tabular-nums">
+                  <text
+                    x={labelX}
+                    y={valueY}
+                    dy={node.level === 1 ? "0" : undefined}
+                    textAnchor={anchor}
+                    className="text-[10px] fill-slate-400 tabular-nums"
+                  >
                     {formatMoney(node.value, currency)}
                   </text>
                 </Layer>
