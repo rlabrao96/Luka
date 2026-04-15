@@ -5,23 +5,27 @@
   "currencies_available": ["CLP", "USD"],
   "sankey": {
     "nodes": [
-      {"id": "income", "label": "Ingresos", "value": 1800000},
-      {"id": "known_bills", "label": "Gastos fijos", "value": 520000},
-      {"id": "cuotas", "label": "Cuotas del mes", "value": 120000},
-      {"id": "savings_target", "label": "Meta de ahorro", "value": 300000},
-      {"id": "spendable", "label": "Disponible", "value": 860000},
-      {"id": "spent_restaurants", "label": "Restaurantes", "value": 142000, "risk": true},
-      {"id": "spent_groceries", "label": "Supermercado", "value": 180000, "risk": true},
-      {"id": "spent_other", "label": "Otros", "value": 95000}
+      {"id": "src_sueldo", "label": "Sueldo", "value": 1800000, "level": 0, "kind": "source"},
+      {"id": "ingresos_personales", "label": "Mis ingresos", "value": 1800000, "level": 1, "kind": "hub"},
+      {"id": "gastos_fijos_personal", "label": "Gastos fijos", "value": 520000, "level": 2, "kind": "allocation"},
+      {"id": "cuotas_personal", "label": "Cuotas del mes", "value": 120000, "level": 2, "kind": "allocation"},
+      {"id": "meta_ahorro_personal", "label": "Meta de ahorro", "value": 300000, "level": 2, "kind": "allocation"},
+      {"id": "disponible_personal", "label": "Disponible personal", "value": 860000, "level": 2, "kind": "allocation"},
+      {"id": "spent_restaurantes", "label": "Restaurantes", "value": 142000, "level": 3, "kind": "spent", "risk": true},
+      {"id": "spent_supermercado", "label": "Supermercado", "value": 180000, "level": 3, "kind": "spent", "risk": true},
+      {"id": "spent_other", "label": "Otras categorías", "value": 95000, "level": 3, "kind": "spent"},
+      {"id": "spent_remaining", "label": "Aún disponible", "value": 443000, "level": 3, "kind": "spent"}
     ],
     "links": [
-      {"source": "income", "target": "known_bills", "value": 520000},
-      {"source": "income", "target": "cuotas", "value": 120000},
-      {"source": "income", "target": "savings_target", "value": 300000},
-      {"source": "income", "target": "spendable", "value": 860000},
-      {"source": "spendable", "target": "spent_restaurants", "value": 142000},
-      {"source": "spendable", "target": "spent_groceries", "value": 180000},
-      {"source": "spendable", "target": "spent_other", "value": 95000}
+      {"source": "src_sueldo", "target": "ingresos_personales", "value": 1800000},
+      {"source": "ingresos_personales", "target": "gastos_fijos_personal", "value": 520000},
+      {"source": "ingresos_personales", "target": "cuotas_personal", "value": 120000},
+      {"source": "ingresos_personales", "target": "meta_ahorro_personal", "value": 300000},
+      {"source": "ingresos_personales", "target": "disponible_personal", "value": 860000},
+      {"source": "disponible_personal", "target": "spent_restaurantes", "value": 142000},
+      {"source": "disponible_personal", "target": "spent_supermercado", "value": 180000},
+      {"source": "disponible_personal", "target": "spent_other", "value": 95000},
+      {"source": "disponible_personal", "target": "spent_remaining", "value": 443000}
     ]
   },
   "spendable": {

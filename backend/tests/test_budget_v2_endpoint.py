@@ -182,11 +182,15 @@ async def test_hogar_fixed_household_income_respects_fixed_contribution(db):
         view="household",
     )
 
-    # Household income: 0 (rafa-fixed full, no income txns) + 800k (partner fixed amount)
-    income_node = next(n for n in resp.sankey.nodes if n.id == "income")
-    assert income_node.value == Decimal(
+    # Household income: 0 (rafa-fixed full, no income txns) + 800k (partner fixed amount).
+    # In the new hogar sankey the hub is `ingresos_hogar`; real income = sum of Level-0
+    # source nodes (kind="source") excluding the synthetic `otras_fuentes` node.
+    real_income = sum(
+        n.value for n in resp.sankey.nodes if n.kind == "source" and n.id != "otras_fuentes"
+    )
+    assert real_income == Decimal(
         "800000"
-    ), f"household income should be 800k (0 real + 800k fixed), got {income_node.value}"
+    ), f"household income should be 800k (0 real + 800k fixed), got {real_income}"
 
 
 @pytest.mark.asyncio
@@ -244,10 +248,13 @@ async def test_hogar_fixed_privacy_partner_amount_synthetic(db):
     payload = resp.model_dump(mode="json")
     _assert_value_absent(payload, synthetic_partner_income)
 
-    # And positively assert: household income should still be 0 real + 800k fixed
-    # = 800k (partner is fixed mode, so their real income does NOT count).
-    income_node = next(n for n in resp.sankey.nodes if n.id == "income")
-    assert income_node.value == Decimal("800000")
+    # Positively assert: household real income (Level-0 sources, excluding otras_fuentes)
+    # should still be 0 real + 800k fixed = 800k.
+    # Partner is fixed mode, so their real income does NOT count.
+    real_income = sum(
+        n.value for n in resp.sankey.nodes if n.kind == "source" and n.id != "otras_fuentes"
+    )
+    assert real_income == Decimal("800000")
 
 
 # ----------------------------------------------- savings-category exclusion

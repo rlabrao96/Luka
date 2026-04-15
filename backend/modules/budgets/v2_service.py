@@ -45,6 +45,7 @@ from modules.budgets.forecast import (
 )
 from modules.budgets.savings_categories import is_savings_category
 from modules.budgets.user_budget_settings_service import (
+    get_household_personal_allocation,
     get_household_savings_target,
     get_payday_day_of_month,
     get_savings_target,
@@ -62,8 +63,7 @@ from modules.budgets.v2_schemas import (
 )
 from modules.households.contribution_service import (
     HouseholdIncomeBreakdown,
-    income_for_household_view,
-    income_for_personal_view,
+    income_breakdown_for_household_view,
 )
 from modules.households.models import (
     BankAccount,
@@ -413,122 +413,6 @@ def _pay_first_fit(
     from_income = min(remaining_income, target)
     from_otras = target - from_income
     return from_income, from_otras, remaining_income - from_income
-
-
-def _build_sankey(
-    *,
-    income: Decimal,
-    known_bills: Decimal,
-    cuotas_this_month: Decimal,
-    savings_target: Decimal,
-    spendable_amount: Decimal,
-    top_risk_totals: list[tuple[str, Decimal]],  # [(category, spent_this_month)]
-    other_spent: Decimal,
-) -> SankeyBlock:
-    """Build the nodes/links block for the Sankey diagram.
-
-    Flow conservation invariant: every non-terminal node's inflow == outflow,
-    every terminal node's inflow == value, every source-only node's outflow
-    == value. This matters because Recharts Sankey draws impossible arrows
-    silently when conservation is violated.
-
-    Sizing:
-      - `sankey_spendable` = max(designed spendable_amount, mtd_spent)
-        so an overspent month still shows its full spend in the diagram.
-      - `otras_fuentes` = the synthetic source for any outflow that cannot
-        be covered by income. It absorbs:
-          1. the shortfall between `mtd_spent` and `spendable_amount`
-             (user overspent the discretionary budget from reserves/credit)
-          2. any fixed outflow (known_bills + cuotas + savings_target) that
-             income can't cover by itself (deep-overspent case)
-
-    Income routing uses first-fit in priority order: income pays
-    known_bills, then cuotas, then savings_target, then spendable. Each
-    step of the chain can split between `income → X` and `otras_fuentes → X`
-    when income runs out mid-step. This keeps every inflow to each
-    target == that target's value, split across two sources at most.
-    """
-    total_spent = sum((s for _, s in top_risk_totals), start=_ZERO) + other_spent
-    spent_remaining = spendable_amount - total_spent
-    if spent_remaining < _ZERO:
-        spent_remaining = _ZERO
-
-    # Expand spendable in overspent months so the diagram stays balanced.
-    sankey_spendable = total_spent if total_spent > spendable_amount else spendable_amount
-
-    remaining_income = income
-    inc_kb, ot_kb, remaining_income = _pay_first_fit(
-        target=known_bills, remaining_income=remaining_income
-    )
-    inc_cu, ot_cu, remaining_income = _pay_first_fit(
-        target=cuotas_this_month, remaining_income=remaining_income
-    )
-    inc_st, ot_st, remaining_income = _pay_first_fit(
-        target=savings_target, remaining_income=remaining_income
-    )
-    inc_sp, ot_sp, remaining_income = _pay_first_fit(
-        target=sankey_spendable, remaining_income=remaining_income
-    )
-
-    otras_fuentes = ot_kb + ot_cu + ot_st + ot_sp
-
-    nodes: list[SankeyNode] = [
-        SankeyNode(id="income", label="Ingresos", value=income),
-    ]
-    if otras_fuentes > _ZERO:
-        nodes.append(SankeyNode(id="otras_fuentes", label="Otras fuentes", value=otras_fuentes))
-    if known_bills > _ZERO:
-        nodes.append(SankeyNode(id="known_bills", label="Gastos fijos", value=known_bills))
-    if cuotas_this_month > _ZERO:
-        nodes.append(SankeyNode(id="cuotas", label="Cuotas del mes", value=cuotas_this_month))
-    if savings_target > _ZERO:
-        nodes.append(SankeyNode(id="savings_target", label="Meta de ahorro", value=savings_target))
-    if sankey_spendable > _ZERO:
-        nodes.append(SankeyNode(id="spendable", label="Disponible", value=sankey_spendable))
-    for category, spent in top_risk_totals:
-        if spent <= _ZERO:
-            continue  # drop zero-spend risk categories from the visualization
-        nodes.append(
-            SankeyNode(
-                id=f"spent_{_slugify(category)}",
-                label=category,
-                value=spent,
-                risk=True,
-            )
-        )
-    if other_spent > _ZERO:
-        # Label as "Otras categorías" so it never collides with a category
-        # literally named "Otros" that made it into top_risk_totals.
-        nodes.append(SankeyNode(id="spent_other", label="Otras categorías", value=other_spent))
-    if spent_remaining > _ZERO:
-        nodes.append(
-            SankeyNode(id="spent_remaining", label="Aún disponible", value=spent_remaining)
-        )
-
-    links: list[SankeyLink] = []
-
-    def _emit(source: str, target: str, value: Decimal) -> None:
-        if value > _ZERO:
-            links.append(SankeyLink(source=source, target=target, value=value))
-
-    # Fixed-outflow links, each potentially split across income + otras_fuentes.
-    _emit("income", "known_bills", inc_kb)
-    _emit("otras_fuentes", "known_bills", ot_kb)
-    _emit("income", "cuotas", inc_cu)
-    _emit("otras_fuentes", "cuotas", ot_cu)
-    _emit("income", "savings_target", inc_st)
-    _emit("otras_fuentes", "savings_target", ot_st)
-    _emit("income", "spendable", inc_sp)
-    _emit("otras_fuentes", "spendable", ot_sp)
-
-    for category, spent in top_risk_totals:
-        if spent <= _ZERO:
-            continue
-        _emit("spendable", f"spent_{_slugify(category)}", spent)
-    _emit("spendable", "spent_other", other_spent)
-    _emit("spendable", "spent_remaining", spent_remaining)
-
-    return SankeyBlock(nodes=nodes, links=links)
 
 
 def _build_hogar_sankey(
@@ -1052,25 +936,74 @@ async def get_budget_v2(
     else:
         savings_target_amount = await _household_savings_target(db, household_id, currency)
 
+    # ---- caller's income category ordering (drives Level 0 source nodes) ----
+    income_cat_rows = await db.execute(
+        text("""
+            SELECT category
+            FROM user_category_preferences
+            WHERE user_id = :uid AND category_type = 'income'
+            ORDER BY sort_order
+        """),
+        {"uid": str(user_id)},
+    )
+    income_category_order = [r[0] for r in income_cat_rows]
+
     # ---- income ----------------------------------------------------------
-    # Contribution-mode dispatch lives in `contribution_service`; this file
-    # is a pure caller so the privacy invariant has exactly one enforcement
-    # point. Do NOT reintroduce inline income queries here.
     if view == "personal":
-        income = await income_for_personal_view(
+        # Personal view: caller's own income grouped by category against their
+        # user_category_preferences. Bucketed inline rather than going through
+        # income_breakdown_for_household_view because the personal view is
+        # single-scope and doesn't need the other_members aggregation.
+        first_day, first_day_next, _ = _month_bounds_datetime(month)
+        caller_tx_rows = await db.execute(
+            select(
+                Transaction.category,
+                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            )
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.household_id == household_id,
+                Transaction.transaction_type == "income",
+                Transaction.currency == currency,
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+            )
+            .group_by(Transaction.category)
+        )
+        raw_caller: dict[str | None, Decimal] = {}
+        for category, total in caller_tx_rows:
+            raw_caller[category] = Decimal(str(total))
+
+        known_income_categories = set(income_category_order)
+        personal_caller_sources: dict[str, Decimal] = {}
+        personal_caller_other_income = _ZERO
+        for cat, total in raw_caller.items():
+            if cat and cat in known_income_categories and total > _ZERO:
+                personal_caller_sources[cat] = total
+            else:
+                personal_caller_other_income += total
+        income = sum(personal_caller_sources.values(), start=_ZERO) + personal_caller_other_income
+    else:
+        breakdown = await income_breakdown_for_household_view(
             db,
-            user_id=user_id,
+            caller_id=user_id,
             household_id=household_id,
             month=month,
             currency=currency,
+        )
+        income = breakdown.total
+        # Silence "possibly unbound" warnings — personal_caller_* only used in
+        # personal view branch below.
+        personal_caller_sources = {}
+        personal_caller_other_income = _ZERO
+
+    # ---- personal allocation (household view only) -----------------------
+    if view == "household":
+        personal_allocation_amount = await get_household_personal_allocation(
+            db, household_id=household_id, currency=currency
         )
     else:
-        income = await income_for_household_view(
-            db,
-            household_id=household_id,
-            month=month,
-            currency=currency,
-        )
+        personal_allocation_amount = _ZERO  # not used in personal sankey
 
     # ---- spent (excluding savings-equivalent categories) ----------------
     month_txns = await _fetch_month_transactions(
@@ -1101,6 +1034,7 @@ async def get_budget_v2(
         known_bills=known_bills,
         cuotas_this_month=cuotas_block.this_month,
         savings_target=savings_target_amount,
+        personal_allocation=personal_allocation_amount,
     )
     spendable_remaining = spendable_amount - mtd_spent
     if spendable_remaining < _ZERO:
@@ -1188,15 +1122,30 @@ async def get_budget_v2(
     )
 
     # ---- sankey ----------------------------------------------------------
-    sankey = _build_sankey(
-        income=income,
-        known_bills=known_bills,
-        cuotas_this_month=cuotas_block.this_month,
-        savings_target=savings_target_amount,
-        spendable_amount=spendable_amount,
-        top_risk_totals=top_risk_totals,
-        other_spent=other_spent,
-    )
+    if view == "household":
+        sankey = _build_hogar_sankey(
+            breakdown=breakdown,
+            known_bills=known_bills,
+            cuotas_this_month=cuotas_block.this_month,
+            savings_target=savings_target_amount,
+            personal_allocation=personal_allocation_amount,
+            spendable_amount=spendable_amount,
+            top_risk_totals=top_risk_totals,
+            other_spent=other_spent,
+            income_category_order=income_category_order,
+        )
+    else:
+        sankey = _build_personal_sankey(
+            caller_sources=personal_caller_sources,
+            caller_other_income=personal_caller_other_income,
+            known_bills=known_bills,
+            cuotas_this_month=cuotas_block.this_month,
+            savings_target=savings_target_amount,
+            spendable_amount=spendable_amount,
+            top_risk_totals=top_risk_totals,
+            other_spent=other_spent,
+            income_category_order=income_category_order,
+        )
 
     return BudgetV2Response(
         view=view,
