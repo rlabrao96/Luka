@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
+import { formatAmount as formatCurrencyAmount } from "@/app/lib/currency";
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);
@@ -27,12 +28,11 @@ function toTitleCase(str: string) {
   return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
-function formatAmount(amount: number, currency: string) {
-  if (currency === "USD") {
-    const dollars = Math.abs(amount) / 100;
-    return `US$${dollars.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
-  return `$${Math.round(Math.abs(amount)).toLocaleString("es-CL")}`;
+// PendingBlock amounts: CLP as integers, USD (and other decimal currencies) as cents → divide by 100
+function formatPendingAmount(amount: number, currency: string): string {
+  const isDecimal = currency !== "CLP" && currency !== "COP" && currency !== "PYG" && currency !== "CRC";
+  const displayVal = isDecimal ? amount / 100 : amount;
+  return formatCurrencyAmount(displayVal, currency);
 }
 
 /* ─── Inline category dropdown (matches CategoryCell in RecentTransactions) ─── */
@@ -270,11 +270,9 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
           const isTransfer = txn.transaction_type === "transfer";
           const isOutflow = amount < 0;
           const currency = txn.currency ?? "CLP";
-          const formattedAmount = isTransfer
-            ? `(${formatAmount(amount, currency)})`
-            : isOutflow
-              ? `(${formatAmount(amount, currency)})`
-              : `+${formatAmount(amount, currency)}`;
+          const formattedAmount = isTransfer || isOutflow
+            ? `(${formatPendingAmount(amount, currency)})`
+            : `+${formatPendingAmount(amount, currency)}`;
           const bankName = txn.bank_name;
 
           return (

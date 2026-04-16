@@ -8,6 +8,7 @@ import { useCategories } from "@/app/lib/hooks/useCategories";
 import { TransactionCard } from "./TransactionCard";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
+import { formatAmount } from "@/app/lib/currency";
 
 
 function toTitleCase(str: string) {
@@ -18,20 +19,14 @@ function toTitleCase(str: string) {
     .join(" ");
 }
 
-function formatCLP(amount: number) {
-  return `$${Math.round(amount).toLocaleString("es-CL")}`;
+/** Normalize + format a transaction amount. USD and other decimal currencies stored as cents. */
+function formatTxnAmount(txn: { amount: number; currency: string }): string {
+  const currency = txn.currency ?? "CLP";
+  const isDecimal = currency !== "CLP" && currency !== "COP" && currency !== "PYG" && currency !== "CRC";
+  const val = isDecimal ? Math.abs(Number(txn.amount)) / 100 : Math.abs(Number(txn.amount));
+  return formatAmount(val, currency);
 }
 
-/** Normalize + format a transaction amount respecting source and currency. */
-function formatTxnAmount(txn: { amount: number; currency: string; source: string }): string {
-  let val = Math.abs(Number(txn.amount));
-  const currency = txn.currency ?? "CLP";
-  // USD is always stored as cents (email, manual, plaid)
-  if (currency === "USD") val = val / 100;
-  if (currency === "USD")
-    return `US$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(val).toLocaleString("es-CL")}`;
-}
 
 function formatDate(iso: string) {
   // Parse as date-only (YYYY-MM-DD) to avoid timezone shift.

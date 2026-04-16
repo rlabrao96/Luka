@@ -3,17 +3,13 @@ import { useState, useEffect } from "react";
 import { ReviewCard, ReviewTransactionInfo } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 import { getCategoryIconOrInitial } from "@/app/lib/category-icons";
+import { formatAmount } from "@/app/lib/currency";
 
-
-function formatAmount(amount: number, currency = "CLP"): string {
-  const val = currency === "USD" ? Math.abs(amount) / 100 : Math.abs(amount);
-  if (currency === "USD")
-    return `US$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(val).toLocaleString("es-CL")}`;
-}
-
+// USD and other decimal currencies stored as cents in DB — divide by 100
 function formatTxAmount(amount: number, currency = "CLP"): string {
-  const formatted = formatAmount(amount, currency);
+  const isDecimal = currency !== "CLP" && currency !== "COP" && currency !== "PYG" && currency !== "CRC";
+  const val = isDecimal ? Math.abs(amount) / 100 : Math.abs(amount);
+  const formatted = formatAmount(val, currency);
   if (amount < 0) return `(${formatted})`;
   if (amount > 0) return `+${formatted}`;
   return formatted;
