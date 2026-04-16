@@ -273,3 +273,84 @@ export function getCategoryIconOrInitial(category: string): { icon: string; isEm
   if (emoji) return { icon: emoji, isEmoji: true };
   return { icon: category.charAt(0).toUpperCase(), isEmoji: false };
 }
+
+// ────────────────────────────────────────────────────────────
+// Pill themes — used by the budget config modal (Tasks 11 & 12)
+// ────────────────────────────────────────────────────────────
+
+export type CategoryPillTheme = "amber" | "green" | "pink" | "blue" | "purple";
+
+export const PILL_GRADIENTS: Record<CategoryPillTheme, string> = {
+  amber: "linear-gradient(135deg, #FEF3C7, #FDE68A)",
+  green: "linear-gradient(135deg, #D1FAE5, #A7F3D0)",
+  pink: "linear-gradient(135deg, #FCE7F3, #FBCFE8)",
+  blue: "linear-gradient(135deg, #DBEAFE, #BFDBFE)",
+  purple: "linear-gradient(135deg, #E9D5FF, #DDD6FE)",
+};
+
+// Hand-picked themes for default-seed expense categories.
+// Emoji lookup is delegated to the existing CATEGORY_ICON_MAP (which
+// also covers English labels and historical Spanish variants), so the
+// same icon is used here as in MerchantCard.
+const CATEGORY_THEMES: Record<string, CategoryPillTheme> = {
+  "Supermercado": "green",
+  "Restaurantes": "pink",
+  "Transporte": "blue",
+  "Combustible": "amber",
+  "Entretenimiento": "purple",
+  "Salud": "pink",
+  "Educación": "blue",
+  "Servicios del hogar": "purple",
+  "Ropa": "pink",
+  "Tecnología": "blue",
+  "Viajes": "blue",
+  "Cuidado personal": "pink",
+  "Regalos": "amber",
+  "Mascotas": "amber",
+  "Suscripciones": "purple",
+  "Seguros": "blue",
+  "Impuestos": "amber",
+  "Deporte": "green",
+  "Niños": "pink",
+  "Otros gastos": "purple",
+};
+
+const THEMES: CategoryPillTheme[] = ["amber", "green", "pink", "blue", "purple"];
+
+/**
+ * Deterministic theme for an arbitrary category name.
+ * Uses the sum of char codes mod 5 so the same name always resolves to
+ * the same theme across sessions and users.
+ */
+function themeFromName(name: string): CategoryPillTheme {
+  let sum = 0;
+  for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
+  return THEMES[sum % THEMES.length];
+}
+
+/**
+ * Pill descriptor for the budget config modal: emoji + theme + gradient.
+ * - Emoji comes from the shared getCategoryIcon (which already covers ~200
+ *   Spanish + English category labels), falling back to the first letter of
+ *   the category name.
+ * - Theme comes from the hand-picked CATEGORY_THEMES map for default-seed
+ *   categories, or a deterministic hash for custom/unknown categories.
+ *
+ * This wraps getCategoryIcon (which returns string | null) with the
+ * richer shape the category caps editor needs for its visual pills.
+ */
+export function getCategoryPill(category: string): {
+  emoji: string;
+  theme: CategoryPillTheme;
+  gradient: string;
+} {
+  const emoji =
+    getCategoryIcon(category) ??
+    (category.trim().charAt(0).toUpperCase() || "?");
+  const theme = CATEGORY_THEMES[category] ?? themeFromName(category);
+  return {
+    emoji,
+    theme,
+    gradient: PILL_GRADIENTS[theme],
+  };
+}
