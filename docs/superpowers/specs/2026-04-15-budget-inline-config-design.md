@@ -136,7 +136,7 @@ Three section breadcrumbs (small uppercase labels), each containing 1–2 accord
   - Gasto personal: `$200.000` + `CLP / mes` unit (or `Sin monto`)
   - Día de pago: `Día 5` + `de cada mes` unit (or `Sin configurar`)
   - Aporte al hogar: `Completa` / `Fija ($800.000 CLP)` / `Sólo reembolso` + short descriptor unit
-  - Topes por categoría: `{N} topes activos` + `${total} cubiertos` unit (or `Sin topes`)
+  - Topes por categoría: `{N} topes activos` + `${total} cubiertos` unit (or `Sin topes`). `{N}` and `${total}` are computed from the *last-saved* `["category-budgets", householdId, month]` query response, not from the in-flight draft. The summary only updates after a successful save — the user doesn't see a flickering total while typing.
 - Chevron is a `ChevronRight` that rotates 90° on expand (260ms cubic-bezier `.2,.9,.25,1`)
 
 **Row anatomy (expanded):**
@@ -147,7 +147,12 @@ Three section breadcrumbs (small uppercase labels), each containing 1–2 accord
 - Body inner padding: `pt-1 pb-4 pl-[72px] pr-4` (aligned to the label column)
 - Each body has its own Guardar button (see §3.4)
 
-Only one row can be expanded at a time. Clicking another row collapses the current one. Exception: the first time the modal opens, all rows start collapsed. If the user has `needsSetup=true`, the **Meta de ahorro** row expands automatically on open (one-time, per modal open).
+Only one row can be expanded at a time. Clicking another row collapses the current one. On modal open, the initial state is:
+
+- If `needsSetup === true` (no savings target or payday), **Meta de ahorro** starts expanded (one row expanded).
+- Otherwise, all rows start collapsed (zero rows expanded).
+
+The auto-expand is a one-time nudge per open — if the user collapses it and then toggles it back, normal one-at-a-time behaviour resumes.
 
 ### 3.4 Save pattern
 
@@ -160,7 +165,7 @@ Behaviour:
 3. On success:
    - Invalidate `["budgetSettings"]` and `["budget-v2", householdId]` (same invalidations as today) so the Sankey behind the modal updates live
    - Show a green "Guardado ✓" chip next to the button, fades in with `opacity 0 → 1` and `translateX(-4px → 0)` over 240ms
-   - Auto-collapse the row after 900ms (gives the user time to see the confirmation)
+   - Auto-collapse the row after 900ms (gives the user time to see the confirmation). **The 900ms timer is cancelled if the user expands another row in the meantime** — otherwise a fast user would see row A collapse from under row B half a second after they opened B. The timer is also cancelled if the modal is closed.
 4. On error:
    - Show `Error al guardar. Intenta de nuevo.` chip in `text-red-500`
    - Row stays expanded so the user can retry
@@ -292,6 +297,8 @@ Delete the component files:
 
 The `CategoriesSection` (category order drag-and-drop) stays on settings — it's not a budget config, it's a global preference.
 
+**Query-hook relocation:** the `["category-budgets", householdId, month]` and `["budgetSettings"]` query calls currently live inline inside the section component files that are being deleted. When the sections are removed, those query calls must be **relocated into the new modal**, not lost. The plan should ensure the modal mounts these queries (either inline or via a shared `useBudgetConfig` hook) before the old section files are deleted, so there's never a commit where the queries are orphaned.
+
 The final `/settings` surface is: Profile · Transactions config · Bank accounts · Compartido · Notifications · Categories · Privacy · Delete account. Nothing budget-related.
 
 ---
@@ -305,6 +312,8 @@ The final `/settings` surface is: Profile · Transactions config · Bank account
 - Each accordion row is a `<button>` (not a div) with `aria-expanded={isExpanded}` and `aria-controls={bodyId}`
 - Section breadcrumbs are `<h3>`s so screen readers get structure
 - Category picker: `role="listbox"`, picker items `role="option"`
+
+**Keyboard scope for v1:** the modal-level keyboard contract is required (Tab through controls, Esc closes, Enter on an accordion button toggles expand/collapse, focus trapped inside). Picker-internal arrow-key navigation and Enter-to-select are a **follow-up**; v1 ships with click-only picker interaction. This split lets us hold the modal to a proper a11y baseline without making picker keyboard flow a blocker.
 
 ---
 
