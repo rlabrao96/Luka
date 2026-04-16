@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
 import { api, type BudgetV2Response } from "@/app/lib/api";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
 import BudgetSankey from "@/app/(dashboard)/components/BudgetSankey";
+import { BudgetConfigModal } from "@/app/(dashboard)/components/BudgetConfigModal";
 import { RiskAlertBand } from "@/app/(dashboard)/components/RiskAlertBand";
 import { RunwayCard } from "@/app/(dashboard)/components/RunwayCard";
 
@@ -135,6 +136,21 @@ export default function BudgetsPage() {
   const householdId = me?.household_id ?? null;
   const monthStr = monthParam(selectedMonth);
 
+  const [configOpen, setConfigOpen] = useState(false);
+
+  // Prefetch budgetSettings so the gear-button empty-state dot is accurate
+  // before the user opens the modal.
+  const budgetSettings = useQuery({
+    queryKey: ["budgetSettings"],
+    queryFn: () => api.getBudgetSettings(),
+    staleTime: 30 * 1000,
+    enabled: !!householdId,
+  });
+  const needsSetup =
+    budgetSettings.data != null &&
+    (budgetSettings.data.savings_target_amount == null ||
+      budgetSettings.data.payday_day_of_month == null);
+
   const household = useQuery({
     queryKey: ["budget-v2", householdId, monthStr, selectedCurrency, "household"],
     queryFn: () =>
@@ -196,12 +212,30 @@ export default function BudgetsPage() {
           <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Presupuesto</h2>
           <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
         </div>
-        {showToggle && (
-          <CurrencyToggle
-            value={selectedCurrency}
-            onChange={(c) => setSelectedCurrency(c as Currency)}
-          />
-        )}
+        <div className="flex items-center gap-2">
+          {showToggle && (
+            <CurrencyToggle
+              value={selectedCurrency}
+              onChange={(c) => setSelectedCurrency(c as Currency)}
+            />
+          )}
+          {householdId && (
+            <button
+              type="button"
+              aria-label="Configurar presupuesto"
+              onClick={() => setConfigOpen(true)}
+              className="relative w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
+            >
+              <Settings2 size={16} className="text-slate-700" />
+              {needsSetup && (
+                <span
+                  aria-hidden
+                  className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-luka-primary border-2 border-white"
+                />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Month selector */}
@@ -303,6 +337,14 @@ export default function BudgetsPage() {
           </section>
         );
       })()}
+
+      <BudgetConfigModal
+        open={configOpen}
+        onOpenChange={setConfigOpen}
+        householdId={householdId}
+        month={monthStr}
+        householdBudget={household.data}
+      />
     </div>
   );
 }
