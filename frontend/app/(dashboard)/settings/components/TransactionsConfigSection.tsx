@@ -7,6 +7,20 @@ import { api } from "@/app/lib/api";
 const CURRENCIES = [
   { value: "CLP", label: "CLP — Peso chileno" },
   { value: "USD", label: "USD — Dólar estadounidense" },
+  { value: "COP", label: "COP — Peso colombiano" },
+  { value: "BRL", label: "BRL — Real brasileño" },
+  { value: "MXN", label: "MXN — Peso mexicano" },
+  { value: "ARS", label: "ARS — Peso argentino" },
+  { value: "PEN", label: "PEN — Sol peruano" },
+  { value: "UYU", label: "UYU — Peso uruguayo" },
+  { value: "PYG", label: "PYG — Guaraní paraguayo" },
+  { value: "BOB", label: "BOB — Boliviano" },
+  { value: "VES", label: "VES — Bolívar venezolano" },
+  { value: "DOP", label: "DOP — Peso dominicano" },
+  { value: "GTQ", label: "GTQ — Quetzal guatemalteco" },
+  { value: "HNL", label: "HNL — Lempira hondureño" },
+  { value: "NIO", label: "NIO — Córdoba nicaragüense" },
+  { value: "CRC", label: "CRC — Colón costarricense" },
 ];
 
 export function TransactionsConfigSection({
@@ -40,7 +54,7 @@ export function TransactionsConfigSection({
       </h3>
       <div className="space-y-1">
         <label className="block text-xs font-medium text-slate-500">
-          Moneda preferida
+          Moneda principal
         </label>
         <select
           value={currency}
