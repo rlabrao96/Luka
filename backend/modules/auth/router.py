@@ -32,13 +32,21 @@ async def get_me(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(HouseholdMember.household_id).where(
+        select(
+            HouseholdMember.household_id,
+            HouseholdMember.contribution_mode,
+            HouseholdMember.fixed_contribution_amount,
+            HouseholdMember.fixed_contribution_currency,
+        ).where(
             HouseholdMember.user_id == current_user.id,
             HouseholdMember.left_at.is_(None),
         )
     )
     row = result.first()
     household_id = row[0] if row else None
+    contribution_mode = row[1] if row else None
+    fixed_contribution_amount = row[2] if row else None
+    fixed_contribution_currency = row[3] if row else None
 
     return UserResponse(
         id=current_user.id,
@@ -49,6 +57,9 @@ async def get_me(
         phone_whatsapp=current_user.phone_whatsapp,
         preferred_currency=current_user.preferred_currency,
         household_id=household_id,
+        contribution_mode=contribution_mode,
+        fixed_contribution_amount=fixed_contribution_amount,
+        fixed_contribution_currency=fixed_contribution_currency,
     )
 
 

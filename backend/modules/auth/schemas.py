@@ -1,5 +1,6 @@
 import uuid
-from pydantic import BaseModel
+from decimal import Decimal
+from pydantic import BaseModel, field_serializer
 
 
 class UserResponse(BaseModel):
@@ -11,7 +12,20 @@ class UserResponse(BaseModel):
     phone_whatsapp: str | None = None
     preferred_currency: str = "CLP"
     household_id: uuid.UUID | None = None
+    # Contribution mode for the caller's active HouseholdMember row.
+    # Null when the user has no active household membership.
+    contribution_mode: str | None = None
+    fixed_contribution_amount: Decimal | None = None
+    fixed_contribution_currency: str | None = None
     model_config = {"from_attributes": True}
+
+    @field_serializer("fixed_contribution_amount")
+    def _serialize_fixed_contribution_amount(self, value: Decimal | None) -> str | None:
+        # Align with the DB column (Numeric(14, 2)): always serialize with 2 decimal places
+        # so the frontend sees a stable string representation regardless of input scale.
+        if value is None:
+            return None
+        return f"{value.quantize(Decimal('0.01')):.2f}"
 
 
 class WhatsAppVerifyRequest(BaseModel):
