@@ -261,8 +261,8 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 ### Auth (`/auth`)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/auth/me` | Get current user profile |
-| PATCH | `/auth/me` | Update profile (name, phone) |
+| GET | `/auth/me` | Get current user profile (incl. household contribution_mode/fixed_amount/currency) |
+| PATCH | `/auth/me` | Update profile (name, phone, currency); response includes contribution fields |
 | DELETE | `/auth/me` | Delete account (cascade) |
 | POST | `/auth/store-provider-tokens` | Store encrypted OAuth tokens |
 | POST | `/auth/setup-email-watch` | Initialize Gmail Pub/Sub watch |
@@ -401,6 +401,7 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 - `PaceChart` — daily spend vs budget pace line (on_track green/red)
 - `BalanceCard` — total checking balance across active accounts
 - `BudgetBars` — horizontal progress bars color-coded by usage %
+- `BudgetConfigModal` — Radix Dialog accordion mounted on `/budgets`. Five rows (Meta de ahorro · Gasto personal · Día de pago · Aporte al hogar · Topes por categoría) ported from the old `/settings` budget sections. Per-row save mutations, 900ms auto-collapse with "Guardado ✓" chip, first-open `needsSetup` nudge, mobile bottom-sheet variant. Caps editor is empty-by-default with a top-5-spent picker derived from the `budget-v2` Sankey data
 - `AllocationCard` — 50/20/30 allocation sliders with suggestion pills
 - `MonthSelector` — dropdown (desktop) / bottom sheet (mobile)
 - `PendingBlock` — pending/unreconciled transaction buckets with date display, source badges ("email"/"bank"), correct category type by amount sign, and transfer display ("Ajuste entre cuentas")
