@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { api } from "@/app/lib/api";
 import type { BudgetV2Response } from "@/app/lib/api";
+import { SavingsTargetRow } from "./SavingsTargetRow";
 
 export interface BudgetConfigModalProps {
   open: boolean;
@@ -124,7 +125,10 @@ export function BudgetConfigModal({
               Mi plan
             </div>
             <div className="px-2 space-y-0.5">
-              {/* SavingsTargetRow / PersonalAllocationRow / PaydayRow land here in Tasks 6-8 */}
+              <SavingsTargetRow
+                expanded={expandedRow === "savings"}
+                onToggle={toggleRow}
+              />
             </div>
             <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500 px-[18px] pt-2.5 pb-1.5">
               Hogar
