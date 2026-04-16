@@ -392,6 +392,12 @@ export interface ReviewStatus {
   reviewed_count: number;
 }
 
+export interface UserCurrency {
+  currency_code: string;
+  is_primary: boolean;
+  sort_order: number;
+}
+
 // ── API calls ──────────────────────────────────────────────
 
 export const api = {
@@ -771,6 +777,22 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+
+  // --- Currencies ---
+  getCurrencies(): Promise<UserCurrency[]> {
+    return apiFetch<UserCurrency[]>("/currencies");
+  },
+
+  addCurrency(currency_code: string): Promise<UserCurrency> {
+    return apiFetch<UserCurrency>("/currencies", {
+      method: "POST",
+      body: JSON.stringify({ currency_code }),
+    });
+  },
+
+  deleteCurrency(currency_code: string): Promise<void> {
+    return apiFetch<void>(`/currencies/${currency_code}`, { method: "DELETE" });
+  },
 
   // --- Delete Account ---
   async deleteAccount() {
