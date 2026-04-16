@@ -8,6 +8,7 @@ import { api } from "@/app/lib/api";
 import type { BudgetV2Response } from "@/app/lib/api";
 import { SavingsTargetRow } from "./SavingsTargetRow";
 import { PersonalAllocationRow } from "./PersonalAllocationRow";
+import { PaydayRow } from "./PaydayRow";
 
 export interface BudgetConfigModalProps {
   open: boolean;
@@ -132,6 +133,10 @@ export function BudgetConfigModal({
               />
               <PersonalAllocationRow
                 expanded={expandedRow === "personal"}
+                onToggle={toggleRow}
+              />
+              <PaydayRow
+                expanded={expandedRow === "payday"}
                 onToggle={toggleRow}
               />
             </div>
