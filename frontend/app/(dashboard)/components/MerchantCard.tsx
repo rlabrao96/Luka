@@ -6,7 +6,7 @@ import { getCategoryIconOrInitial } from "@/app/lib/category-icons";
 import { formatAmount } from "@/app/lib/currency";
 
 // USD and other decimal currencies stored as cents in DB — divide by 100
-function formatTxAmount(amount: number, currency = "CLP"): string {
+function formatTxAmount(amount: number, currency: string): string {
   const isDecimal = currency !== "CLP" && currency !== "COP" && currency !== "PYG" && currency !== "CRC";
   const val = isDecimal ? Math.abs(amount) / 100 : Math.abs(amount);
   const formatted = formatAmount(val, currency);
@@ -123,7 +123,7 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
                 <span className="text-slate-500 truncate flex-1 min-w-0">{tx.raw_name}</span>
                 <span className="flex gap-2 text-slate-400 shrink-0 ml-2">
                   <span className="hidden sm:inline">{tx.date}</span>
-                  <span className="font-medium text-slate-600 whitespace-nowrap">{formatTxAmount(tx.amount, tx.currency)}</span>
+                  <span className="font-medium text-slate-600 whitespace-nowrap">{formatTxAmount(tx.amount, tx.currency ?? "CLP")}</span>
                 </span>
               </div>
             ))}
@@ -177,13 +177,13 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
               <span className="text-slate-600 truncate flex-1 min-w-0">{tx.raw_name}</span>
               <span className="flex gap-3 text-slate-400 shrink-0 ml-3">
                 <span>{tx.date}</span>
-                <span className="font-medium text-slate-700 whitespace-nowrap">{formatTxAmount(tx.amount, tx.currency)}</span>
+                <span className="font-medium text-slate-700 whitespace-nowrap">{formatTxAmount(tx.amount, tx.currency ?? "CLP")}</span>
               </span>
             </div>
           ))}
         </div>
         <div className="flex justify-end mt-3 pt-3 border-t border-slate-200">
-          <span className="text-sm font-semibold text-slate-700">Total: {formatTxAmount(card.total_amount, card.currency)}</span>
+          <span className="text-sm font-semibold text-slate-700">Total: {formatTxAmount(card.total_amount, card.currency ?? (card.transactions ?? [])[0]?.currency ?? "CLP")}</span>
         </div>
       </div>
     </div>
