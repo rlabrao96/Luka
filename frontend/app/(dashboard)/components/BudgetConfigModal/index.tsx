@@ -7,6 +7,7 @@ import { X } from "lucide-react";
 import { api } from "@/app/lib/api";
 import type { BudgetV2Response } from "@/app/lib/api";
 import { SavingsTargetRow } from "./SavingsTargetRow";
+import { PersonalAllocationRow } from "./PersonalAllocationRow";
 
 export interface BudgetConfigModalProps {
   open: boolean;
@@ -127,6 +128,10 @@ export function BudgetConfigModal({
             <div className="px-2 space-y-0.5">
               <SavingsTargetRow
                 expanded={expandedRow === "savings"}
+                onToggle={toggleRow}
+              />
+              <PersonalAllocationRow
+                expanded={expandedRow === "personal"}
                 onToggle={toggleRow}
               />
             </div>
