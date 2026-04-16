@@ -10,6 +10,7 @@ import { SavingsTargetRow } from "./SavingsTargetRow";
 import { PersonalAllocationRow } from "./PersonalAllocationRow";
 import { PaydayRow } from "./PaydayRow";
 import { ContributionRow } from "./ContributionRow";
+import { CategoryCapsRow } from "./CategoryCapsRow";
 
 export interface BudgetConfigModalProps {
   open: boolean;
@@ -154,7 +155,13 @@ export function BudgetConfigModal({
               Categorías
             </div>
             <div className="px-2 space-y-0.5 pb-2">
-              {/* CategoryCapsRow lands here in Task 11 */}
+              <CategoryCapsRow
+                expanded={expandedRow === "caps"}
+                onToggle={toggleRow}
+                householdId={householdId}
+                month={month}
+                householdBudget={householdBudget}
+              />
             </div>
           </div>
 
@@ -180,8 +187,3 @@ export function BudgetConfigModal({
     </Dialog.Root>
   );
 }
-
-// Suppress the unused-prop TS warnings for props that land in Tasks 6-11.
-// The modal consumers (budgets/page.tsx) will pass them from the get-go.
-type _UsedLater = Pick<BudgetConfigModalProps, "householdId" | "month" | "householdBudget">;
-type _Touch = keyof _UsedLater extends never ? never : _UsedLater;
