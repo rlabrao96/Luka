@@ -37,6 +37,15 @@ export interface UserMe {
   phone_whatsapp: string | null;
   preferred_currency: string;
   household_id: string | null;
+  // Contribution fields for the caller's active household membership.
+  // Null when the user has no active membership.
+  contribution_mode: "full" | "fixed" | "reimbursement" | null;
+  // Quantized decimal string from the backend (e.g. "800000.00"), not a number.
+  // Pydantic v2 serializes Decimal as string, and the auth router explicitly
+  // normalizes to the Numeric(14, 2) scale via a field_serializer. Read sites
+  // must convert with Number(...) before doing arithmetic or comparisons.
+  fixed_contribution_amount: string | null;
+  fixed_contribution_currency: string | null;
 }
 
 export interface Transaction {
