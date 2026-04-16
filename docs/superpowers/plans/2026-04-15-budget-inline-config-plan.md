@@ -26,7 +26,7 @@ If the reviewer wants to preserve the "frontend-only" scope verbatim, the altern
 
 | Path | Responsibility |
 |------|----------------|
-| `frontend/app/lib/categoryIcons.ts` | Emoji + gradient-color mapping for category pills. Default-seed categories get a hand-picked emoji; custom categories fall back to a first-letter pill. Color picked via deterministic hash. |
+| `frontend/app/lib/category-icons.ts` **(extend, not create)** | Emoji + gradient-color mapping for category pills. The existing file already has a 200+ entry Spanish+English emoji lookup consumed by `MerchantCard` — extend it with a new `CategoryPillTheme` / `PILL_GRADIENTS` / `getCategoryPill` export so there's a single source of truth for category emoji. Deterministic hash picks the color theme for unknown categories. |
 | `frontend/app/(dashboard)/components/BudgetConfigModal/index.tsx` | Modal shell: Radix Dialog wrapper, responsive styling (desktop centered / mobile bottom-sheet), header, footer, breadcrumb sections, accordion state machine, auto-expand logic. |
 | `frontend/app/(dashboard)/components/BudgetConfigModal/AccordionRow.tsx` | Generic row primitive. Renders icon tile + label + current-value summary + chevron when collapsed, and renders children in an animated grid-rows body when expanded. Owns the per-row auto-collapse timer. |
 | `frontend/app/(dashboard)/components/BudgetConfigModal/SavingsTargetRow.tsx` | Meta de ahorro row: amount + currency select. Ports form logic from `BudgetSettingsSection`. |
@@ -302,26 +302,21 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 3 — Frontend: create `categoryIcons.ts`
+## Task 3 — Frontend: extend `category-icons.ts` with pill themes
+
+> **Revised during execution:** The plan originally asked for a new file `categoryIcons.ts`, but the codebase already has `frontend/app/lib/category-icons.ts` (kebab-case) with a 200+ entry Spanish+English emoji lookup consumed by `MerchantCard`. Creating a parallel file with a near-identical name is a maintainability trap. This task is revised to **extend the existing file** with the new pill-theme exports while preserving all existing functionality.
 
 **Files:**
-- Create: `frontend/app/lib/categoryIcons.ts`
+- Modify: `frontend/app/lib/category-icons.ts` — append new exports (`CategoryPillTheme`, `PILL_GRADIENTS`, `getCategoryPill`)
 
-- [ ] **Step 1: Create the file**
+- [ ] **Step 1: Extend the existing file**
 
-Create `frontend/app/lib/categoryIcons.ts` with the full contents:
+Append the following to the end of `frontend/app/lib/category-icons.ts`, **after** the existing `getCategoryIconOrInitial` function. Do not modify or delete anything that's already there.
 
 ```ts
-/**
- * Category icon + color mapping for the budget config modal.
- *
- * Each expense category from the default seed gets a hand-picked emoji
- * and a gradient color theme for the pill background. Unknown or custom
- * categories fall back to a first-letter pill + a deterministic color
- * picked from the name hash.
- *
- * Additive-only: adding a new entry never breaks an existing one.
- */
+// ────────────────────────────────────────────────────────────
+// Pill themes — used by the budget config modal (Tasks 11 & 12)
+// ────────────────────────────────────────────────────────────
 
 export type CategoryPillTheme = "amber" | "green" | "pink" | "blue" | "purple";
 
@@ -333,31 +328,31 @@ export const PILL_GRADIENTS: Record<CategoryPillTheme, string> = {
   purple: "linear-gradient(135deg, #E9D5FF, #DDD6FE)",
 };
 
-type CategoryIconSpec = { emoji: string; theme: CategoryPillTheme };
-
-// Default-seed expense categories. Keys must match the Spanish labels
-// used by modules/settings and the category_preferences table.
-const EXPENSE_ICONS: Record<string, CategoryIconSpec> = {
-  "Supermercado": { emoji: "🛒", theme: "green" },
-  "Restaurantes": { emoji: "🍽️", theme: "pink" },
-  "Transporte": { emoji: "🚗", theme: "blue" },
-  "Combustible": { emoji: "⛽", theme: "amber" },
-  "Entretenimiento": { emoji: "🎬", theme: "purple" },
-  "Salud": { emoji: "💊", theme: "pink" },
-  "Educación": { emoji: "📚", theme: "blue" },
-  "Servicios del hogar": { emoji: "🏠", theme: "purple" },
-  "Ropa": { emoji: "👕", theme: "pink" },
-  "Tecnología": { emoji: "💻", theme: "blue" },
-  "Viajes": { emoji: "✈️", theme: "blue" },
-  "Cuidado personal": { emoji: "💈", theme: "pink" },
-  "Regalos": { emoji: "🎁", theme: "amber" },
-  "Mascotas": { emoji: "🐾", theme: "amber" },
-  "Suscripciones": { emoji: "🔁", theme: "purple" },
-  "Seguros": { emoji: "🛡️", theme: "blue" },
-  "Impuestos": { emoji: "🧾", theme: "amber" },
-  "Deporte": { emoji: "🏋️", theme: "green" },
-  "Niños": { emoji: "🧸", theme: "pink" },
-  "Otros gastos": { emoji: "💸", theme: "purple" },
+// Hand-picked themes for default-seed expense categories.
+// Emoji lookup is delegated to the existing CATEGORY_ICON_MAP (which
+// also covers English labels and historical Spanish variants), so the
+// same icon is used here as in MerchantCard.
+const CATEGORY_THEMES: Record<string, CategoryPillTheme> = {
+  "Supermercado": "green",
+  "Restaurantes": "pink",
+  "Transporte": "blue",
+  "Combustible": "amber",
+  "Entretenimiento": "purple",
+  "Salud": "pink",
+  "Educación": "blue",
+  "Servicios del hogar": "purple",
+  "Ropa": "pink",
+  "Tecnología": "blue",
+  "Viajes": "blue",
+  "Cuidado personal": "pink",
+  "Regalos": "amber",
+  "Mascotas": "amber",
+  "Suscripciones": "purple",
+  "Seguros": "blue",
+  "Impuestos": "amber",
+  "Deporte": "green",
+  "Niños": "pink",
+  "Otros gastos": "purple",
 };
 
 const THEMES: CategoryPillTheme[] = ["amber", "green", "pink", "blue", "purple"];
@@ -373,23 +368,36 @@ function themeFromName(name: string): CategoryPillTheme {
   return THEMES[sum % THEMES.length];
 }
 
-export function getCategoryIcon(category: string): {
+/**
+ * Pill descriptor for the budget config modal: emoji + theme + gradient.
+ * - Emoji comes from the shared `getCategoryIcon` (which already covers ~200
+ *   Spanish + English category labels), falling back to the first letter of
+ *   the category name.
+ * - Theme comes from the hand-picked `CATEGORY_THEMES` map for default-seed
+ *   categories, or a deterministic hash for custom/unknown categories.
+ *
+ * This wraps `getCategoryIcon` (returns `string | null`) with a
+ * richer shape that the category caps editor needs for its visual pills.
+ */
+export function getCategoryPill(category: string): {
   emoji: string;
   theme: CategoryPillTheme;
   gradient: string;
 } {
-  const known = EXPENSE_ICONS[category];
-  if (known) {
-    return { ...known, gradient: PILL_GRADIENTS[known.theme] };
-  }
-  const theme = themeFromName(category);
+  const emoji =
+    getCategoryIcon(category) ??
+    category.trim().charAt(0).toUpperCase() ||
+    "?";
+  const theme = CATEGORY_THEMES[category] ?? themeFromName(category);
   return {
-    emoji: category.trim().charAt(0).toUpperCase() || "?",
+    emoji,
     theme,
     gradient: PILL_GRADIENTS[theme],
   };
 }
 ```
+
+**Tasks 11 and 12 import path:** `import { getCategoryPill, PILL_GRADIENTS } from "@/app/lib/category-icons";` — NOT from a new `categoryIcons.ts` file. The existing import name `getCategoryIcon` is left untouched (still returns `string | null` for `MerchantCard`).
 
 - [ ] **Step 2: Type-check**
 
@@ -397,13 +405,13 @@ export function getCategoryIcon(category: string): {
 cd frontend && npm run build
 ```
 
-Expected: PASS.
+Expected: PASS. No existing consumer of `getCategoryIcon` changes.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add frontend/app/lib/categoryIcons.ts
-git commit -m "feat(frontend): add category icon + gradient mapping
+git add frontend/app/lib/category-icons.ts
+git commit -m "feat(frontend): add pill themes + getCategoryPill to category-icons
 
 Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 ```
@@ -1665,7 +1673,7 @@ Create `frontend/app/(dashboard)/components/BudgetConfigModal/CategoryCapPicker.
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { getCategoryIcon } from "@/app/lib/categoryIcons";
+import { getCategoryPill } from "@/app/lib/category-icons";
 
 export interface PickerCategory {
   category: string;
@@ -1738,7 +1746,7 @@ export function CategoryCapPicker({
               Sugeridas · top {suggested.length} gasto del mes
             </div>
             {suggested.map((c, i) => {
-              const icon = getCategoryIcon(c.category);
+              const icon = getCategoryPill(c.category);
               return (
                 <button
                   key={c.category}
@@ -1778,7 +1786,7 @@ export function CategoryCapPicker({
               Otras
             </div>
             {other.map((c) => {
-              const icon = getCategoryIcon(c.category);
+              const icon = getCategoryPill(c.category);
               return (
                 <button
                   key={c.category}
@@ -1854,7 +1862,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X, Check } from "lucide-react";
 import { api, type BudgetV2Response } from "@/app/lib/api";
-import { getCategoryIcon } from "@/app/lib/categoryIcons";
+import { getCategoryPill } from "@/app/lib/category-icons";
 import { CategoryCapPicker } from "./CategoryCapPicker";
 
 interface Props {
@@ -1993,7 +2001,7 @@ export function CategoryCapsEditor({
       ) : (
         <div className="space-y-1.5">
           {activeCaps.map((category) => {
-            const icon = getCategoryIcon(category);
+            const icon = getCategoryPill(category);
             const spend = spendByCategory[category] ?? 0;
             return (
               <div
