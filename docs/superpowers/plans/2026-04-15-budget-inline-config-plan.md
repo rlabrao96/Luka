@@ -271,7 +271,11 @@ export interface UserMe {
   // Contribution fields for the caller's active household membership.
   // Null when the user has no active membership.
   contribution_mode: "full" | "fixed" | "reimbursement" | null;
-  fixed_contribution_amount: number | null;
+  // Quantized decimal string from the backend (e.g. "800000.00"), not a number.
+  // Pydantic v2 serializes Decimal as string, and the auth router explicitly
+  // normalizes to the Numeric(14, 2) scale via a field_serializer. Read sites
+  // must convert with Number(...) before doing arithmetic or comparisons.
+  fixed_contribution_amount: string | null;
   fixed_contribution_currency: string | null;
 }
 ```
@@ -1476,8 +1480,13 @@ export function ContributionRow({ expanded, onToggle }: Props) {
   useEffect(() => {
     if (!me) return;
     setMode((me.contribution_mode as Mode | null) ?? "full");
+    // fixed_contribution_amount is a quantized string from the backend
+    // (e.g. "800000.00"). Strip any trailing ".00" so the input field shows
+    // a clean integer for CLP, but leave non-zero decimals alone for USD.
     setAmount(
-      me.fixed_contribution_amount != null ? String(me.fixed_contribution_amount) : ""
+      me.fixed_contribution_amount != null
+        ? me.fixed_contribution_amount.replace(/\.00$/, "")
+        : ""
     );
     setCurrency(me.fixed_contribution_currency ?? "CLP");
   }, [me]);
@@ -1502,9 +1511,11 @@ export function ContributionRow({ expanded, onToggle }: Props) {
   });
 
   const currentMode: Mode | null = (me?.contribution_mode as Mode | null) ?? null;
+  const currentFixedAmountNum =
+    me?.fixed_contribution_amount != null ? Number(me.fixed_contribution_amount) : null;
   const valuePrimary =
     currentMode === "fixed"
-      ? `Fija (${formatAmount(me?.fixed_contribution_amount ?? null, me?.fixed_contribution_currency ?? null)})`
+      ? `Fija (${formatAmount(currentFixedAmountNum, me?.fixed_contribution_currency ?? null)})`
       : currentMode === "reimbursement"
         ? "Sólo reembolso"
         : "Completa";
