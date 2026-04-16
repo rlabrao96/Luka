@@ -21,6 +21,7 @@ from modules.auth.schemas import (
 )
 from modules.email.factory import get_email_provider
 from modules.households.models import HouseholdMember
+from modules.currencies.service import sync_preferred_currency
 from modules.whatsapp.sender import send_verification_pin
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -86,6 +87,8 @@ async def update_profile(
         if body.preferred_currency not in ALLOWED_CURRENCIES:
             raise HTTPException(status_code=422, detail="Moneda no soportada")
         user.preferred_currency = body.preferred_currency
+        # Sync user_currencies BEFORE commit — both changes land in one transaction
+        await sync_preferred_currency(db, user.id, body.preferred_currency)
     await db.commit()
     await db.refresh(user)
 
