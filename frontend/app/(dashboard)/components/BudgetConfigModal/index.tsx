@@ -9,6 +9,7 @@ import type { BudgetV2Response } from "@/app/lib/api";
 import { SavingsTargetRow } from "./SavingsTargetRow";
 import { PersonalAllocationRow } from "./PersonalAllocationRow";
 import { PaydayRow } from "./PaydayRow";
+import { ContributionRow } from "./ContributionRow";
 
 export interface BudgetConfigModalProps {
   open: boolean;
@@ -144,7 +145,10 @@ export function BudgetConfigModal({
               Hogar
             </div>
             <div className="px-2 space-y-0.5">
-              {/* ContributionRow lands here in Task 9 */}
+              <ContributionRow
+                expanded={expandedRow === "contribution"}
+                onToggle={toggleRow}
+              />
             </div>
             <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500 px-[18px] pt-2.5 pb-1.5">
               Categorías
