@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Target, Check } from "lucide-react";
 import { api } from "@/app/lib/api";
+import { formatMoney, type Currency } from "@/app/lib/format";
 import { AccordionRow } from "./AccordionRow";
 
 interface Props {
@@ -12,12 +13,6 @@ interface Props {
 }
 
 const CURRENCIES = ["CLP", "USD"] as const;
-
-function formatAmount(n: number | null, currency: string | null): string {
-  if (n == null) return "Sin meta";
-  if (currency === "USD") return `US$${(n / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
-}
 
 export function SavingsTargetRow({ expanded, onToggle }: Props) {
   const queryClient = useQueryClient();
@@ -66,10 +61,14 @@ export function SavingsTargetRow({ expanded, onToggle }: Props) {
       onToggle={(id) => onToggle(id as "savings")}
       icon={<Target size={20} />}
       label="Meta de ahorro"
-      valuePrimary={formatAmount(
-        current?.savings_target_amount ?? null,
-        current?.savings_target_currency ?? null
-      )}
+      valuePrimary={
+        current?.savings_target_amount != null
+          ? formatMoney(
+              current.savings_target_amount,
+              (current?.savings_target_currency ?? "CLP") as Currency
+            )
+          : "Sin meta"
+      }
       valueUnit={
         current?.savings_target_amount != null
           ? `${current.savings_target_currency ?? "CLP"} / mes`

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Home, Check } from "lucide-react";
 import { api } from "@/app/lib/api";
+import { formatMoney, type Currency } from "@/app/lib/format";
 import { AccordionRow } from "./AccordionRow";
 
 type Mode = "full" | "fixed" | "reimbursement";
@@ -24,12 +25,6 @@ const MODE_HELPERS: Record<Mode, string> = {
   fixed: "Aporto un monto mensual fijo. Mi ingreso real queda privado — nadie más en el hogar lo verá.",
   reimbursement: "No aporto al pot. Mis gastos se llevan aparte y se reembolsan al final del mes.",
 };
-
-function formatAmount(n: number | null, currency: string | null): string {
-  if (n == null) return "";
-  if (currency === "USD") return `US$${(n / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
-}
 
 export function ContributionRow({ expanded, onToggle }: Props) {
   const queryClient = useQueryClient();
@@ -82,7 +77,14 @@ export function ContributionRow({ expanded, onToggle }: Props) {
     me?.fixed_contribution_amount != null ? Number(me.fixed_contribution_amount) : null;
   const valuePrimary =
     currentMode === "fixed"
-      ? `Fija (${formatAmount(currentFixedAmountNum, me?.fixed_contribution_currency ?? null)})`
+      ? `Fija (${
+          currentFixedAmountNum != null
+            ? formatMoney(
+                currentFixedAmountNum,
+                (me?.fixed_contribution_currency ?? "CLP") as Currency
+              )
+            : ""
+        })`
       : currentMode === "reimbursement"
         ? "Sólo reembolso"
         : "Completa";

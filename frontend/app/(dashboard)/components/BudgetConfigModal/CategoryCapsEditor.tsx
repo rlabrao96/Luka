@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X, Check } from "lucide-react";
 import { api, type BudgetV2Response } from "@/app/lib/api";
 import { getCategoryPill } from "@/app/lib/category-icons";
+import { formatMoney, type Currency } from "@/app/lib/format";
 import { CategoryCapPicker } from "./CategoryCapPicker";
 
 interface Props {
@@ -12,13 +13,6 @@ interface Props {
   month: string;
   householdBudget: BudgetV2Response | undefined;
   onSaved: () => void;
-}
-
-function formatSpend(n: number, currency: string): string {
-  if (currency === "USD") {
-    return `US$${(n / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
 }
 
 /** Derive per-category spend from the Sankey `spent_<cat>` nodes. */
@@ -162,7 +156,7 @@ export function CategoryCapsEditor({
                   </div>
                   {spend > 0 && (
                     <div className="text-[10.5px] text-slate-500">
-                      Gastado: {formatSpend(spend, currency)}
+                      Gastado: {formatMoney(spend, currency as Currency)}
                     </div>
                   )}
                 </div>
@@ -203,7 +197,7 @@ export function CategoryCapsEditor({
               spendByCategory={spendByCategory}
               excluded={excluded}
               onPick={handlePick}
-              formatSpend={(n) => formatSpend(n, currency)}
+              formatSpend={(n) => formatMoney(n, currency as Currency)}
             />
           )}
 
