@@ -33,7 +33,10 @@ class WhatsAppVerifyRequest(BaseModel):
     pin: str
 
 
-ALLOWED_CURRENCIES = {"CLP", "USD"}
+ALLOWED_CURRENCIES = {
+    "CLP", "USD", "COP", "BRL", "MXN", "ARS", "PEN",
+    "UYU", "PYG", "BOB", "VES", "DOP", "GTQ", "HNL", "NIO", "CRC",
+}
 
 
 class UpdateProfileRequest(BaseModel):

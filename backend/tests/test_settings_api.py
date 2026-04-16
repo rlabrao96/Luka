@@ -139,3 +139,12 @@ async def test_put_categories_reorder_route_exists(auth_app):
                 headers={"Authorization": "Bearer token"},
             )
     assert response.status_code in (200, 500)
+
+
+def test_allowed_currencies_contains_all_16():
+    from modules.auth.schemas import ALLOWED_CURRENCIES
+    expected = {
+        "CLP", "USD", "COP", "BRL", "MXN", "ARS", "PEN",
+        "UYU", "PYG", "BOB", "VES", "DOP", "GTQ", "HNL", "NIO", "CRC",
+    }
+    assert expected == ALLOWED_CURRENCIES
