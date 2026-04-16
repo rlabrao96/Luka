@@ -136,9 +136,11 @@ Expand from `{"CLP", "USD"}` to all 16 codes listed above.
 
 ### `backend/modules/whatsapp/sender.py`
 - Extend `_format_amount()` to handle all 16 currencies with correct format per currency
+- **Note:** `send_edit_options()` is already implemented in this file (WhatsApp Edit Transaction feature was partially applied). No conflict — only `_format_amount` needs extending.
 
 ### `backend/alembic/versions/029_user_currencies.py`
 - Create `user_currencies` table
+- **Note on numbering:** Current alembic head is `028`. This migration is `029` only if the pending `user-categories` plan has not yet been applied. If that plan lands first (it also needs a migration), renumber this to `030`. Always verify with `uv run alembic current` before creating the file.
 
 ### `backend/main.py`
 - Register currencies router
@@ -194,6 +196,30 @@ Expand from `{"CLP", "USD"}` to all 16 codes listed above.
 - `[+]` — opens bottom sheet with the currencies not yet in the user's list; tapping one calls POST /currencies and closes the sheet
 - Default selected on page load: primary currency (the one with `is_primary = true`); if for any reason the primary currency is not in the list, fall back to the first currency by `sort_order`
 - Selection is local state (not persisted across page reloads)
+
+---
+
+## Coordination Notes
+
+Three untracked plan files exist alongside this spec that affect implementation order and shared files:
+
+### 1. `plans/2026-04-04-user-categories.md` (NOT YET IMPLEMENTED)
+- Needs one Alembic migration (`category_type`/`is_custom` columns). Its plan file uses stale numbering (024); actual number will be 029.
+- If user-categories lands **before** multi-currency, renumber `029_user_currencies.py` → `030_user_currencies.py`.
+- Modifies `backend/modules/settings/schemas.py`, `service.py`, `router.py`, and `backend/tests/test_settings_api.py`. None of these conflict with multi-currency files.
+- **Both plans modify `test_settings_api.py`** — coordinate so neither overwrites the other's assertions. Apply changes additively.
+
+### 2. `plans/2026-04-04-whatsapp-edit-transaction.md` (PARTIALLY IMPLEMENTED)
+- `send_edit_options()` is **already present** in `backend/modules/whatsapp/sender.py` (confirmed in code). No conflict.
+- `backend/modules/whatsapp/session.py` has `save_active_edit` / `get_active_edit_transaction_id` / `clear_active_edit` — verify before re-implementing.
+- `handle_text_message` in `handler.py` may or may not be implemented — check before adding.
+
+### 3. `plans/2026-04-04-whatsapp-per-transaction-sessions.md` (ALREADY IMPLEMENTED)
+- Per-transaction session keys and `save_msgid` / `get_transaction_id_by_msgid` were applied in Session 14. This spec was written after that — no action needed.
+
+### Frontend `formatAmount` overlap
+- `frontend/app/(dashboard)/components/TransactionCard.tsx` has a local `formatCLP()` — replace with `formatAmount(amount, txn.currency)` from the new `currency.ts`.
+- `frontend/app/(dashboard)/transactions/page.tsx` has a local `formatAmount()` used **only inside `SummaryBar`** for account balance display (it divides USD by 100). Do **not** replace this with the global `currency.ts` version — balances and transactions use different storage units.
 
 ---
 
