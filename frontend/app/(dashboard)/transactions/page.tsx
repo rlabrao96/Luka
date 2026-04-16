@@ -10,6 +10,8 @@ import { ProcessingBanner } from "../components/ProcessingBanner";
 import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
+import { useCurrencies, useAddCurrency, useDeleteCurrency } from "@/app/lib/hooks/useCurrencies";
+import { SUPPORTED_CURRENCIES } from "@/app/lib/currency";
 
 function formatAmount(n: number, currency: string) {
   // Balances are stored in cents; CLP has no decimals
@@ -275,6 +277,109 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
   );
 }
 
+interface CurrencyPillBarProps {
+  currencies: import("@/app/lib/api").UserCurrency[];
+  selected: string | null; // null = "Todas"
+  onSelect: (code: string | null) => void;
+}
+
+function CurrencyPillBar({ currencies, selected, onSelect }: CurrencyPillBarProps) {
+  const addCurrency = useAddCurrency();
+  const deleteCurrency = useDeleteCurrency();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const activeCodes = new Set(currencies.map((c) => c.currency_code));
+  const available = SUPPORTED_CURRENCIES.filter((c) => !activeCodes.has(c.code));
+  const canRemove = currencies.length > 1;
+
+  return (
+    <>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Todas pill */}
+        <button
+          onClick={() => onSelect(null)}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            selected === null
+              ? "bg-blue-600 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          Todas
+        </button>
+
+        {/* Currency pills */}
+        {[...currencies].sort((a, b) => a.sort_order - b.sort_order).map((c) => (
+          <div
+            key={c.currency_code}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              selected === c.currency_code
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            <button onClick={() => onSelect(c.currency_code)} className="leading-none">
+              {c.currency_code}
+              {c.is_primary && (
+                <span className="ml-1 text-[9px] opacity-60 font-bold">★</span>
+              )}
+            </button>
+            {canRemove && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteCurrency.mutate(c.currency_code);
+                  if (selected === c.currency_code) onSelect(null);
+                }}
+                className="ml-0.5 opacity-60 hover:opacity-100 leading-none"
+                aria-label={`Eliminar ${c.currency_code}`}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+
+        {/* Add button */}
+        {available.length > 0 && (
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="px-2.5 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200"
+          >
+            +
+          </button>
+        )}
+      </div>
+
+      {/* Sheet for adding a currency */}
+      {sheetOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setSheetOpen(false)}>
+          <div className="w-full max-w-lg bg-white rounded-t-2xl p-4 pb-safe" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-slate-800">Agregar moneda</span>
+              <button onClick={() => setSheetOpen(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+            </div>
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {available.map((c) => (
+                <button
+                  key={c.code}
+                  onClick={() => {
+                    addCurrency.mutate(c.code);
+                    setSheetOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 flex items-center justify-between"
+                >
+                  <span className="text-sm font-medium text-slate-700">{c.code}</span>
+                  <span className="text-xs text-slate-400">{c.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
@@ -285,17 +390,16 @@ export default function TransactionsPage() {
   const [page, setPage] = useState(1);
   const householdId = useLukaStore((s) => s.householdId);
 
-  const { data: me } = useQuery({
-    queryKey: ["me"],
-    queryFn: () => api.getMe(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: userCurrencies = [] } = useCurrencies();
+  const primaryCurrency = userCurrencies.find((c) => c.is_primary)?.currency_code ?? null;
 
-  const [selectedCurrency, setSelectedCurrency] = useState<string>("CLP");
+  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
 
   useEffect(() => {
-    if (me?.preferred_currency) setSelectedCurrency(me.preferred_currency);
-  }, [me?.preferred_currency]);
+    if (selectedCurrency === null && primaryCurrency) {
+      setSelectedCurrency(primaryCurrency);
+    }
+  }, [primaryCurrency]);
 
   const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions();
   const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions();
@@ -326,8 +430,10 @@ export default function TransactionsPage() {
 
   const applyFilters = (txns: Transaction[]) => {
     let result = txns;
-    // Currency filter
-    result = result.filter((t) => (t.currency ?? "CLP") === selectedCurrency);
+    // Currency filter: null = show all currencies
+    if (selectedCurrency !== null) {
+      result = result.filter((t) => (t.currency ?? "CLP") === selectedCurrency);
+    }
     if (selectedMonth !== "all") result = result.filter((t) => getMonthKey(t.transaction_date) === selectedMonth);
     if (selectedBank !== "all") result = result.filter((t) => t.bank_name === selectedBank);
     if (onlyUncategorized) {
@@ -377,6 +483,9 @@ export default function TransactionsPage() {
 
   const selectClass =
     "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
+
+  // SummaryBar needs a string currency; fall back to primary or "CLP"
+  const summaryBarCurrency = selectedCurrency ?? primaryCurrency ?? "CLP";
 
   return (
     <div className="space-y-6">
@@ -455,11 +564,22 @@ export default function TransactionsPage() {
         </button>
       </FilterPanel>
 
+      {/* Currency pill bar */}
+      {userCurrencies.length > 0 && (
+        <div className="mb-3">
+          <CurrencyPillBar
+            currencies={userCurrencies}
+            selected={selectedCurrency}
+            onSelect={setSelectedCurrency}
+          />
+        </div>
+      )}
+
       {/* Summary cards — account balances */}
       <SummaryBar
         accounts={accounts}
         transactions={[...myTxns, ...sharedTxns]}
-        selectedCurrency={selectedCurrency}
+        selectedCurrency={summaryBarCurrency}
         selectedBank={selectedBank}
         onCurrencyChange={setSelectedCurrency}
       />
