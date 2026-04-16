@@ -16,18 +16,50 @@ def _url() -> str:
     return f"{_API_BASE}/{settings.whatsapp_phone_number_id}/messages"
 
 
-def _format_amount(amount: float, currency: str = "CLP") -> str:
-    """Format amount for display: CLP integer ($15,990) or USD cents→dollars (US$7.00).
+# --- Currency formatting ---
 
-    USD amounts are stored as cents (e.g. $7.00 → 700).
-    CLP amounts are stored as integers (e.g. $15.990 → 15990).
-    Always uses abs() since expenses are stored as negative amounts.
-    """
+# (symbol, decimals, thousands_sep, decimal_sep)
+_CURRENCY_FMT: dict[str, tuple[str, int, str, str]] = {
+    "CLP": ("CLP$", 0, ".", ""),
+    "COP": ("COP$", 0, ".", ""),
+    "PYG": ("₲",   0, ".", ""),
+    "CRC": ("₡",   0, ".", ""),
+    "USD": ("US$",  2, ",", "."),
+    "MXN": ("MX$",  2, ",", "."),
+    "PEN": ("S/",   2, ",", "."),
+    "BOB": ("Bs.",  2, ",", "."),
+    "DOP": ("RD$",  2, ",", "."),
+    "GTQ": ("Q",    2, ",", "."),
+    "HNL": ("L",    2, ",", "."),
+    "NIO": ("C$",   2, ",", "."),
+    "BRL": ("R$",   2, ".", ","),
+    "ARS": ("AR$",  2, ".", ","),
+    "UYU": ("$U",   2, ".", ","),
+    "VES": ("Bs.S", 2, ".", ","),
+}
+
+
+def _format_amount(amount: float, currency: str = "CLP") -> str:
+    """Format transaction amount for WhatsApp display using per-currency rules."""
     amount = abs(amount)
-    if currency == "USD":
-        dollars = amount / 100
-        return f"US${dollars:,.2f}"
-    return f"${int(amount):,}"
+    fmt = _CURRENCY_FMT.get(currency)
+    if fmt is None:
+        # Unknown currency — plain integer with currency code prefix
+        return f"{currency} {int(amount):,}"
+
+    symbol, decimals, thou_sep, dec_sep = fmt
+
+    if decimals == 0:
+        # Integer formatting with thousands separator
+        n = int(round(amount))
+        formatted = f"{n:,}".replace(",", thou_sep)
+        return f"{symbol}{formatted}"
+    else:
+        # Two-decimal formatting
+        integer_part = int(amount)
+        frac = round((amount - integer_part) * 100)
+        int_str = f"{integer_part:,}".replace(",", thou_sep)
+        return f"{symbol}{int_str}{dec_sep}{frac:02d}"
 
 
 async def send_expense_alert(

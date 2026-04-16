@@ -1,6 +1,53 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
+from modules.whatsapp.sender import _format_amount
+
+
+def test_format_clp():
+    assert _format_amount(15990, "CLP") == "CLP$15.990"
+
+
+def test_format_usd():
+    assert _format_amount(1234.56, "USD") == "US$1,234.56"
+
+
+def test_format_brl():
+    assert _format_amount(1234.56, "BRL") == "R$1.234,56"
+
+
+def test_format_cop():
+    # Zero decimals, dot thousands
+    assert _format_amount(1234567, "COP") == "COP$1.234.567"
+
+
+def test_format_mxn():
+    assert _format_amount(1234.56, "MXN") == "MX$1,234.56"
+
+
+def test_format_ars():
+    assert _format_amount(1234.56, "ARS") == "AR$1.234,56"
+
+
+def test_format_pen():
+    assert _format_amount(1234.56, "PEN") == "S/1,234.56"
+
+
+def test_format_pyg():
+    # Zero decimals
+    assert _format_amount(1234567, "PYG") == "₲1.234.567"
+
+
+def test_format_crc():
+    # Zero decimals
+    assert _format_amount(1234567, "CRC") == "₡1.234.567"
+
+
+def test_format_unknown_falls_back():
+    # Unknown currency should not crash
+    result = _format_amount(5000, "XYZ")
+    assert "5" in result  # at least the number appears
+
 
 @pytest.mark.asyncio
 async def test_send_personal_expense_alert_calls_meta_api():
