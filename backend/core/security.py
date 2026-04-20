@@ -54,11 +54,8 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Validate Supabase JWT and return the User.
-
-    Uses JWKS for local validation (ES256/RS256), falls back to HS256 secret,
-    then to Supabase SDK. Uses shared DB session from get_db.
-    """
+    """Validate Supabase JWT via JWKS (ES256/RS256) and return the User.
+    Uses the shared DB session from get_db."""
     token = credentials.credentials
 
     try:
