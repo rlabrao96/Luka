@@ -5,9 +5,17 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { api } from "@/app/lib/api";
+import { Loader2 } from "lucide-react";
+import { api, ApiError } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 import { createClient } from "@/app/lib/supabase/client";
+
+const SELF_CODES = new Set([
+  "invite_self",
+  "invite_already_member",
+  "invite_email_mismatch",
+  "invite_in_other_group",
+]);
 
 export default function InvitePage({
   params,
@@ -44,14 +52,10 @@ export default function InvitePage({
         setStatus("success");
         router.push("/household");
       } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : "";
+        const apiErr = err instanceof ApiError ? err : null;
+        const errMsg = apiErr?.message ?? (err instanceof Error ? err.message : "");
 
-        // Self-invite or same-account member — special UI
-        if (
-          errMsg.includes("propia invitación") ||
-          errMsg.includes("Ya eres miembro") ||
-          errMsg.includes("Ya perteneces a un grupo compartido")
-        ) {
+        if (apiErr?.code && SELF_CODES.has(apiErr.code)) {
           setErrorMessage(errMsg);
           setStatus("self-invite");
           return;
@@ -96,7 +100,7 @@ export default function InvitePage({
         <CardContent className="flex flex-col items-center space-y-4 py-4">
           {(status === "checking" || status === "loading") && (
             <>
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-luka-primary border-t-transparent" />
+              <Loader2 className="h-8 w-8 animate-spin text-luka-primary" />
               <p className="text-luka-muted text-sm">Uniéndote al grupo...</p>
             </>
           )}

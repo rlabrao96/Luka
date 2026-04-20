@@ -1,7 +1,9 @@
+import logging
 import random
 import re
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +25,8 @@ from modules.email.factory import get_email_provider
 from modules.households.models import HouseholdMember
 from modules.currencies.service import sync_preferred_currency
 from modules.whatsapp.sender import send_verification_pin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -148,6 +152,32 @@ async def delete_account(
     await loop.run_in_executor(None, supabase_admin.auth.admin.delete_user, str(current_user.id))
 
 
+async def _verify_google_token_ownership(token: str, expected_email: str) -> None:
+    """Call Google's tokeninfo endpoint and fail if the token was not issued
+    for this Luka user. Prevents a compromised session from planting an
+    attacker-controlled Gmail ingest source on a legitimate account."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"access_token": token},
+            )
+    except httpx.HTTPError as e:
+        logger.warning("Google tokeninfo lookup failed: %s", e)
+        raise HTTPException(status_code=502, detail="Unable to verify provider token")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="Invalid or expired provider token")
+
+    info = resp.json()
+    token_email = (info.get("email") or "").lower()
+    if not token_email or token_email != expected_email.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="Provider token does not belong to the current user",
+        )
+
+
 @router.post("/store-provider-tokens")
 async def store_provider_tokens(
     body: StoreProviderTokensRequest,
@@ -158,6 +188,8 @@ async def store_provider_tokens(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
+
+    await _verify_google_token_ownership(body.provider_token, user.email)
 
     user.google_access_token_enc = encrypt_token(body.provider_token)
     if body.provider_refresh_token is not None:

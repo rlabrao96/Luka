@@ -12,6 +12,7 @@ from core.security import get_current_user
 from modules.auth.models import User
 from modules.households import service
 from modules.households.contribution_service import update_contribution
+from modules.households.errors import InviteError
 from modules.households.models import Household, HouseholdMember
 from modules.households.schemas import (
     CreateHouseholdRequest,
@@ -109,6 +110,20 @@ async def patch_contribution_settings(
     )
 
 
+async def _ensure_invite_capacity(db: AsyncSession, household_id: uuid.UUID) -> None:
+    active_count_result = await db.execute(
+        text(
+            "SELECT COUNT(*) FROM household_members WHERE household_id = :hid AND left_at IS NULL"
+        ),
+        {"hid": str(household_id)},
+    )
+    if (active_count_result.scalar() or 0) >= service.MAX_HOUSEHOLD_MEMBERS:
+        raise HTTPException(
+            400,
+            f"El grupo ya tiene el máximo de {service.MAX_HOUSEHOLD_MEMBERS} miembros",
+        )
+
+
 # IMPORTANT: create-and-invite must be defined BEFORE /{household_id}/... routes
 @router.post("/create-and-invite")
 async def create_and_invite(
@@ -128,6 +143,7 @@ async def create_and_invite(
     else:
         household = await service.create_household(db, current_user, "Mi grupo", "group")
         household_id = household.id
+    await _ensure_invite_capacity(db, household_id)
     h_result = await db.execute(select(Household).where(Household.id == household_id))
     household_obj = h_result.scalar_one()
     invite = await service.create_invite(db, household_obj, current_user, body.email)
@@ -159,30 +175,23 @@ async def invite_member(
     )
     if not member_result.scalar_one_or_none():
         raise HTTPException(403, "Only the household owner can invite members")
-    # Max 5 members check
-    active_count_result = await db.execute(
-        text(
-            "SELECT COUNT(*) FROM household_members WHERE household_id = :hid AND left_at IS NULL"
-        ),
-        {"hid": str(household_id)},
-    )
-    if active_count_result.scalar() >= 5:
-        raise HTTPException(400, "El grupo ya tiene el máximo de 5 miembros")
+    await _ensure_invite_capacity(db, household_id)
     invite = await service.create_invite(db, household, current_user, body.email)
     return {"token": invite.token, "expires_at": invite.expires_at}
 
 
-@invite_router.get("/invite/{token}")
+@invite_router.post("/invite/{token}")
 async def accept_invite(
     token: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Partner clicks this link from their invite email to join the household."""
+    """Invitee POSTs here from the /invite/[token] page to claim membership.
+    POST (not GET) so link-preview bots and prefetchers can't silently accept."""
     try:
         invite = await service.accept_invite(db, token, current_user)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except InviteError as e:
+        raise HTTPException(status_code=400, detail={"code": e.code, "message": e.message})
     return {"household_id": invite.household_id, "accepted_at": invite.accepted_at}
 
 

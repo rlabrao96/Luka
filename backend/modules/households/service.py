@@ -1,4 +1,5 @@
 import json
+import secrets
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -6,7 +7,29 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from modules.households.models import Household, HouseholdMember, HouseholdInvite
+from modules.households.errors import (
+    InviteError,
+    INVITE_ALREADY_MEMBER,
+    INVITE_ALREADY_USED,
+    INVITE_EMAIL_MISMATCH,
+    INVITE_EXPIRED,
+    INVITE_HOUSEHOLD_FULL,
+    INVITE_IN_OTHER_GROUP,
+    INVITE_NOT_FOUND,
+    INVITE_SELF,
+)
 from modules.auth.models import User
+
+MAX_HOUSEHOLD_MEMBERS = 5
+
+
+def _is_auto_equal_ratio(ratio: list[int], expected_n: int) -> bool:
+    """Return True if `ratio` looks like the auto-generated equal split for
+    `expected_n` members. We only rebalance on join/leave when the ratio is
+    still the default — owner-customized ratios (e.g., [70, 30]) are preserved."""
+    if not ratio or len(ratio) != expected_n:
+        return False
+    return ratio == _equal_ratio(expected_n)
 
 
 async def create_household(
@@ -26,11 +49,32 @@ async def create_household(
 async def create_invite(
     db: AsyncSession, household: Household, invited_by: User, invited_email: str | None
 ) -> HouseholdInvite:
+    """Create a fresh invite, revoking any prior pending invite for the same
+    (household, email) pair so old links stop working the moment a new one
+    is sent. Token is 32 bytes of entropy — secrets.token_urlsafe is a
+    capability token, not a UUID."""
+    normalized_email = invited_email.lower().strip() if invited_email else None
+
+    if normalized_email:
+        await db.execute(
+            text(
+                """
+                UPDATE household_invites
+                SET expires_at = NOW()
+                WHERE household_id = :hid
+                  AND LOWER(invited_email) = :email
+                  AND accepted_at IS NULL
+                  AND expires_at > NOW()
+                """
+            ),
+            {"hid": str(household.id), "email": normalized_email},
+        )
+
     invite = HouseholdInvite(
         household_id=household.id,
         invited_by=invited_by.id,
-        invited_email=invited_email,
-        token=str(uuid.uuid4()),
+        invited_email=normalized_email,
+        token=secrets.token_urlsafe(32),
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(invite)
@@ -40,41 +84,79 @@ async def create_invite(
 
 
 async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdInvite:
-    result = await db.execute(select(HouseholdInvite).where(HouseholdInvite.token == token))
-    invite = result.scalar_one_or_none()
-    if not invite or invite.expires_at < datetime.now(timezone.utc):
-        raise ValueError("Invite not found or expired")
-    if invite.accepted_at:
-        raise ValueError("Invite already accepted")
+    """Accept an invite atomically.
 
-    # Prevent inviter from accepting their own invite
-    if invite.invited_by == user.id:
-        raise ValueError(
-            "No puedes aceptar tu propia invitación. Abre el enlace en el navegador del otro miembro."
+    The claim is done as a single conditional UPDATE with RETURNING so two
+    concurrent accepts cannot both "win" the same invite. After the claim,
+    we take a row lock on the target household to serialize the 5-member
+    cap check and the membership insert. User-customized split_ratio is
+    preserved — we only rebalance when the ratio is still the auto-equal
+    default. Orphan data (bank accounts + transactions) from the user's
+    old individual household migrates to the new group household.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Does the invite even exist? (distinguish "wrong token" from "already used")
+    existing_result = await db.execute(
+        select(HouseholdInvite).where(HouseholdInvite.token == token)
+    )
+    existing = existing_result.scalar_one_or_none()
+    if not existing:
+        raise InviteError(INVITE_NOT_FOUND, "Este enlace no existe o ya no es válido.")
+    if existing.accepted_at is not None:
+        raise InviteError(INVITE_ALREADY_USED, "Este enlace ya fue usado.")
+    if existing.expires_at < now:
+        raise InviteError(INVITE_EXPIRED, "Este enlace expiró. Pide uno nuevo.")
+
+    # Pre-flight checks that don't depend on the atomic claim.
+    if existing.invited_by == user.id:
+        raise InviteError(
+            INVITE_SELF,
+            "No puedes aceptar tu propia invitación. Abre el enlace en el navegador del otro miembro.",
+        )
+    if existing.invited_email and existing.invited_email.lower() != user.email.lower():
+        raise InviteError(
+            INVITE_EMAIL_MISMATCH,
+            "Este enlace fue enviado a otra dirección de correo. Inicia sesión con la cuenta invitada.",
         )
 
-    # Prevent user who is already a member of this household
+    # Lock the target household row. Any concurrent accept for this household
+    # queues behind us, making the 5-member cap check + insert race-free.
+    household_result = await db.execute(
+        text("SELECT id, type, split_ratio FROM households WHERE id = :id FOR UPDATE"),
+        {"id": str(existing.household_id)},
+    )
+    household_row = household_result.one_or_none()
+    if not household_row:
+        raise InviteError(INVITE_NOT_FOUND, "El grupo ya no existe.")
+
+    # Already a member?
     existing_in_target = await db.execute(
         select(HouseholdMember).where(
-            HouseholdMember.household_id == invite.household_id,
+            HouseholdMember.household_id == existing.household_id,
             HouseholdMember.user_id == user.id,
             HouseholdMember.left_at.is_(None),
         )
     )
     if existing_in_target.scalar_one_or_none():
-        raise ValueError("Ya eres miembro de este hogar.")
+        raise InviteError(INVITE_ALREADY_MEMBER, "Ya eres miembro de este grupo.")
 
-    # Max 5 members check
-    active_count_result = await db.execute(
+    # 5-member cap (protected by the FOR UPDATE above).
+    count_result = await db.execute(
         text(
-            "SELECT COUNT(*) FROM household_members WHERE household_id = :hid AND left_at IS NULL"
+            "SELECT COUNT(*) FROM household_members "
+            "WHERE household_id = :hid AND left_at IS NULL"
         ),
-        {"hid": str(invite.household_id)},
+        {"hid": str(existing.household_id)},
     )
-    if active_count_result.scalar() >= 5:
-        raise ValueError("Este grupo ya tiene el máximo de 5 miembros.")
+    current_active = count_result.scalar() or 0
+    if current_active >= MAX_HOUSEHOLD_MEMBERS:
+        raise InviteError(
+            INVITE_HOUSEHOLD_FULL,
+            f"Este grupo ya tiene el máximo de {MAX_HOUSEHOLD_MEMBERS} miembros.",
+        )
 
-    # If user is in another group, auto-leave their individual household (only if individual)
+    # Resolve the caller's current active membership, if any.
     existing_elsewhere = await db.execute(
         select(HouseholdMember).where(
             HouseholdMember.user_id == user.id,
@@ -82,41 +164,86 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
         )
     )
     current_membership = existing_elsewhere.scalar_one_or_none()
+    old_household_id: uuid.UUID | None = None
     if current_membership:
-        # Check if it's an individual household — if so, soft-leave it
-        h_result = await db.execute(
-            select(Household).where(Household.id == current_membership.household_id)
-        )
-        current_household = h_result.scalar_one_or_none()
-        if current_household and current_household.type == "individual":
-            current_membership.left_at = datetime.now(timezone.utc)
-        else:
-            raise ValueError(
-                "Ya eres miembro de otro grupo. Debes salir de ese grupo antes de unirte a uno nuevo."
+        old_household_id = current_membership.household_id
+        h_result = await db.execute(select(Household).where(Household.id == old_household_id))
+        old_household = h_result.scalar_one_or_none()
+        if not old_household or old_household.type != "individual":
+            raise InviteError(
+                INVITE_IN_OTHER_GROUP,
+                "Ya eres miembro de otro grupo. Debes salir de ese grupo antes de unirte a uno nuevo.",
             )
+        current_membership.left_at = now
 
-    invite.accepted_at = datetime.now(timezone.utc)
-    member = HouseholdMember(household_id=invite.household_id, user_id=user.id, role="member")
-    db.add(member)
-
-    # Auto-adjust split ratio to equal shares for new member count
-    new_count_result = await db.execute(
+    # Atomic claim — only succeeds if the invite is still pending + not expired.
+    claim = await db.execute(
         text(
-            "SELECT COUNT(*) FROM household_members WHERE household_id = :hid AND left_at IS NULL"
+            """
+            UPDATE household_invites
+            SET accepted_at = :now
+            WHERE token = :token
+              AND accepted_at IS NULL
+              AND expires_at > :now
+            RETURNING id, household_id, invited_by, invited_email, accepted_at, expires_at, created_at
+            """
         ),
-        {"hid": str(invite.household_id)},
+        {"now": now, "token": token},
     )
-    # +1 for the member we just added (not yet committed)
-    new_count = new_count_result.scalar() + 1
-    equal_ratio = _equal_ratio(new_count)
-    await db.execute(
-        text("UPDATE households SET split_ratio = :ratio, type = 'group' WHERE id = :id"),
-        {"ratio": json.dumps(equal_ratio), "id": str(invite.household_id)},
-    )
+    claimed = claim.one_or_none()
+    if not claimed:
+        # Lost the race to a concurrent accept.
+        raise InviteError(INVITE_ALREADY_USED, "Este enlace ya fue usado.")
+
+    db.add(HouseholdMember(household_id=existing.household_id, user_id=user.id, role="member"))
+
+    # Migrate the user's orphan data from their old individual household so
+    # they don't lose access to past transactions on join.
+    if old_household_id is not None:
+        await db.execute(
+            text(
+                "UPDATE bank_accounts SET household_id = :new "
+                "WHERE household_id = :old AND user_id = :uid"
+            ),
+            {
+                "new": str(existing.household_id),
+                "old": str(old_household_id),
+                "uid": str(user.id),
+            },
+        )
+        await db.execute(
+            text(
+                "UPDATE transactions SET household_id = :new "
+                "WHERE household_id = :old AND user_id = :uid"
+            ),
+            {
+                "new": str(existing.household_id),
+                "old": str(old_household_id),
+                "uid": str(user.id),
+            },
+        )
+
+    # Preserve owner-customized split_ratio; rebalance only when the current
+    # ratio is still the auto-equal default for the old member count.
+    new_count = current_active + 1
+    current_ratio = household_row.split_ratio or []
+    if _is_auto_equal_ratio(current_ratio, current_active):
+        new_ratio = _equal_ratio(new_count)
+        await db.execute(
+            text("UPDATE households SET split_ratio = :ratio, type = 'group' " "WHERE id = :id"),
+            {"ratio": json.dumps(new_ratio), "id": str(existing.household_id)},
+        )
+    else:
+        # Custom ratio — leave untouched so we don't wipe out a 70/30 split.
+        # Caller must re-set via PATCH /households/{id}/split-ratio.
+        await db.execute(
+            text("UPDATE households SET type = 'group' WHERE id = :id"),
+            {"id": str(existing.household_id)},
+        )
 
     await db.commit()
-    await db.refresh(invite)
-    return invite
+    await db.refresh(existing)
+    return existing
 
 
 async def remove_member(

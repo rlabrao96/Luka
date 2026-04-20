@@ -11,6 +11,17 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${session.access_token}` };
 }
 
+export class ApiError extends Error {
+  status: number;
+  code: string | null;
+  constructor(status: number, message: string, code: string | null = null) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const { headers: extraHeaders, ...rest } = options ?? {};
   const authHeader = await getAuthHeader();
@@ -20,8 +31,15 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    const detail = body?.detail ?? `API error ${res.status}`;
-    throw new Error(detail);
+    const detail = body?.detail;
+    // Backend may send either a plain string or a {code, message} object.
+    if (detail && typeof detail === "object" && "message" in detail) {
+      throw new ApiError(res.status, String(detail.message), detail.code ?? null);
+    }
+    throw new ApiError(
+      res.status,
+      typeof detail === "string" ? detail : `API error ${res.status}`,
+    );
   }
   return res.json() as Promise<T>;
 }
@@ -480,7 +498,9 @@ export const api = {
     }),
 
   acceptInvite: (token: string) =>
-    apiFetch<{ household_id: string; accepted_at: string }>(`/invite/${token}`),
+    apiFetch<{ household_id: string; accepted_at: string }>(`/invite/${token}`, {
+      method: "POST",
+    }),
 
   getMonthlySpending: (householdId: string, currency?: string) => {
     const parts: string[] = [`household_id=${householdId}`];
