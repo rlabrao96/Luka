@@ -33,45 +33,21 @@ def _get_jwks_client() -> PyJWKClient:
 
 
 def _decode_token(token: str) -> dict:
-    """Decode a Supabase JWT.
+    """Verify a Supabase JWT via JWKS (asymmetric ES256/RS256).
 
-    Order of attempts:
-      1. JWKS (asymmetric ES256/RS256 only) — Supabase's new default after
-         the JWT Signing Keys migration. Rejects HS256 to block alg-confusion.
-      2. Legacy HS256 shared secret — only used for tokens issued before the
-         Dashboard rotation. Remove after the legacy key is revoked.
+    HS256 is rejected outright — the legacy symmetric secret was revoked in
+    the Supabase Dashboard after the JWT Signing Keys rotation. Accepting
+    HS256 here would reopen the algorithm-confusion attack where an
+    attacker signs a forged token using the public JWKS key as the HMAC
+    secret.
     """
-    unverified_header = pyjwt.get_unverified_header(token)
-    alg = unverified_header.get("alg")
-
-    # Strategy 1: Asymmetric verification via JWKS (ES256/RS256).
-    if alg in _ASYMMETRIC_ALGS:
-        try:
-            signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
-            return pyjwt.decode(
-                token,
-                signing_key.key,
-                algorithms=_ASYMMETRIC_ALGS,
-                audience="authenticated",
-            )
-        except Exception as e:
-            logger.warning("Asymmetric JWT decode failed (alg=%s): %s", alg, e)
-            raise
-
-    # Strategy 2: Legacy HS256 shared secret (pre-migration tokens only).
-    if alg == "HS256" and settings.supabase_jwt_secret:
-        try:
-            return pyjwt.decode(
-                token,
-                settings.supabase_jwt_secret,
-                algorithms=["HS256"],
-                audience="authenticated",
-            )
-        except Exception as e:
-            logger.warning("Legacy HS256 decode failed: %s", e)
-            raise
-
-    raise pyjwt.InvalidTokenError(f"Unsupported or unverifiable JWT alg: {alg}")
+    signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+    return pyjwt.decode(
+        token,
+        signing_key.key,
+        algorithms=_ASYMMETRIC_ALGS,
+        audience="authenticated",
+    )
 
 
 async def get_current_user(

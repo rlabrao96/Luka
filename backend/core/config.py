@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_key: str = ""
-    supabase_jwt_secret: str = ""  # Supabase Dashboard > Settings > API > JWT Secret
     redis_url: str = "redis://localhost:6379"
     pubsub_audience: str = ""
     outlook_client_state: str = "dev-secret"
