@@ -4,14 +4,30 @@ import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const PWA_SESSION_KEY = "luka_pwa_session";
 const MICROSOFT_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN === "true";
 
+const AUTH_ERROR_COPY: Record<string, string> = {
+  auth_failed: "No pudimos iniciar sesión. Intenta de nuevo.",
+  no_session: "Tu sesión expiró, inicia sesión de nuevo.",
+  no_code: "Falta información en el enlace. Intenta de nuevo.",
+};
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [recovering, setRecovering] = useState(false);
+  const [pending, setPending] = useState<"google" | "microsoft" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const code = searchParams.get("error");
+    if (code && AUTH_ERROR_COPY[code]) {
+      setError(AUTH_ERROR_COPY[code]);
+    }
+  }, [searchParams]);
 
   // PWA session recovery: if iOS cleared cookies but localStorage has a saved session,
   // restore it and redirect back to dashboard
@@ -45,14 +61,16 @@ export default function LoginPage() {
     });
   }, [router]);
 
-  // Store redirect URL (e.g. from invite flow) as cookie so server-side callback can read it
-  if (typeof window !== "undefined") {
+  // Store redirect URL (e.g. from invite flow) as cookie so server-side callback can read it.
+  // MUST be in useEffect — cookie writes are side effects; running them during render
+  // violates React 19 rendering rules and fires twice under Strict Mode.
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const redirect = params.get("redirect");
-    if (redirect) {
-      document.cookie = `luka-post-login-redirect=${encodeURIComponent(redirect)}; path=/; max-age=600; SameSite=Lax`;
-    }
-  }
+    if (!redirect || !redirect.startsWith("/") || redirect.startsWith("//")) return;
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `luka-post-login-redirect=${encodeURIComponent(redirect)}; path=/; max-age=600; SameSite=Lax${secure}`;
+  }, []);
 
   // While recovering PWA session, show minimal loading state
   if (recovering) {
@@ -67,8 +85,11 @@ export default function LoginPage() {
   }
 
   const signInWithGoogle = async () => {
+    if (pending) return;
+    setPending("google");
+    setError(null);
     const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         scopes: "openid email profile https://www.googleapis.com/auth/gmail.readonly",
@@ -79,17 +100,28 @@ export default function LoginPage() {
         },
       },
     });
+    if (oauthError) {
+      setError("No pudimos iniciar sesión con Google. Intenta de nuevo.");
+      setPending(null);
+    }
   };
 
   const signInWithMicrosoft = async () => {
+    if (pending) return;
+    setPending("microsoft");
+    setError(null);
     const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
-        scopes: "openid email profile Mail.Read",
+        scopes: "openid email profile offline_access Mail.Read",
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
+    if (oauthError) {
+      setError("No pudimos iniciar sesión con Microsoft. Intenta de nuevo.");
+      setPending(null);
+    }
   };
 
   return (
@@ -140,11 +172,23 @@ export default function LoginPage() {
             Inicia sesión para acceder a tu dashboard financiero.
           </p>
 
+          {error && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            >
+              {error}
+            </div>
+          )}
+
           {/* Buttons */}
           <div className="space-y-4 lg:space-y-3">
             <Button
               onClick={signInWithGoogle}
-              className="w-full bg-luka-primary hover:bg-blue-700 text-white font-medium h-12 lg:h-11 text-sm gap-2 rounded-xl transition-all duration-200 hover:shadow-md lg:hover:shadow-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              disabled={pending !== null}
+              aria-busy={pending === "google"}
+              className="w-full bg-luka-primary hover:bg-blue-700 text-white font-medium h-12 lg:h-11 text-sm gap-2 rounded-xl transition-all duration-200 hover:shadow-md lg:hover:shadow-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-70"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#ffffff"/>
@@ -159,7 +203,9 @@ export default function LoginPage() {
               <Button
                 onClick={signInWithMicrosoft}
                 variant="outline"
-                className="w-full border-slate-200 text-slate-700 lg:text-luka-dark hover:text-slate-900 lg:hover:text-luka-dark hover:bg-slate-50 font-medium h-12 lg:h-11 text-sm gap-2 rounded-xl transition-all duration-200 hover:shadow-sm lg:hover:shadow-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                disabled={pending !== null}
+                aria-busy={pending === "microsoft"}
+                className="w-full border-slate-200 text-slate-700 lg:text-luka-dark hover:text-slate-900 lg:hover:text-luka-dark hover:bg-slate-50 font-medium h-12 lg:h-11 text-sm gap-2 rounded-xl transition-all duration-200 hover:shadow-sm lg:hover:shadow-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-70"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
                   <path d="M11.4 2H2v9.4h9.4V2z" fill="#F25022"/>
