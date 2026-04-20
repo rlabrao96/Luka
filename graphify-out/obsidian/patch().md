@@ -1,0 +1,87 @@
+---
+source_file: "frontend/app/(dashboard)/components/PendingBlock.tsx"
+type: "code"
+community: "Backend Core & Infra"
+location: "L144"
+tags:
+  - graphify/code
+  - graphify/INFERRED
+  - community/Backend_Core_&_Infra
+---
+
+# patch()
+
+## Connections
+- [[PendingBlock.tsx]] - `contains` [EXTRACTED]
+- [[patch_encryption_key()]] - `calls` [INFERRED]
+- [[test_calls_llm_on_cache_and_db_miss()]] - `calls` [INFERRED]
+- [[test_create_canonical_from_groups()]] - `calls` [INFERRED]
+- [[test_decrypt_with_wrong_key_raises()]] - `calls` [INFERRED]
+- [[test_delete_currencies_last_returns_400()]] - `calls` [INFERRED]
+- [[test_delete_currencies_returns_204()]] - `calls` [INFERRED]
+- [[test_encrypt_decrypt_round_trip()]] - `calls` [INFERRED]
+- [[test_enqueue_fast_job_routes_to_default_queue()]] - `calls` [INFERRED]
+- [[test_enqueue_slow_job_routes_to_slow_queue()]] - `calls` [INFERRED]
+- [[test_enqueue_unknown_job_routes_to_fast_queue()]] - `calls` [INFERRED]
+- [[test_falls_through_to_llm_when_no_template()]] - `calls` [INFERRED]
+- [[test_falls_through_to_regex_when_llm_fails()]] - `calls` [INFERRED]
+- [[test_full_pipeline_llm_path()]] - `calls` [INFERRED]
+- [[test_full_pipeline_regex_fallback()]] - `calls` [INFERRED]
+- [[test_get_categories_no_hidden_field()]] - `calls` [INFERRED]
+- [[test_get_categories_returns_200()]] - `calls` [INFERRED]
+- [[test_get_category_usage()]] - `calls` [INFERRED]
+- [[test_get_currencies_returns_200()]] - `calls` [INFERRED]
+- [[test_get_notifications_returns_list()]] - `calls` [INFERRED]
+- [[test_get_notifications_route_exists()]] - `calls` [INFERRED]
+- [[test_get_review_status()]] - `calls` [INFERRED]
+- [[test_get_unread_count()]] - `calls` [INFERRED]
+- [[test_gmail_webhook_accepts_valid_oidc_and_enqueues()]] - `calls` [INFERRED]
+- [[test_group_merchants_handles_llm_failure()]] - `calls` [INFERRED]
+- [[test_group_merchants_parses_llm_response()]] - `calls` [INFERRED]
+- [[test_handle_text_message_invalid_amount_sends_error()]] - `calls` [INFERRED]
+- [[test_handle_text_message_manual_trigger_creates_transaction()]] - `calls` [INFERRED]
+- [[test_handle_text_message_manual_trigger_unknown_phone_ignores()]] - `calls` [INFERRED]
+- [[test_handle_text_message_updates_amount()]] - `calls` [INFERRED]
+- [[test_handle_text_message_updates_merchant()]] - `calls` [INFERRED]
+- [[test_handler()]] - `calls` [INFERRED]
+- [[test_llm_returns_3_categories()]] - `calls` [INFERRED]
+- [[test_llm_returns_empty_list_on_error()]] - `calls` [INFERRED]
+- [[test_llm_strips_code_fences()]] - `calls` [INFERRED]
+- [[test_llm_truncates_to_3_categories()]] - `calls` [INFERRED]
+- [[test_my_transactions_returns_list()]] - `calls` [INFERRED]
+- [[test_my_transactions_returns_only_active_account_results()]] - `calls` [INFERRED]
+- [[test_parse_with_llm_escalates_on_low_confidence()]] - `calls` [INFERRED]
+- [[test_parse_with_llm_returns_none_on_total_failure()]] - `calls` [INFERRED]
+- [[test_parse_with_llm_success()]] - `calls` [INFERRED]
+- [[test_patch_bank_account_403_for_non_owner()]] - `calls` [INFERRED]
+- [[test_patch_bank_account_404_not_found()]] - `calls` [INFERRED]
+- [[test_patch_bank_account_updates_type()]] - `calls` [INFERRED]
+- [[test_patch_me_preserves_contribution_fields()]] - `calls` [INFERRED]
+- [[test_patch_notification_mark_read()]] - `calls` [INFERRED]
+- [[test_patch_profile_route_exists()]] - `calls` [INFERRED]
+- [[test_post_add_category_at_limit_returns_422()]] - `calls` [INFERRED]
+- [[test_post_add_category_duplicate_returns_409()]] - `calls` [INFERRED]
+- [[test_post_add_category_returns_201()]] - `calls` [INFERRED]
+- [[test_post_currencies_duplicate_returns_409()]] - `calls` [INFERRED]
+- [[test_post_currencies_invalid_code_returns_400()]] - `calls` [INFERRED]
+- [[test_post_currencies_returns_201()]] - `calls` [INFERRED]
+- [[test_post_delete_category()]] - `calls` [INFERRED]
+- [[test_post_delete_invalid_reclassify_returns_422()]] - `calls` [INFERRED]
+- [[test_put_categories_mismatch_returns_422()]] - `calls` [INFERRED]
+- [[test_put_categories_reorder()]] - `calls` [INFERRED]
+- [[test_put_categories_reorder_route_exists()]] - `calls` [INFERRED]
+- [[test_send_category_list_calls_meta_api()]] - `calls` [INFERRED]
+- [[test_send_edit_options_sends_two_buttons()]] - `calls` [INFERRED]
+- [[test_send_personal_expense_alert_calls_meta_api()]] - `calls` [INFERRED]
+- [[test_send_pin_stores_in_redis_and_sends()]] - `calls` [INFERRED]
+- [[test_sending()]] - `calls` [INFERRED]
+- [[test_skip_review()]] - `calls` [INFERRED]
+- [[test_template_failure_falls_through_to_llm()]] - `calls` [INFERRED]
+- [[test_uses_template_when_available()]] - `calls` [INFERRED]
+- [[test_verify_pin_expired()]] - `calls` [INFERRED]
+- [[test_verify_pin_lockout_after_5_attempts()]] - `calls` [INFERRED]
+- [[test_verify_pin_success()]] - `calls` [INFERRED]
+- [[test_verify_pin_wrong_pin()]] - `calls` [INFERRED]
+- [[test_verify_pin_wrong_user()]] - `calls` [INFERRED]
+
+#graphify/code #graphify/INFERRED #community/Backend_Core_&_Infra

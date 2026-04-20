@@ -39,3 +39,11 @@ node_modules/
 
 # Git worktrees
 .worktrees/
+
+# graphify (RAG) — local-only artifacts, keep graph + notes committed
+graphify-out/.graphify_python
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/manifest.json
+graphify-out/obsidian/.obsidian/workspace.json
+graphify-out/obsidian/.obsidian/workspace-mobile.json

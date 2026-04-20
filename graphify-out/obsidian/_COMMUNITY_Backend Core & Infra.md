@@ -1,0 +1,308 @@
+---
+type: community
+cohesion: 0.01
+members: 262
+---
+
+# Backend Core & Infra
+
+**Cohesion:** 0.01 - loosely connected
+**Members:** 262 nodes
+
+## Members
+- [[.__init__()]] - code - backend/modules/email/gmail.py
+- [[.__init__()_1]] - code - backend/modules/email/outlook.py
+- [[._build_service()]] - code - backend/modules/email/gmail.py
+- [[._headers()]] - code - backend/modules/email/outlook.py
+- [[._parse_gmail_message()]] - code - backend/modules/email/gmail.py
+- [[.dispatch()]] - code - backend/main.py
+- [[.fetch_new_emails()]] - code - backend/modules/email/gmail.py
+- [[.fetch_new_emails()_1]] - code - backend/modules/email/outlook.py
+- [[.get_current_token()]] - code - backend/modules/email/gmail.py
+- [[.renew_watch()]] - code - backend/modules/email/gmail.py
+- [[.renew_watch()_1]] - code - backend/modules/email/outlook.py
+- [[.setup_watch()]] - code - backend/modules/email/gmail.py
+- [[.setup_watch()_1]] - code - backend/modules/email/outlook.py
+- [[ABC]] - code
+- [[Ask Gemini for 3 budget categories. Returns  on failure (caller shows manual s]] - rationale - backend/modules/merchants/llm.py
+- [[BaseHTTPMiddleware]] - code
+- [[CacheHeaderMiddleware]] - code - backend/main.py
+- [[Debug script Fetch raw Banco de Chile emails and print their exact bodies. Run]] - rationale - backend/scripts/debug_email_body.py
+- [[Debug Strip HTML and show the text content the parser actually sees.]] - rationale - backend/scripts/debug_email_text.py
+- [[Decode a Supabase JWT using JWKS (supports ES256, RS256, HS256).      Tries JWKS]] - rationale - backend/core/security.py
+- [[Decrypt ciphertext with AES-256-GCM. Returns plaintext string.]] - rationale - backend/modules/bank_connect/encryption.py
+- [[Delete a key from Redis. Fails silently.]] - rationale - backend/core/cache.py
+- [[EmailProvider]] - code
+- [[EmailProvider_1]] - code - backend/modules/email/base.py
+- [[Encrypt plaintext with AES-256-GCM. Returns (ciphertext, iv).]] - rationale - backend/modules/bank_connect/encryption.py
+- [[Extract text body from Gmail message payload.]] - rationale - backend/scripts/scan_emails.py
+- [[Fast jobs should be enqueued with _queue_name='arqqueue'.]] - rationale - backend/tests/test_queue_routing.py
+- [[GET()]] - code - frontend/app/auth/callback/route.ts
+- [[Get a JSON-serialized value from Redis. Returns None on miss or error.]] - rationale - backend/core/cache.py
+- [[GmailProvider]] - code - backend/modules/email/gmail.py
+- [[Handle Meta's verification challenge.]] - rationale - backend/scripts/webhook_listener.py
+- [[Inactive accounts must be returned so the settings UI can render the toggle.]] - rationale - backend/tests/test_bank_accounts_routes.py
+- [[Inject a valid test key into settings for every test in this module.]] - rationale - backend/tests/test_bank_connect_encryption.py
+- [[Legacy kept for backward compat. Will clean up old Redis keys.]] - rationale - backend/modules/subscriptions/service.py
+- [[Lightweight Redis cache for frequently-accessed data (user profiles, etc.).]] - rationale - backend/core/cache.py
+- [[LoginPage()]] - code - frontend/app/(auth)/login/page.tsx
+- [[Meta webhook verification challenge.]] - rationale - backend/modules/whatsapp/router.py
+- [[One-off script Scan last 2 months of Gmail and test the email pre-filter. Run f]] - rationale - backend/scripts/scan_emails.py
+- [[OutlookProvider]] - code - backend/modules/email/outlook.py
+- [[PendingBlock.tsx]] - code - frontend/app/(dashboard)/components/PendingBlock.tsx
+- [[Print incoming webhook JSON.]] - rationale - backend/scripts/webhook_listener.py
+- [[RawEmail]] - code - backend/modules/email/base.py
+- [[Recursively extract all text body parts.]] - rationale - backend/scripts/debug_email_body.py
+- [[Regression — authme must expose contribution fields for the active membership.]] - rationale - backend/tests/test_auth.py
+- [[Regression — PATCH authme must return the caller's contribution     fields, no]] - rationale - backend/tests/test_auth.py
+- [[Regression `bank-accounts` must NEVER return a partner's personal or     partn]] - rationale - backend/tests/test_bank_accounts_routes.py
+- [[Renew watch — returns same dict as setup_watch (subscription_id, expiry).]] - rationale - backend/modules/email/gmail.py
+- [[Reset singleton between tests.]] - rationale - backend/tests/test_encryption.py
+- [[Response must NOT include 'hidden' field.]] - rationale - backend/tests/test_categories_router.py
+- [[Return True if this webhook message was already processed (idempotency check).]] - rationale - backend/modules/transactions/idempotency.py
+- [[Return a mock execute result where .scalar_one_or_none() returns scalar_value.]] - rationale - backend/tests/test_bank_accounts_routes.py
+- [[Return the current access token (may have been refreshed by the SDK).]] - rationale - backend/modules/email/gmail.py
+- [[Route correctly returns whatever the service layer provides (filtered at DB leve]] - rationale - backend/tests/test_transactions_api.py
+- [[SLOW_JOBS should contain exactly the heavy jobs.]] - rationale - backend/tests/test_queue_routing.py
+- [[Scan last 2 months of Gmail and show only successfully parsed bank transactions.]] - rationale - backend/scripts/scan_transactions.py
+- [[Schedulers are lightweight cron jobs — they must NOT be in SLOW_JOBS.]] - rationale - backend/tests/test_queue_routing.py
+- [[Send a template message (like the curl example provided by the user).]] - rationale - backend/scripts/test_whatsapp.py
+- [[Set a JSON-serialized value in Redis with TTL. Fails silently.]] - rationale - backend/core/cache.py
+- [[Slow jobs should be enqueued with _queue_name='arqqueueslow'.]] - rationale - backend/tests/test_queue_routing.py
+- [[Strip HTML tags and collapse whitespace to see what regex sees.]] - rationale - backend/scripts/debug_email_text.py
+- [[Strip markdown code fences that Gemini sometimes wraps around JSON.]] - rationale - backend/modules/merchants/llm.py
+- [[Test that LLM groups are correctly persisted as canonical merchants.]] - rationale - backend/tests/test_canonical_merchants.py
+- [[Test that enqueue_job routes jobs to the correct queue.]] - rationale - backend/tests/test_queue_routing.py
+- [[Unknown job names default to the fast queue.]] - rationale - backend/tests/test_queue_routing.py
+- [[UserResponse]] - code - backend/modules/auth/schemas.py
+- [[Validate Supabase JWT and return the User.      Uses JWKS for local validation (]] - rationale - backend/core/security.py
+- [[_call_llm()]] - code - backend/modules/merchants/llm.py
+- [[_decode_token()]] - code - backend/core/security.py
+- [[_extract_body()_1]] - code - backend/scripts/scan_emails.py
+- [[_extract_body()_2]] - code - backend/scripts/scan_transactions.py
+- [[_extract_body_parts()]] - code - backend/scripts/debug_email_body.py
+- [[_extract_html()]] - code - backend/scripts/debug_email_text.py
+- [[_fake_uc()]] - code - backend/tests/test_currencies_api.py
+- [[_get_client()]] - code - backend/modules/merchants/llm.py
+- [[_get_client()_1]] - code - backend/modules/plaid/service.py
+- [[_get_fernet()]] - code - backend/core/encryption.py
+- [[_get_jwks_client()]] - code - backend/core/security.py
+- [[_get_key()]] - code - backend/modules/bank_connect/encryption.py
+- [[_get_redis()]] - code - backend/core/cache.py
+- [[_make_bank_account()]] - code - backend/tests/test_bank_accounts_routes.py
+- [[_make_execute_result()]] - code - backend/tests/test_bank_accounts_routes.py
+- [[_record_failed_job()]] - code - backend/jobs/tasks.py
+- [[_strip_code_fences()]] - code - backend/modules/merchants/llm.py
+- [[app()]] - code - backend/tests/conftest.py
+- [[app()_1]] - code - backend/tests/test_currencies_api.py
+- [[app()_2]] - code - backend/tests/test_settings_api.py
+- [[app()_3]] - code - backend/tests/test_categories_router.py
+- [[auth_app()]] - code - backend/tests/test_currencies_api.py
+- [[auth_app()_1]] - code - backend/tests/test_settings_api.py
+- [[auth_app()_2]] - code - backend/tests/test_categories_router.py
+- [[base.py]] - code - backend/modules/email/base.py
+- [[cache.py]] - code - backend/core/cache.py
+- [[cache_delete()]] - code - backend/core/cache.py
+- [[cache_get()]] - code - backend/core/cache.py
+- [[cache_set()]] - code - backend/core/cache.py
+- [[categorize_with_llm()]] - code - backend/modules/merchants/llm.py
+- [[create_app()]] - code - backend/main.py
+- [[create_link_token()]] - code - backend/modules/plaid/service.py
+- [[create_link_token_endpoint()]] - code - backend/modules/plaid/router.py
+- [[debug_email_body.py]] - code - backend/scripts/debug_email_body.py
+- [[debug_email_text.py]] - code - backend/scripts/debug_email_text.py
+- [[decrypt()]] - code - backend/modules/bank_connect/encryption.py
+- [[decrypt_token()]] - code - backend/core/encryption.py
+- [[disconnect_endpoint()]] - code - backend/modules/plaid/router.py
+- [[encrypt()]] - code - backend/modules/bank_connect/encryption.py
+- [[encrypt_token()]] - code - backend/core/encryption.py
+- [[encryption.py]] - code - backend/core/encryption.py
+- [[encryption.py_1]] - code - backend/modules/bank_connect/encryption.py
+- [[enqueue_job()]] - code - backend/jobs/queue.py
+- [[exchange_public_token()]] - code - backend/modules/plaid/service.py
+- [[exchange_token_endpoint()]] - code - backend/modules/plaid/router.py
+- [[factory.py]] - code - backend/modules/email/factory.py
+- [[fetch_new_emails()]] - code - backend/modules/email/base.py
+- [[formatPendingAmount()]] - code - frontend/app/(dashboard)/components/PendingBlock.tsx
+- [[get_current_user()]] - code - backend/core/security.py
+- [[get_email_provider()]] - code - backend/modules/email/factory.py
+- [[get_me()]] - code - backend/modules/auth/router.py
+- [[gmail.py]] - code - backend/modules/email/gmail.py
+- [[gmail_webhook()]] - code - backend/modules/email/router.py
+- [[handleDelete()_1]] - code - frontend/app/(dashboard)/components/PendingBlock.tsx
+- [[handleSelect()_4]] - code - frontend/app/(dashboard)/components/PendingBlock.tsx
+- [[idempotency.py]] - code - backend/modules/transactions/idempotency.py
+- [[invalidate_subscriptions_cache()]] - code - backend/modules/subscriptions/service.py
+- [[is_already_processed()]] - code - backend/modules/transactions/idempotency.py
+- [[list_items_endpoint()]] - code - backend/modules/plaid/router.py
+- [[llm.py]] - code - backend/modules/merchants/llm.py
+- [[main()_1]] - code - backend/scripts/debug_email_text.py
+- [[main()_3]] - code - backend/scripts/debug_email_body.py
+- [[main()_4]] - code - backend/scripts/scan_emails.py
+- [[main()_5]] - code - backend/scripts/scan_transactions.py
+- [[main.py]] - code - backend/main.py
+- [[manual_sync_endpoint()]] - code - backend/modules/plaid/router.py
+- [[mock_user()_1]] - code - backend/tests/test_currencies_api.py
+- [[mock_user()_2]] - code - backend/tests/test_settings_api.py
+- [[mock_user()_3]] - code - backend/tests/test_categories_router.py
+- [[mock_user_for_pin()]] - code - backend/tests/test_whatsapp_pin.py
+- [[outlook.py]] - code - backend/modules/email/outlook.py
+- [[outlook_webhook()]] - code - backend/modules/email/router.py
+- [[page.tsx_3]] - code - frontend/app/(auth)/login/page.tsx
+- [[patch()]] - code - frontend/app/(dashboard)/components/PendingBlock.tsx
+- [[patch_encryption_key()]] - code - backend/tests/test_bank_connect_encryption.py
+- [[process_email()]] - code - backend/jobs/tasks.py
+- [[queue.py]] - code - backend/jobs/queue.py
+- [[remove_item()]] - code - backend/modules/plaid/service.py
+- [[renew_mail_watches()]] - code - backend/jobs/tasks.py
+- [[renew_watch()]] - code - backend/modules/email/base.py
+- [[reset_fernet()]] - code - backend/tests/test_encryption.py
+- [[route.ts]] - code - frontend/app/auth/callback/route.ts
+- [[router.py_3]] - code - backend/modules/auth/router.py
+- [[router.py_10]] - code - backend/modules/plaid/router.py
+- [[router.py_12]] - code - backend/modules/email/router.py
+- [[scan_emails.py]] - code - backend/scripts/scan_emails.py
+- [[scan_transactions.py]] - code - backend/scripts/scan_transactions.py
+- [[schedule_plaid_syncs()]] - code - backend/jobs/tasks.py
+- [[security.py]] - code - backend/core/security.py
+- [[send_template()]] - code - backend/scripts/test_whatsapp.py
+- [[send_whatsapp_pin()]] - code - backend/modules/auth/router.py
+- [[service.py_9]] - code - backend/modules/plaid/service.py
+- [[setup_email_watch()]] - code - backend/modules/auth/router.py
+- [[setup_pin_app()]] - code - backend/tests/test_whatsapp_pin.py
+- [[setup_watch()]] - code - backend/modules/email/base.py
+- [[store_provider_tokens()]] - code - backend/modules/auth/router.py
+- [[strip_html()]] - code - backend/scripts/debug_email_text.py
+- [[sync_transactions()]] - code - backend/modules/plaid/service.py
+- [[test_allowed_currencies_contains_all_16()]] - code - backend/tests/test_settings_api.py
+- [[test_auth.py]] - code - backend/tests/test_auth.py
+- [[test_bank_accounts_routes.py]] - code - backend/tests/test_bank_accounts_routes.py
+- [[test_bank_connect_encryption.py]] - code - backend/tests/test_bank_connect_encryption.py
+- [[test_canonical_merchants.py]] - code - backend/tests/test_canonical_merchants.py
+- [[test_categories_router.py]] - code - backend/tests/test_categories_router.py
+- [[test_create_canonical_from_groups()]] - code - backend/tests/test_canonical_merchants.py
+- [[test_currencies_api.py]] - code - backend/tests/test_currencies_api.py
+- [[test_decrypt_with_wrong_key_raises()]] - code - backend/tests/test_encryption.py
+- [[test_delete_account_requires_confirmation()]] - code - backend/tests/test_settings_api.py
+- [[test_delete_account_with_wrong_header()]] - code - backend/tests/test_settings_api.py
+- [[test_delete_currencies_last_returns_400()]] - code - backend/tests/test_currencies_api.py
+- [[test_delete_currencies_returns_204()]] - code - backend/tests/test_currencies_api.py
+- [[test_different_plaintexts_produce_different_ciphertexts()]] - code - backend/tests/test_bank_connect_encryption.py
+- [[test_email_webhooks.py]] - code - backend/tests/test_email_webhooks.py
+- [[test_encrypt_decrypt_round_trip()]] - code - backend/tests/test_encryption.py
+- [[test_encrypt_decrypt_roundtrip()]] - code - backend/tests/test_bank_connect_encryption.py
+- [[test_encryption.py]] - code - backend/tests/test_encryption.py
+- [[test_enqueue_fast_job_routes_to_default_queue()]] - code - backend/tests/test_queue_routing.py
+- [[test_enqueue_slow_job_routes_to_slow_queue()]] - code - backend/tests/test_queue_routing.py
+- [[test_enqueue_unknown_job_routes_to_fast_queue()]] - code - backend/tests/test_queue_routing.py
+- [[test_get_categories_no_hidden_field()]] - code - backend/tests/test_categories_router.py
+- [[test_get_categories_requires_auth()]] - code - backend/tests/test_settings_api.py
+- [[test_get_categories_returns_200()]] - code - backend/tests/test_categories_router.py
+- [[test_get_category_usage()]] - code - backend/tests/test_categories_router.py
+- [[test_get_currencies_returns_200()]] - code - backend/tests/test_currencies_api.py
+- [[test_get_me_includes_contribution_fields_for_household_member()]] - code - backend/tests/test_auth.py
+- [[test_get_me_requires_auth()]] - code - backend/tests/test_auth.py
+- [[test_get_me_returns_user_when_authenticated()]] - code - backend/tests/test_auth.py
+- [[test_get_notifications_requires_auth()]] - code - backend/tests/test_notifications_api.py
+- [[test_get_notifications_requires_auth()_1]] - code - backend/tests/test_settings_api.py
+- [[test_get_notifications_returns_list()]] - code - backend/tests/test_notifications_api.py
+- [[test_get_notifications_route_exists()]] - code - backend/tests/test_settings_api.py
+- [[test_get_review_cards_requires_auth()]] - code - backend/tests/test_merchant_review_api.py
+- [[test_get_review_status()]] - code - backend/tests/test_merchant_review_api.py
+- [[test_get_unread_count()]] - code - backend/tests/test_notifications_api.py
+- [[test_gmail_webhook_accepts_valid_oidc_and_enqueues()]] - code - backend/tests/test_email_webhooks.py
+- [[test_gmail_webhook_rejects_bad_token()]] - code - backend/tests/test_email_webhooks.py
+- [[test_handler()]] - code - backend/scripts/test_whatsapp.py
+- [[test_health.py]] - code - backend/tests/test_health.py
+- [[test_health_returns_ok()]] - code - backend/tests/test_health.py
+- [[test_list_bank_accounts_filters_partner_personal_accounts()]] - code - backend/tests/test_bank_accounts_routes.py
+- [[test_list_bank_accounts_includes_currency_and_is_active()]] - code - backend/tests/test_bank_accounts_routes.py
+- [[test_list_bank_accounts_returns_inactive_accounts()]] - code - backend/tests/test_bank_accounts_routes.py
+- [[test_llm_returns_3_categories()]] - code - backend/tests/test_merchant_llm.py
+- [[test_llm_returns_empty_list_on_error()]] - code - backend/tests/test_merchant_llm.py
+- [[test_llm_strips_code_fences()]] - code - backend/tests/test_merchant_llm.py
+- [[test_llm_truncates_to_3_categories()]] - code - backend/tests/test_merchant_llm.py
+- [[test_merchant_llm.py]] - code - backend/tests/test_merchant_llm.py
+- [[test_merchant_review_api.py]] - code - backend/tests/test_merchant_review_api.py
+- [[test_my_transactions_requires_auth()]] - code - backend/tests/test_transactions_api.py
+- [[test_my_transactions_returns_list()]] - code - backend/tests/test_transactions_api.py
+- [[test_my_transactions_returns_only_active_account_results()]] - code - backend/tests/test_transactions_api.py
+- [[test_notifications_api.py]] - code - backend/tests/test_notifications_api.py
+- [[test_outlook_webhook_rejects_bad_client_state()]] - code - backend/tests/test_email_webhooks.py
+- [[test_outlook_webhook_validation_handshake()]] - code - backend/tests/test_email_webhooks.py
+- [[test_patch_bank_account_403_for_non_owner()]] - code - backend/tests/test_bank_accounts_routes.py
+- [[test_patch_bank_account_404_not_found()]] - code - backend/tests/test_bank_accounts_routes.py
+- [[test_patch_bank_account_updates_type()]] - code - backend/tests/test_bank_accounts_routes.py
+- [[test_patch_me_preserves_contribution_fields()]] - code - backend/tests/test_auth.py
+- [[test_patch_notification_mark_read()]] - code - backend/tests/test_notifications_api.py
+- [[test_patch_profile_route_exists()]] - code - backend/tests/test_settings_api.py
+- [[test_post_add_category_at_limit_returns_422()]] - code - backend/tests/test_categories_router.py
+- [[test_post_add_category_duplicate_returns_409()]] - code - backend/tests/test_categories_router.py
+- [[test_post_add_category_returns_201()]] - code - backend/tests/test_categories_router.py
+- [[test_post_currencies_duplicate_returns_409()]] - code - backend/tests/test_currencies_api.py
+- [[test_post_currencies_invalid_code_returns_400()]] - code - backend/tests/test_currencies_api.py
+- [[test_post_currencies_returns_201()]] - code - backend/tests/test_currencies_api.py
+- [[test_post_delete_category()]] - code - backend/tests/test_categories_router.py
+- [[test_post_delete_invalid_reclassify_returns_422()]] - code - backend/tests/test_categories_router.py
+- [[test_put_categories_mismatch_returns_422()]] - code - backend/tests/test_categories_router.py
+- [[test_put_categories_reorder()]] - code - backend/tests/test_categories_router.py
+- [[test_put_categories_reorder_route_exists()]] - code - backend/tests/test_settings_api.py
+- [[test_queue_routing.py]] - code - backend/tests/test_queue_routing.py
+- [[test_send_pin_stores_in_redis_and_sends()]] - code - backend/tests/test_whatsapp_pin.py
+- [[test_send_pin_validates_phone_format()]] - code - backend/tests/test_whatsapp_pin.py
+- [[test_sending()]] - code - backend/scripts/test_whatsapp.py
+- [[test_settings_api.py]] - code - backend/tests/test_settings_api.py
+- [[test_skip_review()]] - code - backend/tests/test_merchant_review_api.py
+- [[test_slow_jobs_does_not_contain_schedulers()]] - code - backend/tests/test_queue_routing.py
+- [[test_slow_jobs_set_contains_expected_jobs()]] - code - backend/tests/test_queue_routing.py
+- [[test_transactions_api.py]] - code - backend/tests/test_transactions_api.py
+- [[test_verify_pin_expired()]] - code - backend/tests/test_whatsapp_pin.py
+- [[test_verify_pin_lockout_after_5_attempts()]] - code - backend/tests/test_whatsapp_pin.py
+- [[test_verify_pin_success()]] - code - backend/tests/test_whatsapp_pin.py
+- [[test_verify_pin_wrong_pin()]] - code - backend/tests/test_whatsapp_pin.py
+- [[test_verify_pin_wrong_user()]] - code - backend/tests/test_whatsapp_pin.py
+- [[test_whatsapp.py]] - code - backend/scripts/test_whatsapp.py
+- [[test_whatsapp_pin.py]] - code - backend/tests/test_whatsapp_pin.py
+- [[test_wrong_iv_fails()]] - code - backend/tests/test_bank_connect_encryption.py
+- [[toTitleCase()_2]] - code - frontend/app/(dashboard)/components/PendingBlock.tsx
+- [[useIsMobile()_2]] - code - frontend/app/(dashboard)/components/PendingBlock.tsx
+- [[verify()]] - code - backend/scripts/webhook_listener.py
+- [[verify_google_oidc_token()]] - code - backend/modules/email/router.py
+- [[verify_whatsapp_pin()]] - code - backend/modules/auth/router.py
+- [[webhook()]] - code - backend/scripts/webhook_listener.py
+- [[webhook_listener.py]] - code - backend/scripts/webhook_listener.py
+- [[whatsapp_verify()]] - code - backend/modules/whatsapp/router.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Backend_Core_&_Infra
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 30 edges to [[_COMMUNITY_Luka Connect & Merchant Review]]
+- 27 edges to [[_COMMUNITY_Merchants & WhatsApp]]
+- 19 edges to [[_COMMUNITY_Email Parser Pipeline]]
+- 19 edges to [[_COMMUNITY_DB, Accounts & Allocation]]
+- 13 edges to [[_COMMUNITY_Plaid & Subscriptions]]
+- 7 edges to [[_COMMUNITY_Budgets (v2 v3)]]
+- 7 edges to [[_COMMUNITY_LLM Parser & Merchant Grouping]]
+- 5 edges to [[_COMMUNITY_Email Filter & Bank Registry]]
+- 3 edges to [[_COMMUNITY_Email Template Executor]]
+- 2 edges to [[_COMMUNITY_Auth & Allocation Services]]
+- 2 edges to [[_COMMUNITY_Personal Budget Service]]
+- 2 edges to [[_COMMUNITY_Transactions API]]
+- 2 edges to [[_COMMUNITY_Pydantic Schemas]]
+- 2 edges to [[_COMMUNITY_Currencies Module]]
+- 1 edge to [[_COMMUNITY_Frontend API Client & Layout]]
+- 1 edge to [[_COMMUNITY_Frontend Dashboard Pages]]
+- 1 edge to [[_COMMUNITY_Bank Connect Mapper]]
+- 1 edge to [[_COMMUNITY_User Settings & Notifications]]
+
+## Top bridge nodes
+- [[GET()]] - degree 104, connects to 14 communities
+- [[process_email()]] - degree 22, connects to 7 communities
+- [[patch()]] - degree 71, connects to 3 communities
+- [[decrypt_token()]] - degree 15, connects to 2 communities
+- [[enqueue_job()]] - degree 13, connects to 2 communities

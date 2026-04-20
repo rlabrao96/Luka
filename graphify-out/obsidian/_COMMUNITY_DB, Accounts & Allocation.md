@@ -1,0 +1,227 @@
+---
+type: community
+cohesion: 0.05
+members: 185
+---
+
+# DB, Accounts & Allocation
+
+**Cohesion:** 0.05 - loosely connected
+**Members:** 185 nodes
+
+## Members
+- [[.test_has_expected_fields()]] - code - backend/tests/test_contribution_modes.py
+- [[.test_is_dataclass()]] - code - backend/tests/test_contribution_modes.py
+- [[.test_level_accepts_int()]] - code - backend/tests/test_budget_v3_sankey.py
+- [[.test_level_defaults_to_none()]] - code - backend/tests/test_budget_v3_sankey.py
+- [[.test_member_id_accepts_string()]] - code - backend/tests/test_budget_v3_sankey.py
+- [[A cuota starting last month and ending this month counts as active for both.]] - rationale - backend/tests/test_cuota_service.py
+- [[Aggregate stats for all active members — no individual transaction rows.]] - rationale - backend/modules/households/service.py
+- [[Async mock of an SQLAlchemy AsyncSession.]] - rationale - backend/tests/conftest.py
+- [[AsyncClient wired to the FastAPI app with ASGI transport.]] - rationale - backend/tests/conftest.py
+- [[Auto-create bank accounts from Luka Connect scrape data and update balances.]] - rationale - backend/modules/bank_connect/accounts.py
+- [[Auto-createupdate bank accounts from scrape data. Returns ba_map     dict(acc]] - rationale - backend/modules/bank_connect/accounts.py
+- [[BankAccount]] - code - backend/modules/households/models.py
+- [[Base]] - code - backend/core/database.py
+- [[Base_1]] - code
+- [[Budget v2 service layer — computes the full `budgetsv2{household_id}` respons]] - rationale - backend/modules/budgets/v2_service.py
+- [[Budget v3 Sankey tests — multi-level structure, caller-relative privacy, flow co]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[BudgetV2Response]] - code - backend/modules/budgets/v2_schemas.py
+- [[Build the budgetsv2 response for the given scope.      Args         db async]] - rationale - backend/modules/budgets/v2_service.py
+- [[Build the 4-level Hogar Sankey.      Levels       0 income source nodes — call]] - rationale - backend/modules/budgets/v2_service.py
+- [[Build the Personal Sankey. Structurally identical to the Hogar builder     but s]] - rationale - backend/modules/budgets/v2_service.py
+- [[Build the personal budget view for a single currency.      When ``currency`` is]] - rationale - backend/modules/budgets/personal_service.py
+- [[Caller's income transactions whose category appears in their         user_catego]] - rationale - backend/tests/test_contribution_modes.py
+- [[CategoryBudget]] - code - backend/modules/households/models.py
+- [[Chunk E — CRUD tests for cuota_service.  These exercise create_cuota  list_acti]] - rationale - backend/tests/test_cuota_service.py
+- [[Contribution mode service.  Owns the logic that decides how each household membe]] - rationale - backend/modules/households/contribution_service.py
+- [[Create a manual transaction from a parsed expense message and start the session.]] - rationale - backend/modules/whatsapp/handler.py
+- [[CreateBankAccountBody]] - code - backend/modules/bank_accounts/router.py
+- [[CuotaPurchase]] - code - backend/modules/budgets/cuota_models.py
+- [[CuotasBlock]] - code - backend/modules/budgets/v2_schemas.py
+- [[Currency not present in summary_by_currency - Decimal('0').]] - rationale - backend/tests/test_subscriptions_read.py
+- [[Current day-of-month clamped to the month if we're viewing a past month.]] - rationale - backend/modules/budgets/v2_service.py
+- [[Days from today until the user's next payday.      If `user_budget_settings.payd]] - rationale - backend/modules/budgets/v2_service.py
+- [[DeclarativeBase]] - code
+- [[Deep-overspent case seeded HOGAR FULL has no income transactions     but subscr]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[Detect currency override from keywords in the message.      Returns (currency, c]] - rationale - backend/modules/whatsapp/handler.py
+- [[Distinct currencies across transactions for the scope. Sorted asc.]] - rationale - backend/modules/budgets/v2_service.py
+- [[End-to-end caller-relative tests against the live seeded DB.]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Even when income is positive but `known_bills + cuotas + savings_target`     tog]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[Every non-source  non-terminal node inflow == outflow == value.]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Every seeded household + currency + view Sankey flow must be         conservati]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[ExchangeTokenRequest]] - code - backend/modules/plaid/router.py
+- [[Fetch the user's settings row, creating it with null defaults if missing.]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[First-fit routing primitive used by the Sankey builders.      Pays `target` out]] - rationale - backend/modules/budgets/v2_service.py
+- [[Flow conservation across all seeded households + view combinations.]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Full+full household with synthetic income rafa-full's household         view sh]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Given a list of {income, hogar_spent, personal_spent} dicts,     compute the ave]] - rationale - backend/modules/budgets/allocation_service.py
+- [[HOGAR FIXED has 2 active members — helper should call the underlying     subscri]] - rationale - backend/tests/test_subscriptions_read.py
+- [[HOGAR FIXED with synthetic income seeded for both members.      rafa-fixed is in]] - rationale - backend/tests/test_contribution_modes.py
+- [[HOGAR REIMB rafa is `full`, partner is `reimbursement`.      Even though partne]] - rationale - backend/tests/test_contribution_modes.py
+- [[Handle a free-text reply during an active edit step, or a new manual expense tri]] - rationale - backend/modules/whatsapp/handler.py
+- [[Hard-delete a bank account and all its transactionssplits. Only the account own]] - rationale - backend/modules/bank_accounts/router.py
+- [[Household]] - code - backend/modules/households/models.py
+- [[Household aggregate = sum across members whose contribution_mode         is 'ful]] - rationale - backend/tests/test_user_budget_settings.py
+- [[HouseholdBudget]] - code - backend/modules/households/models.py
+- [[HouseholdBudgetAllocation]] - code - backend/modules/households/models.py
+- [[HouseholdIncomeBreakdown]] - code - backend/modules/households/contribution_service.py
+- [[HouseholdInvite]] - code - backend/modules/households/models.py
+- [[HouseholdMember]] - code - backend/modules/households/models.py
+- [[Insert a synthetic income transaction inside the wrapping SAVEPOINT.]] - rationale - backend/tests/test_contribution_modes.py
+- [[Integration tests for the `budgetsv2{household_id}` endpoint.  These hit the]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[List bank accounts visible to the current user in this household.      Returns]] - rationale - backend/modules/bank_accounts/router.py
+- [[Manually create a bank account for a household.]] - rationale - backend/modules/bank_accounts/router.py
+- [[Mixed full+fixed household in household view the fixed member         (partner-]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Monthly household spending by member. No privacy restriction — both members see]] - rationale - backend/modules/households/service.py
+- [[OtherMemberContribution]] - code - backend/modules/households/contribution_service.py
+- [[Override get_current_user so routes think a user is authenticated.]] - rationale - backend/tests/conftest.py
+- [[Override get_db so routes use the mock session.]] - rationale - backend/tests/conftest.py
+- [[Parse a human-entered amount string into the DB storage unit.      USD → stored]] - rationale - backend/modules/whatsapp/handler.py
+- [[Parse natural-language expense messages into (amount_int, merchant).      Accept]] - rationale - backend/modules/whatsapp/handler.py
+- [[Personal view has meta_ahorro_personal  gastos_fijos_personal          disponi]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Personal view must never emit member_ aggregate nodes — those are         househ]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Pool-based settlement for N members. Returns minimal list of transfers.]] - rationale - backend/modules/households/service.py
+- [[Prevents drift between the committed contract fixture and the live schema.]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[Privacy invariant even when we SEED partner real income, household view     mus]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[Privacy regression fixed-mode member's real income must NEVER appear         in]] - rationale - backend/tests/test_contribution_modes.py
+- [[Pull expense transactions for the month in one query.]] - rationale - backend/modules/budgets/v2_service.py
+- [[Pure function groups SQL rows into category breakdown with percentages.]] - rationale - backend/modules/households/service.py
+- [[Pydantic schemas for the `budgetsv2{household_id}` endpoint.  These models lo]] - rationale - backend/modules/budgets/v2_schemas.py
+- [[Quick sanity check on the shared helper — the real regression is above.]] - rationale - backend/tests/test_contribution_modes.py
+- [[Read the caller's savings target via `user_budget_settings_service`.      Return]] - rationale - backend/modules/budgets/v2_service.py
+- [[Read the user's personal_allocation_amount in the requested currency.      Retur]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Recursively assert `forbidden` never appears as a numeric leaf value.]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[Regression tests for the contribution_service module (Chunk D).  These exercise]] - rationale - backend/tests/test_contribution_modes.py
+- [[Return (first_day_dt, first_day_next_dt, days_in_month) as UTC datetimes.]] - rationale - backend/modules/budgets/v2_service.py
+- [[Return (user_id, household_id, preferred_currency) for a verified WhatsApp phone]] - rationale - backend/modules/whatsapp/handler.py
+- [[Return True if forbidden appears as a numeric leaf (float comparison).]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Return ``(first_day, first_day_next)`` as UTC datetimes.      Kept local so this]] - rationale - backend/modules/households/contribution_service.py
+- [[Return a caller-relative breakdown of household income for the month.      PRIVA]] - rationale - backend/modules/households/contribution_service.py
+- [[Return a list of node ids where inflowoutflow don't match the node.      Interm]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[Return active members with their roles.]] - rationale - backend/modules/households/service.py
+- [[Return any per-category monthly caps from `category_budgets` for this month.]] - rationale - backend/modules/budgets/v2_service.py
+- [[Return current allocation + a historical 502030 suggestion.      When ``curren]] - rationale - backend/modules/budgets/allocation_service.py
+- [[Return equal split ratio for n members summing to 100.]] - rationale - backend/modules/households/service.py
+- [[Return household income total, contribution-mode-aware.      Per-member dispatch]] - rationale - backend/modules/households/contribution_service.py
+- [[Return node-level flow conservation violations (tolerance ±1 for rounding).]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Return non-accepted, non-expired invites.]] - rationale - backend/modules/households/service.py
+- [[Return per-category (mean, pstdev, n) over the 3 preceding months.      Savings-]] - rationale - backend/modules/budgets/v2_service.py
+- [[Return the caller's own real income for the month.      Personal view always sho]] - rationale - backend/modules/households/contribution_service.py
+- [[Return the first-of-month `offset` calendar months before `month`.]] - rationale - backend/modules/budgets/v2_service.py
+- [[Return the user's payday day-of-month, or None if unset.]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Return the user's savings target in the requested currency, or 0 if mismatch.]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Returns per-category spending breakdown for shared transactions.]] - rationale - backend/modules/households/service.py
+- [[Returns settlement suggestion for the household.]] - rationale - backend/modules/households/service.py
+- [[Returns the mock_user. Used to override get_current_user dependency.]] - rationale - backend/tests/conftest.py
+- [[RiskCategory]] - code - backend/modules/budgets/v2_schemas.py
+- [[Route a WhatsApp button reply to the correct split action.]] - rationale - backend/modules/whatsapp/handler.py
+- [[Route a WhatsApp list selection to category save.]] - rationale - backend/modules/whatsapp/handler.py
+- [[RunwayBlock]] - code - backend/modules/budgets/v2_schemas.py
+- [[SankeyBlock]] - code - backend/modules/budgets/v2_schemas.py
+- [[SankeyLink]] - code - backend/modules/budgets/v2_schemas.py
+- [[SankeyNode]] - code - backend/modules/budgets/v2_schemas.py
+- [[SavingsTargetBlock]] - code - backend/modules/budgets/v2_schemas.py
+- [[Seed N months of transactions for the given userhousehold. Idempotent by     (u]] - rationale - backend/scripts/seed_budget_test_fixtures.py
+- [[Seed idempotent budget-v2 test fixtures.  Creates 4 test households scoped to @l]] - rationale - backend/scripts/seed_budget_test_fixtures.py
+- [[Send 3 fake WhatsApp expense alerts for buenahorarojas@gmail.com.  Looks up the]] - rationale - backend/scripts/seed_fake_transactions.py
+- [[Service for user_budget_settings (savings target + payday).  Chunk C wrote inlin]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Set (or clear with ``amount=None``) the user's monthly personal spending allocat]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Set (or clear with `day=None`) the caller's payday day-of-month.      Raises Val]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Set a user_budget_settings row and verify the service echoes it back.]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[Set the caller's monthly savings target and its currency.      Passing `amount=N]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Simulate the full transaction pipeline locally against production DB + Redis. Us]] - rationale - backend/scripts/test_pipeline.py
+- [[Smoke test against the rafa-full seeded household. The new         breakdown fun]] - rationale - backend/tests/test_contribution_modes.py
+- [[Soft-delete a member from a household. Returns the new individual household id.]] - rationale - backend/modules/households/service.py
+- [[SpendableBlock]] - code - backend/modules/budgets/v2_schemas.py
+- [[Sum of SHARED known_bills for members in `reimbursement` mode.      These bills]] - rationale - backend/modules/budgets/v2_service.py
+- [[Sum personal_allocation_amount across members whose contribution_mode     is 'fu]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Sum savings targets across active household members in the given currency.]] - rationale - backend/modules/budgets/user_budget_settings_service.py
+- [[Sum savings targets across members whose contribution_mode ∈ {full, fixed}.]] - rationale - backend/modules/budgets/v2_service.py
+- [[Test the WhatsApp split+category flow without a real purchase.  Creates a fake p]] - rationale - backend/scripts/test_whatsapp_flow.py
+- [[TestCallerRelativeEndToEnd]] - code - backend/tests/test_budget_v3_sankey.py
+- [[TestFlowConservationAllSeeds]] - code - backend/tests/test_budget_v3_sankey.py
+- [[TestHouseholdIncomeBreakdownDataclass]] - code - backend/tests/test_contribution_modes.py
+- [[TestIncomeBreakdownForHouseholdView]] - code - backend/tests/test_contribution_modes.py
+- [[TestPersonalAllocation]] - code - backend/tests/test_user_budget_settings.py
+- [[TestSankeyNodeAdditiveFields]] - code - backend/tests/test_budget_v3_sankey.py
+- [[The caller must never appear in their own other_members list.]] - rationale - backend/tests/test_contribution_modes.py
+- [[Trailing 14-day average of non-savings expense spend for this scope.]] - rationale - backend/modules/budgets/v2_service.py
+- [[Transaction]] - code - backend/modules/transactions/models.py
+- [[Transactions in savings-equivalent categories (e.g. 'Inversión')     must NOT co]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[Unit tests for `modules.subscriptions.read`.  We monkey-patch `get_detected_subs]] - rationale - backend/tests/test_subscriptions_read.py
+- [[Update a member's contribution mode (and optional fixed amountcurrency).      V]] - rationale - backend/modules/households/contribution_service.py
+- [[Update account_type andor is_active. Only the account owner can edit.]] - rationale - backend/modules/bank_accounts/router.py
+- [[UpdateBankAccountBody]] - code - backend/modules/bank_accounts/router.py
+- [[User]] - code - backend/modules/auth/models.py
+- [[UserBudgetSettings]] - code - backend/modules/budgets/user_budget_settings_models.py
+- [[Wraps each test in a SAVEPOINT and rolls back after.     Tests never write perma]] - rationale - backend/tests/conftest.py
+- [[Write path setting persists, clearing with amount=None removes.]] - rationale - backend/tests/test_user_budget_settings.py
+- [[Yield every leaf value in a nested dictlist structure.]] - rationale - backend/tests/test_budget_v3_sankey.py
+- [[Yield every leaf value in a nested dictlist structure._1]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[_ensure_bank_account()]] - code - backend/scripts/seed_budget_test_fixtures.py
+- [[_ensure_cuota()]] - code - backend/scripts/seed_budget_test_fixtures.py
+- [[_ensure_member()]] - code - backend/scripts/seed_budget_test_fixtures.py
+- [[_get_or_create_household()]] - code - backend/scripts/seed_budget_test_fixtures.py
+- [[_get_or_create_user()]] - code - backend/scripts/seed_budget_test_fixtures.py
+- [[_seed_transactions()]] - code - backend/scripts/seed_budget_test_fixtures.py
+- [[accounts.py]] - code - backend/modules/bank_connect/accounts.py
+- [[conftest.py]] - code - backend/tests/conftest.py
+- [[create_household()]] - code - backend/modules/households/service.py
+- [[cuota_models.py]] - code - backend/modules/budgets/cuota_models.py
+- [[database.py]] - code - backend/core/database.py
+- [[db()]] - code - backend/tests/conftest.py
+- [[ensure_accounts()]] - code - backend/modules/bank_connect/accounts.py
+- [[get_db()]] - code - backend/core/database.py
+- [[household view income = sum(fullreal, fixedfixed_amount, reimb0).      Seed r]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[household view on HOGAR FULL returns a valid response.]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[http_client()]] - code - backend/tests/conftest.py
+- [[mock_current_user()]] - code - backend/tests/conftest.py
+- [[mock_db_session()]] - code - backend/tests/conftest.py
+- [[mock_household()]] - code - backend/tests/conftest.py
+- [[mock_partner()]] - code - backend/tests/conftest.py
+- [[mock_user()]] - code - backend/tests/conftest.py
+- [[models.py_3]] - code - backend/modules/auth/models.py
+- [[models.py_7]] - code - backend/modules/households/models.py
+- [[override_auth()]] - code - backend/tests/conftest.py
+- [[override_db()]] - code - backend/tests/conftest.py
+- [[partner-fixed in personal view sees their REAL income (not fixed amount).      P]] - rationale - backend/tests/test_contribution_modes.py
+- [[rafa-fixed (full mode) in personal view returns their real income.]] - rationale - backend/tests/test_contribution_modes.py
+- [[rafa-fixed has both CLP and USD txns — both must surface in the picker.]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[rafa-full in personal view returns a valid response and a live cuota block.]] - rationale - backend/tests/test_budget_v2_endpoint.py
+- [[seed_all()]] - code - backend/scripts/seed_budget_test_fixtures.py
+- [[seed_budget_test_fixtures.py]] - code - backend/scripts/seed_budget_test_fixtures.py
+- [[test_budget_status_shows_remaining()]] - code - backend/tests/test_budgets_api.py
+- [[test_budgets_api.py]] - code - backend/tests/test_budgets_api.py
+- [[user_budget_settings_models.py]] - code - backend/modules/budgets/user_budget_settings_models.py
+- [[v2_schemas.py]] - code - backend/modules/budgets/v2_schemas.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/DB,_Accounts_&_Allocation
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 178 edges to [[_COMMUNITY_Luka Connect & Merchant Review]]
+- 80 edges to [[_COMMUNITY_Plaid & Subscriptions]]
+- 76 edges to [[_COMMUNITY_Budgets (v2 v3)]]
+- 35 edges to [[_COMMUNITY_Auth & Allocation Services]]
+- 30 edges to [[_COMMUNITY_Pydantic Schemas]]
+- 20 edges to [[_COMMUNITY_Household Contributions]]
+- 19 edges to [[_COMMUNITY_Backend Core & Infra]]
+- 17 edges to [[_COMMUNITY_User Budget Settings]]
+- 16 edges to [[_COMMUNITY_Cuotas (Installments)]]
+- 15 edges to [[_COMMUNITY_Merchants & WhatsApp]]
+- 6 edges to [[_COMMUNITY_Currencies Module]]
+- 6 edges to [[_COMMUNITY_Email Parser Pipeline]]
+- 4 edges to [[_COMMUNITY_User Settings & Notifications]]
+- 1 edge to [[_COMMUNITY_Personal Budget Service]]
+
+## Top bridge nodes
+- [[User]] - degree 172, connects to 9 communities
+- [[Transaction]] - degree 197, connects to 6 communities
+- [[Base]] - degree 29, connects to 6 communities
+- [[Base_1]] - degree 27, connects to 6 communities
+- [[HouseholdMember]] - degree 127, connects to 5 communities

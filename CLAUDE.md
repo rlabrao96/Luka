@@ -118,4 +118,25 @@ Two Wharton MBAs (mechanical engineer + industrial engineer). We can code and re
 
 ---
 
+## Codebase Knowledge Graph (RAG)
+
+A pre-built knowledge graph of this repo lives in `graphify-out/`. **Use it as the first lookup when answering codebase questions — it's ~50× cheaper than reading files.**
+
+- `graphify-out/graph.json` — 2,536 nodes, 5,161 edges, 209 clustered communities covering backend modules, frontend pages, specs, plans, email templates, and design mockups. Every edge is tagged `EXTRACTED` / `INFERRED` / `AMBIGUOUS` with a confidence score.
+- `graphify-out/GRAPH_REPORT.md` — god nodes (top abstractions: `Transaction`, `User`, `HouseholdMember`, `Household`, `BankAccount`), surprising cross-document connections, and suggested questions.
+- `graphify-out/graph.html` — interactive visualization, open in a browser.
+
+### How to query
+- **Open-ended question:** `/graphify query "<question>"` (BFS traversal, broad context) or `--dfs` for tracing a specific chain.
+- **Connection between two concepts:** `/graphify path "NodeA" "NodeB"` — shortest path with edge relations.
+- **Explain one node:** `/graphify explain "NodeName"` — plain-language summary of everything it connects to.
+- **Direct read:** load `graphify-out/graph.json` with `networkx.readwrite.json_graph.node_link_graph(data, edges='links')` and traverse.
+
+### When the graph is stale
+After code changes, run `/graphify --update` (incremental — only re-extracts changed files). Code-only changes skip the LLM entirely (AST-only rebuild). The `graphify claude install` command wires this into sessions automatically.
+
+**Rule:** before grepping/globbing for a concept, ask the graph. Only fall back to file search when the graph lacks the answer or is out of date.
+
+---
+
 

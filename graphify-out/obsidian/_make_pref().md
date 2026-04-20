@@ -1,0 +1,23 @@
+---
+source_file: "backend/tests/test_categories_service.py"
+type: "code"
+community: "User Settings & Notifications"
+location: "L13"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/User_Settings_&_Notifications
+---
+
+# _make_pref()
+
+## Connections
+- [[test_add_category_duplicate_raises()]] - `calls` [EXTRACTED]
+- [[test_categories_service.py]] - `contains` [EXTRACTED]
+- [[test_delete_category_with_reclassify()]] - `calls` [EXTRACTED]
+- [[test_get_category_preferences_expense_before_income()]] - `calls` [EXTRACTED]
+- [[test_get_category_preferences_seeds_when_empty()]] - `calls` [EXTRACTED]
+- [[test_reorder_categories_mismatch_raises()]] - `calls` [EXTRACTED]
+- [[test_reorder_categories_valid()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/User_Settings_&_Notifications
