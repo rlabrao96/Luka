@@ -16,8 +16,11 @@ from modules.auth.models import User
 logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer()
 
-# JWKS client fetches public keys from Supabase and caches them.
-# Supports HS256, RS256, ES256 (ECC P-256) — whatever Supabase is configured to use.
+# Asymmetric algorithms — verified via JWKS public keys (post-migration default).
+# HS256 is NEVER accepted here to prevent algorithm-confusion attacks where an
+# attacker signs a forged token using the public key as the HMAC secret.
+_ASYMMETRIC_ALGS = ["ES256", "RS256"]
+
 _jwks_client: PyJWKClient | None = None
 
 
@@ -30,26 +33,33 @@ def _get_jwks_client() -> PyJWKClient:
 
 
 def _decode_token(token: str) -> dict:
-    """Decode a Supabase JWT using JWKS (supports ES256, RS256, HS256).
+    """Decode a Supabase JWT.
 
-    Tries JWKS first (asymmetric keys). Falls back to the legacy HS256
-    shared secret if JWKS fails and SUPABASE_JWT_SECRET is configured.
+    Order of attempts:
+      1. JWKS (asymmetric ES256/RS256 only) — Supabase's new default after
+         the JWT Signing Keys migration. Rejects HS256 to block alg-confusion.
+      2. Legacy HS256 shared secret — only used for tokens issued before the
+         Dashboard rotation. Remove after the legacy key is revoked.
     """
-    # Strategy 1: JWKS endpoint (works for ES256/RS256 — current Supabase default)
-    try:
-        jwks_client = _get_jwks_client()
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
-        return pyjwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["ES256", "RS256", "HS256"],
-            audience="authenticated",
-        )
-    except Exception as e:
-        logger.debug("JWKS decode failed: %s", e)
+    unverified_header = pyjwt.get_unverified_header(token)
+    alg = unverified_header.get("alg")
 
-    # Strategy 2: Legacy HS256 shared secret (if configured)
-    if settings.supabase_jwt_secret:
+    # Strategy 1: Asymmetric verification via JWKS (ES256/RS256).
+    if alg in _ASYMMETRIC_ALGS:
+        try:
+            signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+            return pyjwt.decode(
+                token,
+                signing_key.key,
+                algorithms=_ASYMMETRIC_ALGS,
+                audience="authenticated",
+            )
+        except Exception as e:
+            logger.warning("Asymmetric JWT decode failed (alg=%s): %s", alg, e)
+            raise
+
+    # Strategy 2: Legacy HS256 shared secret (pre-migration tokens only).
+    if alg == "HS256" and settings.supabase_jwt_secret:
         try:
             return pyjwt.decode(
                 token,
@@ -58,26 +68,10 @@ def _decode_token(token: str) -> dict:
                 audience="authenticated",
             )
         except Exception as e:
-            logger.debug("HS256 decode failed: %s", e)
+            logger.warning("Legacy HS256 decode failed: %s", e)
+            raise
 
-    # Strategy 3: Supabase SDK server-side validation (slowest, always works)
-    try:
-        from supabase import create_client
-
-        sb = create_client(settings.supabase_url, settings.supabase_anon_key)
-        user_response = sb.auth.get_user(token)
-        su = user_response.user
-        if not su:
-            raise ValueError("No user returned")
-        return {
-            "email": su.email,
-            "sub": su.id,
-            "user_metadata": su.user_metadata or {},
-            "app_metadata": su.app_metadata or {},
-        }
-    except Exception as e:
-        logger.warning("All JWT validation strategies failed: %s", e)
-        raise
+    raise pyjwt.InvalidTokenError(f"Unsupported or unverifiable JWT alg: {alg}")
 
 
 async def get_current_user(
