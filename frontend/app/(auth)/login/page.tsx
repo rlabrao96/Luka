@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const PWA_SESSION_KEY = "luka_pwa_session";
+const MICROSOFT_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN === "true";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -154,19 +155,21 @@ export default function LoginPage() {
               Continuar con Google
             </Button>
 
-            <Button
-              onClick={signInWithMicrosoft}
-              variant="outline"
-              className="w-full border-slate-200 text-slate-700 lg:text-luka-dark hover:text-slate-900 lg:hover:text-luka-dark hover:bg-slate-50 font-medium h-12 lg:h-11 text-sm gap-2 rounded-xl transition-all duration-200 hover:shadow-sm lg:hover:shadow-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                <path d="M11.4 2H2v9.4h9.4V2z" fill="#F25022"/>
-                <path d="M22 2h-9.4v9.4H22V2z" fill="#7FBA00"/>
-                <path d="M11.4 12.6H2V22h9.4v-9.4z" fill="#00A4EF"/>
-                <path d="M22 12.6h-9.4V22H22v-9.4z" fill="#FFB900"/>
-              </svg>
-              Continuar con Microsoft
-            </Button>
+            {MICROSOFT_LOGIN_ENABLED && (
+              <Button
+                onClick={signInWithMicrosoft}
+                variant="outline"
+                className="w-full border-slate-200 text-slate-700 lg:text-luka-dark hover:text-slate-900 lg:hover:text-luka-dark hover:bg-slate-50 font-medium h-12 lg:h-11 text-sm gap-2 rounded-xl transition-all duration-200 hover:shadow-sm lg:hover:shadow-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+                  <path d="M11.4 2H2v9.4h9.4V2z" fill="#F25022"/>
+                  <path d="M22 2h-9.4v9.4H22V2z" fill="#7FBA00"/>
+                  <path d="M11.4 12.6H2V22h9.4v-9.4z" fill="#00A4EF"/>
+                  <path d="M22 12.6h-9.4V22H22v-9.4z" fill="#FFB900"/>
+                </svg>
+                Continuar con Microsoft
+              </Button>
+            )}
           </div>
 
           <p className="text-xs text-slate-400 lg:text-luka-muted text-center mt-8 px-2">
