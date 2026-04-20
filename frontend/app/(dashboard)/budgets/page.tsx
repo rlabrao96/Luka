@@ -2,13 +2,20 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { api, type BudgetV2Response } from "@/app/lib/api";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
-import BudgetSankey from "@/app/(dashboard)/components/BudgetSankey";
 import { BudgetConfigModal } from "@/app/(dashboard)/components/BudgetConfigModal";
 import { RiskAlertBand } from "@/app/(dashboard)/components/RiskAlertBand";
 import { RunwayCard } from "@/app/(dashboard)/components/RunwayCard";
+
+// Recharts' Sankey chart pulls in ~40KB of d3 + rendering code.
+// Load it on demand so the budgets route shell paints first.
+const BudgetSankey = dynamic(
+  () => import("@/app/(dashboard)/components/BudgetSankey"),
+  { ssr: false, loading: () => <SectionSkeleton /> }
+);
 
 function monthParam(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;

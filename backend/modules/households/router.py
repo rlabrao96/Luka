@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import get_current_user
 from modules.auth.models import User
+from core.security import invalidate_user_cache
 from modules.households import service
 from modules.households.contribution_service import update_contribution
 from modules.households.errors import InviteError
@@ -103,6 +104,7 @@ async def patch_contribution_settings(
     except ValueError as e:
         raise HTTPException(400, str(e))
     await db.commit()
+    await invalidate_user_cache(current_user.email)
     return ContributionUpdateResponse(
         mode=updated.contribution_mode,
         fixed_amount=updated.fixed_contribution_amount,

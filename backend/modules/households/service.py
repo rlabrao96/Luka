@@ -144,8 +144,7 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
     # 5-member cap (protected by the FOR UPDATE above).
     count_result = await db.execute(
         text(
-            "SELECT COUNT(*) FROM household_members "
-            "WHERE household_id = :hid AND left_at IS NULL"
+            "SELECT COUNT(*) FROM household_members WHERE household_id = :hid AND left_at IS NULL"
         ),
         {"hid": str(existing.household_id)},
     )
@@ -230,7 +229,7 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
     if _is_auto_equal_ratio(current_ratio, current_active):
         new_ratio = _equal_ratio(new_count)
         await db.execute(
-            text("UPDATE households SET split_ratio = :ratio, type = 'group' " "WHERE id = :id"),
+            text("UPDATE households SET split_ratio = :ratio, type = 'group' WHERE id = :id"),
             {"ratio": json.dumps(new_ratio), "id": str(existing.household_id)},
         )
     else:
@@ -243,6 +242,11 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
 
     await db.commit()
     await db.refresh(existing)
+    # Invalidate the acceptor's cached household blob so /auth/me sees the
+    # new membership immediately instead of after the 5-min TTL expires.
+    from core.security import invalidate_user_cache
+
+    await invalidate_user_cache(user.email)
     return existing
 
 
@@ -275,10 +279,11 @@ async def remove_member(
 
     # Create a new individual household for the removed user
     user_result = await db.execute(
-        text("SELECT full_name FROM users WHERE id = :id"),
+        text("SELECT email, full_name FROM users WHERE id = :id"),
         {"id": str(removed_user_id)},
     )
     user_row = user_result.one_or_none()
+    removed_user_email = user_row.email if user_row else None
     new_name = f"Personal de {user_row.full_name}" if user_row else "Mi cuenta personal"
     new_household = Household(name=new_name, type="individual")
     db.add(new_household)
@@ -307,6 +312,10 @@ async def remove_member(
 
     await db.commit()
     await db.refresh(new_household)
+    if removed_user_email:
+        from core.security import invalidate_user_cache
+
+        await invalidate_user_cache(removed_user_email)
     return new_household.id
 
 

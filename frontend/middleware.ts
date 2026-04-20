@@ -54,6 +54,10 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Skip Next.js internals, static assets, the manifest, the callback
+    // route (which handles its own session), and any common image / font
+    // extension. Running getClaims() on each of those pays the JWT-verify
+    // cost 6-10× per page load for no benefit.
+    "/((?!_next/static|_next/image|_next/data|_next/webpack|favicon.ico|manifest.webmanifest|sw.js|workbox-.*|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|avif|woff|woff2|ttf|map|css|js)$).*)",
   ],
 };

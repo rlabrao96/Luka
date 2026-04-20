@@ -5,13 +5,19 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.cache import cache_delete, cache_get, cache_set
 from core.database import get_db
 from core.encryption import decrypt_token, encrypt_token
-from core.security import get_current_user
+from core.security import (
+    cached_membership,
+    get_current_user,
+    get_current_user_attached,
+    invalidate_user_cache,
+    load_membership,
+    user_cache_key,
+)
 from modules.auth.models import User
 from modules.auth.schemas import (
     ALLOWED_CURRENCIES,
@@ -22,7 +28,6 @@ from modules.auth.schemas import (
     WhatsAppVerifyRequest,
 )
 from modules.email.factory import get_email_provider
-from modules.households.models import HouseholdMember
 from modules.currencies.service import sync_preferred_currency
 from modules.whatsapp.sender import send_verification_pin
 
@@ -31,28 +36,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.get("/me", response_model=UserResponse)
-async def get_me(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        select(
-            HouseholdMember.household_id,
-            HouseholdMember.contribution_mode,
-            HouseholdMember.fixed_contribution_amount,
-            HouseholdMember.fixed_contribution_currency,
-        ).where(
-            HouseholdMember.user_id == current_user.id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
-    row = result.first()
-    household_id = row[0] if row else None
-    contribution_mode = row[1] if row else None
-    fixed_contribution_amount = row[2] if row else None
-    fixed_contribution_currency = row[3] if row else None
-
+def _user_response(current_user: User, membership: dict | None) -> UserResponse:
     return UserResponse(
         id=current_user.id,
         email=current_user.email,
@@ -61,25 +45,38 @@ async def get_me(
         whatsapp_verified=current_user.whatsapp_verified,
         phone_whatsapp=current_user.phone_whatsapp,
         preferred_currency=current_user.preferred_currency,
-        household_id=household_id,
-        contribution_mode=contribution_mode,
-        fixed_contribution_amount=fixed_contribution_amount,
-        fixed_contribution_currency=fixed_contribution_currency,
+        household_id=membership.get("household_id") if membership else None,
+        contribution_mode=membership.get("contribution_mode") if membership else None,
+        fixed_contribution_amount=(
+            membership.get("fixed_contribution_amount") if membership else None
+        ),
+        fixed_contribution_currency=(
+            membership.get("fixed_contribution_currency") if membership else None
+        ),
     )
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Serve from the user-cache blob when available — zero DB queries on hit.
+    cached = await cache_get(user_cache_key(current_user.email))
+    membership = cached_membership(cached)
+    if cached is None:
+        # Cache was populated in get_current_user for new blobs; for legacy
+        # blobs without the `membership` field, backfill once.
+        membership = await load_membership(db, current_user.id)
+    return _user_response(current_user, membership)
 
 
 @router.patch("/me", response_model=UserResponse)
 async def update_profile(
     body: UpdateProfileRequest,
-    current_user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_attached),
     db: AsyncSession = Depends(get_db),
 ):
-    # Re-fetch from DB session (current_user may be cached/detached)
-    result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
-
     if body.full_name is not None:
         user.full_name = body.full_name
     if body.phone_whatsapp is not None:
@@ -95,37 +92,10 @@ async def update_profile(
         await sync_preferred_currency(db, user.id, body.preferred_currency)
     await db.commit()
     await db.refresh(user)
+    await invalidate_user_cache(user.email)
 
-    result = await db.execute(
-        select(
-            HouseholdMember.household_id,
-            HouseholdMember.contribution_mode,
-            HouseholdMember.fixed_contribution_amount,
-            HouseholdMember.fixed_contribution_currency,
-        ).where(
-            HouseholdMember.user_id == user.id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
-    row = result.first()
-    household_id = row[0] if row else None
-    contribution_mode = row[1] if row else None
-    fixed_contribution_amount = row[2] if row else None
-    fixed_contribution_currency = row[3] if row else None
-
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        full_name=user.full_name,
-        email_provider=user.email_provider,
-        whatsapp_verified=user.whatsapp_verified,
-        phone_whatsapp=user.phone_whatsapp,
-        preferred_currency=user.preferred_currency,
-        household_id=household_id,
-        contribution_mode=contribution_mode,
-        fixed_contribution_amount=fixed_contribution_amount,
-        fixed_contribution_currency=fixed_contribution_currency,
-    )
+    membership = await load_membership(db, user.id)
+    return _user_response(user, membership)
 
 
 @router.delete("/me", status_code=204)
@@ -181,14 +151,9 @@ async def _verify_google_token_ownership(token: str, expected_email: str) -> Non
 @router.post("/store-provider-tokens")
 async def store_provider_tokens(
     body: StoreProviderTokensRequest,
-    current_user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_attached),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
-
     await _verify_google_token_ownership(body.provider_token, user.email)
 
     user.google_access_token_enc = encrypt_token(body.provider_token)
@@ -197,21 +162,16 @@ async def store_provider_tokens(
 
     await db.commit()
     await db.refresh(user)
-    await cache_delete(f"user:{user.email}")
+    await invalidate_user_cache(user.email)
 
     return {"status": "ok"}
 
 
 @router.post("/setup-email-watch")
 async def setup_email_watch(
-    current_user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_attached),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
-
     if not user.google_access_token_enc:
         raise HTTPException(
             status_code=400, detail="No Google tokens stored. Please re-authenticate."
@@ -237,7 +197,7 @@ async def setup_email_watch(
 
     await db.commit()
     await db.refresh(user)
-    await cache_delete(f"user:{user.email}")
+    await invalidate_user_cache(user.email)
 
     return {
         "status": "ok",
@@ -295,15 +255,12 @@ async def verify_whatsapp_pin(
         raise HTTPException(status_code=400, detail="PIN incorrecto o expirado")
 
     # Success — save phone and mark verified
-    result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found. Please re-authenticate.")
+    user = await db.merge(current_user, load=False)
     user.phone_whatsapp = body.phone
     user.whatsapp_verified = True
     await db.commit()
     await db.refresh(user)
-    await cache_delete(f"user:{user.email}")
+    await invalidate_user_cache(user.email)
     await cache_delete(key)
 
     return {"status": "ok"}

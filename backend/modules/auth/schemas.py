@@ -34,8 +34,22 @@ class WhatsAppVerifyRequest(BaseModel):
 
 
 ALLOWED_CURRENCIES = {
-    "CLP", "USD", "COP", "BRL", "MXN", "ARS", "PEN",
-    "UYU", "PYG", "BOB", "VES", "DOP", "GTQ", "HNL", "NIO", "CRC",
+    "CLP",
+    "USD",
+    "COP",
+    "BRL",
+    "MXN",
+    "ARS",
+    "PEN",
+    "UYU",
+    "PYG",
+    "BOB",
+    "VES",
+    "DOP",
+    "GTQ",
+    "HNL",
+    "NIO",
+    "CRC",
 }
 
 
