@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { withDurableCookie } from "./cookieOptions";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -11,7 +12,7 @@ export async function createClient() {
         getAll: () => cookieStore.getAll(),
         setAll: (cs) =>
           cs.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
+            cookieStore.set(name, value, withDurableCookie(options))
           ),
       },
     }

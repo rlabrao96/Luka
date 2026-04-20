@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { withDurableCookie } from "@/app/lib/supabase/cookieOptions";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -14,23 +15,24 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
+            const durable = withDurableCookie(options);
             request.cookies.set(name, value);
-            supabaseResponse.cookies.set(name, value, options);
+            supabaseResponse.cookies.set(name, value, durable);
           });
         },
       },
     }
   );
 
-  // Use getSession() instead of getUser() — reads JWT from cookie locally
-  // (nearly free) rather than making an external Supabase API call (~50-100ms).
-  // Real auth validation happens server-side in the backend's get_current_user().
-  let user = null;
+  // getClaims() verifies the JWT signature locally against the cached JWKS
+  // (fast; no Auth server round trip once migrated to asymmetric keys).
+  // During the legacy HS256 window it falls back to the Auth server.
+  let hasValidSession = false;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    user = session?.user ?? null;
+    const { data } = await supabase.auth.getClaims();
+    hasValidSession = Boolean(data?.claims?.sub);
   } catch {
-    // If cookie parsing fails, fail open and let the page handle auth
+    hasValidSession = false;
   }
 
   const { pathname } = request.nextUrl;
@@ -43,7 +45,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/terms") ||
     pathname.startsWith("/data-deletion");
 
-  if (!user && !isPublic) {
+  if (!hasValidSession && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
