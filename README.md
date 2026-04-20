@@ -1,8 +1,8 @@
 # Luka
 
-Chilean personal finance SaaS for individuals and couples. Captures bank transactions via email push notifications (Gmail/Outlook), bank scraping (Luka Connect for Chile), and open banking (Plaid for US). Categorizes transactions via LLM, enables actions via WhatsApp, and visualizes spending on a responsive web dashboard.
+Latin American personal finance SaaS for individuals, couples, and groups. Automatically captures transactions from bank email notifications (Gmail/Outlook), bank scraping (Luka Connect), and open banking (Plaid for US); classifies them via LLM; enables actions via WhatsApp; and visualizes spending on a responsive web dashboard.
 
-**LATAM expansion ready:** Three-layer email parser (declarative templates, Gemini LLM waterfall, legacy regex) with 101 banks seeded across 6 countries (CL, CO, MX, PE, BR, US).
+**LATAM-first:** Three-layer email parser (declarative templates, Gemini LLM waterfall, legacy regex) covering 101 banks across 6 countries (CL, CO, MX, PE, BR, US). Multi-currency throughout — nothing hardcoded to a single country or currency.
 
 ## Tech Stack
 
