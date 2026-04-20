@@ -22,11 +22,12 @@ Latin American personal finance SaaS for individuals, couples, and groups. Autom
 
 **Database**
 - Supabase PostgreSQL 15
-- Alembic migrations (37 versions)
+- Alembic migrations (38 versions)
 
 **Auth**
-- Supabase Auth — Google OAuth (Gmail users) + Microsoft OAuth (Outlook users)
-- PyJWT + JWKS validation (ES256/RS256/HS256 fallback chain)
+- Supabase Auth — Google OAuth (Gmail users); Microsoft OAuth wired but hidden by default (see `NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN`)
+- PyJWT + JWKS validation, ES256/RS256 asymmetric only (legacy HS256 shared secret revoked)
+- Supabase publishable/secret API keys (new format, not legacy anon/service_role JWTs)
 
 **Infrastructure**
 - Railway (backend API + fast worker + slow worker)
@@ -102,8 +103,8 @@ docs/                 Architecture docs, design specs, research
 | `DATABASE_URL` | Yes | PostgreSQL async connection string |
 | `REDIS_URL` | Yes | Redis for caching and job queue |
 | `SUPABASE_URL` | Yes | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
-| `SUPABASE_SERVICE_KEY` | Yes | Supabase service role key |
+| `SUPABASE_ANON_KEY` | Yes | Supabase publishable key (`sb_publishable_...`) — env var name retained for compat |
+| `SUPABASE_SERVICE_KEY` | Yes | Supabase secret key (`sb_secret_...`) — env var name retained for compat |
 | `FRONTEND_URL` | Yes | Frontend URL for CORS and invite links |
 | `GCP_PROJECT_ID` | Yes | Google Cloud project for Pub/Sub |
 | `PUBSUB_AUDIENCE` | Yes | Gmail webhook push endpoint URL |
@@ -122,6 +123,8 @@ docs/                 Architecture docs, design specs, research
 | `LLM_SHADOW_VALIDATION_RATE` | No | Shadow validation sample rate (default: 0.25) |
 | `TEMPLATE_AGENT_MIN_EMAILS` | No | Min LLM-parsed emails before template generation (default: 20) |
 | `ENVIRONMENT` | No | `development` or `production` (default: development) |
+| `NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN` | No | Frontend flag (`true`/`false`). Hides the Microsoft OAuth button unless set to `true`. Outlook ingest end-to-end is not yet production-ready. |
+| `ANALYZE` | No | Set to `true` and run `npx next build --webpack` to dump a bundle report to `.next/analyze/*.html` |
 
 ## What Luka Does
 

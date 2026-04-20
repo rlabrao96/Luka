@@ -107,6 +107,12 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 - Budget hierarchy: household -> household_budgets -> category_budgets
 - Bank registry links to active email templates; parsed email log tracks which parser handled each email
 
+### Hot-path indexes (migration 038)
+Partial btree indexes applied live on 2026-04-20 so the auth hot path stays O(1):
+- `ix_household_members_user_active` on `household_members(user_id) WHERE left_at IS NULL` — hit by every `get_current_user` cache miss + `require_membership`
+- `ix_household_members_household_active` on `household_members(household_id) WHERE left_at IS NULL` — hit by member listing + invite capacity checks
+- `ix_household_invites_pending` on `household_invites(household_id, LOWER(invited_email)) WHERE accepted_at IS NULL` — covers the revoke-prior-pending query in `create_invite`
+
 ## Key Flows
 
 ### Email Transaction Flow (Three-Layer Parser)
@@ -179,13 +185,17 @@ Reconciliation runs in two places: inline during Plaid/Connect sync (immediate) 
 
 ## Authentication & Authorization
 
-- **Provider:** Supabase Auth (Google OAuth for Gmail users, Microsoft OAuth for Outlook users)
-- **Token strategy:** JWT validated locally via PyJWT + JWKS (ES256 primary, RS256/HS256 fallback)
-- **Frontend:** Supabase JS SDK handles token refresh; `middleware.ts` redirects unauthenticated users
-- **Backend:** `get_current_user()` dependency validates JWT, caches user profile in Redis (5-min TTL)
-- **Session management:** SessionGuard component — PWA persistent sessions + 30-min browser inactivity timeout with visibility change detection
-- **RLS:** Supabase Row Level Security on sensitive tables (including `parsed_email_log`); SECURITY DEFINER aggregate RPC for partner data (no raw partner rows exposed)
-- **OAuth tokens:** Google/Microsoft provider tokens encrypted with Fernet, stored in `users` table for API access (Gmail, Graph)
+- **Provider:** Supabase Auth — Google OAuth is the live path; Microsoft/Azure OAuth is code-complete but hidden behind `NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN` until Outlook ingest ships end-to-end.
+- **Token strategy:** JWT verified locally via PyJWT + JWKS. **ES256/RS256 asymmetric only** — legacy HS256 shared-secret path was removed after the Supabase JWT Signing Keys rotation. Accepting HS256 alongside asymmetric algs is classic algorithm-confusion and is now blocked outright in `_decode_token`.
+- **JWT payload cache** (`core/security.py:_verify_token`): Redis-keyed by `sha256(token)[:16]` with TTL bounded by the token's own `exp` claim. Skips JWKS + ECDSA verification on repeat requests within the token's lifetime (~15-20ms saved per authenticated call).
+- **User cache blob** (`user:v2:{email}`): holds the `User` row fields plus a `membership` sub-object (`household_id`, `contribution_mode`, `fixed_contribution_amount`, `fixed_contribution_currency`). Served directly by `GET /auth/me` on hit — zero DB queries per navigation. Invalidated by `invalidate_user_cache()` on profile updates, household accepts/removes, and contribution-mode changes.
+- **Frontend middleware** (`frontend/middleware.ts`): `supabase.auth.getClaims()` for local JWKS-based JWT verification. Matcher excludes Next internals (`_next/data`, `_next/webpack`), the OAuth callback, service-worker files, manifest, maps, and static extensions so the verify cost doesn't multiply across RSC data fetches.
+- **Session durability:** browser client configured with `flowType: "pkce"`, `persistSession: true`, `autoRefreshToken: true`. Supabase cookies rewritten with `Max-Age=1y` (via `withDurableCookie` in `app/lib/supabase/cookieOptions.ts`) so an installed iOS PWA survives across restarts instead of losing its session on iOS ITP cookie purges.
+- **SessionGuard component:** 30-min browser inactivity timeout with visibility change detection; on PWA mode, mirrors the session into `localStorage` as a backup for ITP-induced cookie wipes and refreshes via `supabase.auth.refreshSession` on resume.
+- **Household invite flow:** `POST /invite/{token}` (was GET; GET was CSRF-trivial). Atomic one-time claim via `UPDATE ... RETURNING` + row lock on the target household. Tokens are `secrets.token_urlsafe(32)` (not UUIDv4), bound to the invited email (case-insensitive), idempotent against re-send (new invite revokes any prior pending one), and the service raises typed `InviteError`s with stable codes the frontend branches on.
+- **RLS:** Supabase Row Level Security on sensitive tables (including `parsed_email_log`); SECURITY DEFINER aggregate RPC for partner data (no raw partner rows exposed).
+- **Provider token ownership check:** `POST /auth/store-provider-tokens` verifies the Google access token against Google's `tokeninfo` endpoint and rejects if `token.email != current_user.email` — prevents a compromised session from planting an attacker-controlled Gmail ingest source.
+- **OAuth tokens at rest:** Google/Microsoft provider tokens encrypted with Fernet, stored in `users` table for API access (Gmail, Graph).
 
 ## Background Processing
 
