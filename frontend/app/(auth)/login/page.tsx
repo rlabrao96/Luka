@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 const PWA_SESSION_KEY = "luka_pwa_session";
 const MICROSOFT_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN === "true";
@@ -17,17 +17,18 @@ const AUTH_ERROR_COPY: Record<string, string> = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [recovering, setRecovering] = useState(false);
   const [pending, setPending] = useState<"google" | "microsoft" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Read ?error=... via window.location so the page stays statically-prerenderable.
+  // useSearchParams would require a Suspense boundary on Next 16.
   useEffect(() => {
-    const code = searchParams.get("error");
+    const code = new URLSearchParams(window.location.search).get("error");
     if (code && AUTH_ERROR_COPY[code]) {
       setError(AUTH_ERROR_COPY[code]);
     }
-  }, [searchParams]);
+  }, []);
 
   // PWA session recovery: if iOS cleared cookies but localStorage has a saved session,
   // restore it and redirect back to dashboard
