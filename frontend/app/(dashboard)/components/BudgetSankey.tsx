@@ -59,7 +59,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
     [links]
   );
 
-  const { safeNodes, data, isTerminal, maxColumnCount } = useMemo(() => {
+  const { safeNodes, data, isTerminal, isPassThrough, maxColumnCount } = useMemo(() => {
     const safe = nodes.filter((n) => Number.isFinite(n.value) && n.value > 0);
     const safeIds = new Set(safe.map((n) => n.id));
     const safeLinks = links.filter(
@@ -71,7 +71,16 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
     );
     const safeIdToIndex = new Map(safe.map((n, i) => [n.id, i]));
     const sourceIds = new Set(safeLinks.map((l) => l.source));
+    const targetIds = new Set(safeLinks.map((l) => l.target));
     const terminal = new Set(safe.filter((n) => !sourceIds.has(n.id)).map((n) => n.id));
+    // Pass-through hubs: nodes that are both a destination of incoming flows
+    // AND a source of outgoing flows. In the Luka v3 budget, `disponible_hogar`
+    // fits this shape (receives from `ingresos_hogar`, emits to spent-category
+    // nodes). Side labels would interleave with those outgoing flows, so we
+    // render their labels above the rectangle like the level-1 hub.
+    const passThrough = new Set(
+      safe.filter((n) => sourceIds.has(n.id) && targetIds.has(n.id)).map((n) => n.id)
+    );
 
     // Count nodes per level to size the chart vertically — terminal columns
     // with many allocation/spent rows were previously squashed into a fixed
@@ -94,6 +103,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
         })),
       },
       isTerminal: terminal,
+      isPassThrough: passThrough,
       maxColumnCount: maxCol,
     };
   }, [nodes, links]);
@@ -122,23 +132,29 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
       let anchor: "start" | "end" | "middle";
       let valueY: number = labelY + 14;
 
-      if (node.level === undefined || node.level === null) {
-        // v2 fallback: terminal nodes label left, non-terminal label right
-        const terminal = isTerminal.has(node.id);
-        labelX = terminal ? x - 6 : x + width + 6;
-        anchor = terminal ? "end" : "start";
-      } else if (node.level === 0) {
-        anchor = "end";
-        labelX = x - 6;
-      } else if (node.level === 1) {
-        // Hub: label above, centered. Clamp so it never clips when topmost.
+      // Pass-through hubs (any level that both receives and emits flows) get
+      // labels centered above the rectangle — this keeps the label out of
+      // the outgoing flow paths that would otherwise overlap with side labels.
+      const isHubLike = node.level === 1 || isPassThrough.has(node.id);
+
+      if (isHubLike) {
         anchor = "middle";
         labelX = x + width / 2;
         labelY = Math.max(y - 18, 10);
         valueY = labelY + 12;
+      } else if (node.level === 0) {
+        // Source column: label to the LEFT of the rectangle. Margin.left on
+        // the Sankey reserves space so labels don't clip out of the SVG.
+        anchor = "end";
+        labelX = x - 6;
+      } else if (node.level === undefined || node.level === null) {
+        // v2 fallback: terminal nodes label left, non-terminal label right
+        const terminal = isTerminal.has(node.id);
+        labelX = terminal ? x - 6 : x + width + 6;
+        anchor = terminal ? "end" : "start";
       } else {
-        // Level 2/3 sit on the right edge. The <Sankey margin> reserves
-        // ~140px of right padding so labels stay inside the SVG viewport.
+        // Terminal level 2+ sits on the right edge. Margin.right reserves
+        // ~140px so labels stay inside the SVG viewport.
         anchor = "start";
         labelX = x + width + 6;
       }
@@ -156,7 +172,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
           <text
             x={labelX}
             y={labelY}
-            dy={node.level === 1 ? "0" : "0.35em"}
+            dy={isHubLike ? "0" : "0.35em"}
             textAnchor={anchor}
             className="text-xs font-medium fill-slate-700"
           >
@@ -165,7 +181,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
           <text
             x={labelX}
             y={valueY}
-            dy={node.level === 1 ? "0" : undefined}
+            dy={isHubLike ? "0" : undefined}
             textAnchor={anchor}
             className="text-[11px] font-medium fill-slate-600 tabular-nums"
           >
@@ -174,7 +190,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
         </Layer>
       );
     },
-    [safeNodes, isTerminal, currency]
+    [safeNodes, isTerminal, isPassThrough, currency]
   );
 
   const tooltipFormatter = useCallback(
@@ -215,13 +231,13 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
     >
       <div className="w-full overflow-x-auto">
         <div
-          className="min-w-[480px] md:min-w-[720px]"
+          className="min-w-[560px] md:min-w-[800px]"
           style={{ height: chartHeight }}
         >
           <ResponsiveContainer width="100%" height="100%">
             <Sankey
               data={data}
-              margin={{ top: 20, right: 140, bottom: 20, left: 20 }}
+              margin={{ top: 28, right: 150, bottom: 20, left: 150 }}
               nodePadding={32}
               nodeWidth={16}
               linkCurvature={0.5}
