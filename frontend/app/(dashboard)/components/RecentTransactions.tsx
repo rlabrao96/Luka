@@ -9,6 +9,7 @@ import { TransactionCard } from "./TransactionCard";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
 import { formatAmount } from "@/app/lib/currency";
+import { PairedTransactionCard, groupPairs } from "./PairedTransactionCard";
 
 
 function toTitleCase(str: string) {
@@ -218,7 +219,18 @@ export function RecentTransactions({
             {formatDateHeader(dateKey)}
           </p>
           <div className="space-y-1.5">
-            {txns.map((txn) => {
+            {groupPairs(txns).map((item) => {
+              if (item.kind === "pair") {
+                return (
+                  <PairedTransactionCard
+                    key={item.pairId}
+                    pairId={item.pairId}
+                    pairType={item.pairType}
+                    legs={item.legs}
+                  />
+                );
+              }
+              const txn = item.txn;
               /* Compact mode: simple card, no editing */
               if (compact) {
                 return <TransactionCard key={txn.id} txn={txn} compact />;
