@@ -68,6 +68,14 @@ async def detect_transfers(
                 if tx_a.bank_account_id is None or tx_b.bank_account_id is None:
                     continue
 
+                # Same owner — transfers are own-account moves, never cross-member.
+                if tx_a.user_id != tx_b.user_id:
+                    continue
+
+                # Same currency — CLP 10.000 and USD 10.000 are not a pair.
+                if tx_a.currency != tx_b.currency:
+                    continue
+
                 # Opposite signs
                 if (tx_a.amount > 0) == (tx_b.amount > 0):
                     continue
