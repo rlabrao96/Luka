@@ -361,7 +361,7 @@ async def _handle_manual_expense_trigger(
         currency=currency,
         transaction_date=datetime.now(timezone.utc),
         source="manual",
-        status="confirmed",
+        status="settled",
         transaction_type="expense",
     )
     db.add(txn)

@@ -373,7 +373,7 @@ async def test_handle_text_message_manual_trigger_creates_transaction():
 
     # Transaction must use user's preferred currency, not hardcoded CLP
     added_txn = mock_db.add.call_args[0][0]
-    assert added_txn.status == "confirmed"
+    assert added_txn.status == "settled"
     assert added_txn.source == "manual"
     assert added_txn.currency == "USD"
     mock_db.commit.assert_called_once()
