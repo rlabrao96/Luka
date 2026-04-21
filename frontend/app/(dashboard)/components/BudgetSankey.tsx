@@ -198,24 +198,41 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
             fill={colorFor(node)}
             fillOpacity={0.9}
           />
-          <text
-            x={labelX}
-            y={labelY}
-            dy={isHubLike || isBelowLabel ? "0" : "0.35em"}
-            textAnchor={anchor}
-            className="text-xs font-medium fill-slate-700"
-          >
-            {node.label}
-          </text>
-          <text
-            x={labelX}
-            y={valueY}
-            dy={isHubLike || isBelowLabel ? "0" : undefined}
-            textAnchor={anchor}
-            className="text-[11px] font-medium fill-slate-600 tabular-nums"
-          >
-            {formatMoney(node.value, currency)}
-          </text>
+          {(() => {
+            // Labels can embed `\n` to render on multiple SVG lines. This keeps
+            // a long label like "Gastos fijos pendientes" from crowding narrow
+            // below-label positioning.
+            const lines = node.label.split("\n");
+            const baseDy = isHubLike || isBelowLabel ? "0" : "0.35em";
+            // When wrapping, push the value below the last label line.
+            const valueOffset = (lines.length - 1) * 13;
+            return (
+              <>
+                <text
+                  x={labelX}
+                  y={labelY}
+                  dy={baseDy}
+                  textAnchor={anchor}
+                  className="text-xs font-medium fill-slate-700"
+                >
+                  {lines.map((ln, i) => (
+                    <tspan key={i} x={labelX} dy={i === 0 ? baseDy : "1.1em"}>
+                      {ln}
+                    </tspan>
+                  ))}
+                </text>
+                <text
+                  x={labelX}
+                  y={valueY + valueOffset}
+                  dy={isHubLike || isBelowLabel ? "0" : undefined}
+                  textAnchor={anchor}
+                  className="text-[11px] font-medium fill-slate-600 tabular-nums"
+                >
+                  {formatMoney(node.value, currency)}
+                </text>
+              </>
+            );
+          })()}
         </Layer>
       );
     },

@@ -563,7 +563,8 @@ def _build_hogar_sankey(
         nodes.append(
             SankeyNode(
                 id="gastos_fijos",
-                label="Gastos fijos pendientes",
+                # `\n` renders as a second line in the frontend tspan layout.
+                label="Gastos fijos\npendientes",
                 value=known_bills,
                 level=2,
                 kind="bill",
@@ -780,7 +781,8 @@ def _build_personal_sankey(
         nodes.append(
             SankeyNode(
                 id="gastos_fijos_personal",
-                label="Gastos fijos pendientes",
+                # `\n` renders as a second line in the frontend tspan layout.
+                label="Gastos fijos\npendientes",
                 value=known_bills,
                 level=2,
                 kind="bill",
