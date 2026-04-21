@@ -122,7 +122,7 @@ class TestBuildHogarSankey:
             savings_target=Decimal("300"),
             personal_allocation=Decimal("400"),
             spendable_amount=Decimal("1000"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo", "Bonus"],
         )
@@ -141,7 +141,7 @@ class TestBuildHogarSankey:
             savings_target=Decimal("300"),
             personal_allocation=Decimal("400"),
             spendable_amount=Decimal("1000"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo", "Bonus"],
         )
@@ -159,7 +159,7 @@ class TestBuildHogarSankey:
             savings_target=Decimal("300"),
             personal_allocation=Decimal("400"),
             spendable_amount=Decimal("1000"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo", "Bonus"],
         )
@@ -177,7 +177,7 @@ class TestBuildHogarSankey:
             savings_target=Decimal("300"),
             personal_allocation=Decimal("400"),
             spendable_amount=Decimal("1000"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo", "Bonus"],
         )
@@ -205,7 +205,7 @@ class TestBuildHogarSankey:
             savings_target=Decimal("300"),
             personal_allocation=Decimal("400"),
             spendable_amount=Decimal("1000"),
-            top_risk_totals=[("Supermercado", Decimal("300"))],
+            top_spent_totals=[("Supermercado", Decimal("300"))],
             other_spent=Decimal("100"),
             income_category_order=["Sueldo", "Bonus"],
         )
@@ -236,7 +236,7 @@ class TestBuildHogarSankey:
             savings_target=Decimal("300"),
             personal_allocation=Decimal("0"),  # setting unset
             spendable_amount=Decimal("1400"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo", "Bonus"],
         )
@@ -264,7 +264,7 @@ class TestBuildHogarSankey:
             savings_target=Decimal("200"),
             personal_allocation=Decimal("0"),
             spendable_amount=Decimal("1200"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo"],
         )
@@ -284,7 +284,7 @@ class TestBuildPersonalSankey:
             cuotas_this_month=Decimal("0"),
             savings_target=Decimal("200"),
             spendable_amount=Decimal("900"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo", "Bonus"],
         )
@@ -302,7 +302,7 @@ class TestBuildPersonalSankey:
             cuotas_this_month=Decimal("0"),
             savings_target=Decimal("200"),
             spendable_amount=Decimal("700"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo"],
         )
@@ -320,7 +320,7 @@ class TestBuildPersonalSankey:
             cuotas_this_month=Decimal("0"),
             savings_target=Decimal("200"),
             spendable_amount=Decimal("700"),
-            top_risk_totals=[],
+            top_spent_totals=[],
             other_spent=Decimal("0"),
             income_category_order=["Sueldo"],
         )
@@ -348,7 +348,7 @@ class TestBuildPersonalSankey:
             cuotas_this_month=Decimal("50"),
             savings_target=Decimal("200"),
             spendable_amount=Decimal("650"),
-            top_risk_totals=[("Supermercado", Decimal("250"))],
+            top_spent_totals=[("Supermercado", Decimal("250"))],
             other_spent=Decimal("100"),
             income_category_order=["Sueldo"],
         )

@@ -439,7 +439,8 @@ def _build_hogar_sankey(
     savings_target: Decimal,
     personal_allocation: Decimal,
     spendable_amount: Decimal,
-    top_risk_totals: list[tuple[str, Decimal]],
+    top_spent_totals: list[tuple[str, Decimal]],
+    risk_category_set: frozenset[str] = frozenset(),
     other_spent: Decimal,
     income_category_order: list[str],
 ) -> SankeyBlock:
@@ -464,7 +465,7 @@ def _build_hogar_sankey(
     shortfall to `otras_fuentes` which enters at Level 0 alongside the
     source nodes and flows into `ingresos_hogar`.
     """
-    total_spent = sum((s for _, s in top_risk_totals), start=_ZERO) + other_spent
+    total_spent = sum((s for _, s in top_spent_totals), start=_ZERO) + other_spent
     spent_remaining = spendable_amount - total_spent
     if spent_remaining < _ZERO:
         spent_remaining = _ZERO
@@ -562,7 +563,7 @@ def _build_hogar_sankey(
         nodes.append(
             SankeyNode(
                 id="gastos_fijos",
-                label="Gastos fijos",
+                label="Gastos fijos pendientes",
                 value=known_bills,
                 level=2,
                 kind="bill",
@@ -610,7 +611,7 @@ def _build_hogar_sankey(
         )
 
     # ---- Level 3: disponible_hogar breakdown ----
-    for category, spent in top_risk_totals:
+    for category, spent in top_spent_totals:
         if spent <= _ZERO:
             continue
         nodes.append(
@@ -620,27 +621,29 @@ def _build_hogar_sankey(
                 value=spent,
                 level=3,
                 kind="spent",
-                risk=True,
+                risk=category in risk_category_set,
             )
         )
     if other_spent > _ZERO:
         nodes.append(
             SankeyNode(
                 id="spent_other",
-                label="Otras categor\u00edas",
+                label="Otras categorías",
                 value=other_spent,
                 level=3,
                 kind="spent",
             )
         )
     if spent_remaining > _ZERO:
+        # kind="unused" so the frontend paints this node green — money still
+        # available to spend, not money already out the door.
         nodes.append(
             SankeyNode(
                 id="spent_remaining",
-                label="A\u00fan disponible",
+                label="Aún disponible",
                 value=spent_remaining,
                 level=3,
-                kind="spent",
+                kind="unused",
             )
         )
 
@@ -671,7 +674,7 @@ def _build_hogar_sankey(
     _emit("ingresos_hogar", "disponible_hogar", sankey_spendable)
 
     # Level 2 -> Level 3: disponible_hogar splits into per-category spent
-    for category, spent in top_risk_totals:
+    for category, spent in top_spent_totals:
         if spent > _ZERO:
             _emit("disponible_hogar", f"spent_{_slugify(category)}", spent)
     _emit("disponible_hogar", "spent_other", other_spent)
@@ -688,7 +691,8 @@ def _build_personal_sankey(
     cuotas_this_month: Decimal,
     savings_target: Decimal,
     spendable_amount: Decimal,
-    top_risk_totals: list[tuple[str, Decimal]],
+    top_spent_totals: list[tuple[str, Decimal]],
+    risk_category_set: frozenset[str] = frozenset(),
     other_spent: Decimal,
     income_category_order: list[str],
 ) -> SankeyBlock:
@@ -702,7 +706,7 @@ def _build_personal_sankey(
     disponible_personal — each hidden if its value is zero). Level 3 has the
     disponible_personal breakdown.
     """
-    total_spent = sum((s for _, s in top_risk_totals), start=_ZERO) + other_spent
+    total_spent = sum((s for _, s in top_spent_totals), start=_ZERO) + other_spent
     spent_remaining = spendable_amount - total_spent
     if spent_remaining < _ZERO:
         spent_remaining = _ZERO
@@ -774,7 +778,7 @@ def _build_personal_sankey(
         nodes.append(
             SankeyNode(
                 id="gastos_fijos_personal",
-                label="Gastos fijos",
+                label="Gastos fijos pendientes",
                 value=known_bills,
                 level=2,
                 kind="bill",
@@ -812,7 +816,7 @@ def _build_personal_sankey(
         )
 
     # Level 3: disponible_personal breakdown
-    for category, spent in top_risk_totals:
+    for category, spent in top_spent_totals:
         if spent <= _ZERO:
             continue
         nodes.append(
@@ -822,7 +826,7 @@ def _build_personal_sankey(
                 value=spent,
                 level=3,
                 kind="spent",
-                risk=True,
+                risk=category in risk_category_set,
             )
         )
     if other_spent > _ZERO:
@@ -836,13 +840,15 @@ def _build_personal_sankey(
             )
         )
     if spent_remaining > _ZERO:
+        # kind="unused" so the frontend paints this node green — it's money
+        # still available to spend, not money already out the door.
         nodes.append(
             SankeyNode(
                 id="spent_remaining",
                 label="Aún disponible",
                 value=spent_remaining,
                 level=3,
-                kind="spent",
+                kind="unused",
             )
         )
 
@@ -867,7 +873,7 @@ def _build_personal_sankey(
     _emit("ingresos_personales", "disponible_personal", sankey_spendable)
 
     # Level 2 -> Level 3
-    for category, spent in top_risk_totals:
+    for category, spent in top_spent_totals:
         if spent > _ZERO:
             _emit("disponible_personal", f"spent_{_slugify(category)}", spent)
     _emit("disponible_personal", "spent_other", other_spent)
@@ -1093,9 +1099,11 @@ async def get_budget_v2(
     )
     caps = await _category_caps(db, household_id, month)
 
+    # Risk-alert list (for the RiskAlertBand UI): historical volatility-based,
+    # independent of this month's spend. A quiet category with volatile history
+    # still belongs here.
     ranked = select_risk_categories(hist_stats, top_n=5)
     risk_categories: list[RiskCategory] = []
-    top_risk_totals: list[tuple[str, Decimal]] = []
 
     for name, _score in ranked:
         mean, std, _n = hist_stats[name]
@@ -1123,14 +1131,27 @@ async def get_budget_v2(
                 alert=p_over > Decimal("0.70"),
             )
         )
-        top_risk_totals.append((name, spent_this_month))
+
+    # Sankey level-3 breakdown: top 5 spenders *this month* (not the risk list),
+    # so the largest actual categories always get their own node instead of
+    # getting lumped into "Otras categorías". The breakdown answers "where did
+    # the money go?" while the risk list answers "where might I overshoot?".
+    top_spent_totals: list[tuple[str, Decimal]] = sorted(
+        ((cat, amt) for cat, amt in mtd_by_category.items() if amt > _ZERO),
+        key=lambda kv: kv[1],
+        reverse=True,
+    )[:5]
+
+    # A node in the breakdown gets the red `risk=True` treatment only if it
+    # independently qualified for the alert — big spend doesn't mean unsafe.
+    risk_category_set: frozenset[str] = frozenset(rc.name for rc in risk_categories if rc.alert)
 
     # "Other" bucket for the Sankey = everything spent this month that isn't
-    # one of the top risk categories. Derive from mtd_spent (not
-    # mtd_by_category) so uncategorized transactions — which never make it
-    # into mtd_by_category but do count toward mtd_spent — still show up.
-    risk_totals_sum = sum((s for _, s in top_risk_totals), start=_ZERO)
-    other_spent = mtd_spent - risk_totals_sum
+    # one of the top spenders. Derive from mtd_spent (not mtd_by_category) so
+    # uncategorized transactions — which never make it into mtd_by_category but
+    # do count toward mtd_spent — still show up here.
+    top_spent_sum = sum((s for _, s in top_spent_totals), start=_ZERO)
+    other_spent = mtd_spent - top_spent_sum
     if other_spent < _ZERO:
         other_spent = _ZERO
 
@@ -1166,7 +1187,8 @@ async def get_budget_v2(
             savings_target=savings_target_amount,
             personal_allocation=personal_allocation_amount,
             spendable_amount=spendable_amount,
-            top_risk_totals=top_risk_totals,
+            top_spent_totals=top_spent_totals,
+            risk_category_set=risk_category_set,
             other_spent=other_spent,
             income_category_order=income_category_order,
         )
@@ -1178,7 +1200,8 @@ async def get_budget_v2(
             cuotas_this_month=cuotas_block.this_month,
             savings_target=savings_target_amount,
             spendable_amount=spendable_amount,
-            top_risk_totals=top_risk_totals,
+            top_spent_totals=top_spent_totals,
+            risk_category_set=risk_category_set,
             other_spent=other_spent,
             income_category_order=income_category_order,
         )

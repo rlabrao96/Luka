@@ -9,7 +9,15 @@ type Node = {
   value: number;
   risk?: boolean;
   level?: number | null;
-  kind?: "source" | "hub" | "allocation" | "bill" | "spent" | "deficit" | null;
+  kind?:
+    | "source"
+    | "hub"
+    | "allocation"
+    | "bill"
+    | "spent"
+    | "unused"
+    | "deficit"
+    | null;
   member_id?: string | null;
 };
 type Link = { source: string; target: string; value: number };
@@ -33,18 +41,22 @@ type RechartsTooltipPayload = {
 };
 
 function colorFor(node: Node): string {
+  // Red ramp for money that is out / at risk:
+  //   risk=true  → #EF4444 (red-500, overshoot alert)
+  //   bill       → #F87171 (red-400, committed but unpaid this month)
+  //   spent      → #FCA5A5 (red-300, already spent in a category)
   if (node.risk) return "#EF4444";
-  // Deficit = synthetic "income" plug when outflows exceed real income.
-  // Amber so users immediately see it's not real revenue.
-  if (node.kind === "deficit") return "#F59E0B";
-  // Bill = committed fixed outflow (subscriptions-derived known_bills).
-  // Warm red so users read it as "money already committed" vs the blue
-  // "still available" allocations.
   if (node.kind === "bill") return "#F87171";
+  if (node.kind === "spent") return "#FCA5A5";
+  // Unused = money still available (spent_remaining / "Aún disponible").
+  // Green so users visually separate "good, room to spend" from the red ramp.
+  if (node.kind === "unused") return "#10B981";
+  // Deficit = synthetic plug when outflows exceed real income. Amber so
+  // users immediately see it's not real revenue.
+  if (node.kind === "deficit") return "#F59E0B";
   if (node.kind === "hub") return "#2563EB";
   if (node.kind === "source") return "#60A5FA";
   if (node.kind === "allocation") return "#93C5FD";
-  if (node.kind === "spent") return "#BFDBFE";
   return "#CBD5E1";
 }
 
