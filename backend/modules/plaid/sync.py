@@ -113,6 +113,9 @@ async def run_plaid_sync(
             tx_data["raw_merchant_name"],
             tx_data["amount"],
             tx_data["transaction_date"],
+            currency=tx_data.get("currency"),
+            incoming_transaction_type=tx_data.get("transaction_type"),
+            bank_account_id=bank_account_id,
         )
 
         new_tx = Transaction(**tx_data)
@@ -121,7 +124,11 @@ async def run_plaid_sync(
 
         if match:
             await apply_match_and_delete_emails(
-                session, new_tx.id, match["email_tx_ids"], match["enrichment"]
+                session,
+                new_tx.id,
+                match["email_tx_ids"],
+                match["enrichment"],
+                user_id=item.user_id,
             )
             stats["deduped"] += 1
 
