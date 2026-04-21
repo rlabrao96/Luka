@@ -232,23 +232,20 @@ async def update_split_type(
 async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """
     Return pending transactions grouped into 3 buckets:
-    - awaiting_reconciliation: email txns still in 'pending' status (waiting
-      for a bank confirmation). Plaid-sourced pending rows are deliberately
-      excluded — they're transient (Plaid settles them within 1-3 days) and
-      the user can't act on them (the delete endpoint rejects bank rows by
-      design), so showing them is noise.
+    - awaiting_reconciliation: email/plaid txns still in 'pending' status
+      (awaiting bank confirmation or Plaid settlement)
     - needs_classification: connect txns, settled, no category yet
     - unmatched_email: email txns aged out to 'orphan' (migration 039, Task 2.8)
     """
-    # Email pending rows awaiting bank confirmation. Exclude rows already in a
-    # transfer or refund pair — the pair is conceptually resolved.
+    # Pending rows awaiting bank confirmation or Plaid settlement. Exclude rows
+    # already in a transfer or refund pair — the pair is conceptually resolved.
     email_pending_result = await db.execute(
         select(Transaction, TransactionSplit, BankAccount.bank_name)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .where(
             Transaction.user_id == user_id,
-            Transaction.source.in_(["gmail", "outlook"]),
+            Transaction.source.in_(["gmail", "outlook", "plaid"]),
             Transaction.status == "pending",
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),

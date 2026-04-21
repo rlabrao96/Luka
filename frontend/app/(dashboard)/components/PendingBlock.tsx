@@ -312,6 +312,10 @@ interface RowActionMenuProps {
 function RowActionMenu({ txn, bucket, onLink, onRequestDelete }: RowActionMenuProps) {
   const dismiss = useDismissTransaction();
   const canLink = bucket === "awaiting_reconciliation" || bucket === "unmatched_email";
+  // Dismiss + delete are email-only: the backend rejects non-email rows because
+  // Plaid owns the lifecycle of bank transactions. For bank-pending rows we
+  // only show Vincular (manual match), which is valid for both sources.
+  const isEmail = txn.source_type === "email";
 
   return (
     <DropdownMenu>
@@ -328,15 +332,25 @@ function RowActionMenu({ txn, bucket, onLink, onRequestDelete }: RowActionMenuPr
             Vincular…
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => dismiss.mutate(txn.id)} disabled={dismiss.isPending}>
-          <Check className="text-slate-500" />
-          Marcar como resuelta
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => onRequestDelete(txn.id)}>
-          <Trash2 />
-          Eliminar
-        </DropdownMenuItem>
+        {isEmail && (
+          <>
+            <DropdownMenuItem
+              onClick={() => dismiss.mutate(txn.id)}
+              disabled={dismiss.isPending}
+            >
+              <Check className="text-slate-500" />
+              Marcar como resuelta
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onRequestDelete(txn.id)}
+            >
+              <Trash2 />
+              Eliminar
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
