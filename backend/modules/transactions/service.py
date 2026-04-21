@@ -223,9 +223,10 @@ async def update_split_type(
 
 async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """
-    Return pending transactions grouped into 2 buckets:
-    - awaiting_reconciliation: email txns, pending, no connect sync has run since creation
-    - unmatched_email: email txns, pending, at least 1 connect sync ran since creation
+    Return pending transactions grouped into 3 buckets:
+    - awaiting_reconciliation: email/plaid txns still in 'pending' status
+    - needs_classification: connect txns, settled, no category yet
+    - unmatched_email: email txns aged out to 'orphan' (migration 039, Task 2.8)
     """
     # All pending transactions (email + plaid processing)
     email_pending_result = await db.execute(
@@ -256,6 +257,20 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
     )
     needs_class_rows = needs_class_result.all()
 
+    # Orphaned email transactions (aged out without a Plaid match)
+    orphan_result = await db.execute(
+        select(Transaction, TransactionSplit, BankAccount.bank_name)
+        .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.source_type == "email",
+            Transaction.status == "orphan",
+        )
+        .order_by(Transaction.orphaned_at.desc().nullslast())
+    )
+    orphan_rows = orphan_result.all()
+
     def _pending_to_dict(txn, split, bank_name):
         d = _txn_to_dict(txn, split)
         d["bank_name"] = bank_name or txn.source_bank_name
@@ -263,11 +278,12 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
 
     awaiting = [_pending_to_dict(txn, split, bn) for txn, split, bn in email_pending_rows]
     needs_classification = [_pending_to_dict(txn, split, bn) for txn, split, bn in needs_class_rows]
+    unmatched_email = [_pending_to_dict(txn, split, bn) for txn, split, bn in orphan_rows]
 
     return {
         "awaiting_reconciliation": awaiting,
         "needs_classification": needs_classification,
-        "unmatched_email": [],
+        "unmatched_email": unmatched_email,
     }
 
 
@@ -299,52 +315,78 @@ async def delete_transaction(
 
 
 async def is_duplicate_transaction(
-    db: AsyncSession, user_id: uuid.UUID, amount: int, bank_name: str | None = None
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    amount: int,
+    bank_name: str | None = None,
+    currency: str | None = None,
 ) -> bool:
     """
     Two-tier dedup for email transactions:
-    1. Same amount + SAME bank within 5 min → duplicate (BChile compra+comprobante)
-    2. Same amount + DIFFERENT bank within 24h → duplicate (BofA + PayPal for same charge)
+    1. Same amount + SAME currency + SAME bank within 5 min → duplicate (BChile compra+comprobante)
+    2. Same amount + SAME currency + DIFFERENT bank within 24h → duplicate (BofA + PayPal for same charge)
 
     Tier 1 catches fast duplicates from the same sender.
     Tier 2 catches slow cross-sender duplicates (e.g. PayPal alert hours after BofA alert).
+    Currency + bank scoping prevents cross-currency / cross-bank false positives
+    (e.g. CLP 2000 and USD 2000 arriving seconds apart are not duplicates).
     Neither blocks legitimate repeat purchases (3 beers at $7 from the same bank).
     """
     now = datetime.now(timezone.utc)
 
-    # Tier 1: same bank, 5-min window (BChile compra + comprobante)
+    # Tier 1: same bank, same currency, 5-min window (BChile compra + comprobante)
     fast_cutoff = now - timedelta(minutes=5)
-    fast_result = await db.execute(
-        select(Transaction)
-        .where(
-            Transaction.user_id == user_id,
-            func.abs(Transaction.amount) == abs(amount),
-            Transaction.status == "pending",
-            Transaction.created_at >= fast_cutoff,
-        )
-        .limit(1)
-    )
+    fast_conds = [
+        Transaction.user_id == user_id,
+        func.abs(Transaction.amount) == abs(amount),
+        Transaction.status == "pending",
+        Transaction.created_at >= fast_cutoff,
+    ]
+    if currency is not None:
+        fast_conds.append(Transaction.currency == currency)
+    if bank_name is not None:
+        fast_conds.append(Transaction.source_bank_name == bank_name)
+    fast_result = await db.execute(select(Transaction).where(*fast_conds).limit(1))
     if fast_result.scalar_one_or_none():
         return True
 
-    # Tier 2: different bank, 24h window (BofA alert + PayPal alert for same charge)
+    # Tier 2: different bank, same currency, 5min–24h window
+    # (BofA alert followed by a PayPal alert hours later for the same charge).
+    # We explicitly exclude the ≤5 min window so two legitimate, unrelated
+    # same-amount charges from different banks at roughly the same time
+    # are not silently dropped.
     if bank_name:
         slow_cutoff = now - timedelta(hours=24)
-        slow_result = await db.execute(
-            select(Transaction)
-            .where(
-                Transaction.user_id == user_id,
-                func.abs(Transaction.amount) == abs(amount),
-                Transaction.status == "pending",
-                Transaction.created_at >= slow_cutoff,
-                Transaction.source_bank_name != bank_name,
-            )
-            .limit(1)
-        )
+        slow_conds = [
+            Transaction.user_id == user_id,
+            func.abs(Transaction.amount) == abs(amount),
+            Transaction.status == "pending",
+            Transaction.created_at >= slow_cutoff,
+            Transaction.created_at < fast_cutoff,
+            Transaction.source_bank_name != bank_name,
+        ]
+        if currency is not None:
+            slow_conds.append(Transaction.currency == currency)
+        slow_result = await db.execute(select(Transaction).where(*slow_conds).limit(1))
         if slow_result.scalar_one_or_none():
             return True
 
     return False
+
+
+def exclude_from_totals(query):
+    """Apply the invariant that transfers, refund pairs, and orphans do not
+    contribute to spend/income/budget totals.
+
+    Use this helper whenever aggregating (SUM) over `transactions`. Do NOT use
+    it to filter list views — paired rows should remain visible and the
+    frontend groups them visually.
+    """
+    return query.where(
+        Transaction.status != "orphan",
+        Transaction.transfer_pair_id.is_(None),
+        Transaction.refund_pair_id.is_(None),
+    )
 
 
 def _txn_to_dict(txn: Transaction, split: TransactionSplit | None) -> dict:
