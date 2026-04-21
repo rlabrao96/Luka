@@ -200,146 +200,167 @@ export function RecentTransactions({
     }
   }
 
-  const dateGroups = groupByDate(transactions);
+  const allItems = groupPairs(transactions);
+
+  function getItemDateKey(item: import("./PairedTransactionCard").TransactionOrPair): string {
+    if (item.kind === "single") return getDateKey(item.txn.transaction_date);
+    let maxDate = item.legs[0].transaction_date;
+    for (let i = 1; i < item.legs.length; i++) {
+      if (item.legs[i].transaction_date > maxDate) maxDate = item.legs[i].transaction_date;
+    }
+    return getDateKey(maxDate);
+  }
+
+  const dateGroups = new Map<string, import("./PairedTransactionCard").TransactionOrPair[]>();
+  for (const item of allItems) {
+    const key = getItemDateKey(item);
+    if (!dateGroups.has(key)) dateGroups.set(key, []);
+    dateGroups.get(key)!.push(item);
+  }
+
+  const sortedDates = Array.from(dateGroups.keys()).sort((a, b) => b.localeCompare(a));
 
   return (
     <div className="space-y-1">
-      {Array.from(dateGroups.entries()).map(([dateKey, txns]) => (
-        <div key={dateKey}>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest pt-3 pb-1.5">
-            {formatDateHeader(dateKey)}
-          </p>
-          <div className="space-y-1.5">
-            {groupPairs(txns).map((item) => {
-              if (item.kind === "pair") {
-                return (
-                  <PairedTransactionCard
-                    key={item.pairId}
-                    pairId={item.pairId}
-                    pairType={item.pairType}
-                    legs={item.legs}
-                  />
-                );
-              }
-              const txn = item.txn;
-              /* Compact mode: simple card, no editing */
-              if (compact) {
-                return <TransactionCard key={txn.id} txn={txn} compact />;
-              }
+      {sortedDates.map((dateKey) => {
+        const items = dateGroups.get(dateKey)!;
+        return (
+          <div key={dateKey}>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest pt-3 pb-1.5">
+              {formatDateHeader(dateKey)}
+            </p>
+            <div className="space-y-1.5">
+              {items.map((item) => {
+                if (item.kind === "pair") {
+                  return (
+                    <PairedTransactionCard
+                      key={item.pairId}
+                      pairId={item.pairId}
+                      pairType={item.pairType}
+                      legs={item.legs}
+                    />
+                  );
+                }
+                const txn = item.txn;
+                /* Compact mode: simple card, no editing */
+                if (compact) {
+                  return <TransactionCard key={txn.id} txn={txn} compact />;
+                }
 
-              // TODO(chunk-E): wire MarkAsCuotaDialog into the mobile / desktop
-              // non-compact transaction row. The dialog component lives at
-              // `./MarkAsCuotaDialog` and is already prefillable from a txn.
-              // The current non-compact layouts are inlined rather than
-              // delegating to TransactionCard, so exposing the "Marcar como
-              // cuota" affordance here requires adding a button adjacent to
-              // SplitTypeEditor / the desktop row actions and managing a
-              // per-txn open-state map. Deferring to a follow-up to avoid
-              // refactoring RecentTransactions during the parallel sprint.
+                // TODO(chunk-E): wire MarkAsCuotaDialog into the mobile / desktop
+                // non-compact transaction row. The dialog component lives at
+                // `./MarkAsCuotaDialog` and is already prefillable from a txn.
+                // The current non-compact layouts are inlined rather than
+                // delegating to TransactionCard, so exposing the "Marcar como
+                // cuota" affordance here requires adding a button adjacent to
+                // SplitTypeEditor / the desktop row actions and managing a
+                // per-txn open-state map. Deferring to a follow-up to avoid
+                // refactoring RecentTransactions during the parallel sprint.
 
-              /* Mobile non-compact: card layout with bottom sheet for category, SplitTypeEditor for split */
-              if (isMobile) {
+                /* Mobile non-compact: card layout with bottom sheet for category, SplitTypeEditor for split */
+                if (isMobile) {
+                  const isOutflow = Number(txn.amount) < 0;
+                  return (
+                    <div
+                      key={txn.id}
+                      className="bg-white rounded-xl p-3 border border-slate-100 shadow-[var(--shadow-card)]"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-baseline gap-2">
+                            <p className="text-[13px] font-semibold text-luka-dark truncate">
+                              {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
+                            </p>
+                            <span
+                              className={cn(
+                                "text-[13px] font-bold tabular-nums shrink-0",
+                                isOutflow ? "text-red-500" : "text-luka-success"
+                              )}
+                            >
+                              {isOutflow
+                                ? `(${formatTxnAmount(txn)})`
+                                : `+${formatTxnAmount(txn)}`}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center mt-1">
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="text-[9px] text-slate-400 shrink-0">
+                                {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Manual" : "\u2014"}
+                              </span>
+                              <button
+                                onClick={() => setCategorySheet(txn)}
+                                className={cn(
+                                  "text-[9px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 max-w-[80px] text-center truncate",
+                                  txn.category
+                                    ? "bg-slate-100 text-slate-600"
+                                    : "bg-amber-50 text-amber-600"
+                                )}
+                              >
+                                {txn.category ?? "Sin categoría"}
+                              </button>
+                            </div>
+                            <SplitTypeEditor txn={txn} isMobile={true} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                /* Desktop non-compact: card layout with inline CategoryCell and SplitTypeEditor */
                 const isOutflow = Number(txn.amount) < 0;
                 return (
                   <div
                     key={txn.id}
-                    className="bg-white rounded-xl p-3 border border-slate-100 shadow-[var(--shadow-card)]"
+                    className="bg-white rounded-xl p-3.5 border border-slate-100 shadow-[var(--shadow-card)] flex items-center gap-3"
                   >
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-baseline gap-2">
-                          <p className="text-[13px] font-semibold text-luka-dark truncate">
-                            {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
-                          </p>
-                          <span
-                            className={cn(
-                              "text-[13px] font-bold tabular-nums shrink-0",
-                              isOutflow ? "text-red-500" : "text-luka-success"
-                            )}
-                          >
-                            {isOutflow
-                              ? `(${formatTxnAmount(txn)})`
-                              : `+${formatTxnAmount(txn)}`}
+                    <div
+                      className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center shrink-0"
+                      style={{
+                        background: isOutflow
+                          ? "linear-gradient(135deg, #fef2f2, #fecaca)"
+                          : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
+                      }}
+                    >
+                      {isOutflow ? (
+                        <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
+                      ) : (
+                        <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-baseline gap-2">
+                        <p className="text-sm font-semibold text-luka-dark truncate">
+                          {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
+                        </p>
+                        <span
+                          className={cn(
+                            "text-[15px] font-bold tabular-nums shrink-0",
+                            isOutflow ? "text-luka-dark" : "text-luka-success"
+                          )}
+                        >
+                          {isOutflow
+                            ? `(${formatTxnAmount(txn)})`
+                            : `+${formatTxnAmount(txn)}`}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center mt-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Agregado Manualmente" : "\u2014"}
                           </span>
+                          <CategoryCell txn={txn} />
                         </div>
-                        <div className="flex justify-between items-center mt-1">
-                          <div className="flex items-center gap-1 min-w-0">
-                            <span className="text-[9px] text-slate-400 shrink-0">
-                              {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Manual" : "\u2014"}
-                            </span>
-                            <button
-                              onClick={() => setCategorySheet(txn)}
-                              className={cn(
-                                "text-[9px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 max-w-[80px] text-center truncate",
-                                txn.category
-                                  ? "bg-slate-100 text-slate-600"
-                                  : "bg-amber-50 text-amber-600"
-                              )}
-                            >
-                              {txn.category ?? "Sin categor\u00eda"}
-                            </button>
-                          </div>
-                          <SplitTypeEditor txn={txn} isMobile={true} />
-                        </div>
+                        <SplitTypeEditor txn={txn} isMobile={false} />
                       </div>
                     </div>
                   </div>
                 );
-              }
-
-              /* Desktop non-compact: card layout with inline CategoryCell and SplitTypeEditor */
-              const isOutflow = Number(txn.amount) < 0;
-              return (
-                <div
-                  key={txn.id}
-                  className="bg-white rounded-xl p-3.5 border border-slate-100 shadow-[var(--shadow-card)] flex items-center gap-3"
-                >
-                  <div
-                    className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center shrink-0"
-                    style={{
-                      background: isOutflow
-                        ? "linear-gradient(135deg, #fef2f2, #fecaca)"
-                        : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
-                    }}
-                  >
-                    {isOutflow ? (
-                      <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
-                    ) : (
-                      <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline gap-2">
-                      <p className="text-sm font-semibold text-luka-dark truncate">
-                        {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
-                      </p>
-                      <span
-                        className={cn(
-                          "text-[15px] font-bold tabular-nums shrink-0",
-                          isOutflow ? "text-luka-dark" : "text-luka-success"
-                        )}
-                      >
-                        {isOutflow
-                          ? `(${formatTxnAmount(txn)})`
-                          : `+${formatTxnAmount(txn)}`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center mt-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-[10px] text-slate-400 shrink-0">
-                          {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Agregado Manualmente" : "\u2014"}
-                        </span>
-                        <CategoryCell txn={txn} />
-                      </div>
-                      <SplitTypeEditor txn={txn} isMobile={false} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Mobile category bottom sheet */}
       {categorySheet && (
