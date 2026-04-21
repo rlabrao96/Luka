@@ -28,12 +28,13 @@ import modules.plaid.models  # noqa: F401
 import modules.transactions.models  # noqa: F401
 from modules.auth.models import User
 from modules.households.models import HouseholdMember
+from modules.reconciliation.refunds import repair_refund_pairs
 from modules.reconciliation.tick import reconciliation_tick_for_household
 
 DEFAULT_EMAIL = "rafaellabra96@gmail.com"
 
 
-async def main(email: str, dry_run: bool) -> int:
+async def main(email: str, dry_run: bool, repair: bool) -> int:
     async with AsyncSessionLocal() as db:
         user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if user is None:
@@ -51,6 +52,25 @@ async def main(email: str, dry_run: bool) -> int:
         )
 
         print(f"[cleanup] user={user.id} email={email} households={len(household_ids)}")
+
+        if repair:
+            # Stand-alone pass: release refund pairs with a closer unpaired
+            # charge and re-run detection. Do not mix with the full tick so the
+            # user can run this in isolation and inspect the result.
+            repair_totals = {"released": 0, "paired": 0}
+            for hid in household_ids:
+                r = await repair_refund_pairs(db, hid)
+                for k in repair_totals:
+                    repair_totals[k] += r[k]
+                print(f"  household {hid} repair: {r}")
+            if dry_run:
+                await db.rollback()
+                print(f"[cleanup] dry-run — rolled back. Repair totals: {repair_totals}")
+            else:
+                await db.commit()
+                print(f"[cleanup] committed. Repair totals: {repair_totals}")
+            return 0
+
         grand_totals = {"rematched": 0, "transfers": 0, "refunds": 0, "orphaned": 0}
         for hid in household_ids:
             result = await reconciliation_tick_for_household(db, hid)
@@ -71,5 +91,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--email", default=DEFAULT_EMAIL)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--repair-refund-pairs",
+        dest="repair",
+        action="store_true",
+        help="Release refund pairs with a closer unpaired alternative and re-run detect_refunds.",
+    )
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.email, args.dry_run)))
+    sys.exit(asyncio.run(main(args.email, args.dry_run, args.repair)))

@@ -69,8 +69,101 @@ async def detect_refunds(
         )
         buckets[key].append(tx)
 
-    pairs_found = 0
+    return await _match_buckets(session, buckets)
 
+
+async def repair_refund_pairs(
+    session: AsyncSession, household_id: uuid.UUID, lookback_days: int = 90
+) -> dict[str, int]:
+    """Release existing refund pairs that have a strictly closer unpaired charge,
+    then re-run detection with the closest-match algorithm.
+
+    Safe for Rafael's Apple case: a pair is only released if the charge side
+    has an alternative candidate (same bank_account_id + currency + merchant +
+    amount) whose date is closer to the refund, still inside the 0-90d window.
+    Pairs with no better candidate are left intact.
+
+    Returns {"released": int, "paired": int}.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+    all_rows = (
+        (
+            await session.execute(
+                select(Transaction).where(
+                    Transaction.household_id == household_id,
+                    Transaction.transaction_date >= cutoff,
+                    Transaction.bank_account_id.is_not(None),
+                    Transaction.transfer_pair_id.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Group rows into the same buckets detect_refunds uses.
+    def bucket_key(tx: Transaction) -> tuple:
+        merchant_identity = (
+            ("id", tx.merchant_id)
+            if tx.merchant_id is not None
+            else ("raw", _normalize_merchant(tx.raw_merchant_name))
+        )
+        return (
+            tx.bank_account_id,
+            tx.currency,
+            merchant_identity,
+            round(abs(float(tx.amount)) * 100),
+        )
+
+    buckets: dict[tuple, list[Transaction]] = defaultdict(list)
+    for tx in all_rows:
+        buckets[bucket_key(tx)].append(tx)
+
+    ids_to_release: set[uuid.UUID] = set()
+    for group in buckets.values():
+        # Existing pairs grouped by pair_id within this bucket.
+        pair_map: dict[uuid.UUID, list[Transaction]] = defaultdict(list)
+        for tx in group:
+            if tx.refund_pair_id is not None:
+                pair_map[tx.refund_pair_id].append(tx)
+        unpaired_charges = [t for t in group if t.refund_pair_id is None and t.amount < 0]
+        for legs in pair_map.values():
+            if len(legs) != 2:
+                # Malformed pair; leave it alone rather than silently edit.
+                continue
+            charge = next((t for t in legs if t.amount < 0), None)
+            refund = next((t for t in legs if t.amount > 0), None)
+            if charge is None or refund is None:
+                continue
+            current_delta = refund.transaction_date - charge.transaction_date
+            # Is there an unpaired charge closer to the refund?
+            for alt in unpaired_charges:
+                alt_delta = refund.transaction_date - alt.transaction_date
+                if alt_delta < timedelta(days=0) or alt_delta > timedelta(days=90):
+                    continue
+                if alt_delta < current_delta:
+                    ids_to_release.add(charge.id)
+                    ids_to_release.add(refund.id)
+                    break
+
+    released = 0
+    if ids_to_release:
+        await session.execute(
+            update(Transaction)
+            .where(Transaction.id.in_(ids_to_release))
+            .values(refund_pair_id=None)
+        )
+        released = len(ids_to_release) // 2
+
+    # Re-run detection so released rows re-pair against the better candidates.
+    paired = await detect_refunds(session, household_id, lookback_days=lookback_days)
+    return {"released": released, "paired": paired}
+
+
+async def _match_buckets(session: AsyncSession, buckets: dict[tuple, list[Transaction]]) -> int:
+    """Pair rows inside each bucket using closest-match. Returns pair count."""
+    pairs_found = 0
     for candidates in buckets.values():
         if len(candidates) < 2:
             continue
