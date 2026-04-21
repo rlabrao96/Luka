@@ -42,7 +42,11 @@ def test_fast_worker_cron_jobs():
 
 
 def test_slow_worker_cron_jobs():
-    assert _cron_names(SlowWorkerSettings) == {"run_reconciliation_job", "run_template_agent"}
+    assert _cron_names(SlowWorkerSettings) == {
+        "run_reconciliation_job",
+        "run_template_agent",
+        "run_reconciliation_tick",
+    }
 
 
 def test_fast_worker_config():

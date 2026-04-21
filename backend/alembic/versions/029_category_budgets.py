@@ -3,11 +3,14 @@
 Revision ID: 029
 Revises: 028
 Create Date: 2026-04-05
+
+Made idempotent (CREATE ... IF NOT EXISTS) because the revision id "029" was
+historically shared with user_currencies; databases may have applied either
+or both out of band before the graph was linearised.
 """
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+
 
 revision = "029"
 down_revision = "028"
@@ -16,33 +19,23 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "category_budgets",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("household_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("category", sa.String(), nullable=False),
-        sa.Column("month", sa.Date(), nullable=False),
-        sa.Column("amount", sa.Numeric(12, 2), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-        sa.ForeignKeyConstraint(
-            ["household_id"],
-            ["households.id"],
-            name="fk_category_budgets_household_id",
-            ondelete="CASCADE",
-        ),
-        sa.UniqueConstraint(
-            "household_id",
-            "category",
-            "month",
-            name="uq_category_budgets_household_cat_month",
-        ),
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS category_budgets (
+            id UUID PRIMARY KEY,
+            household_id UUID NOT NULL,
+            category VARCHAR NOT NULL,
+            month DATE NOT NULL,
+            amount NUMERIC(12, 2) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT fk_category_budgets_household_id
+                FOREIGN KEY (household_id) REFERENCES households(id) ON DELETE CASCADE,
+            CONSTRAINT uq_category_budgets_household_cat_month
+                UNIQUE (household_id, category, month)
+        )
+        """
     )
 
 
 def downgrade() -> None:
-    op.drop_table("category_budgets")
+    op.execute("DROP TABLE IF EXISTS category_budgets")

@@ -1,15 +1,51 @@
 // frontend/app/(dashboard)/components/PendingBlock.tsx
 "use client";
-import { useState, useEffect } from "react";
-import { usePendingTransactions } from "@/app/lib/hooks/useTransactions";
+import { useState, useEffect, useMemo } from "react";
+import {
+  usePendingTransactions,
+  useDismissTransaction,
+  useBulkAction,
+} from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction, type PendingTransactions } from "@/app/lib/api";
-import { Trash2, ChevronDown, TrendingDown, TrendingUp, ArrowLeftRight } from "lucide-react";
+import {
+  Trash2,
+  ChevronDown,
+  TrendingDown,
+  TrendingUp,
+  ArrowLeftRight,
+  MoreHorizontal,
+  Link2,
+  Check,
+  AlertCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
-import { formatAmount as formatCurrencyAmount } from "@/app/lib/currency";
+import { formatStoredAmount, isNegativeStored } from "@/app/lib/currency";
+import { LinkMatchDialog } from "./LinkMatchDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const BULK_SELECTION_CAP = 100;
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);
@@ -23,19 +59,30 @@ function useIsMobile() {
   return mobile;
 }
 
-
 function toTitleCase(str: string) {
   return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
-// PendingBlock amounts: CLP as integers, USD (and other decimal currencies) as cents → divide by 100
-function formatPendingAmount(amount: number, currency: string): string {
-  const isDecimal = currency !== "CLP" && currency !== "COP" && currency !== "PYG" && currency !== "CRC";
-  const displayVal = isDecimal ? amount / 100 : amount;
-  return formatCurrencyAmount(displayVal, currency);
+/**
+ * Age badge measures how long a pending row has been sitting in the backlog,
+ * which is "time since ingestion" — NOT "time since the charge posted".
+ * A txn dated 14-abr ingested today should read "hace 0d", not "hace 6d".
+ *
+ * Prefers `created_at` (ingestion time). Falls back to `transaction_date`
+ * only when the backend omits it, for defense in depth.
+ */
+function ageBadge(txn: Transaction): { label: string; className: string } | null {
+  const anchor = txn.created_at ?? txn.transaction_date;
+  if (!anchor) return null;
+  const ms = Date.now() - new Date(anchor).getTime();
+  const days = Math.floor(ms / 86_400_000);
+  if (days < 0) return null;
+  if (days < 3) return { label: "Nuevo", className: "bg-emerald-100 text-emerald-800" };
+  if (days < 8) return { label: `hace ${days}d`, className: "bg-amber-100 text-amber-800" };
+  return { label: `hace ${days}d`, className: "bg-red-100 text-red-700" };
 }
 
-/* ─── Inline category dropdown (matches CategoryCell in RecentTransactions) ─── */
+/* ─── Inline category dropdown ─── */
 
 interface PendingCategoryCellProps {
   txn: Transaction;
@@ -64,6 +111,7 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
       return {
         ...old,
         awaiting_reconciliation: patch(old.awaiting_reconciliation),
+        needs_classification: patch(old.needs_classification),
         unmatched_email: patch(old.unmatched_email),
       };
     });
@@ -118,7 +166,7 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
   );
 }
 
-/* ─── Inline split-type dropdown (same UX as category dropdown) ─── */
+/* ─── Inline split-type dropdown ─── */
 
 const SPLIT_OPTIONS = [
   { value: "personal", label: "Personal", className: "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" },
@@ -146,6 +194,7 @@ function PendingSplitCell({ txn }: { txn: Transaction }) {
       return {
         ...old,
         awaiting_reconciliation: patch(old.awaiting_reconciliation),
+        needs_classification: patch(old.needs_classification),
         unmatched_email: patch(old.unmatched_email),
       };
     });
@@ -193,7 +242,7 @@ function PendingSplitCell({ txn }: { txn: Transaction }) {
   );
 }
 
-/* ─── Mobile category pill (opens bottom sheet) ─── */
+/* ─── Mobile category pill ─── */
 
 function PendingCategoryPill({ txn }: { txn: Transaction }) {
   const [open, setOpen] = useState(false);
@@ -215,6 +264,7 @@ function PendingCategoryPill({ txn }: { txn: Transaction }) {
       return {
         ...old,
         awaiting_reconciliation: patch(old.awaiting_reconciliation),
+        needs_classification: patch(old.needs_classification),
         unmatched_email: patch(old.unmatched_email),
       };
     });
@@ -247,44 +297,119 @@ function PendingCategoryPill({ txn }: { txn: Transaction }) {
   );
 }
 
+/* ─── Per-row action menu ─── */
+
+type BucketKind = "awaiting_reconciliation" | "needs_classification" | "unmatched_email";
+
+interface RowActionMenuProps {
+  txn: Transaction;
+  bucket: BucketKind;
+  onLink: (txn: Transaction) => void;
+  onRequestDelete: (id: string) => void;
+}
+
+function RowActionMenu({ txn, bucket, onLink, onRequestDelete }: RowActionMenuProps) {
+  const dismiss = useDismissTransaction();
+  const canLink = bucket === "awaiting_reconciliation" || bucket === "unmatched_email";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Acciones de transacción"
+        className="flex items-center justify-center h-7 w-7 rounded-md text-slate-500 hover:bg-slate-100 border border-slate-200 transition-colors"
+      >
+        <MoreHorizontal size={14} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[180px]">
+        {canLink && (
+          <DropdownMenuItem onClick={() => onLink(txn)}>
+            <Link2 className="text-slate-500" />
+            Vincular…
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => dismiss.mutate(txn.id)} disabled={dismiss.isPending}>
+          <Check className="text-slate-500" />
+          Marcar como resuelta
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={() => onRequestDelete(txn.id)}>
+          <Trash2 />
+          Eliminar
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /* ─── PendingSection ─── */
 
 interface PendingSectionProps {
   title: string;
   transactions: Transaction[];
   isMobile: boolean;
-  renderAction?: (txn: Transaction) => React.ReactNode;
+  bucket: BucketKind;
   borderLeft?: boolean;
+  selectMode: boolean;
+  selected: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onLink: (txn: Transaction) => void;
+  onRequestDelete: (id: string) => void;
 }
 
-function PendingSection({ title, transactions, isMobile, renderAction, borderLeft }: PendingSectionProps) {
+function PendingSection({
+  title,
+  transactions,
+  isMobile,
+  bucket,
+  borderLeft,
+  selectMode,
+  selected,
+  onToggleSelect,
+  onLink,
+  onRequestDelete,
+}: PendingSectionProps) {
   if (transactions.length === 0) return null;
   return (
     <div className="mt-3 first:mt-0">
-      <p className="text-[10px] uppercase tracking-wide font-semibold text-orange-800 mb-1.5 pl-1">
-        {title}
+      <p className="text-[10px] uppercase tracking-wide font-semibold text-orange-800 mb-1.5 pl-1 flex items-center gap-1.5">
+        <span>{title}</span>
+        <span className="bg-orange-200 text-orange-800 rounded-full px-1.5 py-0 text-[10px] font-semibold">
+          {transactions.length}
+        </span>
       </p>
       <div className="space-y-2">
         {transactions.map((txn) => {
           const amount = Number(txn.amount);
           const isTransfer = txn.transaction_type === "transfer";
-          const isOutflow = amount < 0;
+          const isOutflow = isNegativeStored(amount);
           const currency = txn.currency ?? "CLP";
           const formattedAmount = isTransfer || isOutflow
-            ? `(${formatPendingAmount(amount, currency)})`
-            : `+${formatPendingAmount(amount, currency)}`;
+            ? `(${formatStoredAmount(amount, currency)})`
+            : `+${formatStoredAmount(amount, currency)}`;
           const bankName = txn.bank_name;
+          const age = ageBadge(txn);
+          const isChecked = selected.has(txn.id);
+          const isNegativeAmount = isTransfer || isOutflow;
 
           return (
             <div
               key={txn.id}
               className={cn(
                 "bg-white rounded-xl p-3 sm:p-3.5 border border-slate-100 shadow-[var(--shadow-card)]",
-                borderLeft ? "border-l-[3px] border-l-amber-400" : ""
+                borderLeft ? "border-l-[3px] border-l-amber-400" : "",
+                selectMode && isChecked ? "ring-2 ring-luka-primary/30" : ""
               )}
             >
               <div className="flex items-center gap-2 sm:gap-3">
-                {/* Direction icon — hidden on mobile to save space */}
+                {selectMode && (
+                  <Checkbox
+                    checked={isChecked}
+                    onCheckedChange={() => onToggleSelect(txn.id)}
+                    aria-label={`Seleccionar ${toTitleCase(txn.raw_merchant_name)}`}
+                    className="shrink-0"
+                  />
+                )}
+                {/* Direction icon — hidden on mobile */}
                 <div
                   className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0"
                   style={{
@@ -306,7 +431,7 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  {/* Line 1: Email badge + Merchant + Amount */}
+                  {/* Line 1 */}
                   <div className="flex justify-between items-baseline gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className={cn(
@@ -324,12 +449,13 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
                         "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
                         isTransfer ? "text-sky-500" : isOutflow ? "text-red-500" : "text-luka-success"
                       )}
+                      aria-label={isNegativeAmount ? `menos ${formatStoredAmount(amount, currency)}` : undefined}
                     >
                       {formattedAmount}
                     </span>
                   </div>
 
-                  {/* Line 2: Bank name + Date + Category + Split + Action */}
+                  {/* Line 2 */}
                   <div className="flex justify-between items-center mt-1">
                     <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
                       <span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
@@ -338,6 +464,16 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
                       <span className="text-[9px] sm:text-[10px] text-slate-300 shrink-0">
                         {new Date(txn.transaction_date).toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}
                       </span>
+                      {age && (
+                        <span
+                          className={cn(
+                            "text-[9px] sm:text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0",
+                            age.className,
+                          )}
+                        >
+                          {age.label}
+                        </span>
+                      )}
                       {txn.transaction_type === "transfer" ? (
                         <span className="text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
                           Ajuste entre cuentas
@@ -356,7 +492,14 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
                           <PendingSplitCell txn={txn} />
                         )
                       )}
-                      {renderAction?.(txn)}
+                      {!selectMode && (
+                        <RowActionMenu
+                          txn={txn}
+                          bucket={bucket}
+                          onLink={onLink}
+                          onRequestDelete={onRequestDelete}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -372,88 +515,290 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
 /* ─── PendingBlock ─── */
 
 export function PendingBlock() {
-  const { data, isLoading } = usePendingTransactions();
+  const { data, isLoading, isError, refetch } = usePendingTransactions();
   const queryClient = useQueryClient();
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const isMobile = useIsMobile();
 
-  if (isLoading || !data) return null;
+  // Link dialog state
+  const [linkTarget, setLinkTarget] = useState<Transaction | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
 
-  const { awaiting_reconciliation, unmatched_email } = data;
-  const total = awaiting_reconciliation.length + unmatched_email.length;
+  // Delete confirmation state (single row)
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Bulk select state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [capWarning, setCapWarning] = useState(false);
+
+  const bulkAction = useBulkAction();
+
+  // Sort awaiting_reconciliation oldest-first so stuck rows float up.
+  const sortedAwaiting = useMemo(() => {
+    if (!data) return [];
+    return [...data.awaiting_reconciliation].sort(
+      (a, b) => new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime(),
+    );
+  }, [data]);
+
+  if (isLoading) {
+    return (
+      <div className="bg-orange-50 border border-orange-300 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-6 rounded-full" />
+        </div>
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-16 w-full rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="bg-orange-50 border border-orange-300 rounded-xl p-4 flex items-center gap-3">
+        <AlertCircle className="h-5 w-5 text-orange-600 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold text-orange-800">No pudimos cargar los pendientes</p>
+          <p className="text-[11px] text-orange-700/80">Intenta nuevamente en un momento.</p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          className="text-[12px] font-semibold text-orange-700 border border-orange-300 rounded-md px-3 py-1.5 hover:bg-orange-100 transition-colors"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
+  const { needs_classification, unmatched_email } = data;
+  const total = sortedAwaiting.length + needs_classification.length + unmatched_email.length;
   if (total === 0) return null;
 
-  function handleDelete(id: string) {
+  function handleToggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        if (next.size >= BULK_SELECTION_CAP) {
+          setCapWarning(true);
+          return prev;
+        }
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function handleOpenLink(txn: Transaction) {
+    setLinkTarget(txn);
+    setLinkOpen(true);
+  }
+
+  function handleConfirmDelete() {
+    if (!deleteId) return;
+    const id = deleteId;
     const queryKey = ["transactions", "pending"];
     const previous = queryClient.getQueryData(queryKey);
-    setConfirmingId(null);
-    queryClient.setQueryData(queryKey, (old: typeof data) => {
+    setDeleteId(null);
+    queryClient.setQueryData(queryKey, (old: PendingTransactions | undefined) => {
       if (!old) return old;
-      return { ...old, unmatched_email: old.unmatched_email.filter((t) => t.id !== id) };
+      const drop = (list: Transaction[]) => list.filter((t) => t.id !== id);
+      return {
+        awaiting_reconciliation: drop(old.awaiting_reconciliation),
+        needs_classification: drop(old.needs_classification),
+        unmatched_email: drop(old.unmatched_email),
+      };
     });
-    api.deleteTransaction(id)
-      .catch(() => queryClient.setQueryData(queryKey, previous));
+    api.deleteTransaction(id).catch(() => queryClient.setQueryData(queryKey, previous));
   }
+
+  function runBulk(action: "dismiss" | "delete") {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    bulkAction.mutate(
+      { transactionIds: ids, action },
+      {
+        onSettled: () => {
+          setSelected(new Set());
+          setSelectMode(false);
+          setBulkDeleteOpen(false);
+        },
+      },
+    );
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelected(new Set());
+    setCapWarning(false);
+  }
+
+  const selectedCount = selected.size;
 
   return (
     <div className="bg-orange-50 border border-orange-300 rounded-xl p-4">
-      <button
-        onClick={() => setCollapsed((v) => !v)}
-        className="flex items-center gap-2 mb-1 w-full"
-      >
-        <span className="text-[15px] font-bold text-orange-700">Pendientes</span>
-        <span className="bg-orange-400 text-white text-[11px] font-semibold rounded-full px-2 py-0.5">
-          {total}
-        </span>
-        <ChevronDown
-          size={16}
-          className={`ml-auto text-orange-400 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
-        />
-      </button>
-
-      {!collapsed && <>
-      <PendingSection
-        title="Esperando confirmación bancaria"
-        transactions={awaiting_reconciliation}
-        isMobile={isMobile}
-      />
-
-      <PendingSection
-        title="Sin match bancario"
-        transactions={unmatched_email}
-        isMobile={isMobile}
-        borderLeft
-        renderAction={(txn) =>
-          confirmingId === txn.id ? (
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] text-slate-500">¿Eliminar?</span>
-              <button
-                onClick={() => handleDelete(txn.id)}
-                className="text-[11px] font-semibold text-white bg-red-500 rounded-md px-2 py-1 hover:bg-red-600 transition-colors"
-              >
-                Sí
-              </button>
-              <button
-                onClick={() => setConfirmingId(null)}
-                className="text-[11px] font-medium text-slate-500 border border-slate-200 rounded-md px-2 py-1 hover:bg-slate-50 transition-colors"
-              >
-                No
-              </button>
-            </div>
+      <div className="flex items-center gap-2 mb-1">
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          aria-expanded={!collapsed}
+          aria-controls="pending-content"
+          className="flex items-center gap-2 flex-1"
+        >
+          <span className="text-[15px] font-bold text-orange-700">Pendientes</span>
+          <span className="bg-orange-400 text-white text-[11px] font-semibold rounded-full px-2 py-0.5">
+            {total}
+          </span>
+          <ChevronDown
+            size={16}
+            className={`ml-auto text-orange-400 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+          />
+        </button>
+        {!collapsed && (
+          selectMode ? (
+            <button
+              onClick={exitSelectMode}
+              className="text-[11px] font-semibold text-slate-600 border border-slate-300 bg-white rounded-md px-2 py-1 hover:bg-slate-50 transition-colors"
+            >
+              Cancelar
+            </button>
           ) : (
             <button
-              onClick={() => setConfirmingId(txn.id)}
-              className="flex items-center gap-1 text-[11px] font-medium text-red-600 border border-red-300 rounded-md px-2 py-1 hover:bg-red-50 transition-colors"
+              onClick={() => setSelectMode(true)}
+              className="text-[11px] font-semibold text-orange-700 border border-orange-300 bg-white rounded-md px-2 py-1 hover:bg-orange-100 transition-colors"
             >
-              <Trash2 size={11} />
-              Eliminar
+              Seleccionar
             </button>
           )
-        }
+        )}
+      </div>
+
+      {!collapsed && (
+        <div id="pending-content">
+          <PendingSection
+            title="Esperando confirmación bancaria"
+            transactions={sortedAwaiting}
+            isMobile={isMobile}
+            bucket="awaiting_reconciliation"
+            selectMode={selectMode}
+            selected={selected}
+            onToggleSelect={handleToggleSelect}
+            onLink={handleOpenLink}
+            onRequestDelete={setDeleteId}
+          />
+          <PendingSection
+            title="Falta categoría o división"
+            transactions={needs_classification}
+            isMobile={isMobile}
+            bucket="needs_classification"
+            selectMode={selectMode}
+            selected={selected}
+            onToggleSelect={handleToggleSelect}
+            onLink={handleOpenLink}
+            onRequestDelete={setDeleteId}
+          />
+          <PendingSection
+            title="Sin match bancario"
+            transactions={unmatched_email}
+            isMobile={isMobile}
+            bucket="unmatched_email"
+            borderLeft
+            selectMode={selectMode}
+            selected={selected}
+            onToggleSelect={handleToggleSelect}
+            onLink={handleOpenLink}
+            onRequestDelete={setDeleteId}
+          />
+        </div>
+      )}
+
+      {capWarning && (
+        <p className="mt-2 text-[11px] text-amber-700 text-right">
+          Máximo {BULK_SELECTION_CAP} seleccionadas a la vez.
+        </p>
+      )}
+
+      {/* Floating bulk toolbar */}
+      {selectMode && selectedCount > 0 && (
+        <div className="fixed bottom-4 right-4 z-40 bg-white border border-slate-200 shadow-xl rounded-xl p-2 flex items-center gap-2">
+          <span className="text-[12px] font-semibold text-slate-700 px-2">
+            {selectedCount} seleccionada{selectedCount === 1 ? "" : "s"}
+          </span>
+          <button
+            onClick={() => runBulk("dismiss")}
+            disabled={bulkAction.isPending}
+            className="text-[12px] font-semibold text-luka-primary border border-luka-primary/40 rounded-md px-3 py-1.5 hover:bg-blue-50 transition-colors disabled:opacity-50"
+          >
+            Marcar como resueltas ({selectedCount})
+          </button>
+          <button
+            onClick={() => setBulkDeleteOpen(true)}
+            disabled={bulkAction.isPending}
+            className="text-[12px] font-semibold text-red-600 border border-red-300 rounded-md px-3 py-1.5 hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            Eliminar ({selectedCount})
+          </button>
+        </div>
+      )}
+
+      {/* Link match dialog */}
+      <LinkMatchDialog
+        pendingTransaction={linkTarget}
+        open={linkOpen}
+        onOpenChange={(v) => {
+          setLinkOpen(v);
+          if (!v) setLinkTarget(null);
+        }}
       />
-      </>}
+
+      {/* Single-row delete confirmation */}
+      <AlertDialog open={!!deleteId} onOpenChange={(v) => { if (!v) setDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar esta transacción?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk delete confirmation */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar {selectedCount} transacciones?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => runBulk("delete")}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

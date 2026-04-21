@@ -35,6 +35,27 @@ import asyncio
 logger = logging.getLogger(__name__)
 
 
+async def _resolve_transfer_to_account_id(db, household_id, card_last_four: str | None):
+    """Resolve a card last-4 to a household BankAccount.id, or None if no match.
+
+    Used at email ingest time to eagerly link CC-payment transfers to their
+    destination card so reconciliation can match email-sourced rows against
+    Plaid-settled rows by card identity. If no BankAccount has
+    account_number == card_last_four, the reconciliation tick retries later.
+    """
+    if not card_last_four or not household_id:
+        return None
+    result = await db.execute(
+        select(BankAccount.id).where(
+            and_(
+                BankAccount.household_id == household_id,
+                BankAccount.account_number == card_last_four,
+            )
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def send_invite_email(
     ctx: dict,
     email_to: str,
@@ -315,7 +336,9 @@ async def process_email(
                 categories = await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
 
                 # Cross-sender dedup: same bank 5min OR different bank 24h
-                if await is_duplicate_transaction(db, user.id, parsed.amount, inferred_bank):
+                if await is_duplicate_transaction(
+                    db, user.id, parsed.amount, inferred_bank, currency=parsed.currency
+                ):
                     print(
                         f"[PROCESS_EMAIL] skipping duplicate transaction ${parsed.amount} for {user.email}",
                         flush=True,
@@ -327,6 +350,13 @@ async def process_email(
 
                 # Store expenses/transfers as negative, income as positive (matches Plaid/Connect convention)
                 stored_amount = abs(parsed.amount) if tx_type == "income" else -abs(parsed.amount)
+
+                # Eagerly resolve transfer_to_account_id via card last-4. If no
+                # match, leave null — the reconciliation tick will retry later.
+                card_last_four = getattr(parsed, "card_last_four", None)
+                transfer_to_account_id = await _resolve_transfer_to_account_id(
+                    db, household_id, card_last_four
+                )
 
                 # Create pending transaction
                 txn = Transaction(
@@ -342,6 +372,8 @@ async def process_email(
                     status=txn_status,
                     transaction_type=tx_type,
                     raw_email_text=raw_email.body,
+                    card_last_four=card_last_four,
+                    transfer_to_account_id=transfer_to_account_id,
                 )
 
                 db.add(txn)

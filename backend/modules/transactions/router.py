@@ -13,7 +13,25 @@ from modules.transactions.schemas import (
     CategoryUpdateRequest,
     SplitTypeUpdateRequest,
     PendingTransactionsResponse,
+    MatchCandidate,
+    LinkRequest,
+    BulkActionRequest,
+    BulkActionResponse,
 )
+
+
+_SERVICE_ERROR_STATUS = {
+    "not_found": 404,
+    "forbidden": 403,
+    "conflict": 409,
+    "too_many": 422,
+    "invalid_action": 422,
+}
+
+
+def _raise_from_service_error(err: service.ServiceError) -> None:
+    raise HTTPException(_SERVICE_ERROR_STATUS.get(err.code, 400), str(err))
+
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -84,6 +102,64 @@ async def update_split_type(
     found = await service.update_split_type(db, transaction_id, current_user.id, body.split_type)
     if not found:
         raise HTTPException(404, "Transaction not found")
+    return {"ok": True}
+
+
+@router.post("/bulk-action", response_model=BulkActionResponse)
+async def bulk_action_endpoint(
+    body: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        processed = await service.bulk_action(
+            db, current_user.id, body.transaction_ids, body.action
+        )
+    except service.ServiceError as err:
+        _raise_from_service_error(err)
+    return {"processed": processed}
+
+
+@router.get("/{pending_id}/match-candidates", response_model=list[MatchCandidate])
+async def match_candidates(
+    pending_id: uuid.UUID,
+    window_days: int = Query(default=7, ge=1, le=30),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return await service.get_match_candidates(
+            db, current_user.id, pending_id, window_days=window_days
+        )
+    except service.ServiceError as err:
+        _raise_from_service_error(err)
+
+
+@router.post("/{pending_id}/link")
+async def link_transaction(
+    pending_id: uuid.UUID,
+    body: LinkRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return await service.link_email_to_bank(
+            db, current_user.id, pending_id, body.bank_transaction_id
+        )
+    except service.ServiceError as err:
+        _raise_from_service_error(err)
+
+
+@router.post("/{transaction_id}/dismiss")
+async def dismiss_transaction_endpoint(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        await service.dismiss_transaction(db, current_user.id, transaction_id)
+    except service.ServiceError as err:
+        _raise_from_service_error(err)
     return {"ok": True}
 
 

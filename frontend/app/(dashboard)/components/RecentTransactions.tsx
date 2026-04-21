@@ -8,7 +8,15 @@ import { useCategories } from "@/app/lib/hooks/useCategories";
 import { TransactionCard } from "./TransactionCard";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
-import { formatAmount } from "@/app/lib/currency";
+import { formatStoredAmount } from "@/app/lib/currency";
+import { PairedTransactionCard, groupPairs } from "./PairedTransactionCard";
+
+// Derived once: match the user's OS locale for date labels rather than
+// hardcoding es-CL. Task 4.6 polish. SSR fallback to es-CL.
+const RESOLVED_LOCALE =
+  typeof Intl !== "undefined"
+    ? Intl.DateTimeFormat().resolvedOptions().locale || "es-CL"
+    : "es-CL";
 
 
 function toTitleCase(str: string) {
@@ -19,25 +27,9 @@ function toTitleCase(str: string) {
     .join(" ");
 }
 
-/** Normalize + format a transaction amount. USD and other decimal currencies stored as cents. */
+/** Format a stored transaction amount (absolute, no sign). */
 function formatTxnAmount(txn: { amount: number; currency: string }): string {
-  const currency = txn.currency ?? "CLP";
-  const isDecimal = currency !== "CLP" && currency !== "COP" && currency !== "PYG" && currency !== "CRC";
-  const val = isDecimal ? Math.abs(Number(txn.amount)) / 100 : Math.abs(Number(txn.amount));
-  return formatAmount(val, currency);
-}
-
-
-function formatDate(iso: string) {
-  // Parse as date-only (YYYY-MM-DD) to avoid timezone shift.
-  // "2026-03-20T00:00:00+00:00" in UTC would display as Mar 19 in Chile (UTC-3).
-  const dateOnly = iso.split("T")[0];
-  const [y, m, d] = dateOnly.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("es-CL", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return formatStoredAmount(Number(txn.amount), txn.currency ?? "CLP");
 }
 
 /* ─── useIsMobile hook ─── */
@@ -69,15 +61,15 @@ function formatDateHeader(dateKey: string): string {
   yesterday.setDate(yesterday.getDate() - 1);
 
   if (date.getTime() === today.getTime()) {
-    return `Hoy, ${date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}`;
+    return `Hoy, ${date.toLocaleDateString(RESOLVED_LOCALE, { day: "2-digit", month: "short" })}`;
   }
   if (date.getTime() === yesterday.getTime()) {
-    return `Ayer, ${date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}`;
+    return `Ayer, ${date.toLocaleDateString(RESOLVED_LOCALE, { day: "2-digit", month: "short" })}`;
   }
   if (date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" });
+    return date.toLocaleDateString(RESOLVED_LOCALE, { day: "2-digit", month: "short" });
   }
-  return date.toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
+  return date.toLocaleDateString(RESOLVED_LOCALE, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function groupByDate(txns: Transaction[]): Map<string, Transaction[]> {
@@ -218,7 +210,18 @@ export function RecentTransactions({
             {formatDateHeader(dateKey)}
           </p>
           <div className="space-y-1.5">
-            {txns.map((txn) => {
+            {groupPairs(txns).map((item) => {
+              if (item.kind === "pair") {
+                return (
+                  <PairedTransactionCard
+                    key={item.pairId}
+                    pairId={item.pairId}
+                    pairType={item.pairType}
+                    legs={item.legs}
+                  />
+                );
+              }
+              const txn = item.txn;
               /* Compact mode: simple card, no editing */
               if (compact) {
                 return <TransactionCard key={txn.id} txn={txn} compact />;

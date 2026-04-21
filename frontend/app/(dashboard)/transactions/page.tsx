@@ -11,16 +11,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 import { useCurrencies, useAddCurrency, useDeleteCurrency } from "@/app/lib/hooks/useCurrencies";
-import { SUPPORTED_CURRENCIES } from "@/app/lib/currency";
+import { SUPPORTED_CURRENCIES, formatStoredAmount } from "@/app/lib/currency";
 
-function formatAmount(n: number, currency: string) {
-  // Balances are stored in cents; CLP has no decimals
-  const isDecimal = currency !== "CLP";
-  const displayVal = isDecimal ? n / 100 : n;
-  if (currency === "USD")
-    return `US$${Math.abs(displayVal).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(Math.abs(displayVal)).toLocaleString("es-CL")}`;
-}
+// Prefer the browser/runtime locale so dates match what the user sees in the
+// OS. Falls back to es-CL when running server-side (SSR) where Intl has no
+// navigator-derived locale. Computed once at module eval time — this is
+// purely a display preference, not reactive.
+const RESOLVED_LOCALE =
+  typeof Intl !== "undefined"
+    ? Intl.DateTimeFormat().resolvedOptions().locale || "es-CL"
+    : "es-CL";
 
 function getMonthKey(iso: string) {
   // Parse date string directly to avoid timezone shift
@@ -30,7 +30,7 @@ function getMonthKey(iso: string) {
 function getMonthLabel(key: string) {
   const [year, month] = key.split("-");
   const d = new Date(Number(year), Number(month) - 1, 1);
-  return d.toLocaleDateString("es-CL", { month: "long", year: "numeric" });
+  return d.toLocaleDateString(RESOLVED_LOCALE, { month: "long", year: "numeric" });
 }
 
 const CHECKING_KINDS = new Set(["checking_account", "savings_account", "sight_account"]);
@@ -95,7 +95,7 @@ function SummaryBar({ accounts, transactions, selectedCurrency, selectedBank, on
   }> = [
     {
       label: "Cuenta Corriente",
-      value: hasAnyBalance ? formatAmount(checkingBalance, selectedCurrency) : "—",
+      value: hasAnyBalance ? formatStoredAmount(checkingBalance, selectedCurrency) : "—",
       sublabel: "",
       bg: "bg-blue-50 border-blue-100",
       textColor: "text-luka-dark",
@@ -103,9 +103,9 @@ function SummaryBar({ accounts, transactions, selectedCurrency, selectedBank, on
     },
     {
       label: "Tarjeta de Crédito",
-      value: hasAnyBalance ? formatAmount(ccUsed, selectedCurrency) : "—",
+      value: hasAnyBalance ? formatStoredAmount(ccUsed, selectedCurrency) : "—",
       sublabel: hasAnyBalance && ccLimit > 0
-        ? `gastado de ${formatAmount(ccLimit, selectedCurrency)}`
+        ? `gastado de ${formatStoredAmount(ccLimit, selectedCurrency)}`
         : "",
       bg: "bg-red-50 border-red-100",
       textColor: ccUsed < 0 ? "text-red-600" : "text-luka-dark",
@@ -113,7 +113,7 @@ function SummaryBar({ accounts, transactions, selectedCurrency, selectedBank, on
     },
     {
       label: "Línea de Crédito",
-      value: hasAnyBalance ? formatAmount(locBalance, selectedCurrency) : "—",
+      value: hasAnyBalance ? formatStoredAmount(locBalance, selectedCurrency) : "—",
       sublabel: "disponible",
       bg: "bg-emerald-50 border-emerald-100",
       textColor: "text-luka-dark",
@@ -121,7 +121,7 @@ function SummaryBar({ accounts, transactions, selectedCurrency, selectedBank, on
     },
     {
       label: "Posición Neta",
-      value: hasAnyBalance ? formatAmount(netPosition, selectedCurrency) : "—",
+      value: hasAnyBalance ? formatStoredAmount(netPosition, selectedCurrency) : "—",
       sublabel: "líquido - deuda TC",
       bg: netPosition >= 0
         ? "bg-emerald-50 border-emerald-200"
@@ -399,7 +399,7 @@ export default function TransactionsPage() {
     if (selectedCurrency === null && primaryCurrency) {
       setSelectedCurrency(primaryCurrency);
     }
-  }, [primaryCurrency]);
+  }, [primaryCurrency, selectedCurrency]);
 
   const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions();
   const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions();

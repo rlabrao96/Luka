@@ -47,6 +47,28 @@ def map_account_kind(plaid_type, plaid_subtype) -> str:
     return ACCOUNT_KIND_MAP.get((str(plaid_type), str(plaid_subtype)), "other")
 
 
+# Currencies stored as integer units (no sub-cent scaling in Luka).
+# USD/EUR/GBP use 2 decimals; CLP/COP/JPY/KRW are zero-decimal currencies.
+_ZERO_DECIMAL_CURRENCIES = {"CLP", "COP", "JPY", "KRW", "PYG", "VND", "CLF"}
+
+
+def luka_amount_from_plaid(plaid_tx) -> int:
+    """Convert a Plaid-reported amount into Luka's signed, integer-scaled amount.
+
+    Plaid reports outflows positive; Luka stores expenses/transfers negative and income positive.
+    For zero-decimal currencies (CLP, COP, ...) amounts are stored as integer units.
+    For two-decimal currencies (USD, EUR, ...) amounts are stored as integer cents.
+
+    This helper owns the sign/scale convention so the added and modified code paths
+    agree on the encoding.
+    """
+    plaid_amount = float(plaid_tx.amount)
+    currency = (getattr(plaid_tx, "iso_currency_code", None) or "USD").upper()
+    if currency in _ZERO_DECIMAL_CURRENCIES:
+        return round(plaid_amount * -1)
+    return round(plaid_amount * -100)
+
+
 def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, household_id: str) -> dict:
     """Map a Plaid transaction object to a Luka transaction dict.
 
@@ -54,8 +76,7 @@ def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, househol
     So we multiply by -1.
     """
     plaid_amount = float(plaid_tx.amount)
-    # Plaid sends dollars; Luka stores USD as cents (frontend divides by 100)
-    luka_amount = round(plaid_amount * -100)
+    luka_amount = luka_amount_from_plaid(plaid_tx)
 
     # Derive transaction_type from Plaid's amount sign (before our flip)
     transaction_type = "expense" if plaid_amount > 0 else "income"
@@ -75,7 +96,7 @@ def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, househol
         raw_name = plaid_tx.merchant_name or plaid_tx.name or "Unknown"
 
     # Status from pending flag
-    status = "pending" if plaid_tx.pending else "confirmed"
+    status = "pending" if plaid_tx.pending else "settled"
 
     return {
         "user_id": user_id,

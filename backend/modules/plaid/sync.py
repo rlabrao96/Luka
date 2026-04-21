@@ -1,5 +1,6 @@
 """Plaid transaction sync: fetches transactions via cursor, creates accounts, maps and deduplicates."""
 
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -8,11 +9,66 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.encryption import decrypt_token
 from modules.plaid.models import PlaidItem
-from modules.plaid.mapper import map_plaid_transaction, map_account_kind, is_plaid_transfer
+from modules.plaid.mapper import (
+    map_plaid_transaction,
+    map_account_kind,
+    is_plaid_transfer,
+    luka_amount_from_plaid,
+)
 from modules.plaid.service import sync_transactions
 from modules.households.models import BankAccount
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.reconciliation.dedup import find_email_match, apply_match_and_delete_emails
+
+
+# 4-digit token (not surrounded by other digits)
+_LAST_FOUR_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
+
+# Strong signals that a Plaid tx is a credit-card bill payment (internal transfer).
+_CC_PAYMENT_NAME_TOKENS = ("pago tarjeta", "online payment", "payment thank you")
+
+
+def _is_cc_payment_signal(plaid_tx) -> bool:
+    """Signal whether a Plaid tx is likely a credit-card bill payment.
+
+    True if Plaid's category list contains TRANSFER or CREDIT_CARD, or the
+    raw description contains a known CC-payment phrase.
+    """
+    categories = getattr(plaid_tx, "category", None) or []
+    for c in categories:
+        up = (c or "").upper()
+        if "TRANSFER" in up or "CREDIT_CARD" in up or "CREDIT CARD" in up:
+            return True
+    name = (plaid_tx.name or "").lower()
+    return any(tok in name for tok in _CC_PAYMENT_NAME_TOKENS)
+
+
+def _resolve_cc_counterpart(
+    plaid_tx,
+    mask_map: dict[str, uuid.UUID],
+    name_list: list[tuple[str, uuid.UUID]],
+    exclude_id: uuid.UUID | None = None,
+) -> uuid.UUID | None:
+    """Resolve the counterpart BankAccount for a CC bill payment.
+
+    Tier 1: any 4-digit token in plaid_tx.name matches a BankAccount.account_number.
+    Tier 2: any BankAccount.bank_name (lowercased) is a substring of plaid_tx.name.lower().
+    Excludes the source account itself so a payment never points back at its own row.
+    """
+    name = plaid_tx.name or ""
+    # Tier 1 — last-four match
+    for token in _LAST_FOUR_RE.findall(name):
+        acct_id = mask_map.get(token)
+        if acct_id and acct_id != exclude_id:
+            return acct_id
+    # Tier 2 — corrected name match (bank_name substring of plaid description)
+    name_lower = name.lower()
+    for bank_name_lower, acct_id in name_list:
+        if not bank_name_lower:
+            continue
+        if bank_name_lower in name_lower and acct_id != exclude_id:
+            return acct_id
+    return None
 
 
 async def run_plaid_sync(
@@ -68,6 +124,22 @@ async def run_plaid_sync(
     # Ensure accounts exist
     account_map = await ensure_plaid_accounts(session, item, accounts_data)
 
+    # Load household bank accounts ONCE for CC counterpart resolution.
+    # Build a {account_number: id} dict and a [(bank_name.lower(), id)] list.
+    hh_accounts_result = await session.execute(
+        select(BankAccount.id, BankAccount.bank_name, BankAccount.account_number).where(
+            BankAccount.household_id == item.household_id,
+            BankAccount.is_active.is_(True),
+        )
+    )
+    mask_map: dict[str, uuid.UUID] = {}
+    name_list: list[tuple[str, uuid.UUID]] = []
+    for acct_id, bank_name, acct_num in hh_accounts_result.all():
+        if acct_num:
+            mask_map[acct_num] = acct_id
+        if bank_name:
+            name_list.append((bank_name.lower(), acct_id))
+
     stats = {"added": 0, "modified": 0, "removed": 0, "deduped": 0, "new_tx_ids": []}
 
     # Process added transactions
@@ -90,21 +162,26 @@ async def run_plaid_sync(
             plaid_tx, str(bank_account_id), str(item.user_id), str(item.household_id)
         )
 
-        # Only mark as transfer if both sides exist in the system
-        if is_plaid_transfer(plaid_tx):
-            # Check if the counterpart account exists (e.g. Amex card for Amex payments)
-            merchant_name = tx_data["raw_merchant_name"].lower()
-            counterpart = await session.execute(
-                select(BankAccount.id)
-                .where(
-                    BankAccount.household_id == item.household_id,
-                    BankAccount.is_active.is_(True),
-                    sa_func.lower(BankAccount.bank_name).contains(merchant_name),
-                )
-                .limit(1)
+        # CC bill payment → route amount into a transfer and link the counterpart account.
+        # Two-tier lookup: (1) last-4 digit token in name matches an account_number,
+        # (2) any household bank_name appears as substring of plaid name.
+        if _is_cc_payment_signal(plaid_tx):
+            counterpart_id = _resolve_cc_counterpart(
+                plaid_tx, mask_map, name_list, exclude_id=bank_account_id
             )
-            if counterpart.scalar_one_or_none():
+            if counterpart_id is not None:
                 tx_data["transaction_type"] = "transfer"
+                tx_data["category"] = None
+                tx_data["transfer_to_account_id"] = counterpart_id
+        elif is_plaid_transfer(plaid_tx):
+            # Legacy path for non-CC internal transfers (loan payments, account moves).
+            # Keep behaviour but use the pre-built name list instead of a per-tx query.
+            merchant_lower = tx_data["raw_merchant_name"].lower()
+            for bn_lower, acct_id in name_list:
+                if bn_lower and bn_lower in merchant_lower and acct_id != bank_account_id:
+                    tx_data["transaction_type"] = "transfer"
+                    tx_data["transfer_to_account_id"] = acct_id
+                    break
 
         # Try to match against email transactions
         match = await find_email_match(
@@ -113,6 +190,9 @@ async def run_plaid_sync(
             tx_data["raw_merchant_name"],
             tx_data["amount"],
             tx_data["transaction_date"],
+            currency=tx_data.get("currency"),
+            incoming_transaction_type=tx_data.get("transaction_type"),
+            bank_account_id=bank_account_id,
         )
 
         new_tx = Transaction(**tx_data)
@@ -121,7 +201,11 @@ async def run_plaid_sync(
 
         if match:
             await apply_match_and_delete_emails(
-                session, new_tx.id, match["email_tx_ids"], match["enrichment"]
+                session,
+                new_tx.id,
+                match["email_tx_ids"],
+                match["enrichment"],
+                user_id=item.user_id,
             )
             stats["deduped"] += 1
 
@@ -137,15 +221,15 @@ async def run_plaid_sync(
         if not tx:
             continue
 
-        plaid_amount = float(plaid_tx.amount)
-        # Plaid sends dollars; Luka stores USD as cents
-        tx.amount = round(plaid_amount * -100)
-        tx.status = "pending" if plaid_tx.pending else "confirmed"
+        # Route amount/status through the mapper helper so USD (cents) and
+        # zero-decimal currencies (CLP, COP, ...) stay on one canonical convention.
+        tx.amount = luka_amount_from_plaid(plaid_tx)
+        tx.status = "pending" if plaid_tx.pending else "settled"
         tx.raw_merchant_name = plaid_tx.merchant_name or plaid_tx.name or tx.raw_merchant_name
         stats["modified"] += 1
 
     # Process removed transactions — Plaid sends "removed" when a pending tx settles
-    # and is replaced by a new confirmed one (different plaid_transaction_id).
+    # and is replaced by a new settled one (different plaid_transaction_id).
     # Transfer enrichment (splits, category, merchant_id) from the old one to the
     # matching new tx before deleting, so the user doesn't lose their categorization.
     for plaid_tx in all_removed:

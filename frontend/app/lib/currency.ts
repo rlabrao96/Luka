@@ -79,3 +79,46 @@ export function formatAmount(amount: number, currency: string): string {
   const intFormatted = withSeps.reverse().join("");
   return `${symbol}${intFormatted}${decSep}${frac.toString().padStart(2, "0")}`;
 }
+
+/**
+ * Currencies with no minor units — amounts are stored directly as integer
+ * major units, not cents. Mirrors the backend's storage convention.
+ */
+export const ZERO_DECIMAL_CURRENCIES = new Set([
+  "CLP", "COP", "PYG", "CRC", "JPY", "KRW", "VND", "HUF", "ISK", "TWD", "UGX", "RWF",
+]);
+
+export function isZeroDecimalCurrency(code: string): boolean {
+  return ZERO_DECIMAL_CURRENCIES.has(code.toUpperCase());
+}
+
+export function isNegativeStored(amountCents: number): boolean {
+  return amountCents < 0;
+}
+
+/**
+ * Format a stored amount (as persisted in the DB) to a localized currency
+ * string. Returns the absolute value — callers wrap the sign/parentheses
+ * themselves via `isNegativeStored`.
+ *
+ *  - For zero-decimal currencies (CLP, COP, PYG, ...), the stored value is
+ *    already in major units.
+ *  - For all other currencies, the stored value is in minor units (cents)
+ *    and is divided by 100 before formatting.
+ */
+export function formatStoredAmount(
+  amountCents: number,
+  currency: string,
+  locale?: string,
+): string {
+  const decimals = isZeroDecimalCurrency(currency) ? 0 : 2;
+  const value = decimals === 0 ? amountCents : amountCents / 100;
+  const resolvedLocale =
+    locale ?? Intl.DateTimeFormat().resolvedOptions().locale ?? "es-CL";
+  return new Intl.NumberFormat(resolvedLocale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(Math.abs(value));
+}

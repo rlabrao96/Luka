@@ -82,6 +82,16 @@ export interface Transaction {
   transaction_type: string | null;
   source_type: string | null;
   display_name: string | null;
+  // Pair ids for CC-transfer and refund grouping (Task 4.5).
+  // Paired rows are excluded from totals on the server; the UI collapses
+  // them into a single "Pago tarjeta" / "reembolsado" card.
+  transfer_pair_id: string | null;
+  refund_pair_id: string | null;
+  // Lifecycle timestamps (Task 4.6). ISO8601 strings from the backend.
+  // `created_at` drives the PendingBlock age badge (backlog indicator);
+  // `orphaned_at` records when a row was dismissed / aged out.
+  created_at: string | null;
+  orphaned_at: string | null;
 }
 
 export interface PendingTransactions {
@@ -416,6 +426,22 @@ export interface UserCurrency {
   sort_order: number;
 }
 
+// Match candidate row from GET /transactions/{id}/match-candidates.
+// Mirrors backend schemas.MatchCandidate: amount is a Decimal string on the
+// wire, consumers Number(...) before arithmetic.
+export interface MatchCandidate {
+  id: string;
+  bank_account_id: string | null;
+  bank_account_name: string | null;
+  transaction_date: string;
+  amount: number;
+  currency: string;
+  raw_merchant_name: string;
+  category: string | null;
+}
+
+export type BulkActionKind = "dismiss" | "delete";
+
 // ── API calls ──────────────────────────────────────────────
 
 export const api = {
@@ -432,6 +458,28 @@ export const api = {
 
   deleteTransaction: (id: string) =>
     apiFetch<void>(`/transactions/${id}`, { method: "DELETE" }),
+
+  // Phase 3 consolidation endpoints --------------------------------------
+
+  getMatchCandidates: (pendingId: string, windowDays = 7) =>
+    apiFetch<MatchCandidate[]>(
+      `/transactions/${pendingId}/match-candidates?window_days=${windowDays}`,
+    ),
+
+  linkTransaction: (pendingId: string, bankTransactionId: string) =>
+    apiFetch<Transaction>(`/transactions/${pendingId}/link`, {
+      method: "POST",
+      body: JSON.stringify({ bank_transaction_id: bankTransactionId }),
+    }),
+
+  dismissTransaction: (id: string) =>
+    apiFetch<void>(`/transactions/${id}/dismiss`, { method: "POST" }),
+
+  bulkAction: (transactionIds: string[], action: BulkActionKind) =>
+    apiFetch<{ processed: number }>("/transactions/bulk-action", {
+      method: "POST",
+      body: JSON.stringify({ transaction_ids: transactionIds, action }),
+    }),
 
   updateCategory: (id: string, category: string) =>
     apiFetch<{ ok: boolean }>(`/transactions/${id}/category`, {

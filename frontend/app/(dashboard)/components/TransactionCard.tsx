@@ -4,7 +4,7 @@ import { CreditCard, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Transaction } from "@/app/lib/api";
 import { MarkAsCuotaDialog } from "./MarkAsCuotaDialog";
-import { formatAmount } from "@/app/lib/currency";
+import { formatStoredAmount, isNegativeStored } from "@/app/lib/currency";
 
 const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
   personal: { label: "Personal", className: "bg-blue-50 text-blue-600" },
@@ -14,13 +14,6 @@ const SPLIT_STYLES: Record<string, { label: string; className: string }> = {
 
 function toTitleCase(str: string) {
   return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-}
-
-// USD and other decimal currencies stored as cents in DB — divide by 100
-function formatTxAmount(amount: number, currency: string): string {
-  const isDecimal = currency !== "CLP" && currency !== "COP" && currency !== "PYG" && currency !== "CRC";
-  const val = isDecimal ? Math.abs(amount) / 100 : Math.abs(amount);
-  return formatAmount(val, currency ?? "CLP");
 }
 
 function bankLabel(txn: Transaction): string {
@@ -50,7 +43,7 @@ export function TransactionCard({
   onSplitTap,
   enableMarkCuota = false,
 }: TransactionCardProps) {
-  const isOutflow = Number(txn.amount) < 0;
+  const isOutflow = isNegativeStored(Number(txn.amount));
   const split = SPLIT_STYLES[txn.split_type ?? "personal"] ?? SPLIT_STYLES.personal;
   const category = currentCategory !== undefined ? currentCategory : txn.category;
   const [cuotaOpen, setCuotaOpen] = useState(false);
@@ -97,16 +90,30 @@ export function TransactionCard({
             <p className="text-[13px] sm:text-sm font-semibold text-luka-dark truncate">
               {toTitleCase(txn.raw_merchant_name)}
             </p>
-            <span
-              className={cn(
-                "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
-                isOutflow ? "text-luka-dark" : "text-luka-success"
-              )}
-            >
-              {isOutflow
-                ? `(${formatTxAmount(Number(txn.amount), txn.currency ?? "CLP")})`
-                : `+${formatTxAmount(Number(txn.amount), txn.currency ?? "CLP")}`}
-            </span>
+            {(() => {
+              const formatted = formatStoredAmount(
+                Number(txn.amount),
+                txn.currency ?? "CLP",
+              );
+              const visible = isOutflow ? `(${formatted})` : `+${formatted}`;
+              // Parentheses on negatives are a visual convention — screen
+              // readers spell them literally. Override with "menos X" so
+              // the direction is unambiguous without reading punctuation.
+              const label = isNegativeStored(Number(txn.amount))
+                ? `menos ${formatted}`
+                : formatted;
+              return (
+                <span
+                  aria-label={label}
+                  className={cn(
+                    "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
+                    isOutflow ? "text-luka-dark" : "text-luka-success",
+                  )}
+                >
+                  {visible}
+                </span>
+              );
+            })()}
           </div>
 
           {/* Line 2: Bank + Category + Split */}
