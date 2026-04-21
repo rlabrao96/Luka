@@ -104,10 +104,22 @@ function CategoryCell({ txn }: CategoryCellProps) {
     setOpen(false);
     setLocalCategory(cat); // instant UI update
 
-    // Optimistically patch cached transaction lists so the whole page reflects the change
+    // Optimistically patch array-shaped caches only — ["transactions","mine"]
+    // and ["transactions","shared"] are Transaction[]; ["transactions","pending"]
+    // is the 3-bucket PendingTransactions object which would crash .map().
     const patchCache = (old: Transaction[] | undefined) =>
-      old?.map((t) => (t.id === txn.id ? { ...t, category: cat } : t));
-    queryClient.setQueriesData<Transaction[]>({ queryKey: ["transactions"] }, patchCache);
+      Array.isArray(old)
+        ? old.map((t) => (t.id === txn.id ? { ...t, category: cat } : t))
+        : old;
+    queryClient.setQueriesData<Transaction[]>(
+      {
+        predicate: (q) => {
+          const [root, bucket] = q.queryKey as unknown as [string, string];
+          return root === "transactions" && (bucket === "mine" || bucket === "shared");
+        },
+      },
+      patchCache,
+    );
 
     try {
       await api.updateTransactionCategory(txn.id, cat);
@@ -189,8 +201,18 @@ export function RecentTransactions({
 
   async function handleCategorySelect(txn: Transaction, category: string | null) {
     const patchCache = (old: Transaction[] | undefined) =>
-      old?.map((t) => (t.id === txn.id ? { ...t, category } : t));
-    queryClient.setQueriesData<Transaction[]>({ queryKey: ["transactions"] }, patchCache);
+      Array.isArray(old)
+        ? old.map((t) => (t.id === txn.id ? { ...t, category } : t))
+        : old;
+    queryClient.setQueriesData<Transaction[]>(
+      {
+        predicate: (q) => {
+          const [root, bucket] = q.queryKey as unknown as [string, string];
+          return root === "transactions" && (bucket === "mine" || bucket === "shared");
+        },
+      },
+      patchCache,
+    );
 
     try {
       await api.updateTransactionCategory(txn.id, category);
