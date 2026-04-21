@@ -140,6 +140,41 @@ export function useDismissTransaction() {
   });
 }
 
+export function useDeleteTransaction() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id: string) => api.deleteTransaction(id),
+    onMutate: async (id) => {
+      const queryKey = ["transactions", "pending"];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<PendingTransactions>(queryKey);
+      queryClient.setQueryData<PendingTransactions | undefined>(
+        queryKey,
+        (old) => {
+          if (!old) return old;
+          const drop = (list: Transaction[]) => list.filter((t) => t.id !== id);
+          return {
+            awaiting_reconciliation: drop(old.awaiting_reconciliation),
+            needs_classification: drop(old.needs_classification),
+            unmatched_email: drop(old.unmatched_email),
+          };
+        },
+      );
+      return { previous } as { previous: PendingTransactions | undefined };
+    },
+    onError: (_err, _vars, ctx) => {
+      const context = ctx as { previous?: PendingTransactions } | undefined;
+      if (context?.previous) {
+        queryClient.setQueryData(["transactions", "pending"], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions", "pending"] });
+    },
+  });
+}
+
 export function useBulkAction() {
   const queryClient = useQueryClient();
   return useMutation<

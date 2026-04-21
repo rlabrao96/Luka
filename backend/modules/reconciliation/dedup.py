@@ -116,6 +116,8 @@ async def apply_match_and_delete_emails(
     incoming_type = enrichment.get("transaction_type")
     if enrichment.get("merchant_id"):
         update_fields["merchant_id"] = enrichment["merchant_id"]
+    if enrichment.get("transfer_to_account_id"):
+        update_fields["transfer_to_account_id"] = enrichment["transfer_to_account_id"]
     if incoming_type == "transfer":
         # Transfers always propagate: type=transfer and null out stale category
         update_fields["transaction_type"] = "transfer"
@@ -131,11 +133,37 @@ async def apply_match_and_delete_emails(
             update(Transaction).where(Transaction.id == bank_tx_id).values(**update_fields)
         )
 
-    # Re-link any transaction_splits from email txs (user-scoped) to the bank tx
+    # Propagate the email's split_type onto the bank row's existing split so the
+    # user's personal/shared decision is preserved. If the bank row has no split,
+    # create one; if it already has one, update it in place.
+    incoming_split = enrichment.get("split_type")
+    if incoming_split:
+        existing_split = await session.execute(
+            select(TransactionSplit.id)
+            .where(TransactionSplit.transaction_id == bank_tx_id)
+            .limit(1)
+        )
+        split_id = existing_split.scalar_one_or_none()
+        if split_id:
+            await session.execute(
+                update(TransactionSplit)
+                .where(TransactionSplit.id == split_id)
+                .values(split_type=incoming_split)
+            )
+        else:
+            session.add(
+                TransactionSplit(
+                    id=uuid.uuid4(),
+                    transaction_id=bank_tx_id,
+                    split_type=incoming_split,
+                )
+            )
+
+    # Delete the email rows (and their splits via FK or explicit delete).
     if email_tx_ids:
+        # Delete email splits first to avoid orphaning; bank already has its own.
         await session.execute(
-            update(TransactionSplit)
-            .where(
+            delete(TransactionSplit).where(
                 TransactionSplit.transaction_id.in_(
                     select(Transaction.id).where(
                         Transaction.id.in_(email_tx_ids),
@@ -143,7 +171,6 @@ async def apply_match_and_delete_emails(
                     )
                 )
             )
-            .values(transaction_id=bank_tx_id)
         )
 
         # Delete email transactions (user-scoped)
@@ -367,15 +394,30 @@ async def find_plaid_match_for_email(
 
 
 async def _extract_enrichment(session: AsyncSession, email_tx_id: uuid.UUID) -> dict:
-    """Extract enrichment data from an email transaction."""
+    """Extract enrichment data from an email transaction.
+
+    Pulls the full set of user-meaningful fields so a manual Vincular truly
+    transfers the pending's classification onto the bank row: category,
+    merchant, transaction_type, split_type, and (for CC-payment emails that
+    resolved a counterpart) transfer_to_account_id.
+    """
     result = await session.execute(select(Transaction).where(Transaction.id == email_tx_id))
     tx = result.scalar_one_or_none()
     if not tx:
         return {}
 
+    # Pick up the email's split (if any) — user may have already set personal/shared.
+    split_row = await session.execute(
+        select(TransactionSplit.split_type)
+        .where(TransactionSplit.transaction_id == email_tx_id)
+        .limit(1)
+    )
+    split_type = split_row.scalar_one_or_none()
+
     return {
         "merchant_id": tx.merchant_id,
         "category": tx.category,
         "transaction_type": tx.transaction_type,
-        "account_type": getattr(tx, "account_type", None),  # personal/joint from splits
+        "split_type": split_type,
+        "transfer_to_account_id": tx.transfer_to_account_id,
     }

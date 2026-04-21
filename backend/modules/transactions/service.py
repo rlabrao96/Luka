@@ -292,7 +292,7 @@ async def delete_transaction(
     db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID
 ) -> str:
     """
-    Hard delete a pending email transaction.
+    Hard delete a pending or orphan email transaction.
     Returns: 'deleted', 'not_found', or 'invalid'.
     """
     result = await db.execute(
@@ -304,7 +304,7 @@ async def delete_transaction(
     txn = result.scalar_one_or_none()
     if not txn:
         return "not_found"
-    if txn.source not in ("gmail", "outlook") or txn.status != "pending":
+    if txn.source_type != "email" or txn.status not in ("pending", "orphan"):
         return "invalid"
     # Delete associated splits first to avoid FK violation
     await db.execute(
@@ -521,6 +521,16 @@ async def link_email_to_bank(
         enrichment=enrichment,
         user_id=user_id,
     )
+
+    # When the user vincula a transfer-typed pending, try to auto-pair the
+    # newly-typed bank tx with its twin (e.g., AmEx payment email linked to
+    # BofA's outgoing leg should ALSO rope in the AmEx card's incoming leg).
+    # Cheap and idempotent — guarded by transfer_pair_id IS NULL internally.
+    if enrichment.get("transaction_type") == "transfer":
+        from modules.reconciliation.transfers import detect_transfers
+
+        await detect_transfers(db, bank.household_id, lookback_days=7)
+
     await db.commit()
 
     # Reload the bank tx with enrichment applied.

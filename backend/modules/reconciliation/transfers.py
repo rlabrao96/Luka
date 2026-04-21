@@ -28,14 +28,16 @@ async def detect_transfers(
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     pairs_found = 0
 
-    # Get all recent non-transfer transactions for this household
+    # Get all recent unpaired transactions for this household. We include rows
+    # already typed 'transfer' (e.g. via Vincular) as long as they have no
+    # pair_id yet — those need the twin leg linked.
     result = await session.execute(
         select(Transaction)
         .where(
             Transaction.household_id == household_id,
-            Transaction.transaction_type != "transfer",
             Transaction.transaction_date >= cutoff,
             Transaction.transfer_pair_id.is_(None),
+            Transaction.refund_pair_id.is_(None),
         )
         .order_by(Transaction.transaction_date)
     )
