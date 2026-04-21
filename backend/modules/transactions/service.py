@@ -236,7 +236,9 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
     - needs_classification: connect txns, settled, no category yet
     - unmatched_email: email txns aged out to 'orphan' (migration 039, Task 2.8)
     """
-    # All pending transactions (email + plaid processing)
+    # All pending transactions (email + plaid processing). Exclude rows that
+    # already participate in a transfer or refund pair — the pair is already
+    # resolved conceptually; showing both legs in Pendientes is noise.
     email_pending_result = await db.execute(
         select(Transaction, TransactionSplit, BankAccount.bank_name)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
@@ -245,12 +247,15 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
             Transaction.user_id == user_id,
             Transaction.source.in_(["gmail", "outlook", "plaid"]),
             Transaction.status == "pending",
+            Transaction.transfer_pair_id.is_(None),
+            Transaction.refund_pair_id.is_(None),
         )
         .order_by(Transaction.transaction_date.desc())
     )
     email_pending_rows = email_pending_result.all()
 
-    # Connect transactions needing classification
+    # Connect transactions needing classification (exclude paired rows — a
+    # transfer leg doesn't need a category, a refund pair nets to zero).
     needs_class_result = await db.execute(
         select(Transaction, TransactionSplit, BankAccount.bank_name)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
@@ -260,6 +265,8 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
             Transaction.source == "connect",
             Transaction.status == "settled",
             Transaction.category.is_(None),
+            Transaction.transfer_pair_id.is_(None),
+            Transaction.refund_pair_id.is_(None),
         )
         .order_by(Transaction.transaction_date.desc())
     )
