@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import {
   usePendingTransactions,
   useDismissTransaction,
+  useDeleteTransaction,
   useBulkAction,
 } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
@@ -534,13 +535,17 @@ export function PendingBlock() {
   const [capWarning, setCapWarning] = useState(false);
 
   const bulkAction = useBulkAction();
+  const deleteMutation = useDeleteTransaction();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Sort awaiting_reconciliation oldest-first so stuck rows float up.
+  // Sort awaiting_reconciliation oldest-first using created_at (matches the
+  // age badge — transaction_date can disagree when banks backdate rows or
+  // when legacy data has off-year dates).
   const sortedAwaiting = useMemo(() => {
     if (!data) return [];
-    return [...data.awaiting_reconciliation].sort(
-      (a, b) => new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime(),
-    );
+    const keyOf = (t: Transaction) =>
+      new Date(t.created_at ?? t.transaction_date).getTime();
+    return [...data.awaiting_reconciliation].sort((a, b) => keyOf(a) - keyOf(b));
   }, [data]);
 
   if (isLoading) {
@@ -605,19 +610,17 @@ export function PendingBlock() {
   function handleConfirmDelete() {
     if (!deleteId) return;
     const id = deleteId;
-    const queryKey = ["transactions", "pending"];
-    const previous = queryClient.getQueryData(queryKey);
     setDeleteId(null);
-    queryClient.setQueryData(queryKey, (old: PendingTransactions | undefined) => {
-      if (!old) return old;
-      const drop = (list: Transaction[]) => list.filter((t) => t.id !== id);
-      return {
-        awaiting_reconciliation: drop(old.awaiting_reconciliation),
-        needs_classification: drop(old.needs_classification),
-        unmatched_email: drop(old.unmatched_email),
-      };
+    setDeleteError(null);
+    deleteMutation.mutate(id, {
+      onError: (err) => {
+        setDeleteError(
+          err instanceof Error && err.message
+            ? `No pudimos eliminar: ${err.message}`
+            : "No pudimos eliminar la transacción. Intenta nuevamente.",
+        );
+      },
     });
-    api.deleteTransaction(id).catch(() => queryClient.setQueryData(queryKey, previous));
   }
 
   function runBulk(action: "dismiss" | "delete") {
@@ -723,6 +726,22 @@ export function PendingBlock() {
         <p className="mt-2 text-[11px] text-amber-700 text-right">
           Máximo {BULK_SELECTION_CAP} seleccionadas a la vez.
         </p>
+      )}
+
+      {deleteError && (
+        <div
+          role="alert"
+          className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700"
+        >
+          <span>{deleteError}</span>
+          <button
+            onClick={() => setDeleteError(null)}
+            className="font-semibold text-red-700 hover:underline"
+            aria-label="Cerrar"
+          >
+            Cerrar
+          </button>
+        </div>
       )}
 
       {/* Floating bulk toolbar */}
