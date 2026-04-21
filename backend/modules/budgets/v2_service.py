@@ -559,6 +559,23 @@ def _build_hogar_sankey(
     )
 
     # ---- Level 2: allocation nodes ----
+    # `disponible_hogar` is emitted FIRST so `sort={false}` in the frontend
+    # pins it to the top of Level 2. Its label renders ABOVE its rectangle
+    # (pass-through hub treatment); the rest of the Level-2 nodes sit below
+    # it with their own label styles (bills render labels BELOW; plain
+    # allocations render right of the rectangle). Ordering is critical to
+    # keep Disponible's above-label from colliding with the below-label of
+    # a bill rectangle that would otherwise land right above it.
+    if sankey_spendable > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="disponible_hogar",
+                label="Disponible hogar",
+                value=sankey_spendable,
+                level=2,
+                kind="allocation",
+            )
+        )
     if known_bills > _ZERO:
         nodes.append(
             SankeyNode(
@@ -596,16 +613,6 @@ def _build_hogar_sankey(
                 id="gasto_personal",
                 label="Gasto personal",
                 value=personal_allocation,
-                level=2,
-                kind="allocation",
-            )
-        )
-    if sankey_spendable > _ZERO:
-        nodes.append(
-            SankeyNode(
-                id="disponible_hogar",
-                label="Disponible hogar",
-                value=sankey_spendable,
                 level=2,
                 kind="allocation",
             )
@@ -776,7 +783,19 @@ def _build_personal_sankey(
         )
     )
 
-    # Level 2: 3 allocation nodes (cuotas only if non-zero, no gasto_personal)
+    # Level 2 — `disponible_personal` emitted FIRST so it pins to the top
+    # of the column (matches Hogar layout; prevents bill below-label from
+    # colliding with disponible's above-label when the two stack).
+    if sankey_spendable > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="disponible_personal",
+                label="Disponible personal",
+                value=sankey_spendable,
+                level=2,
+                kind="allocation",
+            )
+        )
     if known_bills > _ZERO:
         nodes.append(
             SankeyNode(
@@ -804,16 +823,6 @@ def _build_personal_sankey(
                 id="meta_ahorro_personal",
                 label="Meta de ahorro",
                 value=savings_target,
-                level=2,
-                kind="allocation",
-            )
-        )
-    if sankey_spendable > _ZERO:
-        nodes.append(
-            SankeyNode(
-                id="disponible_personal",
-                label="Disponible personal",
-                value=sankey_spendable,
                 level=2,
                 kind="allocation",
             )
