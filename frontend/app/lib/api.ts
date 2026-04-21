@@ -82,6 +82,16 @@ export interface Transaction {
   transaction_type: string | null;
   source_type: string | null;
   display_name: string | null;
+  // Pair ids for CC-transfer and refund grouping (Task 4.5).
+  // Paired rows are excluded from totals on the server; the UI collapses
+  // them into a single "Pago tarjeta" / "reembolsado" card.
+  transfer_pair_id: string | null;
+  refund_pair_id: string | null;
+  // Lifecycle timestamps (Task 4.6). ISO8601 strings from the backend.
+  // `created_at` drives the PendingBlock age badge (backlog indicator);
+  // `orphaned_at` records when a row was dismissed / aged out.
+  created_at: string | null;
+  orphaned_at: string | null;
 }
 
 export interface PendingTransactions {

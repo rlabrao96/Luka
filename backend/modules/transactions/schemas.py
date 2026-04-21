@@ -13,6 +13,7 @@ class TransactionResponse(BaseModel):
     transaction_date: datetime
     category: str | None
     source: str
+    source_type: str | None = None
     status: str
     split_type: str | None = None
     bank_name: str | None = None
@@ -20,6 +21,15 @@ class TransactionResponse(BaseModel):
     account_kind: str | None = None
     transaction_type: str | None = None
     display_name: str | None = None
+    # Pair ids (Task 4.5): used by the frontend to group CC transfers and
+    # refunds into a single visual row. Null for unpaired transactions.
+    transfer_pair_id: uuid.UUID | None = None
+    refund_pair_id: uuid.UUID | None = None
+    # Lifecycle timestamps (Task 4.6): `created_at` backs the "backlog age"
+    # badge on PendingBlock (how long a pending row has been sitting).
+    # `orphaned_at` is when a row transitioned into `status='orphan'`.
+    created_at: datetime | None = None
+    orphaned_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
