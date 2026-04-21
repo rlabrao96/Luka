@@ -18,6 +18,7 @@ from jobs.tasks import (
     schedule_plaid_syncs,
     run_reconciliation_job,
 )
+from jobs.reconciliation_tick import reconciliation_tick_cron
 from modules.email.template_agent import run_template_agent
 
 
@@ -66,6 +67,7 @@ class SlowWorkerSettings:
     cron_jobs = [
         cron(run_reconciliation_job, hour=6, minute=0),  # 6am daily
         cron(run_template_agent, hour=2, minute=0),  # 2am daily — template generation
+        reconciliation_tick_cron,  # every 15 minutes — pending-tx reconciliation
     ]
     on_startup = startup
     on_shutdown = shutdown
