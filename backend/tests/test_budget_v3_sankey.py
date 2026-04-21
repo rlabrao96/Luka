@@ -181,17 +181,19 @@ class TestBuildHogarSankey:
             other_spent=Decimal("0"),
             income_category_order=["Sueldo", "Bonus"],
         )
-        allocation_ids = {
-            "meta_ahorro",
-            "gastos_fijos",
-            "cuotas",
-            "gasto_personal",
-            "disponible_hogar",
+        # Level-2 nodes: "bill" kind reserved for fixed committed outflows
+        # (gastos_fijos), rest carry the generic "allocation" kind.
+        expected_kind = {
+            "meta_ahorro": "allocation",
+            "gastos_fijos": "bill",
+            "cuotas": "allocation",
+            "gasto_personal": "allocation",
+            "disponible_hogar": "allocation",
         }
         for node in block.nodes:
-            if node.id in allocation_ids:
+            if node.id in expected_kind:
                 assert node.level == 2
-                assert node.kind == "allocation"
+                assert node.kind == expected_kind[node.id]
 
     def test_flow_conservation_each_intermediate(self):
         """Every non-source / non-terminal node: inflow == outflow == value."""
@@ -327,11 +329,16 @@ class TestBuildPersonalSankey:
         assert "meta_ahorro_personal" in node_ids
         assert "gastos_fijos_personal" in node_ids
         assert "disponible_personal" in node_ids
-        # Allocation nodes should be level=2, kind=allocation
-        for nid in ["meta_ahorro_personal", "gastos_fijos_personal", "disponible_personal"]:
+        # Level-2: "bill" for fixed committed outflows, "allocation" for the rest.
+        expected_kind = {
+            "meta_ahorro_personal": "allocation",
+            "gastos_fijos_personal": "bill",
+            "disponible_personal": "allocation",
+        }
+        for nid, want in expected_kind.items():
             n = next(node for node in block.nodes if node.id == nid)
             assert n.level == 2
-            assert n.kind == "allocation"
+            assert n.kind == want
 
     def test_flow_conservation(self):
         block = _build_personal_sankey(

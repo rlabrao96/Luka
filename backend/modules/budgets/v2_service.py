@@ -67,9 +67,9 @@ from modules.households.contribution_service import (
 )
 from modules.households.models import HouseholdMember
 from modules.subscriptions.read import (
-    get_household_known_bills,
-    get_user_known_bills,
-    get_user_shared_known_bills,
+    get_household_unpaid_known_bills,
+    get_user_shared_unpaid_known_bills,
+    get_user_unpaid_known_bills,
 )
 from modules.transactions.models import Transaction, TransactionSplit
 
@@ -124,15 +124,17 @@ async def _reimbursement_members_known_bills(
     db: AsyncSession,
     household_id: uuid.UUID,
     currency: str,
+    month: date,
 ) -> Decimal:
-    """Sum of SHARED known_bills for members in `reimbursement` mode.
+    """Sum of SHARED unpaid-this-month known_bills for members in `reimbursement`
+    mode.
 
     These bills don't hit the household pot — we subtract them from the
-    household known_bills sum in the household view. Only the SHARED bills
-    are counted because Task 6 made `get_household_known_bills` shared-only,
-    so we must subtract the same quantity (shared-only) for symmetry.
-    Personal bills of reimbursement members were never in the household
-    total and don't need to be subtracted.
+    household known_bills sum in the household view. We subtract
+    unpaid-this-month to stay symmetrical with the (now unpaid-adjusted)
+    household aggregate; otherwise the subtraction would remove scheduled
+    amounts from a total that only counted unpaid ones, dragging the
+    household figure below its true unpaid remainder.
     """
     rows = await db.execute(
         select(HouseholdMember.user_id).where(
@@ -143,7 +145,7 @@ async def _reimbursement_members_known_bills(
     )
     total = _ZERO
     for (user_id,) in rows:
-        total += await get_user_shared_known_bills(db, user_id, currency)
+        total += await get_user_shared_unpaid_known_bills(db, user_id, currency, month)
     return total
 
 
@@ -923,11 +925,17 @@ async def get_budget_v2(
         currencies_available = sorted(set(currencies_available) | {currency})
 
     # ---- known_bills -----------------------------------------------------
+    # "Unpaid-this-month" flavor: a subscription that's already been paid (a
+    # transaction matches its merchant_key with amount within ±10%) drops out
+    # of `known_bills` for this month. The subsequent Sankey flow then shows
+    # income = unpaid bills + actual spent, with no double-count of a bill
+    # payment showing up both as `Gastos fijos` and under the risk-category
+    # breakdown of `Disponible hogar`.
     if view == "personal":
-        known_bills = await get_user_known_bills(db, user_id, currency)
+        known_bills = await get_user_unpaid_known_bills(db, user_id, currency, month)
     else:
-        raw = await get_household_known_bills(db, household_id, currency)
-        reimb = await _reimbursement_members_known_bills(db, household_id, currency)
+        raw = await get_household_unpaid_known_bills(db, household_id, currency, month)
+        reimb = await _reimbursement_members_known_bills(db, household_id, currency, month)
         known_bills = raw - reimb
         if known_bills < _ZERO:
             known_bills = _ZERO
