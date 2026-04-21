@@ -242,6 +242,24 @@ async def get_user_unpaid_known_bills(
     return max(_ZERO, scheduled - paid)
 
 
+async def get_user_personal_unpaid_known_bills(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    currency: str,
+    month: date,
+) -> Decimal:
+    """Personal-split scheduled bills for the user minus those paid this month."""
+    scheduled = await _sum_user_bills_by_split_type(db, user_id, currency, "personal")
+    paid = await _paid_subscription_amounts_for_user(
+        db,
+        user_id=user_id,
+        currency=currency,
+        month=month,
+        split_type_filter="personal",
+    )
+    return max(_ZERO, scheduled - paid)
+
+
 async def get_user_shared_unpaid_known_bills(
     db: AsyncSession,
     user_id: uuid.UUID,

@@ -280,6 +280,7 @@ class TestBuildPersonalSankey:
         block = _build_personal_sankey(
             caller_sources={"Sueldo": Decimal("1000"), "Bonus": Decimal("200")},
             caller_other_income=Decimal("0"),
+            gastos_hogar=Decimal("0"),
             known_bills=Decimal("100"),
             cuotas_this_month=Decimal("0"),
             savings_target=Decimal("200"),
@@ -298,6 +299,7 @@ class TestBuildPersonalSankey:
         block = _build_personal_sankey(
             caller_sources={"Sueldo": Decimal("1000")},
             caller_other_income=Decimal("0"),
+            gastos_hogar=Decimal("0"),
             known_bills=Decimal("100"),
             cuotas_this_month=Decimal("0"),
             savings_target=Decimal("200"),
@@ -316,6 +318,7 @@ class TestBuildPersonalSankey:
         block = _build_personal_sankey(
             caller_sources={"Sueldo": Decimal("1000")},
             caller_other_income=Decimal("0"),
+            gastos_hogar=Decimal("0"),
             known_bills=Decimal("100"),
             cuotas_this_month=Decimal("0"),
             savings_target=Decimal("200"),
@@ -344,6 +347,7 @@ class TestBuildPersonalSankey:
         block = _build_personal_sankey(
             caller_sources={"Sueldo": Decimal("1000")},
             caller_other_income=Decimal("0"),
+            gastos_hogar=Decimal("0"),
             known_bills=Decimal("100"),
             cuotas_this_month=Decimal("50"),
             savings_target=Decimal("200"),

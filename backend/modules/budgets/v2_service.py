@@ -68,8 +68,8 @@ from modules.households.contribution_service import (
 from modules.households.models import HouseholdMember
 from modules.subscriptions.read import (
     get_household_unpaid_known_bills,
+    get_user_personal_unpaid_known_bills,
     get_user_shared_unpaid_known_bills,
-    get_user_unpaid_known_bills,
 )
 from modules.transactions.models import Transaction, TransactionSplit
 
@@ -149,6 +149,80 @@ async def _reimbursement_members_known_bills(
     return total
 
 
+# ------------------------------------------------------- caller ratio share
+
+
+async def _caller_ratio_share(
+    db: AsyncSession,
+    *,
+    household_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> Decimal:
+    """Return the caller's share of shared outflows as a fraction in [0, 1].
+
+    Maps `households.split_ratio[i]` (percentages summing to 100) to the i-th
+    active member in `joined_at ASC` order, matching the settlement logic in
+    `modules.households.service.calculate_settlement`. Falls back to 1/N equal
+    split if the ratio is missing or shorter than the active member list.
+    """
+    ratio_row = await db.execute(
+        text("SELECT split_ratio FROM households WHERE id = :id"),
+        {"id": str(household_id)},
+    )
+    split_ratio = ratio_row.scalar_one_or_none() or []
+
+    member_rows = await db.execute(
+        text(
+            """
+            SELECT user_id FROM household_members
+            WHERE household_id = :hid AND left_at IS NULL
+            ORDER BY joined_at ASC
+            """
+        ),
+        {"hid": str(household_id)},
+    )
+    members = [r[0] for r in member_rows]
+    if not members:
+        return _ZERO
+
+    try:
+        idx = members.index(user_id)
+    except ValueError:
+        return _ZERO
+
+    if idx < len(split_ratio) and sum(split_ratio) > 0:
+        return Decimal(split_ratio[idx]) / Decimal(sum(split_ratio))
+    return Decimal(1) / Decimal(len(members))
+
+
+async def _household_shared_outflows(
+    db: AsyncSession,
+    *,
+    household_id: uuid.UUID,
+    month: date,
+    currency: str,
+) -> Decimal:
+    """Household's total shared outflows this month = shared MTD expenses
+    (absolute) + household unpaid shared bills. Drives the personal view's
+    `Gastos del hogar` bucket via the caller's ratio."""
+    first_day, first_day_next, _ = _month_bounds_datetime(month)
+    row = await db.execute(
+        select(func.coalesce(func.sum(func.abs(Transaction.amount)), 0))
+        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .where(
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "expense",
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
+            TransactionSplit.split_type == "shared",
+        )
+    )
+    shared_spent = Decimal(str(row.scalar() or 0))
+    unpaid_bills = await get_household_unpaid_known_bills(db, household_id, currency, month)
+    return shared_spent + unpaid_bills
+
+
 # ---------------------------------------------------------------- spent
 
 
@@ -163,26 +237,30 @@ async def _fetch_month_transactions(
 ) -> list[Transaction]:
     """Pull expense transactions for the month in one query.
 
-    Household view: only shared splits. Personal view: all of the caller's
-    expenses regardless of split (matches the "my personal spending" intent).
-    Mixing scopes is what produced the Sankey/desglose mismatch users saw —
-    household breakdown counted personal expenses that never belong to the
-    household pot.
+    Both views filter by effective split_type: household → shared, personal →
+    personal. This keeps the two Sankeys additive — a shared expense belongs
+    to Hogar and to the personal view's `Gastos del hogar` bucket (via the
+    ratio), never to the personal Level-3 category breakdown.
     """
     first_day, first_day_next, _ = _month_bounds_datetime(month)
-    base = select(Transaction).where(
-        Transaction.household_id == household_id,
-        Transaction.currency == currency,
-        Transaction.transaction_type == "expense",
-        Transaction.transaction_date >= first_day,
-        Transaction.transaction_date < first_day_next,
+    base = (
+        select(Transaction)
+        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .where(
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "expense",
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
+        )
     )
     if view == "personal":
-        base = base.where(Transaction.user_id == user_id)
-    else:
-        base = base.join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id).where(
-            TransactionSplit.split_type == "shared"
+        base = base.where(
+            Transaction.user_id == user_id,
+            TransactionSplit.split_type == "personal",
         )
+    else:
+        base = base.where(TransactionSplit.split_type == "shared")
     r = await db.execute(base)
     return list(r.scalars().all())
 
@@ -213,22 +291,27 @@ async def _three_month_category_stats(
         # Luka stores expense amounts as negative Decimals; take abs() so
         # category totals come out positive and downstream share×CV math
         # (mean/std/cap) works correctly.
-        q = select(
-            Transaction.category,
-            func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
-        ).where(
-            Transaction.household_id == household_id,
-            Transaction.currency == currency,
-            Transaction.transaction_type == "expense",
-            Transaction.transaction_date >= first_day,
-            Transaction.transaction_date < first_day_next,
+        q = (
+            select(
+                Transaction.category,
+                func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
+            )
+            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
+                Transaction.household_id == household_id,
+                Transaction.currency == currency,
+                Transaction.transaction_type == "expense",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+            )
         )
         if view == "personal":
-            q = q.where(Transaction.user_id == user_id)
-        else:
-            q = q.join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id).where(
-                TransactionSplit.split_type == "shared"
+            q = q.where(
+                Transaction.user_id == user_id,
+                TransactionSplit.split_type == "personal",
             )
+        else:
+            q = q.where(TransactionSplit.split_type == "shared")
         q = q.group_by(Transaction.category)
 
         rows = await db.execute(q)
@@ -279,19 +362,24 @@ async def _daily_burn_14d(
     today = datetime.now(timezone.utc)
     fourteen_days_ago = today - timedelta(days=14)
 
-    q = select(Transaction).where(
-        Transaction.household_id == household_id,
-        Transaction.currency == currency,
-        Transaction.transaction_type == "expense",
-        Transaction.transaction_date >= fourteen_days_ago,
-        Transaction.transaction_date <= today,
+    q = (
+        select(Transaction)
+        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .where(
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "expense",
+            Transaction.transaction_date >= fourteen_days_ago,
+            Transaction.transaction_date <= today,
+        )
     )
     if view == "personal":
-        q = q.where(Transaction.user_id == user_id)
-    else:
-        q = q.join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id).where(
-            TransactionSplit.split_type == "shared"
+        q = q.where(
+            Transaction.user_id == user_id,
+            TransactionSplit.split_type == "personal",
         )
+    else:
+        q = q.where(TransactionSplit.split_type == "shared")
     rows = await db.execute(q)
     txns = list(rows.scalars().all())
 
@@ -697,6 +785,7 @@ def _build_personal_sankey(
     *,
     caller_sources: dict[str, Decimal],
     caller_other_income: Decimal,
+    gastos_hogar: Decimal,
     known_bills: Decimal,
     cuotas_this_month: Decimal,
     savings_target: Decimal,
@@ -728,13 +817,14 @@ def _build_personal_sankey(
     # the shortfall (`ot_*`) — the hub absorbs all sources and re-emits to
     # allocations as a single link each.
     remaining = income_total
+    _, ot_gh, remaining = _pay_first_fit(target=gastos_hogar, remaining_income=remaining)
     _, ot_kb, remaining = _pay_first_fit(target=known_bills, remaining_income=remaining)
     _, ot_cu, remaining = _pay_first_fit(target=cuotas_this_month, remaining_income=remaining)
     _, ot_st, remaining = _pay_first_fit(target=savings_target, remaining_income=remaining)
     _, ot_sp, remaining = _pay_first_fit(target=sankey_spendable, remaining_income=remaining)
 
-    otras_fuentes_total = ot_kb + ot_cu + ot_st + ot_sp
-    hub_value = income_total + otras_fuentes_total
+    deficit_total = ot_gh + ot_kb + ot_cu + ot_st + ot_sp
+    hub_value = income_total + deficit_total
 
     nodes: list[SankeyNode] = []
 
@@ -761,14 +851,14 @@ def _build_personal_sankey(
                 kind="source",
             )
         )
-    if otras_fuentes_total > _ZERO:
+    if deficit_total > _ZERO:
         nodes.append(
             SankeyNode(
-                id="otras_fuentes",
-                label="Otras fuentes",
-                value=otras_fuentes_total,
+                id="deficit_personal",
+                label="Ingresos por cubrir",
+                value=deficit_total,
                 level=0,
-                kind="source",
+                kind="deficit",
             )
         )
 
@@ -792,6 +882,16 @@ def _build_personal_sankey(
                 id="disponible_personal",
                 label="Disponible personal",
                 value=sankey_spendable,
+                level=2,
+                kind="allocation",
+            )
+        )
+    if gastos_hogar > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="gastos_hogar_personal",
+                label="Gastos del hogar",
+                value=gastos_hogar,
                 level=2,
                 kind="allocation",
             )
@@ -878,9 +978,10 @@ def _build_personal_sankey(
         amount = caller_sources.get(category, _ZERO)
         _emit(f"src_{_slugify(category)}", "ingresos_personales", amount)
     _emit("src_otros_ingresos", "ingresos_personales", caller_other_income)
-    _emit("otras_fuentes", "ingresos_personales", otras_fuentes_total)
+    _emit("deficit_personal", "ingresos_personales", deficit_total)
 
     # Level 1 -> Level 2
+    _emit("ingresos_personales", "gastos_hogar_personal", gastos_hogar)
     _emit("ingresos_personales", "gastos_fijos_personal", known_bills)
     _emit("ingresos_personales", "cuotas_personal", cuotas_this_month)
     _emit("ingresos_personales", "meta_ahorro_personal", savings_target)
@@ -952,7 +1053,7 @@ async def get_budget_v2(
     # payment showing up both as `Gastos fijos` and under the risk-category
     # breakdown of `Disponible hogar`.
     if view == "personal":
-        known_bills = await get_user_unpaid_known_bills(db, user_id, currency, month)
+        known_bills = await get_user_personal_unpaid_known_bills(db, user_id, currency, month)
     else:
         raw = await get_household_unpaid_known_bills(db, household_id, currency, month)
         reimb = await _reimbursement_members_known_bills(db, household_id, currency, month)
@@ -1050,13 +1151,21 @@ async def get_budget_v2(
         personal_caller_sources = {}
         personal_caller_other_income = _ZERO
 
-    # ---- personal allocation (household view only) -----------------------
+    # ---- personal allocation (household view) / gastos del hogar (personal view) ---
+    # Both get passed into `spendable_ceiling` via `personal_allocation` — they
+    # play the same role (a fixed outflow before discretionary spend).
     if view == "household":
         personal_allocation_amount = await get_household_personal_allocation(
             db, household_id=household_id, currency=currency
         )
+        gastos_hogar_personal = _ZERO
     else:
-        personal_allocation_amount = _ZERO  # not used in personal sankey
+        personal_allocation_amount = _ZERO
+        caller_ratio = await _caller_ratio_share(db, household_id=household_id, user_id=user_id)
+        shared_outflows = await _household_shared_outflows(
+            db, household_id=household_id, month=month, currency=currency
+        )
+        gastos_hogar_personal = (shared_outflows * caller_ratio).quantize(Decimal("0.01"))
 
     # ---- spent (excluding savings-equivalent categories) ----------------
     month_txns = await _fetch_month_transactions(
@@ -1087,7 +1196,7 @@ async def get_budget_v2(
         known_bills=known_bills,
         cuotas_this_month=cuotas_block.this_month,
         savings_target=savings_target_amount,
-        personal_allocation=personal_allocation_amount,
+        personal_allocation=personal_allocation_amount + gastos_hogar_personal,
     )
     spendable_remaining = spendable_amount - mtd_spent
     if spendable_remaining < _ZERO:
@@ -1210,6 +1319,7 @@ async def get_budget_v2(
         sankey = _build_personal_sankey(
             caller_sources=personal_caller_sources,
             caller_other_income=personal_caller_other_income,
+            gastos_hogar=gastos_hogar_personal,
             known_bills=known_bills,
             cuotas_this_month=cuotas_block.this_month,
             savings_target=savings_target_amount,
