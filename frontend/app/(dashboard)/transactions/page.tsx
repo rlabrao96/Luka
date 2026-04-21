@@ -385,6 +385,7 @@ export default function TransactionsPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedBank, setSelectedBank] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
   const [onlyUncategorized, setOnlyUncategorized] = useState(false);
   const [pageSize, setPageSize] = useState<10 | 30 | 100>(30);
   const [page, setPage] = useState(1);
@@ -436,6 +437,7 @@ export default function TransactionsPage() {
     }
     if (selectedMonth !== "all") result = result.filter((t) => getMonthKey(t.transaction_date) === selectedMonth);
     if (selectedBank !== "all") result = result.filter((t) => t.bank_name === selectedBank);
+    if (selectedType !== "all") result = result.filter((t) => t.transaction_type === selectedType);
     if (onlyUncategorized) {
       result = result.filter((t) => !t.category);
     } else if (selectedCategory !== "all") {
@@ -469,17 +471,17 @@ export default function TransactionsPage() {
     });
   }, [myTxns, accountTypeMap]);
 
-  useEffect(() => { setPage(1); }, [selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search, selectedCurrency]);
+  useEffect(() => { setPage(1); }, [selectedMonth, selectedBank, selectedCategory, selectedType, onlyUncategorized, search, selectedCurrency]);
 
-  const filteredMine = useMemo(() => applyFilters(personalTxns), [personalTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search, selectedCurrency]);
-  const filteredShared = useMemo(() => applyFilters(sharedTxns), [sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search, selectedCurrency]);
+  const filteredMine = useMemo(() => applyFilters(personalTxns), [personalTxns, selectedMonth, selectedBank, selectedCategory, selectedType, onlyUncategorized, search, selectedCurrency]);
+  const filteredShared = useMemo(() => applyFilters(sharedTxns), [sharedTxns, selectedMonth, selectedBank, selectedCategory, selectedType, onlyUncategorized, search, selectedCurrency]);
   const filteredAll = useMemo(() => {
     const combined = [...myTxns, ...sharedTxns];
     // dedupe by id
     const seen = new Set<string>();
     const unique = combined.filter((t) => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
     return applyFilters(unique).sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
-  }, [myTxns, sharedTxns, selectedMonth, selectedBank, selectedCategory, onlyUncategorized, search, selectedCurrency]);
+  }, [myTxns, sharedTxns, selectedMonth, selectedBank, selectedCategory, selectedType, onlyUncategorized, search, selectedCurrency]);
 
   const selectClass =
     "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
@@ -501,18 +503,31 @@ export default function TransactionsPage() {
           selectedMonth !== "all" ? 1 : 0,
           selectedBank !== "all" ? 1 : 0,
           selectedCategory !== "all" ? 1 : 0,
+          selectedType !== "all" ? 1 : 0,
           onlyUncategorized ? 1 : 0,
         ].reduce((a, b) => a + b, 0)}
         onClear={() => {
           setSelectedMonth("all");
           setSelectedBank("all");
           setSelectedCategory("all");
+          setSelectedType("all");
           setOnlyUncategorized(false);
           setSearch("");
         }}
         searchValue={search}
         onSearchChange={setSearch}
       >
+        {/* Type dropdown */}
+        <div className="relative">
+          <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className={selectClass}>
+            <option value="all">Tipos de movimiento</option>
+            <option value="expense">Gasto</option>
+            <option value="income">Ingreso</option>
+            <option value="transfer">Transferencia entre cuentas</option>
+          </select>
+          <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+
         {/* Month dropdown */}
         <div className="relative">
           <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className={selectClass}>
