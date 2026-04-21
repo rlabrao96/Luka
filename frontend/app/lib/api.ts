@@ -201,85 +201,6 @@ export interface CategoryBudgetResponse {
   budgets: CategoryBudgetItem[];
 }
 
-// Pace chart
-export interface PacePoint {
-  day: number;
-  cumulative_spent: number;
-}
-
-export interface PaceBlock {
-  spendable_budget: number;
-  daily_points: PacePoint[];
-  today_day: number;
-  days_in_month: number;
-  pace_at_today: number;
-  actual_at_today: number;
-  delta: number;
-  on_track: boolean;
-}
-
-// Waterfall budget
-export interface PersonalBreakdown {
-  household: number;
-  personal: number;
-}
-
-export interface PersonalBlock {
-  ceiling: number;
-  ceiling_clamped: boolean;
-  spent: number;
-  breakdown: PersonalBreakdown;
-  available: number;
-  percent_used: number | null;
-}
-
-export interface HouseholdBlock {
-  deposited: number | null;
-  spent: number;
-  available: number | null;
-  percent_used: number | null;
-}
-
-export interface PersonalBudgetResponse {
-  mode: "single" | "waterfall";
-  month: string;
-  income: number;
-  personal: PersonalBlock;
-  pace: PaceBlock;
-  household?: HouseholdBlock;
-}
-
-// Allocation
-export interface AllocationBlock {
-  hogar_pct: number;
-  ahorro_pct: number;
-  personal_pct: number;
-  is_default: boolean;
-}
-
-export interface AllocationSuggestion {
-  hogar_pct: number;
-  ahorro_pct: number;
-  personal_pct: number;
-  label?: string;
-}
-
-export interface AllocationResponse {
-  month: string;
-  allocation: AllocationBlock;
-  suggestions: {
-    historical: AllocationSuggestion | null;
-    recommended: AllocationSuggestion;
-  };
-}
-
-export interface SetAllocationPayload {
-  month: string; // YYYY-MM-DD
-  hogar_pct: number;
-  ahorro_pct: number;
-  personal_pct: number;
-}
-
 export interface UpdateBankAccountPayload {
   account_type?: "personal" | "partner" | "joint";
   is_active?: boolean;
@@ -637,28 +558,6 @@ export const api = {
       body: JSON.stringify({ split_type: splitType }),
     }),
 
-  getPersonalBudget: (householdId: string, month?: string, currency?: string) => {
-    const parts: string[] = [];
-    if (month) parts.push(`month=${month}`);
-    if (currency) parts.push(`currency=${currency}`);
-    const qs = parts.length ? `?${parts.join("&")}` : "";
-    return apiFetch<PersonalBudgetResponse>(`/budgets/personal/${householdId}${qs}`);
-  },
-
-  getAllocation: (householdId: string, month?: string, currency?: string) => {
-    const parts: string[] = [];
-    if (month) parts.push(`month=${month}`);
-    if (currency) parts.push(`currency=${currency}`);
-    const qs = parts.length ? `?${parts.join("&")}` : "";
-    return apiFetch<AllocationResponse>(`/budgets/allocation/${householdId}${qs}`);
-  },
-
-  setAllocation: (householdId: string, payload: SetAllocationPayload) =>
-    apiFetch<AllocationBlock>(`/budgets/allocation/${householdId}`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-
   // --- Luka Connect ---
   connectBank: (payload: ConnectBankPayload) =>
     apiFetch("/bank-connect/connect", { method: "POST", body: JSON.stringify(payload) }),
@@ -892,23 +791,34 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  // --- Cuotas (Chunk E) ---
-  createCuota: (payload: {
-    merchant_name: string;
-    total_amount: number;
-    currency: "CLP" | "USD";
-    installments_total: number;
-    first_cuota_date: string;
-    split_type?: "personal" | "shared";
-    origin_transaction_id?: string | null;
-  }) =>
-    apiFetch<{ id: string }>("/cuotas", {
+  // --- Cuotas ---
+  createCuota: (
+    householdId: string,
+    payload: {
+      merchant_name: string;
+      total_amount: number;
+      currency: string;
+      installments_total: number;
+      first_cuota_date: string;
+      split_type?: "personal" | "shared";
+      origin_transaction_id?: string | null;
+    },
+  ) =>
+    apiFetch<{ id: string }>(`/cuotas?household_id=${householdId}`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
 
-  listCuotas: (scope: "personal" | "household" = "personal") =>
-    apiFetch<{ cuotas: unknown[] }>(`/cuotas?scope=${scope}`),
+  listCuotas: (
+    scope: "personal" | "household" = "personal",
+    householdId?: string,
+  ) => {
+    const qs =
+      scope === "household" && householdId
+        ? `?scope=household&household_id=${householdId}`
+        : `?scope=${scope}`;
+    return apiFetch<{ cuotas: unknown[] }>(`/cuotas${qs}`);
+  },
 
   cancelCuota: (cuotaId: string) =>
     apiFetch<{ ok: boolean }>(`/cuotas/${cuotaId}`, { method: "DELETE" }),

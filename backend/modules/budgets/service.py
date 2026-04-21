@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timezone
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from modules.households.models import HouseholdBudget, BankAccount
@@ -12,10 +13,9 @@ async def get_budget_status(
     month: date,
     currency: str | None = None,
 ) -> dict:
-    # Sum all budgets for joint accounts this month.
     # Budgets are per bank_account, and each account has a single currency.
-    # When a currency is supplied, restrict both the budgeted and spent totals
-    # to that currency — mixing CLP and USD produces meaningless totals.
+    # When a currency is supplied, restrict both budgeted and spent totals to
+    # that currency — mixing CLP and USD produces meaningless totals.
     budget_query = (
         select(func.sum(HouseholdBudget.budgeted))
         .join(BankAccount, BankAccount.id == HouseholdBudget.bank_account_id)
@@ -30,17 +30,19 @@ async def get_budget_status(
     budget_result = await db.execute(budget_query)
     total_budgeted = float(budget_result.scalar() or 0)
 
-    # Sum all shared spending this month (range filter avoids date_trunc type issues)
     first_day = datetime(month.year, month.month, 1, tzinfo=timezone.utc)
     next_month_year = month.year + 1 if month.month == 12 else month.year
     next_month_num = 1 if month.month == 12 else month.month + 1
     first_day_next = datetime(next_month_year, next_month_num, 1, tzinfo=timezone.utc)
 
+    # Expenses are stored negative per Luka convention. Sum abs() of expense
+    # amounts only — income and transfers must not count as "spent".
     spent_query = (
-        select(func.sum(Transaction.amount))
+        select(func.coalesce(func.sum(func.abs(Transaction.amount)), 0))
         .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .where(
             Transaction.household_id == household_id,
+            Transaction.transaction_type == "expense",
             TransactionSplit.split_type == "shared",
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,
@@ -68,7 +70,19 @@ async def set_monthly_budget(
     month: date,
     amount: float,
 ) -> HouseholdBudget:
-    # Upsert: update if exists, insert if not
+    # Authorization: the caller's membership in household_id is already
+    # verified by the router. Here we also verify the target bank account
+    # belongs to that same household — otherwise any member could write a
+    # budget row pointing at another household's account (IDOR on write).
+    acc_check = await db.execute(
+        select(BankAccount.id).where(
+            BankAccount.id == bank_account_id,
+            BankAccount.household_id == household_id,
+        )
+    )
+    if acc_check.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="bank account not in this household")
+
     result = await db.execute(
         select(HouseholdBudget).where(
             HouseholdBudget.household_id == household_id,

@@ -22,7 +22,7 @@ class CuotaCreateRequest(BaseModel):
 
     merchant_name: str = Field(min_length=1, max_length=255)
     total_amount: Decimal = Field(gt=0)
-    currency: str = Field(pattern="^(CLP|USD)$")
+    currency: str = Field(pattern="^(CLP|USD|COP|MXN|PEN|BRL)$")
     installments_total: int = Field(gt=0)
     first_cuota_date: date
     split_type: str = Field(default="personal", pattern="^(personal|shared)$")

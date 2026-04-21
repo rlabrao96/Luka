@@ -165,7 +165,10 @@ export function PairedTransactionCard({
       >
         {/* Icon */}
         <div
-          className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0 bg-slate-100 text-slate-500"
+          className={cn(
+            "hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0",
+            pairType === "transfer" ? "bg-blue-50 text-blue-500" : "bg-slate-100 text-slate-500"
+          )}
           aria-hidden="true"
         >
           {pairType === "transfer" ? (

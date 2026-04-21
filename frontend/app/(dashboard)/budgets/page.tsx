@@ -21,6 +21,26 @@ function monthParam(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+// LATAM-first locale picker. CLAUDE.md forbids hardcoding es-CL; we derive
+// from the user's preferred currency since `country` isn't on the /me payload.
+function localeFor(currency: string | undefined): string {
+  switch (currency) {
+    case "BRL":
+      return "pt-BR";
+    case "USD":
+      return "en-US";
+    case "MXN":
+      return "es-MX";
+    case "COP":
+      return "es-CO";
+    case "PEN":
+      return "es-PE";
+    case "CLP":
+    default:
+      return "es-CL";
+  }
+}
+
 function SectionSkeleton() {
   return (
     <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-[var(--shadow-card)]">
@@ -49,8 +69,16 @@ function SectionFlowBody({
 }) {
   const spendable = Number(data.spendable.amount);
   const spent = Number(data.spendable.spent);
-  const income = Number(data.sankey.nodes.find((n) => n.id === "income")?.value ?? 0);
-  const knownBillsNode = data.sankey.nodes.find((n) => n.id === "known_bills");
+  // v3 emits different node ids per view (ingresos_hogar / ingresos_personales,
+  // gastos_fijos / gastos_fijos_personal). Look up both shapes so the overspent
+  // banner works for either household or personal response.
+  const incomeNode = data.sankey.nodes.find(
+    (n) => n.id === "ingresos_hogar" || n.id === "ingresos_personales" || n.kind === "hub"
+  );
+  const income = Number(incomeNode?.value ?? 0);
+  const knownBillsNode = data.sankey.nodes.find(
+    (n) => n.id === "gastos_fijos" || n.id === "gastos_fijos_personal"
+  );
   const knownBills = Number(knownBillsNode?.value ?? 0);
   const cuotas = Number(data.cuotas.this_month);
   const savingsTarget = Number(data.savings_target.target);
@@ -256,7 +284,10 @@ export default function BudgetsPage() {
           <ChevronLeft size={16} className="text-slate-600" />
         </button>
         <span className="text-sm font-semibold text-luka-dark capitalize min-w-[140px] text-center">
-          {selectedMonth.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+          {selectedMonth.toLocaleDateString(localeFor(me?.preferred_currency), {
+            month: "long",
+            year: "numeric",
+          })}
         </span>
         <button
           type="button"

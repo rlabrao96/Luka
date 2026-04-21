@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.budgets.cuota_models import CuotaPurchase
+from modules.transactions.models import Transaction
 
 
 def _month_bounds(month: date) -> tuple[date, date]:
@@ -145,6 +146,19 @@ async def create_cuota(
         raise ValueError("installments_total must be positive")
     if total_amount <= 0:
         raise ValueError("total_amount must be positive")
+
+    # IDOR guard: if the client supplied an origin transaction, verify it
+    # belongs to the caller. Otherwise a user could attach their installment
+    # record to any transaction UUID they can guess.
+    if origin_transaction_id is not None:
+        tx_check = await db.execute(
+            select(Transaction.id).where(
+                Transaction.id == origin_transaction_id,
+                Transaction.user_id == user_id,
+            )
+        )
+        if tx_check.scalar_one_or_none() is None:
+            raise ValueError("origin_transaction_id not found for this user")
 
     monthly_amount = (total_amount / Decimal(installments_total)).quantize(Decimal("0.01"))
     last_cuota_date = _add_months(first_cuota_date, installments_total - 1)

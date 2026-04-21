@@ -122,14 +122,16 @@ export function TransactionCard({
               <span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
                 {bankLabel(txn)}
               </span>
-              {compact ? (
-                <span className={cn("text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded text-center truncate max-w-[80px] sm:max-w-[90px]", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
-                  {category ?? "Sin categoría"}
-                </span>
-              ) : (
-                <button onClick={() => onCategoryTap?.(txn)} className={cn("text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded text-center truncate max-w-[80px] sm:max-w-[90px] cursor-pointer hover:opacity-80", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
-                  {category ?? "Sin categoría"}
-                </button>
+              {!txn.transfer_pair_id && (
+                compact ? (
+                  <span className={cn("text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded text-center truncate max-w-[80px] sm:max-w-[90px]", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
+                    {category ?? "Sin categoría"}
+                  </span>
+                ) : (
+                  <button onClick={() => onCategoryTap?.(txn)} className={cn("text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded text-center truncate max-w-[80px] sm:max-w-[90px] cursor-pointer hover:opacity-80", category ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600")}>
+                    {category ?? "Sin categoría"}
+                  </button>
+                )
               )}
             </div>
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">

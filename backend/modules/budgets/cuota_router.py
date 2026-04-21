@@ -1,11 +1,11 @@
-"""REST surface for cuotas (installment purchases) — Chunk E.
+"""REST surface for cuotas (installment purchases).
 
-- POST   /cuotas           create a cuota (from a prefilled dialog)
-- GET    /cuotas?scope=... list active cuotas, scoped personal|household
-- DELETE /cuotas/{id}      cancel a cuota (owner only)
+- POST   /cuotas                  create a cuota (from a prefilled dialog)
+- GET    /cuotas?scope=...        list active cuotas, scoped personal|household
+- DELETE /cuotas/{id}             cancel a cuota (owner only)
 
-All handlers assume the user belongs to exactly one active household; the
-`_user_active_household_id` helper returns the first active membership row.
+Household-scoped operations require an explicit `household_id` so multi-
+household users never have their data silently landed in the wrong group.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -25,26 +24,9 @@ from modules.budgets.cuota_schemas import (
     CuotaListResponse,
     CuotaResponse,
 )
-from modules.households.models import HouseholdMember
+from modules.households.auth import require_membership
 
 router = APIRouter(prefix="/cuotas", tags=["cuotas"])
-
-
-async def _user_active_household_id(db: AsyncSession, user_id: uuid.UUID) -> uuid.UUID:
-    """Return the first active household_id for the current user.
-
-    Raises 404 if the user has no active membership.
-    """
-    res = await db.execute(
-        select(HouseholdMember.household_id).where(
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
-    hh = res.scalars().first()
-    if hh is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no active household")
-    return hh
 
 
 @router.post(
@@ -54,10 +36,11 @@ async def _user_active_household_id(db: AsyncSession, user_id: uuid.UUID) -> uui
 )
 async def post_cuota(
     payload: CuotaCreateRequest,
+    household_id: uuid.UUID = Query(..., description="Target household for this cuota"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CuotaResponse:
-    household_id = await _user_active_household_id(db, current_user.id)
+    await require_membership(household_id, current_user.id, db)
     try:
         cuota = await cuota_service.create_cuota(
             db,
@@ -81,6 +64,10 @@ async def post_cuota(
 @router.get("", response_model=CuotaListResponse)
 async def get_cuotas(
     scope: str = Query(default="personal", pattern="^(personal|household)$"),
+    household_id: uuid.UUID | None = Query(
+        default=None,
+        description="Required when scope='household'",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CuotaListResponse:
@@ -89,7 +76,12 @@ async def get_cuotas(
             db, scope="personal", user_id=current_user.id
         )
     else:
-        household_id = await _user_active_household_id(db, current_user.id)
+        if household_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="household_id is required when scope='household'",
+            )
+        await require_membership(household_id, current_user.id, db)
         cuotas = await cuota_service.list_active_cuotas(
             db, scope="household", household_id=household_id
         )
