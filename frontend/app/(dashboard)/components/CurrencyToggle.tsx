@@ -42,11 +42,6 @@ export function CurrencyToggle({
             }`}
           >
             {c.currency_code}
-            {c.is_primary && (
-              <span aria-label="Moneda principal" title="Moneda principal" className="ml-1">
-                ★
-              </span>
-            )}
           </button>
         );
       })}

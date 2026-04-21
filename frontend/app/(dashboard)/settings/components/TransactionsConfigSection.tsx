@@ -61,7 +61,7 @@ export function TransactionsConfigSection({
         >
           {SUPPORTED_CURRENCIES.map((c) => (
             <option key={c.code} value={c.code}>
-              ★ {c.code} — {c.name}
+              {c.code} — {c.name}
             </option>
           ))}
         </select>
@@ -70,7 +70,7 @@ export function TransactionsConfigSection({
             ? "Guardado"
             : mutation.isPending
               ? "Guardando..."
-              : "Se marca con ★ y se usa como moneda por defecto en toda la app"}
+              : "Se usa como moneda por defecto en toda la app"}
         </p>
         {mutation.isError && (
           <p className="text-xs text-red-500">Error al guardar. Intenta de nuevo.</p>
@@ -94,15 +94,6 @@ export function TransactionsConfigSection({
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700"
               >
                 {c.currency_code}
-                {c.is_primary && (
-                  <span
-                    aria-label="Moneda principal"
-                    title="Moneda principal"
-                    className="text-[9px] opacity-60 font-bold"
-                  >
-                    ★
-                  </span>
-                )}
                 {canRemove && !c.is_primary && (
                   <button
                     type="button"
