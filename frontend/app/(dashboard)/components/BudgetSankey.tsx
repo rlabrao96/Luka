@@ -292,9 +292,14 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
               // (shortest path from a source). The default `justify` pushes
               // ALL terminal nodes to the rightmost column — which dragged
               // `gastos_fijos` / `cuotas` (level-2 terminals) across the
-              // chart alongside the level-3 breakdown. With `left`, they sit
-              // in the same column as `disponible_hogar`.
+              // chart alongside the level-3 breakdown.
               align="left"
+              // Recharts re-sorts nodes within each column by ascending Y on
+              // every relaxation iteration when `sort=true` (the default),
+              // which overrides our backend emission order. `sort=false`
+              // keeps the order as emitted — the Level-3 builder emits
+              // `spent_remaining` first so "Aún disponible" pins to the top.
+              sort={false}
               node={nodeRenderer as unknown as undefined}
               link={{ stroke: "#CBD5E1", strokeOpacity: 0.35 }}
             >
