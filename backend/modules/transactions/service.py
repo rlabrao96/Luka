@@ -27,7 +27,7 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
         .where(
             Transaction.user_id == user_id,
             Transaction.transaction_date >= since,
-            Transaction.status != "pending",
+            Transaction.status.notin_(["pending", "orphan"]),
         )
         .order_by(Transaction.transaction_date.desc())
     )
@@ -90,6 +90,9 @@ async def get_monthly_summary(
             WHERE t.user_id = :user_id
               AND t.household_id = :household_id
               AND ts.split_type = 'personal'
+              AND t.status NOT IN ('pending', 'orphan')
+              AND t.transfer_pair_id IS NULL
+              AND t.refund_pair_id IS NULL
               {currency_clause}
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
         ),
@@ -102,6 +105,9 @@ async def get_monthly_summary(
             JOIN bank_accounts ba ON ba.id = t.bank_account_id AND ba.is_active = TRUE
             WHERE t.household_id = :household_id
               AND ts.split_type = 'shared'
+              AND t.status NOT IN ('pending', 'orphan')
+              AND t.transfer_pair_id IS NULL
+              AND t.refund_pair_id IS NULL
               {currency_clause}
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
         )
@@ -145,6 +151,7 @@ async def get_shared_transactions(
             Transaction.household_id == household_id,
             TransactionSplit.split_type == "shared",
             Transaction.transaction_date >= since,
+            Transaction.status.notin_(["pending", "orphan"]),
         )
         .order_by(Transaction.transaction_date.desc())
     )
