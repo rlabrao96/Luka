@@ -9,11 +9,13 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from core.security import get_current_user
 from modules.auth.models import User
+from modules.budgets.user_budget_settings_models import UserBudgetSettings
 from modules.budgets.user_budget_settings_service import (
     get_or_create,
     update_payday,
@@ -24,12 +26,16 @@ from modules.budgets.user_budget_settings_service import (
 router = APIRouter(prefix="/settings/budget", tags=["settings"])
 
 
+_CURRENCY_PATTERN = "^(CLP|USD|COP|MXN|PEN|BRL)$"
+_AMOUNT_BOUNDS = {"ge": 0, "le": 1_000_000_000}
+
+
 class BudgetSettingsRequest(BaseModel):
-    savings_target_amount: Decimal | None = None
-    savings_target_currency: str | None = Field(default=None, pattern="^(CLP|USD)$")
+    savings_target_amount: Decimal | None = Field(default=None, **_AMOUNT_BOUNDS)
+    savings_target_currency: str | None = Field(default=None, pattern=_CURRENCY_PATTERN)
     payday_day_of_month: int | None = None
-    personal_allocation_amount: Decimal | None = None
-    personal_allocation_currency: str | None = Field(default=None, pattern="^(CLP|USD)$")
+    personal_allocation_amount: Decimal | None = Field(default=None, **_AMOUNT_BOUNDS)
+    personal_allocation_currency: str | None = Field(default=None, pattern=_CURRENCY_PATTERN)
 
 
 class BudgetSettingsResponse(BaseModel):
@@ -45,8 +51,22 @@ async def get_budget_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    row = await get_or_create(db, user_id=current_user.id)
-    await db.commit()
+    # Read-only: don't insert an empty user_budget_settings row on first read.
+    # The PATCH path creates the row via get_or_create when the user actually
+    # saves something. TanStack Query hits this often (page load / refocus);
+    # creating a row each time was write-amplification with no benefit.
+    res = await db.execute(
+        select(UserBudgetSettings).where(UserBudgetSettings.user_id == current_user.id)
+    )
+    row = res.scalar_one_or_none()
+    if row is None:
+        return BudgetSettingsResponse(
+            savings_target_amount=None,
+            savings_target_currency=None,
+            payday_day_of_month=None,
+            personal_allocation_amount=None,
+            personal_allocation_currency=None,
+        )
     return BudgetSettingsResponse(
         savings_target_amount=row.savings_target_amount,
         savings_target_currency=row.savings_target_currency,

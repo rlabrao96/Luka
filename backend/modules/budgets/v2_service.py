@@ -65,12 +65,7 @@ from modules.households.contribution_service import (
     HouseholdIncomeBreakdown,
     income_breakdown_for_household_view,
 )
-from modules.households.models import (
-    BankAccount,
-    Household,
-    HouseholdBudgetAllocation,
-    HouseholdMember,
-)
+from modules.households.models import HouseholdMember
 from modules.subscriptions.read import (
     get_household_known_bills,
     get_user_known_bills,
@@ -878,12 +873,8 @@ async def get_budget_v2(
             `preferred_currency`.
         view: "personal" | "household"
     """
-    assert view in ("personal", "household"), f"invalid view: {view!r}"
-
-    # ---- resolve currency -------------------------------------------------
-    if not currency:
-        user_row = await db.execute(select(User.preferred_currency).where(User.id == user_id))
-        currency = user_row.scalar_one_or_none() or "CLP"
+    if view not in ("personal", "household"):
+        raise ValueError(f"invalid view: {view!r}")
 
     # Force month=day-1 to match the DATE column convention.
     month = date(month.year, month.month, 1)
@@ -894,6 +885,17 @@ async def get_budget_v2(
     currencies_available = await _currencies_available(
         db, view=view, user_id=user_id, household_id=household_id
     )
+
+    # ---- resolve currency -------------------------------------------------
+    # Priority: explicit query param → user's preferred_currency → first
+    # currency with actual transactions → CLP as last resort. This keeps the
+    # endpoint working for LATAM countries (CO/MX/PE/BR/US) without forcing
+    # a Chilean default on everyone. See CLAUDE.md: never assume CLP.
+    if not currency:
+        user_row = await db.execute(select(User.preferred_currency).where(User.id == user_id))
+        preferred = user_row.scalar_one_or_none()
+        currency = preferred or (currencies_available[0] if currencies_available else "CLP")
+
     if currency not in currencies_available:
         currencies_available = sorted(set(currencies_available) | {currency})
 
@@ -1067,7 +1069,10 @@ async def get_budget_v2(
     for name, _score in ranked:
         mean, std, _n = hist_stats[name]
         spent_this_month = mtd_by_category.get(name, _ZERO)
-        cap = caps.get(name) or (mean + std)
+        # Explicit None check: a user who sets cap=0 means "don't spend here
+        # this month". Using `or` would treat Decimal("0") as falsy and
+        # silently fall back to the historical mean+std cap.
+        cap = caps[name] if name in caps else (mean + std)
         projected, projected_std = pace_forecast(
             spent_so_far=spent_this_month,
             current_day=today_day,
@@ -1159,10 +1164,3 @@ async def get_budget_v2(
         cuotas=cuotas_block,
         savings_target=savings_block,
     )
-
-
-# `HouseholdBudgetAllocation` import kept so future PRs can hook allocation-based
-# caps without touching the import block — Chunk F may use it. Silence lint.
-_ = HouseholdBudgetAllocation
-_ = BankAccount
-_ = Household

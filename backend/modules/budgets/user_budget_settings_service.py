@@ -19,7 +19,6 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.budgets.user_budget_settings_models import UserBudgetSettings
-from modules.households.models import HouseholdMember
 
 _ZERO = Decimal("0")
 
@@ -93,14 +92,25 @@ async def update_payday(
 
 
 async def get_savings_target(db: AsyncSession, *, user_id: uuid.UUID, currency: str) -> Decimal:
-    """Return the user's savings target in the requested currency, or 0 if mismatch."""
-    row = await get_or_create(db, user_id=user_id)
-    if row.savings_target_amount is None:
+    """Return the user's savings target in the requested currency, or 0 if mismatch.
+
+    Read-only — does NOT create a `user_budget_settings` row as a side effect.
+    """
+    res = await db.execute(
+        select(
+            UserBudgetSettings.savings_target_amount,
+            UserBudgetSettings.savings_target_currency,
+        ).where(UserBudgetSettings.user_id == user_id)
+    )
+    record = res.one_or_none()
+    if record is None:
         return _ZERO
-    # If the stored target is in a different currency, ignore it for this view.
-    if row.savings_target_currency and row.savings_target_currency != currency:
+    amount, stored_currency = record
+    if amount is None:
         return _ZERO
-    return Decimal(str(row.savings_target_amount))
+    if stored_currency and stored_currency != currency:
+        return _ZERO
+    return Decimal(str(amount))
 
 
 async def get_household_savings_target(
@@ -108,21 +118,27 @@ async def get_household_savings_target(
 ) -> Decimal:
     """Sum savings targets across active household members in the given currency.
 
-    Per spec Section 5.2: reimbursement members don't contribute to the
-    household pot, so their personal savings targets are excluded. full +
-    fixed are summed.
+    Reimbursement members don't contribute to the household pot, so their
+    personal savings targets are excluded. full + fixed are summed.
+
+    One SQL JOIN — no per-member round trip, no implicit row creation.
     """
-    stmt = select(HouseholdMember.user_id, HouseholdMember.contribution_mode).where(
-        HouseholdMember.household_id == household_id,
-        HouseholdMember.left_at.is_(None),
+    rows = await db.execute(
+        text("""
+            SELECT ubs.savings_target_amount
+            FROM household_members hm
+            JOIN user_budget_settings ubs ON ubs.user_id = hm.user_id
+            WHERE hm.household_id = :hid
+              AND hm.left_at IS NULL
+              AND hm.contribution_mode IN ('full', 'fixed')
+              AND ubs.savings_target_amount IS NOT NULL
+              AND (ubs.savings_target_currency IS NULL OR ubs.savings_target_currency = :ccy)
+        """),
+        {"hid": str(household_id), "ccy": currency},
     )
-    result = await db.execute(stmt)
-    members = list(result)
     total = _ZERO
-    for member_user_id, mode in members:
-        if mode == "reimbursement":
-            continue
-        total += await get_savings_target(db, user_id=member_user_id, currency=currency)
+    for (amount,) in rows:
+        total += Decimal(str(amount))
     return total
 
 
