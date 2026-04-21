@@ -28,14 +28,13 @@ async def detect_transfers(
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     pairs_found = 0
 
-    # Get all recent non-transfer transactions for this household. Rows already
-    # typed 'transfer' are handled separately via pair_transfer_twin so we don't
-    # accidentally re-pair a just-linked Vincular row with an unrelated match.
+    # Get all recent non-paired transactions for this household.
+    # Previously, we excluded rows already typed 'transfer', but this resulted
+    # in pre-tagged transfers (e.g. from Plaid) missing out on being paired with their twin.
     result = await session.execute(
         select(Transaction)
         .where(
             Transaction.household_id == household_id,
-            Transaction.transaction_type != "transfer",
             Transaction.transaction_date >= cutoff,
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),
