@@ -90,16 +90,30 @@ export function TransactionCard({
             <p className="text-[13px] sm:text-sm font-semibold text-luka-dark truncate">
               {toTitleCase(txn.raw_merchant_name)}
             </p>
-            <span
-              className={cn(
-                "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
-                isOutflow ? "text-luka-dark" : "text-luka-success"
-              )}
-            >
-              {isOutflow
-                ? `(${formatStoredAmount(Number(txn.amount), txn.currency ?? "CLP")})`
-                : `+${formatStoredAmount(Number(txn.amount), txn.currency ?? "CLP")}`}
-            </span>
+            {(() => {
+              const formatted = formatStoredAmount(
+                Number(txn.amount),
+                txn.currency ?? "CLP",
+              );
+              const visible = isOutflow ? `(${formatted})` : `+${formatted}`;
+              // Parentheses on negatives are a visual convention — screen
+              // readers spell them literally. Override with "menos X" so
+              // the direction is unambiguous without reading punctuation.
+              const label = isNegativeStored(Number(txn.amount))
+                ? `menos ${formatted}`
+                : formatted;
+              return (
+                <span
+                  aria-label={label}
+                  className={cn(
+                    "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
+                    isOutflow ? "text-luka-dark" : "text-luka-success",
+                  )}
+                >
+                  {visible}
+                </span>
+              );
+            })()}
           </div>
 
           {/* Line 2: Bank + Category + Split */}

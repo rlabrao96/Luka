@@ -86,7 +86,10 @@ function looksLikeCCPayment(name: string): boolean {
 }
 
 export function PairedTransactionCard({
-  pairId,
+  // `pairId` is kept in the interface for clarity at the call site and so
+  // React tooling can use it as a stable identity when needed, even though
+  // the component itself doesn't read it (React key is set by the parent).
+  pairId: _pairId,
   pairType,
   legs,
 }: PairedTransactionCardProps) {

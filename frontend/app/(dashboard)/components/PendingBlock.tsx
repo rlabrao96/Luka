@@ -64,12 +64,17 @@ function toTitleCase(str: string) {
 }
 
 /**
- * Age badge based on the transaction date. Backend currently does not expose
- * `created_at` / `orphaned_at` on TransactionResponse, so we approximate age
- * from `transaction_date`. When those fields are surfaced, switch to them.
+ * Age badge measures how long a pending row has been sitting in the backlog,
+ * which is "time since ingestion" — NOT "time since the charge posted".
+ * A txn dated 14-abr ingested today should read "hace 0d", not "hace 6d".
+ *
+ * Prefers `created_at` (ingestion time). Falls back to `transaction_date`
+ * only when the backend omits it, for defense in depth.
  */
-function ageBadge(dateISO: string): { label: string; className: string } | null {
-  const ms = Date.now() - new Date(dateISO).getTime();
+function ageBadge(txn: Transaction): { label: string; className: string } | null {
+  const anchor = txn.created_at ?? txn.transaction_date;
+  if (!anchor) return null;
+  const ms = Date.now() - new Date(anchor).getTime();
   const days = Math.floor(ms / 86_400_000);
   if (days < 0) return null;
   if (days < 3) return { label: "Nuevo", className: "bg-emerald-100 text-emerald-800" };
@@ -382,7 +387,7 @@ function PendingSection({
             ? `(${formatStoredAmount(amount, currency)})`
             : `+${formatStoredAmount(amount, currency)}`;
           const bankName = txn.bank_name;
-          const age = ageBadge(txn.transaction_date);
+          const age = ageBadge(txn);
           const isChecked = selected.has(txn.id);
           const isNegativeAmount = isTransfer || isOutflow;
 
