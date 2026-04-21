@@ -11,15 +11,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 import { useCurrencies, useAddCurrency, useDeleteCurrency } from "@/app/lib/hooks/useCurrencies";
-import { SUPPORTED_CURRENCIES } from "@/app/lib/currency";
+import { SUPPORTED_CURRENCIES, formatStoredAmount } from "@/app/lib/currency";
 
 function formatAmount(n: number, currency: string) {
-  // Balances are stored in cents; CLP has no decimals
-  const isDecimal = currency !== "CLP";
-  const displayVal = isDecimal ? n / 100 : n;
-  if (currency === "USD")
-    return `US$${Math.abs(displayVal).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(Math.abs(displayVal)).toLocaleString("es-CL")}`;
+  return formatStoredAmount(n, currency);
 }
 
 function getMonthKey(iso: string) {

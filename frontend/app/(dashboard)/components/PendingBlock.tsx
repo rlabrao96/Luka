@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
-import { formatAmount as formatCurrencyAmount } from "@/app/lib/currency";
+import { formatStoredAmount, isNegativeStored } from "@/app/lib/currency";
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);
@@ -26,13 +26,6 @@ function useIsMobile() {
 
 function toTitleCase(str: string) {
   return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-}
-
-// PendingBlock amounts: CLP as integers, USD (and other decimal currencies) as cents → divide by 100
-function formatPendingAmount(amount: number, currency: string): string {
-  const isDecimal = currency !== "CLP" && currency !== "COP" && currency !== "PYG" && currency !== "CRC";
-  const displayVal = isDecimal ? amount / 100 : amount;
-  return formatCurrencyAmount(displayVal, currency);
 }
 
 /* ─── Inline category dropdown (matches CategoryCell in RecentTransactions) ─── */
@@ -268,11 +261,11 @@ function PendingSection({ title, transactions, isMobile, renderAction, borderLef
         {transactions.map((txn) => {
           const amount = Number(txn.amount);
           const isTransfer = txn.transaction_type === "transfer";
-          const isOutflow = amount < 0;
+          const isOutflow = isNegativeStored(amount);
           const currency = txn.currency ?? "CLP";
           const formattedAmount = isTransfer || isOutflow
-            ? `(${formatPendingAmount(amount, currency)})`
-            : `+${formatPendingAmount(amount, currency)}`;
+            ? `(${formatStoredAmount(amount, currency)})`
+            : `+${formatStoredAmount(amount, currency)}`;
           const bankName = txn.bank_name;
 
           return (
