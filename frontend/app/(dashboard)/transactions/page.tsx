@@ -439,7 +439,7 @@ export default function TransactionsPage() {
     if (selectedBank !== "all") result = result.filter((t) => t.bank_name === selectedBank);
     if (selectedType !== "all") result = result.filter((t) => t.transaction_type === selectedType);
     if (onlyUncategorized) {
-      result = result.filter((t) => !t.category);
+      result = result.filter((t) => !t.category && t.transaction_type !== "transfer");
     } else if (selectedCategory !== "all") {
       result = result.filter((t) => t.category === selectedCategory);
     }
