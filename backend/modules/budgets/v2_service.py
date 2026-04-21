@@ -243,24 +243,38 @@ async def _fetch_month_transactions(
     ratio), never to the personal Level-3 category breakdown.
     """
     first_day, first_day_next, _ = _month_bounds_datetime(month)
-    base = (
-        select(Transaction)
-        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-        .where(
-            Transaction.household_id == household_id,
-            Transaction.currency == currency,
-            Transaction.transaction_type == "expense",
-            Transaction.transaction_date >= first_day,
-            Transaction.transaction_date < first_day_next,
-        )
-    )
+    # Email-ingested transactions on non-joint accounts have no transaction_splits
+    # row at ingestion time (see jobs/tasks.py). The frontend treats a NULL split
+    # as "personal", so we do the same here via LEFT JOIN + NULL coalesce —
+    # otherwise ~every email-ingested expense drops out of the personal view.
     if view == "personal":
-        base = base.where(
-            Transaction.user_id == user_id,
-            TransactionSplit.split_type == "personal",
+        base = (
+            select(Transaction)
+            .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.household_id == household_id,
+                Transaction.currency == currency,
+                Transaction.transaction_type == "expense",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+                (TransactionSplit.split_type == "personal")
+                | (TransactionSplit.split_type.is_(None)),
+            )
         )
     else:
-        base = base.where(TransactionSplit.split_type == "shared")
+        base = (
+            select(Transaction)
+            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
+                Transaction.household_id == household_id,
+                Transaction.currency == currency,
+                Transaction.transaction_type == "expense",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+                TransactionSplit.split_type == "shared",
+            )
+        )
     r = await db.execute(base)
     return list(r.scalars().all())
 
@@ -291,27 +305,42 @@ async def _three_month_category_stats(
         # Luka stores expense amounts as negative Decimals; take abs() so
         # category totals come out positive and downstream share×CV math
         # (mean/std/cap) works correctly.
-        q = (
-            select(
-                Transaction.category,
-                func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
-            )
-            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-            .where(
-                Transaction.household_id == household_id,
-                Transaction.currency == currency,
-                Transaction.transaction_type == "expense",
-                Transaction.transaction_date >= first_day,
-                Transaction.transaction_date < first_day_next,
-            )
-        )
+        # Personal view uses LEFT JOIN so email-ingested txns with no split row
+        # (treated as "personal" in the UI) don't drop out.
         if view == "personal":
-            q = q.where(
-                Transaction.user_id == user_id,
-                TransactionSplit.split_type == "personal",
+            q = (
+                select(
+                    Transaction.category,
+                    func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
+                )
+                .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+                .where(
+                    Transaction.user_id == user_id,
+                    Transaction.household_id == household_id,
+                    Transaction.currency == currency,
+                    Transaction.transaction_type == "expense",
+                    Transaction.transaction_date >= first_day,
+                    Transaction.transaction_date < first_day_next,
+                    (TransactionSplit.split_type == "personal")
+                    | (TransactionSplit.split_type.is_(None)),
+                )
             )
         else:
-            q = q.where(TransactionSplit.split_type == "shared")
+            q = (
+                select(
+                    Transaction.category,
+                    func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
+                )
+                .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+                .where(
+                    Transaction.household_id == household_id,
+                    Transaction.currency == currency,
+                    Transaction.transaction_type == "expense",
+                    Transaction.transaction_date >= first_day,
+                    Transaction.transaction_date < first_day_next,
+                    TransactionSplit.split_type == "shared",
+                )
+            )
         q = q.group_by(Transaction.category)
 
         rows = await db.execute(q)
@@ -362,24 +391,35 @@ async def _daily_burn_14d(
     today = datetime.now(timezone.utc)
     fourteen_days_ago = today - timedelta(days=14)
 
-    q = (
-        select(Transaction)
-        .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-        .where(
-            Transaction.household_id == household_id,
-            Transaction.currency == currency,
-            Transaction.transaction_type == "expense",
-            Transaction.transaction_date >= fourteen_days_ago,
-            Transaction.transaction_date <= today,
-        )
-    )
     if view == "personal":
-        q = q.where(
-            Transaction.user_id == user_id,
-            TransactionSplit.split_type == "personal",
+        # LEFT JOIN so email-ingested txns with no split row are included.
+        q = (
+            select(Transaction)
+            .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.household_id == household_id,
+                Transaction.currency == currency,
+                Transaction.transaction_type == "expense",
+                Transaction.transaction_date >= fourteen_days_ago,
+                Transaction.transaction_date <= today,
+                (TransactionSplit.split_type == "personal")
+                | (TransactionSplit.split_type.is_(None)),
+            )
         )
     else:
-        q = q.where(TransactionSplit.split_type == "shared")
+        q = (
+            select(Transaction)
+            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
+                Transaction.household_id == household_id,
+                Transaction.currency == currency,
+                Transaction.transaction_type == "expense",
+                Transaction.transaction_date >= fourteen_days_ago,
+                Transaction.transaction_date <= today,
+                TransactionSplit.split_type == "shared",
+            )
+        )
     rows = await db.execute(q)
     txns = list(rows.scalars().all())
 

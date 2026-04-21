@@ -128,7 +128,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
   }, [nodes, links]);
 
   const chartHeight = useMemo(
-    () => Math.max(360, maxColumnCount * 56 + 80),
+    () => Math.max(360, maxColumnCount * 56 + 104),
     [maxColumnCount]
   );
 
@@ -283,7 +283,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
           <ResponsiveContainer width="100%" height="100%">
             <Sankey
               data={data}
-              margin={{ top: 28, right: 150, bottom: 20, left: 150 }}
+              margin={{ top: 28, right: 150, bottom: 44, left: 150 }}
               nodePadding={32}
               nodeWidth={16}
               linkCurvature={0.5}
