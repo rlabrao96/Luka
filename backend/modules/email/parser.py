@@ -125,8 +125,13 @@ def _parse_amount(text: str) -> tuple[int, str] | tuple[None, None]:
     return None, None
 
 
-def _parse_cc_payment(text: str) -> str | None:
-    """Detect credit card payment emails and return card description as merchant."""
+def _parse_cc_payment(text: str) -> tuple[str, str | None] | None:
+    """Detect credit card payment emails.
+
+    Returns (merchant, card_last_four) or None. card_last_four is the 4-digit
+    suffix of the destination credit card, used for eager resolution of
+    transfer_to_account_id at ingest time.
+    """
     # Look for "pago a la tarjeta de crédito ... terminación ****XXXX"
     match = re.search(
         r"pago a la tarjeta de cr[eé]dito\s+(.+?)terminaci[oó]n\s+\*{0,4}(\d{4})",
@@ -138,13 +143,17 @@ def _parse_cc_payment(text: str) -> str | None:
         # Remove "Titular" noise from card description
         card_type = re.sub(r"\s+[Tt]itular\s*$", "", card_type).strip()
         last_four = match.group(2)
-        return f"Pago Tarjeta {card_type} ****{last_four}".strip()
+        return f"Pago Tarjeta {card_type} ****{last_four}".strip(), last_four
     # "Comprobante Pago Tarjeta" subject pattern
     if re.search(r"[Cc]omprobante [Pp]ago [Tt]arjeta", text):
         card_match = re.search(r"terminaci[oó]n\s+\*{0,4}(\d{4})", text)
         if card_match:
-            return f"Pago Tarjeta ****{card_match.group(1)}"
-        return "Pago Tarjeta"
+            return f"Pago Tarjeta ****{card_match.group(1)}", card_match.group(1)
+        # Fallback: detect bare ****NNNN anywhere in body
+        bare = re.search(r"\*{2,4}(\d{4})", text)
+        if bare:
+            return f"Pago Tarjeta ****{bare.group(1)}", bare.group(1)
+        return "Pago Tarjeta", None
     return None
 
 
@@ -238,10 +247,12 @@ def parse_bank_email_regex(raw_text: str) -> ParsedEmail | None:
     if amount is None:
         return None
 
+    card_last_four: str | None = None
+
     # Try CC payment first — inter-account transfer (e.g. "pago a tarjeta Visa ****5032")
-    cc_merchant = _parse_cc_payment(text)
-    if cc_merchant:
-        merchant = cc_merchant
+    cc_result = _parse_cc_payment(text)
+    if cc_result:
+        merchant, card_last_four = cc_result
         transaction_type = "transfer"
     # Person-to-person payments — expense (outgoing) or income (incoming)
     elif person_result := _parse_person_payment(text):
@@ -264,6 +275,7 @@ def parse_bank_email_regex(raw_text: str) -> ParsedEmail | None:
         bank_name="unknown",
         transaction_type=transaction_type,
         currency=currency,
+        card_last_four=card_last_four,
     )
 
 
