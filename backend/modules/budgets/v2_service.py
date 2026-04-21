@@ -510,14 +510,18 @@ def _build_hogar_sankey(
         )
 
     # ---- Level 0: otras_fuentes synthetic source ----
+    # When committed outflows (known_bills + cuotas + savings_target +
+    # personal_allocation + spendable) exceed real income, this plug keeps
+    # the Sankey flow-conserving. It is NOT a real source — the label and
+    # frontend color reflect that it represents a deficit to be covered.
     if otras_fuentes_total > _ZERO:
         nodes.append(
             SankeyNode(
                 id="otras_fuentes",
-                label="Otras fuentes",
+                label="Ingresos por cubrir",
                 value=otras_fuentes_total,
                 level=0,
-                kind="source",
+                kind="deficit",
             )
         )
 

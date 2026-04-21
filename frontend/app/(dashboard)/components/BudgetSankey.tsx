@@ -9,7 +9,7 @@ type Node = {
   value: number;
   risk?: boolean;
   level?: number | null;
-  kind?: "source" | "hub" | "allocation" | "spent" | null;
+  kind?: "source" | "hub" | "allocation" | "spent" | "deficit" | null;
   member_id?: string | null;
 };
 type Link = { source: string; target: string; value: number };
@@ -34,6 +34,9 @@ type RechartsTooltipPayload = {
 
 function colorFor(node: Node): string {
   if (node.risk) return "#EF4444";
+  // Deficit = synthetic "income" plug when outflows exceed real income.
+  // Amber so users immediately see it's not real revenue.
+  if (node.kind === "deficit") return "#F59E0B";
   if (node.kind === "hub") return "#2563EB";
   if (node.kind === "source") return "#60A5FA";
   if (node.kind === "allocation") return "#93C5FD";
@@ -242,6 +245,13 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
               nodeWidth={16}
               linkCurvature={0.5}
               iterations={64}
+              // `align="left"` pins each node to its earliest possible column
+              // (shortest path from a source). The default `justify` pushes
+              // ALL terminal nodes to the rightmost column — which dragged
+              // `gastos_fijos` / `cuotas` (level-2 terminals) across the
+              // chart alongside the level-3 breakdown. With `left`, they sit
+              // in the same column as `disponible_hogar`.
+              align="left"
               node={nodeRenderer as unknown as undefined}
               link={{ stroke: "#CBD5E1", strokeOpacity: 0.35 }}
             >
