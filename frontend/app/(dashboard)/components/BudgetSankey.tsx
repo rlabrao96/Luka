@@ -155,11 +155,21 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
       // labels centered above the rectangle — this keeps the label out of
       // the outgoing flow paths that would otherwise overlap with side labels.
       const isHubLike = node.level === 1 || isPassThrough.has(node.id);
+      const isBelowLabel = node.kind === "bill";
 
       if (isHubLike) {
         anchor = "middle";
         labelX = x + width / 2;
         labelY = Math.max(y - 18, 10);
+        valueY = labelY + 12;
+      } else if (isBelowLabel) {
+        // "Bill" nodes (Gastos fijos pendientes) often have tiny rectangles
+        // once paid subscriptions drop out. Rendering the label BELOW keeps
+        // it away from the adjacent Level 1 → Level 2 flow paths that would
+        // otherwise run through a right-side label.
+        anchor = "middle";
+        labelX = x + width / 2;
+        labelY = y + height + 14;
         valueY = labelY + 12;
       } else if (node.level === 0) {
         // Source column: label to the LEFT of the rectangle. Margin.left on
@@ -191,7 +201,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
           <text
             x={labelX}
             y={labelY}
-            dy={isHubLike ? "0" : "0.35em"}
+            dy={isHubLike || isBelowLabel ? "0" : "0.35em"}
             textAnchor={anchor}
             className="text-xs font-medium fill-slate-700"
           >
@@ -200,7 +210,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
           <text
             x={labelX}
             y={valueY}
-            dy={isHubLike ? "0" : undefined}
+            dy={isHubLike || isBelowLabel ? "0" : undefined}
             textAnchor={anchor}
             className="text-[11px] font-medium fill-slate-600 tabular-nums"
           >

@@ -611,6 +611,19 @@ def _build_hogar_sankey(
         )
 
     # ---- Level 3: disponible_hogar breakdown ----
+    # `spent_remaining` ("Aún disponible") is emitted FIRST so d3-sankey
+    # lands it at the top of the terminal column — we want the "still
+    # available" signal pinned regardless of its dollar size.
+    if spent_remaining > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="spent_remaining",
+                label="Aún disponible",
+                value=spent_remaining,
+                level=3,
+                kind="unused",
+            )
+        )
     for category, spent in top_spent_totals:
         if spent <= _ZERO:
             continue
@@ -632,18 +645,6 @@ def _build_hogar_sankey(
                 value=other_spent,
                 level=3,
                 kind="spent",
-            )
-        )
-    if spent_remaining > _ZERO:
-        # kind="unused" so the frontend paints this node green — money still
-        # available to spend, not money already out the door.
-        nodes.append(
-            SankeyNode(
-                id="spent_remaining",
-                label="Aún disponible",
-                value=spent_remaining,
-                level=3,
-                kind="unused",
             )
         )
 
@@ -673,12 +674,13 @@ def _build_hogar_sankey(
     _emit("ingresos_hogar", "gasto_personal", personal_allocation)
     _emit("ingresos_hogar", "disponible_hogar", sankey_spendable)
 
-    # Level 2 -> Level 3: disponible_hogar splits into per-category spent
+    # Level 2 -> Level 3: disponible_hogar splits. Emit spent_remaining first
+    # (mirrors the node order above) so it anchors the top of the column.
+    _emit("disponible_hogar", "spent_remaining", spent_remaining)
     for category, spent in top_spent_totals:
         if spent > _ZERO:
             _emit("disponible_hogar", f"spent_{_slugify(category)}", spent)
     _emit("disponible_hogar", "spent_other", other_spent)
-    _emit("disponible_hogar", "spent_remaining", spent_remaining)
 
     return SankeyBlock(nodes=nodes, links=links)
 
@@ -815,7 +817,20 @@ def _build_personal_sankey(
             )
         )
 
-    # Level 3: disponible_personal breakdown
+    # Level 3: disponible_personal breakdown.
+    # spent_remaining first so d3-sankey pins "Aún disponible" to the top of
+    # the terminal column regardless of its value (see Hogar builder for the
+    # matching logic).
+    if spent_remaining > _ZERO:
+        nodes.append(
+            SankeyNode(
+                id="spent_remaining",
+                label="Aún disponible",
+                value=spent_remaining,
+                level=3,
+                kind="unused",
+            )
+        )
     for category, spent in top_spent_totals:
         if spent <= _ZERO:
             continue
@@ -839,18 +854,6 @@ def _build_personal_sankey(
                 kind="spent",
             )
         )
-    if spent_remaining > _ZERO:
-        # kind="unused" so the frontend paints this node green — it's money
-        # still available to spend, not money already out the door.
-        nodes.append(
-            SankeyNode(
-                id="spent_remaining",
-                label="Aún disponible",
-                value=spent_remaining,
-                level=3,
-                kind="unused",
-            )
-        )
 
     # Links
     links: list[SankeyLink] = []
@@ -872,12 +875,12 @@ def _build_personal_sankey(
     _emit("ingresos_personales", "meta_ahorro_personal", savings_target)
     _emit("ingresos_personales", "disponible_personal", sankey_spendable)
 
-    # Level 2 -> Level 3
+    # Level 2 -> Level 3: spent_remaining first so it anchors the top.
+    _emit("disponible_personal", "spent_remaining", spent_remaining)
     for category, spent in top_spent_totals:
         if spent > _ZERO:
             _emit("disponible_personal", f"spent_{_slugify(category)}", spent)
     _emit("disponible_personal", "spent_other", other_spent)
-    _emit("disponible_personal", "spent_remaining", spent_remaining)
 
     return SankeyBlock(nodes=nodes, links=links)
 
