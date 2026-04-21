@@ -71,7 +71,7 @@ from modules.subscriptions.read import (
     get_user_known_bills,
     get_user_shared_known_bills,
 )
-from modules.transactions.models import Transaction
+from modules.transactions.models import Transaction, TransactionSplit
 
 
 _ZERO = Decimal("0")
@@ -159,7 +159,14 @@ async def _fetch_month_transactions(
     month: date,
     currency: str,
 ) -> list[Transaction]:
-    """Pull expense transactions for the month in one query."""
+    """Pull expense transactions for the month in one query.
+
+    Household view: only shared splits. Personal view: all of the caller's
+    expenses regardless of split (matches the "my personal spending" intent).
+    Mixing scopes is what produced the Sankey/desglose mismatch users saw —
+    household breakdown counted personal expenses that never belong to the
+    household pot.
+    """
     first_day, first_day_next, _ = _month_bounds_datetime(month)
     base = select(Transaction).where(
         Transaction.household_id == household_id,
@@ -170,6 +177,10 @@ async def _fetch_month_transactions(
     )
     if view == "personal":
         base = base.where(Transaction.user_id == user_id)
+    else:
+        base = base.join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id).where(
+            TransactionSplit.split_type == "shared"
+        )
     r = await db.execute(base)
     return list(r.scalars().all())
 
@@ -212,6 +223,10 @@ async def _three_month_category_stats(
         )
         if view == "personal":
             q = q.where(Transaction.user_id == user_id)
+        else:
+            q = q.join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id).where(
+                TransactionSplit.split_type == "shared"
+            )
         q = q.group_by(Transaction.category)
 
         rows = await db.execute(q)
@@ -271,6 +286,10 @@ async def _daily_burn_14d(
     )
     if view == "personal":
         q = q.where(Transaction.user_id == user_id)
+    else:
+        q = q.join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id).where(
+            TransactionSplit.split_type == "shared"
+        )
     rows = await db.execute(q)
     txns = list(rows.scalars().all())
 
