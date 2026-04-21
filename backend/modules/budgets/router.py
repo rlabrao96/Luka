@@ -13,8 +13,8 @@ from modules.budgets.schemas import (
     SetCategoryBudgetRequest,
 )
 from modules.budgets.category_service import get_category_budgets, set_category_budgets
-from modules.budgets.v2_schemas import BudgetV2Response
-from modules.budgets.v2_service import get_budget_v2
+from modules.budgets.v2_schemas import BudgetV2Response, DrilldownBlock
+from modules.budgets.v2_service import get_budget_v2, get_node_drilldown
 from modules.households.auth import require_membership
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
@@ -97,4 +97,30 @@ async def budget_v2(
         month=_normalize_month(month),
         currency=currency,
         view=view,
+    )
+
+
+@router.get("/v2/{household_id}/drilldown", response_model=DrilldownBlock)
+async def budget_v2_drilldown(
+    household_id: uuid.UUID,
+    node_id: str = Query(..., min_length=1, max_length=120),
+    view: str = Query(default="personal", pattern="^(personal|household)$"),
+    month: date | None = Query(default=None),
+    currency: str | None = Query(default=None),
+    limit: int = Query(default=5, ge=1, le=25),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Top-N transactions for a clicked Sankey node. See
+    `v2_service.get_node_drilldown` for the node-id dispatch table."""
+    await require_membership(household_id, current_user.id, db)
+    return await get_node_drilldown(
+        db,
+        household_id=household_id,
+        user_id=current_user.id,
+        month=_normalize_month(month),
+        currency=currency,
+        view=view,
+        node_id=node_id,
+        limit=limit,
     )

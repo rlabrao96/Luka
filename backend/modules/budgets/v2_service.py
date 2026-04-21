@@ -53,6 +53,8 @@ from modules.budgets.user_budget_settings_service import (
 from modules.budgets.v2_schemas import (
     BudgetV2Response,
     CuotasBlock,
+    DrilldownBlock,
+    DrilldownItem,
     RiskCategory,
     RunwayBlock,
     SankeyBlock,
@@ -65,7 +67,9 @@ from modules.households.contribution_service import (
     HouseholdIncomeBreakdown,
     income_breakdown_for_household_view,
 )
-from modules.households.models import HouseholdMember
+from modules.households.models import BankAccount, HouseholdMember
+from modules.merchant_review.models import CanonicalMerchant
+from modules.merchants.models import Merchant
 from modules.subscriptions.read import (
     get_household_unpaid_known_bills,
     get_user_personal_unpaid_known_bills,
@@ -1381,4 +1385,424 @@ async def get_budget_v2(
         runway=runway_block,
         cuotas=cuotas_block,
         savings_target=savings_block,
+    )
+
+
+# ========================================================= node drilldown
+#
+# Powers the "click a Sankey node to see the top transactions" UX. Each
+# node id routes to a different query — see `get_node_drilldown` for the
+# full dispatch table. Unsupported nodes (hubs, synthetic, pass-through)
+# return an empty block with an explanatory `empty_reason`.
+
+
+def _unslugify_match(slug: str, categories: list[str]) -> str | None:
+    """Given a slug produced by `_slugify`, find the original category name
+    from `categories`. Returns None if no match."""
+    return next((c for c in categories if _slugify(c) == slug), None)
+
+
+async def _top_expense_txns(
+    db: AsyncSession,
+    *,
+    view: str,
+    user_id: uuid.UUID,
+    household_id: uuid.UUID,
+    month: date,
+    currency: str,
+    category_filter: str | None,
+    exclude_categories: list[str] | None = None,
+    limit: int,
+) -> list[DrilldownItem]:
+    """Top-N expense transactions by absolute amount for the given scope.
+
+    Scope is defined by `view` (same rules as `_fetch_month_transactions`):
+    household → shared splits only, personal → split_type personal OR NULL.
+    `category_filter` narrows to one category; `exclude_categories` is the
+    inverse (used for the `spent_other` node).
+    """
+    first_day, first_day_next, _ = _month_bounds_datetime(month)
+    base = (
+        select(
+            Transaction.id,
+            Transaction.transaction_date,
+            Transaction.raw_merchant_name,
+            Transaction.amount,
+            Transaction.category,
+            Transaction.source_bank_name,
+            TransactionSplit.split_type,
+            BankAccount.bank_name,
+            CanonicalMerchant.display_name.label("merchant_display"),
+        )
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+        .outerjoin(Merchant, Transaction.raw_merchant_name == Merchant.raw_name)
+        .outerjoin(CanonicalMerchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
+    )
+    if view == "personal":
+        base = base.outerjoin(
+            TransactionSplit, TransactionSplit.transaction_id == Transaction.id
+        ).where(
+            Transaction.user_id == user_id,
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "expense",
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
+            (TransactionSplit.split_type == "personal") | (TransactionSplit.split_type.is_(None)),
+        )
+    else:
+        base = base.join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id).where(
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "expense",
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
+            TransactionSplit.split_type == "shared",
+        )
+
+    if category_filter is not None:
+        base = base.where(Transaction.category == category_filter)
+    if exclude_categories:
+        base = base.where(Transaction.category.notin_(exclude_categories))
+
+    base = base.order_by(func.abs(Transaction.amount).desc()).limit(limit)
+
+    rows = await db.execute(base)
+    items: list[DrilldownItem] = []
+    for row in rows:
+        merchant = row.merchant_display or row.raw_merchant_name or "—"
+        items.append(
+            DrilldownItem(
+                id=str(row.id),
+                date=row.transaction_date.date()
+                if hasattr(row.transaction_date, "date")
+                else row.transaction_date,
+                merchant=merchant,
+                amount=abs(Decimal(str(row.amount))),
+                category=row.category,
+                bank_name=row.bank_name or row.source_bank_name,
+                split_type=row.split_type,
+            )
+        )
+    return items
+
+
+async def _top_income_txns(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    household_id: uuid.UUID,
+    month: date,
+    currency: str,
+    category_filter: str | None,
+    limit: int,
+) -> list[DrilldownItem]:
+    """Top-N income txns for the caller. No income drilldown in hogar view —
+    the caller for a household view is not necessarily the owner of the income,
+    and we don't want to reveal other members' income-level breakdowns."""
+    first_day, first_day_next, _ = _month_bounds_datetime(month)
+    stmt = (
+        select(
+            Transaction.id,
+            Transaction.transaction_date,
+            Transaction.raw_merchant_name,
+            Transaction.amount,
+            Transaction.category,
+            Transaction.source_bank_name,
+            BankAccount.bank_name,
+            CanonicalMerchant.display_name.label("merchant_display"),
+        )
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+        .outerjoin(Merchant, Transaction.raw_merchant_name == Merchant.raw_name)
+        .outerjoin(CanonicalMerchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "income",
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
+        )
+    )
+    if category_filter is not None:
+        stmt = stmt.where(Transaction.category == category_filter)
+    else:
+        # "Otros ingresos" = income with category not in user's known income prefs
+        income_cat_rows = await db.execute(
+            text(
+                """
+                SELECT category FROM user_category_preferences
+                WHERE user_id = :uid AND category_type = 'income'
+                """
+            ),
+            {"uid": str(user_id)},
+        )
+        known = [r[0] for r in income_cat_rows]
+        if known:
+            stmt = stmt.where(
+                (Transaction.category.is_(None)) | (Transaction.category.notin_(known))
+            )
+
+    stmt = stmt.order_by(func.abs(Transaction.amount).desc()).limit(limit)
+    rows = await db.execute(stmt)
+    items: list[DrilldownItem] = []
+    for row in rows:
+        merchant = row.merchant_display or row.raw_merchant_name or "—"
+        items.append(
+            DrilldownItem(
+                id=str(row.id),
+                date=row.transaction_date.date()
+                if hasattr(row.transaction_date, "date")
+                else row.transaction_date,
+                merchant=merchant,
+                amount=abs(Decimal(str(row.amount))),
+                category=row.category,
+                bank_name=row.bank_name or row.source_bank_name,
+                split_type=None,
+            )
+        )
+    return items
+
+
+async def get_node_drilldown(
+    db: AsyncSession,
+    *,
+    household_id: uuid.UUID,
+    user_id: uuid.UUID,
+    month: date,
+    currency: str | None,
+    view: str,
+    node_id: str,
+    limit: int = 5,
+) -> DrilldownBlock:
+    """Route a Sankey node id to its top-N transaction list.
+
+    Supported patterns:
+    - `src_<slug>` (personal view): income txns of that category
+    - `src_otros_ingresos` (personal view): uncategorised / other income
+    - `spent_<slug>`: top expense txns in that category (scope by view)
+    - `spent_other`: top expense txns outside the top-5 categories
+    - `gastos_hogar_personal` (personal view) / `disponible_hogar` (hogar
+      view): top shared expense txns across all categories
+    - `meta_ahorro` / `meta_ahorro_personal`: top savings-category txns
+
+    Everything else (hubs, synthetic deficit, spent_remaining, member_*)
+    returns an empty block with a reason.
+    """
+    if view not in ("personal", "household"):
+        raise ValueError(f"invalid view: {view!r}")
+
+    month = date(month.year, month.month, 1)
+    if not currency:
+        user_row = await db.execute(select(User.preferred_currency).where(User.id == user_id))
+        currency = user_row.scalar_one_or_none() or "CLP"
+
+    # Non-actionable nodes — return empty with hint.
+    skip = {
+        "ingresos_hogar",
+        "ingresos_personales",
+        "disponible_personal",
+        "otras_fuentes",
+        "deficit_personal",
+        "spent_remaining",
+        "gastos_fijos",
+        "gastos_fijos_personal",
+        "cuotas",
+        "cuotas_personal",
+        "gasto_personal",
+    }
+    if node_id in skip or node_id.startswith("member_"):
+        return DrilldownBlock(
+            node_id=node_id,
+            label=node_id,
+            kind="empty",
+            empty_reason="Este nodo no tiene transacciones individuales para mostrar.",
+            items=[],
+        )
+
+    # ---- meta de ahorro -------------------------------------------------
+    if node_id in ("meta_ahorro", "meta_ahorro_personal"):
+        first_day, first_day_next, _ = _month_bounds_datetime(month)
+        stmt = (
+            select(
+                Transaction.id,
+                Transaction.transaction_date,
+                Transaction.raw_merchant_name,
+                Transaction.amount,
+                Transaction.category,
+                Transaction.source_bank_name,
+                BankAccount.bank_name,
+                CanonicalMerchant.display_name.label("merchant_display"),
+            )
+            .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+            .outerjoin(Merchant, Transaction.raw_merchant_name == Merchant.raw_name)
+            .outerjoin(CanonicalMerchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
+            .where(
+                Transaction.household_id == household_id,
+                Transaction.currency == currency,
+                Transaction.transaction_type == "expense",
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+            )
+            .order_by(func.abs(Transaction.amount).desc())
+            .limit(limit)
+        )
+        if view == "personal":
+            stmt = stmt.where(Transaction.user_id == user_id)
+        rows = await db.execute(stmt)
+        items: list[DrilldownItem] = []
+        for row in rows:
+            if not row.category or not is_savings_category(row.category):
+                continue
+            items.append(
+                DrilldownItem(
+                    id=str(row.id),
+                    date=row.transaction_date.date()
+                    if hasattr(row.transaction_date, "date")
+                    else row.transaction_date,
+                    merchant=row.merchant_display or row.raw_merchant_name or "—",
+                    amount=abs(Decimal(str(row.amount))),
+                    category=row.category,
+                    bank_name=row.bank_name or row.source_bank_name,
+                    split_type=None,
+                )
+            )
+        return DrilldownBlock(
+            node_id=node_id, label="Meta de ahorro", kind="transactions", items=items
+        )
+
+    # ---- gastos del hogar (shared pool) ---------------------------------
+    if node_id in ("gastos_hogar_personal", "disponible_hogar"):
+        items = await _top_expense_txns(
+            db,
+            view="household",  # always shared scope
+            user_id=user_id,
+            household_id=household_id,
+            month=month,
+            currency=currency,
+            category_filter=None,
+            limit=limit,
+        )
+        return DrilldownBlock(
+            node_id=node_id, label="Gastos del hogar", kind="transactions", items=items
+        )
+
+    # ---- income sources (personal view only) ----------------------------
+    if node_id.startswith("src_"):
+        if view != "personal":
+            return DrilldownBlock(
+                node_id=node_id,
+                label=node_id,
+                kind="empty",
+                empty_reason="El detalle de ingresos solo está disponible en la vista personal.",
+                items=[],
+            )
+        slug = node_id[len("src_") :]
+        if slug == "otros_ingresos":
+            items = await _top_income_txns(
+                db,
+                user_id=user_id,
+                household_id=household_id,
+                month=month,
+                currency=currency,
+                category_filter=None,
+                limit=limit,
+            )
+            return DrilldownBlock(
+                node_id=node_id, label="Otros ingresos", kind="transactions", items=items
+            )
+        # Known income category — look up the original name via prefs
+        income_cat_rows = await db.execute(
+            text(
+                """
+                SELECT category FROM user_category_preferences
+                WHERE user_id = :uid AND category_type = 'income'
+                """
+            ),
+            {"uid": str(user_id)},
+        )
+        known = [r[0] for r in income_cat_rows]
+        cat = _unslugify_match(slug, known)
+        if not cat:
+            return DrilldownBlock(
+                node_id=node_id,
+                label=slug,
+                kind="empty",
+                empty_reason="Categoría no encontrada.",
+                items=[],
+            )
+        items = await _top_income_txns(
+            db,
+            user_id=user_id,
+            household_id=household_id,
+            month=month,
+            currency=currency,
+            category_filter=cat,
+            limit=limit,
+        )
+        return DrilldownBlock(node_id=node_id, label=cat, kind="transactions", items=items)
+
+    # ---- spent_<slug> / spent_other -------------------------------------
+    if node_id.startswith("spent_"):
+        # Recompute the top-5 categories we used in the Sankey so `spent_other`
+        # can invert it and `spent_<slug>` can resolve the slug back to the
+        # original category name.
+        mtd_by_category: dict[str, Decimal] = {}
+        month_txns = await _fetch_month_transactions(
+            db,
+            view=view,
+            user_id=user_id,
+            household_id=household_id,
+            month=month,
+            currency=currency,
+        )
+        for t in month_txns:
+            if not t.category or is_savings_category(t.category):
+                continue
+            amt = abs(Decimal(str(t.amount)))
+            mtd_by_category[t.category] = mtd_by_category.get(t.category, _ZERO) + amt
+        top_cats = [
+            c for c, _ in sorted(mtd_by_category.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        ]
+
+        if node_id == "spent_other":
+            items = await _top_expense_txns(
+                db,
+                view=view,
+                user_id=user_id,
+                household_id=household_id,
+                month=month,
+                currency=currency,
+                category_filter=None,
+                exclude_categories=top_cats,
+                limit=limit,
+            )
+            return DrilldownBlock(
+                node_id=node_id, label="Otras categorías", kind="transactions", items=items
+            )
+
+        slug = node_id[len("spent_") :]
+        cat = _unslugify_match(slug, list(mtd_by_category.keys()))
+        if not cat:
+            return DrilldownBlock(
+                node_id=node_id,
+                label=slug,
+                kind="empty",
+                empty_reason="Categoría no encontrada.",
+                items=[],
+            )
+        items = await _top_expense_txns(
+            db,
+            view=view,
+            user_id=user_id,
+            household_id=household_id,
+            month=month,
+            currency=currency,
+            category_filter=cat,
+            limit=limit,
+        )
+        return DrilldownBlock(node_id=node_id, label=cat, kind="transactions", items=items)
+
+    return DrilldownBlock(
+        node_id=node_id, label=node_id, kind="empty", empty_reason="Nodo no soportado.", items=[]
     )

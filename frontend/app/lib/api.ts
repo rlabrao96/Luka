@@ -835,9 +835,48 @@ export const api = {
     const q = qs.toString();
     return apiFetch<BudgetV2Response>(`/budgets/v2/${householdId}${q ? `?${q}` : ""}`);
   },
+
+  getBudgetNodeDrilldown: (
+    householdId: string,
+    params: {
+      node_id: string;
+      view: "personal" | "household";
+      month?: string;
+      currency?: string;
+      limit?: number;
+    }
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set("node_id", params.node_id);
+    qs.set("view", params.view);
+    if (params.month) qs.set("month", params.month);
+    if (params.currency) qs.set("currency", params.currency);
+    if (params.limit) qs.set("limit", String(params.limit));
+    return apiFetch<BudgetV2DrilldownBlock>(
+      `/budgets/v2/${householdId}/drilldown?${qs.toString()}`
+    );
+  },
 };
 
 // ── Budget V2 (redesign) types ────────────────────────────────
+
+export interface BudgetV2DrilldownItem {
+  id: string;
+  date: string; // ISO date (YYYY-MM-DD)
+  merchant: string;
+  amount: number;
+  category: string | null;
+  bank_name: string | null;
+  split_type: string | null;
+}
+
+export interface BudgetV2DrilldownBlock {
+  node_id: string;
+  label: string;
+  kind: "transactions" | "empty";
+  empty_reason: string | null;
+  items: BudgetV2DrilldownItem[];
+}
 
 export interface BudgetV2SankeyNode {
   id: string;

@@ -73,6 +73,24 @@ class SavingsTargetBlock(BaseModel):
     pct_complete: Decimal
 
 
+class DrilldownItem(BaseModel):
+    id: str
+    date: date
+    merchant: str
+    amount: Decimal  # positive, display-ready
+    category: str | None
+    bank_name: str | None
+    split_type: str | None = None
+
+
+class DrilldownBlock(BaseModel):
+    node_id: str
+    label: str
+    kind: str  # "transactions" | "empty"
+    empty_reason: str | None = None
+    items: list[DrilldownItem]
+
+
 class BudgetV2Response(BaseModel):
     view: str  # "personal" | "household"
     month: date

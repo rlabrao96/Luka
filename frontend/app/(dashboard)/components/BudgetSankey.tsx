@@ -26,6 +26,31 @@ interface Props {
   nodes: Node[];
   links: Link[];
   currency: Currency;
+  onNodeClick?: (node: Node) => void;
+  activeNodeId?: string | null;
+}
+
+// Nodes that have no per-transaction breakdown — don't dress them up as
+// clickable. Keep in sync with the backend `skip` set in
+// `v2_service.get_node_drilldown`.
+const NON_DRILLABLE: ReadonlySet<string> = new Set([
+  "ingresos_hogar",
+  "ingresos_personales",
+  "disponible_personal",
+  "otras_fuentes",
+  "deficit_personal",
+  "spent_remaining",
+  "gastos_fijos",
+  "gastos_fijos_personal",
+  "cuotas",
+  "cuotas_personal",
+  "gasto_personal",
+]);
+
+function isDrillable(node: Node): boolean {
+  if (NON_DRILLABLE.has(node.id)) return false;
+  if (node.id.startsWith("member_")) return false;
+  return true;
 }
 
 type RechartsNodeProps = {
@@ -70,7 +95,13 @@ function EmptyState() {
   );
 }
 
-export default function BudgetSankey({ nodes, links, currency }: Props) {
+export default function BudgetSankey({
+  nodes,
+  links,
+  currency,
+  onNodeClick,
+  activeNodeId,
+}: Props) {
   // Recharts Sankey divides layout by total flow — zero-sum input causes NaN
   // path attributes and collapses the ResponsiveContainer to -1 dimensions.
   const totalFlow = useMemo(
@@ -188,15 +219,40 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
         labelX = x + width + 6;
       }
 
+      const drillable = onNodeClick !== undefined && isDrillable(node);
+      const active = activeNodeId === node.id;
+      const handleClick = drillable
+        ? (e: React.MouseEvent<SVGGElement>) => {
+            e.stopPropagation();
+            onNodeClick?.(node);
+          }
+        : undefined;
       return (
-        <Layer key={`node-${index}`}>
+        <Layer
+          key={`node-${index}`}
+          style={drillable ? { cursor: "pointer" } : undefined}
+          onClick={handleClick}
+        >
+          {/* Larger invisible hit target so clicks land on thin rects + labels. */}
+          {drillable && (
+            <Rectangle
+              x={x - 4}
+              y={y - 4}
+              width={width + 8}
+              height={height + 8}
+              fill="transparent"
+              fillOpacity={0}
+            />
+          )}
           <Rectangle
             x={x}
             y={y}
             width={width}
             height={height}
             fill={colorFor(node)}
-            fillOpacity={0.9}
+            fillOpacity={active ? 1 : 0.9}
+            stroke={active ? "#0f172a" : undefined}
+            strokeWidth={active ? 2 : 0}
           />
           {(() => {
             // Labels can embed `\n` to render on multiple SVG lines. This keeps
@@ -236,7 +292,7 @@ export default function BudgetSankey({ nodes, links, currency }: Props) {
         </Layer>
       );
     },
-    [safeNodes, isTerminal, isPassThrough, currency]
+    [safeNodes, isTerminal, isPassThrough, currency, onNodeClick, activeNodeId]
   );
 
   const tooltipFormatter = useCallback(

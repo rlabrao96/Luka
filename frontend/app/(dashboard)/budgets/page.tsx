@@ -8,7 +8,7 @@ import { formatMoney, type Currency } from "@/app/lib/format";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
 import { BudgetConfigModal } from "@/app/(dashboard)/components/BudgetConfigModal";
 import { RiskAlertBand } from "@/app/(dashboard)/components/RiskAlertBand";
-import { RunwayCard } from "@/app/(dashboard)/components/RunwayCard";
+import { BudgetDrilldownCard } from "@/app/(dashboard)/components/BudgetDrilldownCard";
 
 // Recharts' Sankey chart pulls in ~40KB of d3 + rendering code.
 // Load it on demand so the budgets route shell paints first.
@@ -63,9 +63,13 @@ function SectionError({ message }: { message: string }) {
 function SectionFlowBody({
   data,
   currency,
+  onNodeClick,
+  activeNodeId,
 }: {
   data: BudgetV2Response;
   currency: Currency;
+  onNodeClick?: (nodeId: string) => void;
+  activeNodeId?: string | null;
 }) {
   const spendable = Number(data.spendable.amount);
   const spent = Number(data.spendable.spent);
@@ -144,6 +148,8 @@ function SectionFlowBody({
           value: Number(l.value),
         }))}
         currency={currency}
+        onNodeClick={onNodeClick ? (n) => onNodeClick(n.id) : undefined}
+        activeNodeId={activeNodeId ?? undefined}
       />
     </div>
   );
@@ -172,6 +178,14 @@ export default function BudgetsPage() {
   const monthStr = monthParam(selectedMonth);
 
   const [configOpen, setConfigOpen] = useState(false);
+
+  // One active node per Sankey view — clicking a node on the Hogar chart
+  // shouldn't disturb Personal's drilldown, and vice versa.
+  const [hogarNodeId, setHogarNodeId] = useState<string | null>(null);
+  const [personalNodeId, setPersonalNodeId] = useState<string | null>(null);
+  // Locale for date formatting in the drilldown list. Matches the Spanish
+  // CLAUDE.md rule: derive from currency, don't hardcode es-CL.
+  const drilldownLocale = localeFor(me?.preferred_currency);
 
   // Prefetch budgetSettings so the gear-button empty-state dot is accurate
   // before the user opens the modal.
@@ -206,6 +220,46 @@ export default function BudgetsPage() {
         view: "personal",
       }),
     enabled: !!householdId,
+    staleTime: 60 * 1000,
+  });
+
+  const hogarDrilldown = useQuery({
+    queryKey: [
+      "budget-drilldown",
+      householdId,
+      monthStr,
+      selectedCurrency,
+      "household",
+      hogarNodeId,
+    ],
+    queryFn: () =>
+      api.getBudgetNodeDrilldown(householdId as string, {
+        node_id: hogarNodeId as string,
+        view: "household",
+        month: monthStr,
+        currency: selectedCurrency,
+      }),
+    enabled: !!householdId && !!hogarNodeId,
+    staleTime: 60 * 1000,
+  });
+
+  const personalDrilldown = useQuery({
+    queryKey: [
+      "budget-drilldown",
+      householdId,
+      monthStr,
+      selectedCurrency,
+      "personal",
+      personalNodeId,
+    ],
+    queryFn: () =>
+      api.getBudgetNodeDrilldown(householdId as string, {
+        node_id: personalNodeId as string,
+        view: "personal",
+        month: monthStr,
+        currency: selectedCurrency,
+      }),
+    enabled: !!householdId && !!personalNodeId,
     staleTime: 60 * 1000,
   });
 
@@ -324,10 +378,24 @@ export default function BudgetsPage() {
           <div className="space-y-3">
             {household.data && (
               <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
-                <SectionFlowBody data={household.data} currency={selectedCurrency} />
+                <SectionFlowBody
+                  data={household.data}
+                  currency={selectedCurrency}
+                  onNodeClick={(id) => setHogarNodeId((prev) => (prev === id ? null : id))}
+                  activeNodeId={hogarNodeId}
+                />
               </div>
             )}
-            {household.data && <RunwayCard runway={household.data.runway} />}
+            {household.data && (
+              <BudgetDrilldownCard
+                block={hogarDrilldown.data}
+                loading={hogarDrilldown.isFetching && !!hogarNodeId}
+                error={hogarDrilldown.isError}
+                currency={selectedCurrency}
+                locale={drilldownLocale}
+                onDismiss={() => setHogarNodeId(null)}
+              />
+            )}
           </div>
         )}
       </section>
@@ -366,10 +434,26 @@ export default function BudgetsPage() {
               <div className="space-y-3">
                 {personal.data && (
                   <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
-                    <SectionFlowBody data={personal.data} currency={selectedCurrency} />
+                    <SectionFlowBody
+                      data={personal.data}
+                      currency={selectedCurrency}
+                      onNodeClick={(id) =>
+                        setPersonalNodeId((prev) => (prev === id ? null : id))
+                      }
+                      activeNodeId={personalNodeId}
+                    />
                   </div>
                 )}
-                {personal.data && <RunwayCard runway={personal.data.runway} />}
+                {personal.data && (
+                  <BudgetDrilldownCard
+                    block={personalDrilldown.data}
+                    loading={personalDrilldown.isFetching && !!personalNodeId}
+                    error={personalDrilldown.isError}
+                    currency={selectedCurrency}
+                    locale={drilldownLocale}
+                    onDismiss={() => setPersonalNodeId(null)}
+                  />
+                )}
               </div>
             )}
           </section>
