@@ -538,14 +538,14 @@ export function PendingBlock() {
   const deleteMutation = useDeleteTransaction();
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Sort awaiting_reconciliation oldest-first using created_at (matches the
+  // Sort awaiting_reconciliation newest-first using created_at (matches the
   // age badge — transaction_date can disagree when banks backdate rows or
   // when legacy data has off-year dates).
   const sortedAwaiting = useMemo(() => {
     if (!data) return [];
     const keyOf = (t: Transaction) =>
       new Date(t.created_at ?? t.transaction_date).getTime();
-    return [...data.awaiting_reconciliation].sort((a, b) => keyOf(a) - keyOf(b));
+    return [...data.awaiting_reconciliation].sort((a, b) => keyOf(b) - keyOf(a));
   }, [data]);
 
   if (isLoading) {

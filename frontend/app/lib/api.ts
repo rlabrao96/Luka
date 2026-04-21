@@ -41,6 +41,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       typeof detail === "string" ? detail : `API error ${res.status}`,
     );
   }
+  // 204 No Content (e.g. DELETE /transactions/{id}) has an empty body —
+  // res.json() would throw "Unexpected end of JSON input".
+  if (res.status === 204) return undefined as T;
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return undefined as T;
   return res.json() as Promise<T>;
 }
 
