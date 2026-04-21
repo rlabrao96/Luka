@@ -290,6 +290,82 @@ async def _find_sum_match(
     return None
 
 
+async def find_plaid_match_for_email(
+    session: AsyncSession,
+    email_tx: Transaction,
+) -> Transaction | None:
+    """Direction-symmetric counterpart to find_email_match.
+
+    Given a pending email-source transaction, find an already-settled Plaid
+    bank transaction that represents the same event. Used by the periodic
+    reconciliation tick for the case where the Plaid webhook beat the email
+    (or where the email arrived during a window when no direct match ran).
+
+    Filters:
+      - same owner (user_id)
+      - source_type='plaid', status='settled'
+      - currency equality
+      - signed amount equality (expenses stay negative, income positive)
+      - transaction_date within ±3 days of the email date
+      - not already paired in a transfer or refund
+      - bank_account_id parity when both sides are set; prefer the
+        transfer_to_account_id when the email is a CC-payment transfer
+      - merchant ILIKE filter skipped for transfers (CC payment strings
+        diverge from Plaid's institution label)
+    """
+    date_min = email_tx.transaction_date - timedelta(days=3)
+    date_max = email_tx.transaction_date + timedelta(days=3)
+
+    conditions = [
+        Transaction.user_id == email_tx.user_id,
+        Transaction.source_type == "plaid",
+        Transaction.status == "settled",
+        Transaction.currency == email_tx.currency,
+        Transaction.amount == email_tx.amount,
+        Transaction.transaction_date >= date_min,
+        Transaction.transaction_date <= date_max,
+        Transaction.transfer_pair_id.is_(None),
+        Transaction.refund_pair_id.is_(None),
+    ]
+
+    is_transfer = email_tx.transaction_type == "transfer"
+
+    # Merchant filter — skip for transfers where the strings diverge.
+    if not is_transfer and email_tx.raw_merchant_name:
+        safe = email_tx.raw_merchant_name.replace("%", r"\%").replace("_", r"\_")
+        conditions.append(Transaction.raw_merchant_name.ilike(f"%{safe}%"))
+
+    # Bank account parity.
+    preferred_account_id = None
+    if is_transfer and email_tx.transfer_to_account_id is not None:
+        # For CC-payment emails, the Plaid row lives on the card (transfer_to).
+        preferred_account_id = email_tx.transfer_to_account_id
+    elif email_tx.bank_account_id is not None:
+        preferred_account_id = email_tx.bank_account_id
+
+    if preferred_account_id is not None:
+        conditions.append(
+            (Transaction.bank_account_id == preferred_account_id)
+            | (Transaction.bank_account_id.is_(None))
+        )
+
+    # Order by date proximity (closest first). Simple ABS trick via two-sided ordering
+    # isn't trivial in SQL; ordering by date ascending then picking the first within
+    # the symmetric window is good-enough for a first pass.
+    result = await session.execute(
+        select(Transaction).where(and_(*conditions)).order_by(Transaction.transaction_date)
+    )
+    candidates = result.scalars().all()
+    if not candidates:
+        return None
+
+    # Pick the candidate whose date is closest to the email date.
+    return min(
+        candidates,
+        key=lambda c: abs((c.transaction_date - email_tx.transaction_date).total_seconds()),
+    )
+
+
 async def _extract_enrichment(session: AsyncSession, email_tx_id: uuid.UUID) -> dict:
     """Extract enrichment data from an email transaction."""
     result = await session.execute(select(Transaction).where(Transaction.id == email_tx_id))
