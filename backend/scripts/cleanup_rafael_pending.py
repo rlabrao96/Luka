@@ -20,6 +20,12 @@ import sys
 from sqlalchemy import select
 
 from core.database import AsyncSessionLocal
+
+# Register every ORM model so Base.metadata can resolve cross-table FKs
+# (Transaction.merchant_id -> merchants.id, etc.) before any flush.
+import modules.merchants.models  # noqa: F401
+import modules.plaid.models  # noqa: F401
+import modules.transactions.models  # noqa: F401
 from modules.auth.models import User
 from modules.households.models import HouseholdMember
 from modules.reconciliation.tick import reconciliation_tick_for_household
