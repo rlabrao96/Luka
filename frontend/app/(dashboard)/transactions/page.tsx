@@ -10,8 +10,9 @@ import { ProcessingBanner } from "../components/ProcessingBanner";
 import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
-import { useCurrencies } from "@/app/lib/hooks/useCurrencies";
+import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import { formatStoredAmount } from "@/app/lib/currency";
+import { CurrencyToggle } from "../components/CurrencyToggle";
 
 // Prefer the browser/runtime locale so dates match what the user sees in the
 // OS. Falls back to es-CL when running server-side (SSR) where Intl has no
@@ -249,64 +250,6 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
   );
 }
 
-interface CurrencyPillBarProps {
-  currencies: import("@/app/lib/api").UserCurrency[];
-  selected: string | null; // null = "Todas"
-  onSelect: (code: string | null) => void;
-}
-
-function CurrencyPillBar({ currencies, selected, onSelect }: CurrencyPillBarProps) {
-  const sorted = useMemo(
-    () => [...currencies].sort((a, b) => a.sort_order - b.sort_order),
-    [currencies],
-  );
-
-  return (
-    <div role="group" aria-label="Moneda" className="flex items-center gap-1.5 flex-wrap">
-      <button
-        type="button"
-        onClick={() => onSelect(null)}
-        aria-pressed={selected === null}
-        className={`min-h-9 px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary ${
-          selected === null
-            ? "bg-luka-primary text-white"
-            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-        }`}
-      >
-        Todas
-      </button>
-
-      {sorted.map((c) => {
-        const active = selected === c.currency_code;
-        return (
-          <button
-            key={c.currency_code}
-            type="button"
-            onClick={() => onSelect(c.currency_code)}
-            aria-pressed={active}
-            className={`min-h-9 px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary ${
-              active
-                ? "bg-luka-primary text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            {c.currency_code}
-            {c.is_primary && (
-              <span
-                aria-label="Moneda principal"
-                title="Moneda principal"
-                className="ml-1 text-[9px] opacity-60 font-bold"
-              >
-                ★
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
@@ -318,13 +261,12 @@ export default function TransactionsPage() {
   const [page, setPage] = useState(1);
   const householdId = useLukaStore((s) => s.householdId);
 
-  const { data: userCurrencies = [] } = useCurrencies();
-  const primaryCurrency = userCurrencies.find((c) => c.is_primary)?.currency_code ?? null;
+  const primaryCurrency = usePrimaryCurrency();
 
-  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
+  const [selectedCurrency, setSelectedCurrency] = useState<string>("");
 
   useEffect(() => {
-    if (selectedCurrency === null && primaryCurrency) {
+    if (!selectedCurrency && primaryCurrency) {
       setSelectedCurrency(primaryCurrency);
     }
   }, [primaryCurrency, selectedCurrency]);
@@ -358,8 +300,7 @@ export default function TransactionsPage() {
 
   const applyFilters = (txns: Transaction[]) => {
     let result = txns;
-    // Currency filter: null = show all currencies
-    if (selectedCurrency !== null) {
+    if (selectedCurrency) {
       result = result.filter((t) => (t.currency ?? "CLP") === selectedCurrency);
     }
     if (selectedMonth !== "all") result = result.filter((t) => getMonthKey(t.transaction_date) === selectedMonth);
@@ -413,15 +354,19 @@ export default function TransactionsPage() {
   const selectClass =
     "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
 
-  // SummaryBar needs a string currency; fall back to primary or "CLP"
-  const summaryBarCurrency = selectedCurrency ?? primaryCurrency ?? "CLP";
-
   return (
     <div className="space-y-6">
       <ProcessingBanner />
-      <div>
-        <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Transacciones</h2>
-        <p className="text-sm text-luka-muted mt-0.5">Historial de movimientos</p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Transacciones</h2>
+          <p className="text-sm text-luka-muted mt-0.5">Historial de movimientos</p>
+        </div>
+        {selectedCurrency && (
+          <div className="shrink-0">
+            <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -506,23 +451,14 @@ export default function TransactionsPage() {
         </button>
       </FilterPanel>
 
-      {/* Currency pill bar */}
-      {userCurrencies.length > 0 && (
-        <div className="mb-3">
-          <CurrencyPillBar
-            currencies={userCurrencies}
-            selected={selectedCurrency}
-            onSelect={setSelectedCurrency}
-          />
-        </div>
-      )}
-
       {/* Summary cards — account balances */}
-      <SummaryBar
-        accounts={accounts}
-        selectedCurrency={summaryBarCurrency}
-        selectedBank={selectedBank}
-      />
+      {selectedCurrency && (
+        <SummaryBar
+          accounts={accounts}
+          selectedCurrency={selectedCurrency}
+          selectedBank={selectedBank}
+        />
+      )}
 
       {/* Pending transactions */}
       <PendingBlock />
