@@ -4,6 +4,8 @@ _Last updated: 2026-04-20_
 
 ## Recently Shipped
 
+- **Transaction consolidation fix (2026-04-20)** — Four-phase overhaul of the pending / reconciliation pipeline. **Migration 039:** added `card_last_four`, `refund_pair_id`, `orphaned_at`, `dismissed_by_user` on `transactions`; migrated status vocabulary `pending|confirmed|settled` → canonical `pending|settled|orphan` with CHECK constraint; added `(household_id, transaction_date DESC)` + partial pending + partial pair-id + GIN trigram on `raw_merchant_name` (pg_trgm) indexes; linearized the duplicate-029 branch by renaming `029_user_currencies.py` → `029b_user_currencies.py`. **Pipeline:** new `reconciliation/refunds.py` + `reconciliation/tick.py` orchestrator running 4 passes per household (rematch aging pendings → `detect_transfers` 7d → `detect_refunds` 90d → 14d aging → orphan). Registered on slow worker every 15 min. `detect_transfers` now guards on `user_id` + `currency`; dedup guards on currency + signed-amount + `bank_account_id` parity + skips merchant filter for transfer emails; `apply_match_and_delete_emails` is user-scoped and propagates transfer type. **Plaid:** `_resolve_cc_counterpart` via last-4 match + bank-name substring; CLP 100× scaling bug in modify branch fixed via `mapper.luka_amount_from_plaid`. **Email ingest:** persists `card_last_four`, eagerly resolves `transfer_to_account_id` against household bank accounts. **API:** `GET /transactions/{id}/match-candidates`, `POST /transactions/{id}/link`, `POST /transactions/{id}/dismiss`, `POST /transactions/bulk-action`. `TransactionResponse` exposes `created_at`, `orphaned_at`, `transfer_pair_id`, `refund_pair_id`, `source_type`. `exclude_from_totals` applied to all aggregation paths so transfers, refund pairs, and orphans don't contribute to spend/income. **Frontend:** unified `formatStoredAmount` / `isZeroDecimalCurrency` / `isNegativeStored` in `app/lib/currency.ts`; new `useMatchCandidates` / `useLinkTransaction` / `useDismissTransaction` / `useBulkAction` hooks; `LinkMatchDialog` manual-match picker; `PairedTransactionCard` groups rows sharing `transfer_pair_id` or `refund_pair_id`; `PendingBlock` now shows all three buckets (`awaiting_reconciliation`, `unmatched_email` now populated, `needs_classification`) with per-row shadcn DropdownMenu (Vincular / Marcar como resuelta / Eliminar), color-coded age badge, bulk-select mode with floating toolbar, skeleton + error states, a11y fixes. Spec: `docs/superpowers/specs/2026-04-20-transaction-consolidation-fix-design.md`. One-time cleanup: `cd backend && python3 -m scripts.cleanup_rafael_pending --dry-run`.
+
 - **Auth modernization (2026-04-20)** — End-to-end pass on authentication + household invite flow driven by a full ultrareview. Closed a critical JWT **algorithm-confusion** vulnerability (HS256 accepted alongside ES256 on the JWKS path — forged tokens could impersonate any user) and removed the HS256 fallback entirely after Supabase Dashboard migration to asymmetric keys. Supabase JWT Signing Keys rotated (ES256, P-256) and legacy HS256 secret revoked. Supabase publishable/secret API keys (`sb_publishable_...`/`sb_secret_...`) live in Railway and Vercel; legacy anon/service_role JWTs disabled. `SUPABASE_JWT_SECRET` env var removed across all surfaces. Microsoft OAuth button hidden behind `NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN` flag (default off) until Outlook ingest ships end-to-end.
 
 - **Household invite flow rewrite (2026-04-20)** — `POST /invite/{token}` with atomic one-time claim (conditional `UPDATE ... RETURNING`), `SELECT ... FOR UPDATE` row lock on the target household so the 5-member cap check + membership insert is race-free. `secrets.token_urlsafe(32)` tokens, case-insensitive email binding, automatic revocation of prior pending invites when a new one is sent. Owner-customized `split_ratio` (e.g., `[70, 30]`) is preserved on member join — only auto-equal defaults are rebalanced. Orphan data migration: when a user joins a group from an individual household, their `bank_accounts` and `transactions` move with them instead of stranding under the abandoned household_id. Typed `InviteError` with stable codes; frontend invite page branches on code instead of matching Spanish substrings.
@@ -50,10 +52,6 @@ _Last updated: 2026-04-20_
 - **CompartidoSection Spanish + design polish** — `"Tu"` → `"Tú"`, drop the hardcoded `"Activo"` badge (drive from `member.status`), replace per-row `"Miembro"` label with role or drop entirely. Swap the hand-rolled card styling for shadcn `Card` to match the rest of settings.
 - **Structured invite success toast** — `invite/[token]/page.tsx` currently redirects silently on success; a short "¡Te uniste al grupo!" toast closes the UX loop.
 
-### Alembic hygiene
-
-- **Duplicate `029` revision** — `029_category_budgets.py` and `029_user_currencies.py` both claim revision `029` with `down_revision="028"`, and `030` depends on `029`. Alembic rejects this as an ambiguous branch, so `alembic upgrade head` is currently unusable. DB is already past this point (tables from 029-037 all present; `alembic_version` is stale at `029`). Fix: rename one `029` to `029b` with `down_revision="029"`, `alembic stamp 037`, then `upgrade head` for future migrations.
-
 ### Budget v3 follow-ups (deferred from review notes — non-blocking)
 
 These items were caught by code-quality reviewers during the Plan 1 + Plan 2 sprints and explicitly deferred to keep velocity. None block any current functionality.
@@ -89,7 +87,13 @@ These items were caught by code-quality reviewers during the Plan 1 + Plan 2 spr
 
 ### Multi-Card Reconciliation
 
-- **Cross-account transfer matching** — When a user connects a second card (e.g. Amex), existing CC payment transactions should auto-reclassify from "expense" to "transfer" and reconcile against the card-side entries.
+- **Retroactive CC counterpart reclassification** — `_resolve_cc_counterpart` (Task 2.5) only runs at ingest time. Rows ingested before the fix may still be typed `expense`/`income` when they should be `transfer`. A one-time backfill script that replays counterpart resolution over historical transactions would close this gap.
+
+### Transaction consolidation follow-ups (non-blocking)
+
+- **Auto-delete orphans after 180d** — not in scope for the 2026-04-20 fix. Orphans currently live forever in the `unmatched_email` bucket; a scheduled prune would keep the list tidy.
+- **Toast helper (sonner) for link/dismiss feedback** — current flows use ad-hoc alerts / silent redirects. A shared `toast` utility would unify success/error copy.
+- **Migrate inline category/split pill editors to shadcn `Select`** — the inline pills on transaction rows are hand-rolled dropdowns; porting to shadcn `Select` would give proper keyboard navigation and a11y out of the box.
 
 ### Phase 2 Forecast Engine (carried from budget-v2 sprint)
 
@@ -103,7 +107,6 @@ These items were caught by code-quality reviewers during the Plan 1 + Plan 2 spr
 - **No frontend test infrastructure** — No Jest, Vitest, or Playwright configured. Backend has 56 test files (~401 tests) but frontend has zero tests.
 - **No CI/CD pipeline** — No GitHub Actions workflows. Backend tests are run manually (`pytest`). Deployment is manual via Railway/Vercel.
 - **Personal view `disponible_personal` semantic limitation** — For a full-mode caller, the personal view's `disponible_personal` appears large because the Sankey doesn't subtract the caller's implicit household contribution. Documented in the v3 spec §9 as a known limitation; the clean fix would be either an `aporte_hogar` Level-1 outflow node or capping the personal view's income at `personal_allocation_amount` when set. Neither was shipped in v3 — see the spec for the rationale.
-- **Alembic chain duplicate-029** (see "Alembic hygiene" under Pending) — not a runtime issue, but `alembic upgrade head` won't run until resolved. Any new migration (like 038) must be applied via raw DDL in the meantime.
 
 ## Infrastructure TODOs
 

@@ -22,7 +22,7 @@ Latin American personal finance SaaS for individuals, couples, and groups. Autom
 
 **Database**
 - Supabase PostgreSQL 15
-- Alembic migrations (38 versions)
+- Alembic migrations (39 versions; `pg_trgm` extension enabled for fuzzy merchant matching)
 
 **Auth**
 - Supabase Auth — Google OAuth (Gmail users); Microsoft OAuth wired but hidden by default (see `NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN`)
@@ -158,7 +158,9 @@ Plaid Link integration for US bank accounts (production). Handles link token cre
 Core transaction storage with support for personal, partner, and shared split types. Tracks transaction type (income/expense/transfer), source (email/bank_connect/plaid/whatsapp/manual), and reconciliation status. Unified sign convention: expenses and transfers are stored as negative amounts, income as positive — consistent across all sources (email, Plaid, bank connect). Optimistic category updates with merchant feedback loops.
 
 **Reconciliation** (`backend/modules/reconciliation/`)
-Matches email-sourced transactions with bank-sourced transactions using 3-tier priority matching (exact -> fuzzy -> sum-match). Compares absolute amounts to handle sign differences between sources (email=positive, Plaid/connect=negative). Runs during both Plaid sync and luka-connect sync. Enriches bank transactions with user-edited categories from email txs. Also detects transfers between accounts (same-amount opposite-sign pairs).
+Matches email-sourced transactions with bank-sourced transactions using 3-tier priority matching (exact -> fuzzy -> sum-match). Dedup now requires currency + signed-amount equality + `bank_account_id` parity and skips the merchant filter for transfer-typed emails. Runs inline during Plaid/Connect sync, during the 6am reconciliation cron, and via a dedicated `reconciliation_tick` that fires every 15 min on the slow worker. The tick orchestrates four passes per household: (1) rematch aging email pendings against settled Plaid rows via `find_plaid_match_for_email`, (2) `detect_transfers` over 7 days (with `user_id` + currency equality guards — no cross-member, no cross-currency pairing), (3) `detect_refunds` over 90 days (same-account opposite-sign pairs → writes `refund_pair_id`), (4) aging pass — email pendings older than 14 days that have had a Plaid sync since creation get promoted to `status='orphan'` and surface in the `unmatched_email` pending bucket. Transfer rows, refund pairs, and orphans are excluded from spend/income totals by `exclude_from_totals` applied across all aggregation paths.
+
+**Transaction consolidation (2026-04-20)** — Full reconciliation overhaul landed: canonical `pending | settled | orphan` status vocabulary (replaced legacy `confirmed`), new `card_last_four` / `refund_pair_id` / `orphaned_at` / `dismissed_by_user` columns on `transactions`, CC counterpart resolution via last-4 match against `BankAccount.account_number` + bank_name substring, CLP 100× scaling bug fixed in Plaid modify branch, and manual-match/dismiss/bulk-action endpoints with a shadcn-based `PendingBlock` UI (three buckets, age badges, floating bulk toolbar) and a `PairedTransactionCard` that groups linked transfers/refunds into one visual card. See [spec](docs/superpowers/specs/2026-04-20-transaction-consolidation-fix-design.md). One-time cleanup: `cd backend && python3 -m scripts.cleanup_rafael_pending --dry-run`.
 
 **Merchant Categorization** (`backend/modules/merchants/`, `backend/modules/merchant_review/`)
 Two-tier system: known merchants resolve instantly from a global DB cache, new merchants get 3 LLM-suggested categories (Gemini 2.5 Flash). Canonical merchant grouping via LLM batching. Training UI at `/train` for local admin use. User category selections feed back into the merchant database.

@@ -46,12 +46,14 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 - Queue: `arq:queue` (default)
 - Cron jobs: mail watch renewal (3am), raw email purge (hourly), email log purge (2am), webhook cleanup (4am), bank connect syncs (6h), subscription cache (5:30am), Plaid syncs (3:30am)
 
+Fast worker does NOT run reconciliation — the 15-min `reconciliation_tick` cron lives on the slow worker.
+
 ### Slow Worker (`backend/worker.py:SlowWorkerSettings`)
 - Handles: bank syncs (Connect + Plaid), LLM merchant review, reconciliation, template agent
 - Config: max_jobs=5, job_timeout=600s
 - Queue: `arq:queue:slow`
-- Functions: `run_connect_sync`, `run_plaid_sync_job`, `process_merchant_review`, `run_template_agent`
-- Cron: reconciliation job (6am daily), template agent (2am daily)
+- Functions: `run_connect_sync`, `run_plaid_sync_job`, `process_merchant_review`, `run_template_agent`, `reconciliation_tick`
+- Cron: reconciliation job (6am daily), template agent (2am daily), `reconciliation_tick` every 15 min `{0,15,30,45}`
 - Routing: jobs in `SLOW_JOBS` set in `backend/jobs/queue.py` -> slow queue
 
 ### Next.js Frontend (`frontend/app/`)
@@ -71,7 +73,7 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 | `households` | Shared financial unit (individual/couple) | -> household_members, bank_accounts, budgets |
 | `household_members` | User<->household junction (role: owner/member) | -> users, households |
 | `household_invites` | Invitation tokens with expiry | -> households |
-| `transactions` | Core financial records | -> users, households, bank_accounts, merchants |
+| `transactions` | Core financial records. Canonical status vocabulary: `pending \| settled \| orphan` (enforced by CHECK constraint; legacy `confirmed` removed). Columns include `transfer_pair_id`, `refund_pair_id` (both exclude row from totals), `card_last_four` (VARCHAR(4)), `orphaned_at` (TIMESTAMPTZ), `dismissed_by_user` (BOOLEAN). Indexed by `(household_id, transaction_date DESC)`, partial `(user_id) WHERE status='pending'`, partials on both pair_id columns, GIN trigram on `raw_merchant_name` (requires `pg_trgm`). | -> users, households, bank_accounts, merchants |
 | `transaction_splits` | Per-tx split info (personal/partner/shared) | -> transactions |
 | `bank_accounts` | Connected accounts with sync state | -> households, users |
 | `merchants` | Raw merchant names -> canonical mapping | -> canonical_merchants |
@@ -106,6 +108,9 @@ Luka is a monorepo with a FastAPI backend, Next.js frontend, and two ARQ worker 
 - Bank accounts belong to a household, linked to a user
 - Budget hierarchy: household -> household_budgets -> category_budgets
 - Bank registry links to active email templates; parsed email log tracks which parser handled each email
+
+### Transaction consolidation (migration 039)
+Migration 039 added `card_last_four`, `refund_pair_id`, `orphaned_at`, `dismissed_by_user` to `transactions`; migrated status vocabulary `pending|confirmed|settled` → `pending|settled|orphan` with a CHECK constraint; added hot-path indexes listed above; and enabled `pg_trgm` for the GIN trigram index on `raw_merchant_name`. It also linearized the previously-ambiguous `029` branch by renaming `029_user_currencies.py` → `029b_user_currencies.py` (chains after `029_category_budgets`), unblocking `alembic upgrade head`.
 
 ### Hot-path indexes (migration 038)
 Partial btree indexes applied live on 2026-04-20 so the auth hot path stays O(1):
@@ -167,17 +172,31 @@ Partial btree indexes applied live on 2026-04-20 so the auth hot path stays O(1)
    - Amounts stored in cents (Plaid sends dollars × 100)
 5. Pending (processing) Plaid transactions surfaced in frontend pending section with "bank" badge
 6. Reconciliation: `find_email_match()` checks for matching pending email transactions and merges them
+7. CC counterpart resolution (`_resolve_cc_counterpart`, `backend/modules/plaid/sync.py`): (a) last-4 match against `BankAccount.account_number`, (b) bank_name substring match in the corrected direction. Household accounts are loaded once per sync and reused across the loop. The modify branch now flows through `mapper.luka_amount_from_plaid(plaid_amount, currency)` — a sign-and-decimals-aware helper — which fixes a CLP 100× scaling bug. Plaid rows land with canonical `status='settled'`.
 
 ### Reconciliation Flow
-Reconciliation runs in two places: inline during Plaid/Connect sync (immediate) and via `run_reconciliation_job` cron (6am daily, catches stragglers).
+Reconciliation runs in three places: inline during Plaid/Connect sync (immediate), via `run_reconciliation_job` cron (6am daily, catches stragglers), and via `reconciliation_tick` on the slow worker (every 15 min at `{0,15,30,45}`).
+
+Dedup (`backend/modules/reconciliation/dedup.py`) requires currency equality, signed-amount equality, and `bank_account_id` parity, and skips the merchant filter for transfer-typed emails. `apply_match_and_delete_emails` is user-scoped and propagates `transaction_type='transfer'` (+ nulls category) when the email was transfer-typed. `find_plaid_match_for_email` provides the symmetric lookup used by the tick's rematch pass.
 
 1. For each bank tx, `find_email_match()` uses 3-tier priority matching:
    - **Exact:** same merchant (ilike), +/-2 days, exact absolute amount
    - **Fuzzy:** +/-3 days, 30% amount tolerance (absolute)
    - **Sum match:** N email txs from same merchant whose amounts sum to bank tx (5% tolerance)
-2. All comparisons use `abs(amount)` — all sources now store negative for expenses, positive for income
+2. All comparisons use `abs(amount)` — all sources now store negative for expenses, positive for income. Currency and bank_account_id parity are enforced.
 3. On match: copies merchant_id, category, transaction_type from email tx -> bank tx; re-links splits; deletes email tx
-4. `detect_transfers()` finds same-amount opposite-sign pairs across accounts within +/-2 days, marks both as transfer
+4. `detect_transfers()` finds same-amount opposite-sign pairs across accounts within +/-2 days, marks both as transfer. Guarded by `user_id` (no cross-member) and `currency` (no cross-currency) equality.
+5. `detect_refunds()` finds same-account opposite-sign pairs within 90 days and writes `refund_pair_id` to both rows.
+
+### Reconciliation Lifecycle (`reconciliation_tick`)
+Every 15 minutes, for every household, the tick runs four passes in order:
+
+1. **Rematch aging email pendings** against settled Plaid rows via `find_plaid_match_for_email` — handles the race where email arrived before the bank sync and dedup was skipped.
+2. **Transfer detection** — `detect_transfers(lookback_days=7)`; `user_id` + `currency` equality enforced.
+3. **Refund detection** — `detect_refunds(lookback_days=90)`; same-account opposite-sign pairs get a shared `refund_pair_id`.
+4. **Aging pass** — email pendings older than 14 days that have had a Plaid sync since `created_at` get promoted to `status='orphan'` (surfaces in `unmatched_email` pending bucket).
+
+An email row can also become an orphan via explicit user dismiss (`POST /transactions/{id}/dismiss`). Matched rows follow the legacy path: email row deleted, bank row enriched with email-sourced category/type. Transfer rows, refund pairs, and orphans are excluded from spend/income totals by `exclude_from_totals()` applied to all aggregation queries in `backend/modules/transactions/service.py`.
 
 ### Encryption
 - **Fernet** (`backend/core/encryption.py`): symmetric encryption for OAuth provider tokens (Google, Microsoft)
@@ -205,7 +224,7 @@ Two ARQ worker processes deployed as separate Railway services:
 | Worker | Queue | Max Jobs | Timeout | Purpose |
 |--------|-------|----------|---------|---------|
 | Fast | `arq:queue` | 20 | 60s | Email processing, invite emails, cron scheduling |
-| Slow | `arq:queue:slow` | 5 | 600s | Bank syncs, LLM review, reconciliation, template agent |
+| Slow | `arq:queue:slow` | 5 | 600s | Bank syncs, LLM review, reconciliation (daily + 15-min tick), template agent |
 
 Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enqueued to slow queue.
 
@@ -221,6 +240,7 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 | `refresh_subscriptions_cache` | 5:30 AM daily | Fast | Pre-compute recurring transaction patterns |
 | `schedule_plaid_syncs` | 3:30 AM daily | Fast | Enqueue Plaid sync jobs |
 | `run_reconciliation_job` | 6:00 AM daily | Slow | Match email + bank transactions |
+| `reconciliation_tick` | Every 15 min `{0,15,30,45}` | Slow | Per-household 4-pass tick: rematch aging emails → detect_transfers (7d) → detect_refunds (90d) → orphan aging (>14d) |
 | `run_template_agent` | 2:00 AM daily | Slow | Shadow validate active templates + generate new ones |
 
 ### Async Tasks
@@ -289,6 +309,17 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 | PATCH | `/transactions/{id}/category` | Update category (trains merchant) |
 | PATCH | `/transactions/{id}/split-type` | Change split type |
 | DELETE | `/transactions/{id}` | Delete transaction |
+
+#### Transactions — consolidation actions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/transactions/{id}/match-candidates?window_days=7` | Up to 20 ranked bank-tx candidates for a pending email row (same currency/account/user scope) |
+| POST | `/transactions/{id}/link` | Manual match: body `{bank_transaction_id}` — deletes the email row, propagates category/type to the bank row |
+| POST | `/transactions/{id}/dismiss` | Mark a pending row as `status='orphan'` (user-dismissed, stamps `dismissed_by_user=true` + `orphaned_at`) |
+| POST | `/transactions/bulk-action` | Body `{transaction_ids, action: "dismiss"\|"delete"}`; capped at 100 IDs per call |
+
+All four endpoints enforce `user_id` scope in SQL. `TransactionResponse` exposes `created_at`, `orphaned_at`, `transfer_pair_id`, `refund_pair_id`, `source_type` for frontend grouping / age display.
 
 ### Households (`/households`)
 | Method | Path | Description |
@@ -438,7 +469,7 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 
 ## Testing
 
-**Backend:** 56 test files in `backend/tests/`, ~401 tests passing, covering all major modules:
+**Backend:** 56 test files in `backend/tests/`, ~401 tests passing, covering all major modules. Reconciliation tests hit a real PostgreSQL instance via the savepoint-scoped `db` fixture — no DB mocks.
 - Auth, transactions, budgets, households, email parsing, WhatsApp handler, merchant normalization
 - Bank connect encryption/mapping, queue routing, worker settings, notifications, categories, subscriptions, reconciliation
 - LLM parser, LLM parser integration, parser orchestrator, template executor, template agent, bank registry service
