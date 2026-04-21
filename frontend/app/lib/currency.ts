@@ -106,11 +106,19 @@ export function isNegativeStored(amountCents: number): boolean {
  *  - For all other currencies, the stored value is in minor units (cents)
  *    and is divided by 100 before formatting.
  */
+/** Valid ISO 4217 code guard. Intl.NumberFormat throws RangeError on empty
+ *  or non-3-letter codes, which kills the page during the brief window
+ *  before user preferences resolve. */
+function isValidCurrencyCode(code: string | undefined | null): code is string {
+  return typeof code === "string" && /^[A-Za-z]{3}$/.test(code);
+}
+
 export function formatStoredAmount(
   amountCents: number,
   currency: string,
   locale?: string,
 ): string {
+  if (!isValidCurrencyCode(currency)) return "—";
   const decimals = isZeroDecimalCurrency(currency) ? 0 : 2;
   const value = decimals === 0 ? amountCents : amountCents / 100;
   const resolvedLocale =
@@ -130,6 +138,7 @@ export function formatMajorAmount(
   currency: string,
   locale?: string,
 ): string {
+  if (!isValidCurrencyCode(currency)) return "—";
   const decimals = isZeroDecimalCurrency(currency) ? 0 : 2;
   const resolvedLocale =
     locale ?? Intl.DateTimeFormat().resolvedOptions().locale ?? "es-CL";
@@ -146,11 +155,10 @@ export function formatMajorAmountCompact(
   amount: number,
   currency: string,
 ): string {
+  if (!isValidCurrencyCode(currency)) return "—";
   const abs = Math.abs(amount);
-  const decimals = isZeroDecimalCurrency(currency) ? 0 : 2;
   const symbol = FORMAT_MAP[currency]?.[0] ?? currency + " ";
   if (abs >= 1_000_000) return `${symbol}${(abs / 1_000_000).toFixed(1)}M`;
   if (abs >= 10_000) return `${symbol}${Math.round(abs / 1_000)}k`;
-  return formatMajorAmount(amount, currency) ||
-    `${symbol}${abs.toFixed(decimals)}`;
+  return formatMajorAmount(amount, currency);
 }
