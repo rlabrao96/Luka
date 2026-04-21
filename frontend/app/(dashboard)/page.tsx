@@ -91,21 +91,27 @@ export default function DashboardPage() {
     [myTxns, selectedMonth, selectedCurrency]
   );
 
-  // Cash flow (normalized to standard currency unit)
-  const income = useMemo(
-    () => monthTxns.filter((t) => normalizeTxnAmount(t) > 0).reduce((s, t) => s + normalizeTxnAmount(t), 0),
+  // Exclude transfers and refunds from totals/charts to avoid artificially inflating income and expenses.
+  const validTxns = useMemo(
+    () => monthTxns.filter((t) => !t.transfer_pair_id && !t.refund_pair_id && t.status !== "orphan"),
     [monthTxns]
   );
+
+  // Cash flow (normalized to standard currency unit)
+  const income = useMemo(
+    () => validTxns.filter((t) => normalizeTxnAmount(t) > 0).reduce((s, t) => s + normalizeTxnAmount(t), 0),
+    [validTxns]
+  );
   const expenses = useMemo(
-    () => monthTxns.filter((t) => normalizeTxnAmount(t) < 0).reduce((s, t) => s + Math.abs(normalizeTxnAmount(t)), 0),
-    [monthTxns]
+    () => validTxns.filter((t) => normalizeTxnAmount(t) < 0).reduce((s, t) => s + Math.abs(normalizeTxnAmount(t)), 0),
+    [validTxns]
   );
   const net = income - expenses;
 
   // Category breakdown (top 5 + Otros)
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
-    monthTxns
+    validTxns
       .filter((t) => normalizeTxnAmount(t) < 0)
       .forEach((t) => {
         const cat = t.category ?? "Otros";
@@ -123,7 +129,7 @@ export default function DashboardPage() {
       return top5.map((e, i) => i === othersIdx ? { ...e, amount: e.amount + overflowTotal } : e);
     }
     return [...top5, { category: "Otros", amount: overflowTotal }];
-  }, [monthTxns]);
+  }, [validTxns]);
 
   // Recent transactions (latest 5, including pending)
   const recentTxns = useMemo(() => {
