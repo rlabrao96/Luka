@@ -9,7 +9,7 @@ type Node = {
   value: number;
   risk?: boolean;
   level?: number | null;
-  kind?: "source" | "hub" | "allocation" | "spent" | "deficit" | null;
+  kind?: "source" | "hub" | "allocation" | "bill" | "spent" | "deficit" | null;
   member_id?: string | null;
 };
 type Link = { source: string; target: string; value: number };
@@ -37,6 +37,10 @@ function colorFor(node: Node): string {
   // Deficit = synthetic "income" plug when outflows exceed real income.
   // Amber so users immediately see it's not real revenue.
   if (node.kind === "deficit") return "#F59E0B";
+  // Bill = committed fixed outflow (subscriptions-derived known_bills).
+  // Warm red so users read it as "money already committed" vs the blue
+  // "still available" allocations.
+  if (node.kind === "bill") return "#F87171";
   if (node.kind === "hub") return "#2563EB";
   if (node.kind === "source") return "#60A5FA";
   if (node.kind === "allocation") return "#93C5FD";

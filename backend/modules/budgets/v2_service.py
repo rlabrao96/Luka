@@ -563,7 +563,7 @@ def _build_hogar_sankey(
                 label="Gastos fijos",
                 value=known_bills,
                 level=2,
-                kind="allocation",
+                kind="bill",
             )
         )
     if cuotas_this_month > _ZERO:
@@ -775,7 +775,7 @@ def _build_personal_sankey(
                 label="Gastos fijos",
                 value=known_bills,
                 level=2,
-                kind="allocation",
+                kind="bill",
             )
         )
     if cuotas_this_month > _ZERO:
