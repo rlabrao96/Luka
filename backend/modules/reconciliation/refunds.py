@@ -69,42 +69,47 @@ async def detect_refunds(
         )
         buckets[key].append(tx)
 
-    matched_ids: set[uuid.UUID] = set()
     pairs_found = 0
 
     for candidates in buckets.values():
         if len(candidates) < 2:
             continue
-        # Candidates are already globally ordered by transaction_date (query sort).
-        for i, tx_a in enumerate(candidates):
-            if tx_a.id in matched_ids:
-                continue
-            if tx_a.amount >= 0:
-                # We only start pairs from the negative (charge) side — this way,
-                # the earliest-refund rule for a given charge is a natural
-                # consequence of iterating candidates in date order.
-                continue
-
-            for tx_b in candidates[i + 1 :]:
-                if tx_b.id in matched_ids:
+        # Bipartite closest-match: charges (negative) on one side, refunds
+        # (positive) on the other. For each charge we pick the unmatched refund
+        # with the smallest |date delta| inside the 0-90d window. Handles
+        # same-date pairs and irregular merchant posting order (Plaid may emit
+        # the refund row before the charge row on identical dates).
+        charges = sorted(
+            [t for t in candidates if t.amount < 0],
+            key=lambda t: t.transaction_date,
+        )
+        refunds = sorted(
+            [t for t in candidates if t.amount > 0],
+            key=lambda t: t.transaction_date,
+        )
+        used_refund_ids: set[uuid.UUID] = set()
+        for charge in charges:
+            best: Transaction | None = None
+            best_delta: timedelta | None = None
+            for refund in refunds:
+                if refund.id in used_refund_ids:
                     continue
-                # Opposite signs — tx_a is negative, need tx_b positive.
-                if tx_b.amount <= 0:
-                    continue
-                # Refund must be 0–90 days AFTER the charge.
-                delta = tx_b.transaction_date - tx_a.transaction_date
+                delta = refund.transaction_date - charge.transaction_date
+                # Refund must land on or after the charge, within 90 days.
                 if delta < timedelta(days=0) or delta > timedelta(days=90):
                     continue
-
-                pair_id = uuid.uuid4()
-                await session.execute(
-                    update(Transaction)
-                    .where(Transaction.id.in_([tx_a.id, tx_b.id]))
-                    .values(refund_pair_id=pair_id)
-                )
-                matched_ids.add(tx_a.id)
-                matched_ids.add(tx_b.id)
-                pairs_found += 1
-                break
+                if best_delta is None or delta < best_delta:
+                    best = refund
+                    best_delta = delta
+            if best is None:
+                continue
+            pair_id = uuid.uuid4()
+            await session.execute(
+                update(Transaction)
+                .where(Transaction.id.in_([charge.id, best.id]))
+                .values(refund_pair_id=pair_id)
+            )
+            used_refund_ids.add(best.id)
+            pairs_found += 1
 
     return pairs_found
