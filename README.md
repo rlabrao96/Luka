@@ -22,7 +22,7 @@ Latin American personal finance SaaS for individuals, couples, and groups. Autom
 
 **Database**
 - Supabase PostgreSQL 15
-- Alembic migrations (39 versions; `pg_trgm` extension enabled for fuzzy merchant matching)
+- Alembic migrations (41 versions; `pg_trgm` extension enabled for fuzzy merchant matching)
 
 **Auth**
 - Supabase Auth — Google OAuth (Gmail users); Microsoft OAuth wired but hidden by default (see `NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN`)
@@ -83,7 +83,7 @@ backend/
   core/               Config, database, security (PyJWT), cache (Redis)
   modules/            Feature modules (see "What Luka Does" below)
   jobs/               ARQ task definitions + queue routing
-  alembic/            Database migrations (37 versions)
+  alembic/            Database migrations (41 versions)
   tests/              56 test files (~401 tests)
 
 frontend/
@@ -169,7 +169,7 @@ Two-tier system: known merchants resolve instantly from a global DB cache, new m
 Full conversational flow via Meta WhatsApp Cloud API. Transaction alerts include sender, subject, and Chile-timezone time. Interactive split type selection (Personal/Hogar), category picker, and confirmation. Transfers (CC payments, own-account moves) receive an informational-only message with no split/category flow. Supports manual expense entry via natural language.
 
 **Budgets & Allocations** (`backend/modules/budgets/`)
-Monthly household budgets with waterfall ceiling logic and a multi-level Sankey flow visualization. The v3 `/budgets/v2/{household_id}` endpoint dispatches to two dedicated builders: `_build_hogar_sankey` (4 levels: per-source income → `Ingresos Hogar` hub → 5 allocation nodes including `Gastos fijos`/`Cuotas`/`Meta de ahorro`/`Gasto personal`/`Disponible hogar` → per-category breakdown) and `_build_personal_sankey` (3 allocation levels with its own `Mis ingresos` hub). Caller-relative privacy: each viewer sees their own income categories broken out at Level 0, while other members appear as one aggregated node per member (`Ingresos {Name}` for full mode, `Contribución fija {Name}` for fixed mode). Forecast engine, 50/20/30 allocation suggestions, per-category caps, cuotas (installment purchases), savings target + payday + personal allocation settings, contribution-mode dispatch (full / fixed / reimbursement) with privacy invariant enforced by construction in `contribution_service.income_breakdown_for_household_view`. Budget configuration (savings target, payday, personal allocation, contribution mode, per-category caps) lives in a single accordion modal on `/budgets` triggered by a gear button next to the currency toggle — no more navigating to `/settings` to tweak a number.
+Monthly household budgets with waterfall ceiling logic and a multi-level Sankey flow visualization. The v3 `/budgets/v2/{household_id}` endpoint dispatches to two dedicated builders: `_build_hogar_sankey` (4 levels: per-source income → `Ingresos Hogar` hub → 5 allocation nodes including `Gastos fijos`/`Cuotas`/`Meta de ahorro`/`Gasto personal`/`Disponible hogar` → per-category breakdown) and `_build_personal_sankey` (3 allocation levels with its own `Mis ingresos` hub, a `Gastos del hogar` node equal to `caller_ratio × (shared MTD spend + unpaid shared bills)` that absorbs the caller's share of household outflows, and a Level 3 breakdown limited to personal-split transactions only). Personal view queries LEFT JOIN `transaction_splits` and accept rows where `split_type='personal' OR IS NULL` — email-ingested transactions on non-joint accounts never get a splits row at ingestion time, so the NULL fallback keeps them in the personal view (matching the frontend's display rule). Caller-relative privacy: each viewer sees their own income categories broken out at Level 0, while other members appear as one aggregated node per member (`Ingresos {Name}` for full mode, `Contribución fija {Name}` for fixed mode). Every Sankey node is clickable — the separate `GET /budgets/v2/{household_id}/drilldown` endpoint returns the top-5 transactions for that node (by category, by shared pool, or by income source) and the `BudgetDrilldownCard` below the chart renders them inline. Forecast engine, 50/20/30 allocation suggestions, cuotas (installment purchases), savings target + payday + personal allocation settings, and contribution-mode dispatch (full / fixed / reimbursement) with privacy invariant enforced by construction in `contribution_service.income_breakdown_for_household_view`. Per-category caps now carry their own `currency` (migration 040), so a household can cap Alimentación at $600k CLP and Travel at $500 USD in the same month — the Sankey only applies caps matching its view currency. Budget configuration (savings target, payday, personal allocation, contribution mode, per-category caps) lives in a single accordion modal on `/budgets` triggered by a gear button next to the currency toggle — every currency selector defaults to the user's `preferred_currency` across the full LATAM set (CLP/USD/COP/MXN/PEN/BRL).
 
 **Notifications** (`backend/modules/notifications/`)
 In-app notification system with unread counts, per-user notification preferences (WhatsApp toggle), and CRUD operations.
