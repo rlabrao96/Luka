@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const PWA_SESSION_KEY = "luka_pwa_session";
-const MICROSOFT_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN === "true";
+const MICROSOFT_LOGIN_ENABLED = true;
 
 const AUTH_ERROR_COPY: Record<string, string> = {
   auth_failed: "No pudimos iniciar sesión. Intenta de nuevo.",
@@ -115,7 +115,7 @@ export default function LoginPage() {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
-        scopes: "openid email profile offline_access Mail.Read",
+        scopes: "openid email profile",
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });

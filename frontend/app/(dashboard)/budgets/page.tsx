@@ -132,6 +132,9 @@ function SectionFlowBody({
   }
   return (
     <div className="min-h-[22rem]">
+      <p className="text-xs text-slate-500 mb-2">
+        Haz clic en cualquier categoría para ver las 5 transacciones más grandes.
+      </p>
       <BudgetSankey
         nodes={data.sankey.nodes.map((n) => ({
           id: n.id,
