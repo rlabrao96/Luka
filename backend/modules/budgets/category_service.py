@@ -9,18 +9,26 @@ async def get_category_budgets(
     db: AsyncSession,
     household_id: uuid.UUID,
     month: date,
+    currency: str | None = None,
 ) -> dict:
-    result = await db.execute(
-        select(CategoryBudget).where(
-            CategoryBudget.household_id == household_id,
-            CategoryBudget.month == month,
-        )
+    """Return category caps for a household/month, optionally filtered to a
+    single currency. When `currency` is None, returns rows across every
+    currency a household has set caps in."""
+    stmt = select(CategoryBudget).where(
+        CategoryBudget.household_id == household_id,
+        CategoryBudget.month == month,
     )
+    if currency:
+        stmt = stmt.where(CategoryBudget.currency == currency)
+    result = await db.execute(stmt)
     rows = result.scalars().all()
     return {
         "household_id": str(household_id),
         "month": month.isoformat(),
-        "budgets": [{"category": r.category, "amount": float(r.amount)} for r in rows],
+        "budgets": [
+            {"category": r.category, "amount": float(r.amount), "currency": r.currency}
+            for r in rows
+        ],
     }
 
 
@@ -30,7 +38,13 @@ async def set_category_budgets(
     month: date,
     budgets: list[dict],
 ) -> dict:
-    # Delete existing budgets for this month, then insert new ones
+    """Replace all caps for `(household_id, month)` with the provided list.
+
+    Each row carries its own `currency`, so a single save can mix, e.g.,
+    Alimentación in CLP and Travel in USD. Categories in the table but
+    absent from the payload are dropped (explicit deletion is the UI's
+    "clear" action).
+    """
     await db.execute(
         delete(CategoryBudget).where(
             CategoryBudget.household_id == household_id,
@@ -43,6 +57,7 @@ async def set_category_budgets(
                 household_id=household_id,
                 category=b["category"],
                 month=month,
+                currency=b.get("currency", "CLP"),
                 amount=b["amount"],
             )
         )

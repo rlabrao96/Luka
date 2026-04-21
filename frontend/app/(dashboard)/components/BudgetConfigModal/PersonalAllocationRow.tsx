@@ -6,6 +6,7 @@ import { User, Check } from "lucide-react";
 import { api } from "@/app/lib/api";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { AccordionRow } from "./AccordionRow";
+import { CURRENCY_OPTIONS, isSupportedCurrency } from "./currencies";
 
 interface Props {
   expanded: boolean;
@@ -18,8 +19,17 @@ export function PersonalAllocationRow({ expanded, onToggle }: Props) {
     queryKey: ["budgetSettings"],
     queryFn: () => api.getBudgetSettings(),
   });
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.getMe(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const defaultCurrency = isSupportedCurrency(me?.preferred_currency)
+    ? me.preferred_currency
+    : "CLP";
 
   const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState<string>(defaultCurrency);
   const [savedTick, setSavedTick] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -30,9 +40,8 @@ export function PersonalAllocationRow({ expanded, onToggle }: Props) {
         ? String(current.personal_allocation_amount)
         : ""
     );
-  }, [current]);
-
-  const inferredCurrency = current?.savings_target_currency ?? "CLP";
+    setCurrency(current.personal_allocation_currency ?? defaultCurrency);
+  }, [current, defaultCurrency]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -41,7 +50,7 @@ export function PersonalAllocationRow({ expanded, onToggle }: Props) {
         savings_target_currency: current?.savings_target_currency ?? null,
         payday_day_of_month: current?.payday_day_of_month ?? null,
         personal_allocation_amount: amount ? Number(amount) : null,
-        personal_allocation_currency: amount ? inferredCurrency : null,
+        personal_allocation_currency: amount ? currency : null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budgetSettings"] });
@@ -65,13 +74,13 @@ export function PersonalAllocationRow({ expanded, onToggle }: Props) {
         current?.personal_allocation_amount != null
           ? formatMoney(
               current.personal_allocation_amount,
-              (current?.personal_allocation_currency ?? "CLP") as Currency
+              (current?.personal_allocation_currency ?? defaultCurrency) as Currency
             )
           : "Sin monto"
       }
       valueUnit={
         current?.personal_allocation_amount != null
-          ? `${current.personal_allocation_currency ?? "CLP"} / mes`
+          ? `${current.personal_allocation_currency ?? defaultCurrency} / mes`
           : undefined
       }
       empty={current?.personal_allocation_amount == null}
@@ -87,9 +96,15 @@ export function PersonalAllocationRow({ expanded, onToggle }: Props) {
           placeholder="Ej. 200000"
           className="flex-1 rounded-[11px] border border-slate-200 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-4 focus:ring-luka-primary/10 focus:border-luka-primary font-[var(--font-geist-mono)]"
         />
-        <div className="w-20 rounded-[11px] border border-slate-200 px-2 py-2.5 text-[12px] font-[var(--font-geist-mono)] font-medium text-slate-500 bg-slate-50 text-center flex items-center justify-center">
-          {inferredCurrency}
-        </div>
+        <select
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
+          className="w-20 rounded-[11px] border border-slate-200 px-2 py-2.5 text-[12px] font-[var(--font-geist-mono)] font-medium text-slate-500 bg-white text-center"
+        >
+          {CURRENCY_OPTIONS.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
       <p className="text-[11.5px] text-slate-500 mt-2 leading-[1.45]">
         Monto que reservas para gasto personal cada mes. Aparece como un nodo &quot;Gasto personal&quot; en el Sankey del hogar.

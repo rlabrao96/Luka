@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Grid3x3 } from "lucide-react";
 import { api, type BudgetV2Response } from "@/app/lib/api";
-import { formatMoney, type Currency } from "@/app/lib/format";
 import { AccordionRow } from "./AccordionRow";
 import { CategoryCapsEditor } from "./CategoryCapsEditor";
 
@@ -33,19 +32,22 @@ export function CategoryCapsRow({
   const summary = useMemo(() => {
     const saved = budgets.data?.budgets?.filter((b) => b.amount > 0) ?? [];
     const count = saved.length;
-    const total = saved.reduce((sum, b) => sum + b.amount, 0);
-    return { count, total };
+    // Caps can mix currencies — summing amounts across CLP+USD would be
+    // nonsense. Show the distinct-currency count in the secondary line instead.
+    const currencies = new Set(saved.map((b) => b.currency ?? "CLP"));
+    return { count, currencies };
   }, [budgets.data]);
-
-  const currency = householdBudget?.currency ?? "CLP";
 
   const valuePrimary =
     summary.count === 0
       ? "Sin topes"
       : `${summary.count} tope${summary.count === 1 ? "" : "s"} activo${summary.count === 1 ? "" : "s"}`;
-  const valueUnit = summary.count === 0
-    ? undefined
-    : `${formatMoney(summary.total, currency as Currency)} cubiertos`;
+  const valueUnit =
+    summary.count === 0
+      ? undefined
+      : summary.currencies.size === 1
+        ? `en ${[...summary.currencies][0]}`
+        : `en ${summary.currencies.size} monedas`;
 
   return (
     <AccordionRow

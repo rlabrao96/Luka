@@ -7,6 +7,7 @@ import { api, type BudgetV2Response } from "@/app/lib/api";
 import { getCategoryPill } from "@/app/lib/category-icons";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { CategoryCapPicker } from "./CategoryCapPicker";
+import { CURRENCY_OPTIONS, isSupportedCurrency } from "./currencies";
 
 interface Props {
   householdId: string;
@@ -28,6 +29,11 @@ function spendByCategoryFrom(budget: BudgetV2Response | undefined): Record<strin
   return map;
 }
 
+interface DraftRow {
+  amount: string;
+  currency: string;
+}
+
 export function CategoryCapsEditor({
   householdId,
   month,
@@ -41,26 +47,42 @@ export function CategoryCapsEditor({
     queryFn: () => api.getCategoryPreferences(),
     staleTime: 5 * 60 * 1000,
   });
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.getMe(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const defaultCurrency: string = isSupportedCurrency(me?.preferred_currency)
+    ? me.preferred_currency
+    : (householdBudget?.currency ?? "CLP");
+
+  // Fetch *all* currencies for this month (no ?currency filter) so the row
+  // list includes USD caps for the user even when viewing the CLP Sankey.
   const budgets = useQuery({
-    queryKey: ["category-budgets", householdId, month],
+    queryKey: ["category-budgets", householdId, month, "all-ccy"],
     queryFn: () => api.getCategoryBudgets(householdId, month),
   });
 
-  // Local draft: category → amount as a string. Only includes
-  // categories the user intends to cap (uncapped categories are absent).
-  const [draft, setDraft] = useState<Record<string, string>>({});
+  // Local draft: category → {amount, currency}. Only capped categories live
+  // here; the Picker adds rows, the "X" button removes them.
+  const [draft, setDraft] = useState<Record<string, DraftRow>>({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savedTick, setSavedTick] = useState(0);
 
   useEffect(() => {
     if (!budgets.data) return;
-    const seed: Record<string, string> = {};
+    const seed: Record<string, DraftRow> = {};
     for (const b of budgets.data.budgets) {
-      if (b.amount > 0) seed[b.category] = String(b.amount);
+      if (b.amount > 0) {
+        seed[b.category] = {
+          amount: String(b.amount),
+          currency: b.currency ?? defaultCurrency,
+        };
+      }
     }
     setDraft(seed);
-  }, [budgets.data]);
+  }, [budgets.data, defaultCurrency]);
 
   const allExpenseCategories = useMemo(
     () =>
@@ -76,12 +98,19 @@ export function CategoryCapsEditor({
     [householdBudget]
   );
 
-  const currency = householdBudget?.currency ?? "CLP";
+  // Spend lookup is keyed off the Hogar Sankey, which is in one currency.
+  // Showing "Gastado: $X" next to a cap in a DIFFERENT currency would be
+  // misleading, so we only surface spend when it matches the row's currency.
+  const spendCurrency = householdBudget?.currency ?? defaultCurrency;
 
   const mutation = useMutation({
     mutationFn: () => {
       const items = Object.entries(draft)
-        .map(([category, raw]) => ({ category, amount: raw ? Number(raw) : 0 }))
+        .map(([category, row]) => ({
+          category,
+          amount: row.amount ? Number(row.amount) : 0,
+          currency: row.currency,
+        }))
         .filter((b) => b.amount > 0);
       return api.setCategoryBudgets(householdId, { month, budgets: items });
     },
@@ -101,9 +130,11 @@ export function CategoryCapsEditor({
   const excluded = new Set(activeCaps);
 
   function handlePick(category: string) {
-    setDraft((d) => ({ ...d, [category]: "" }));
+    setDraft((d) => ({
+      ...d,
+      [category]: { amount: "", currency: defaultCurrency },
+    }));
     setPickerOpen(false);
-    // Scroll focus to the new row on the next tick.
     setTimeout(() => {
       const el = document.querySelector<HTMLInputElement>(
         `input[data-cap-input="${category}"]`
@@ -120,8 +151,18 @@ export function CategoryCapsEditor({
     });
   }
 
-  function handleChange(category: string, raw: string) {
-    setDraft((d) => ({ ...d, [category]: raw }));
+  function handleAmountChange(category: string, raw: string) {
+    setDraft((d) => ({
+      ...d,
+      [category]: { ...(d[category] ?? { amount: "", currency: defaultCurrency }), amount: raw },
+    }));
+  }
+
+  function handleCurrencyChange(category: string, ccy: string) {
+    setDraft((d) => ({
+      ...d,
+      [category]: { ...(d[category] ?? { amount: "", currency: defaultCurrency }), currency: ccy },
+    }));
   }
 
   const isLoading = prefs.isPending || budgets.isPending;
@@ -138,11 +179,13 @@ export function CategoryCapsEditor({
         <div className="space-y-1.5">
           {activeCaps.map((category) => {
             const icon = getCategoryPill(category);
-            const spend = spendByCategory[category] ?? 0;
+            const row = draft[category];
+            const spend =
+              row.currency === spendCurrency ? spendByCategory[category] ?? 0 : 0;
             return (
               <div
                 key={category}
-                className="grid grid-cols-[32px_1fr_130px_26px] items-center gap-2.5 px-2.5 py-2 rounded-[11px] bg-slate-50 border border-slate-100 hover:border-slate-200 hover:bg-white transition-all animate-in fade-in-0 zoom-in-[.98] duration-200"
+                className="grid grid-cols-[32px_1fr_110px_64px_26px] items-center gap-2 px-2.5 py-2 rounded-[11px] bg-slate-50 border border-slate-100 hover:border-slate-200 hover:bg-white transition-all animate-in fade-in-0 zoom-in-[.98] duration-200"
               >
                 <span
                   className="w-8 h-8 rounded-[9px] flex items-center justify-center text-[14px]"
@@ -156,7 +199,7 @@ export function CategoryCapsEditor({
                   </div>
                   {spend > 0 && (
                     <div className="text-[10.5px] text-slate-500">
-                      Gastado: {formatMoney(spend, currency as Currency)}
+                      Gastado: {formatMoney(spend, spendCurrency as Currency)}
                     </div>
                   )}
                 </div>
@@ -165,11 +208,21 @@ export function CategoryCapsEditor({
                   inputMode="numeric"
                   min="0"
                   data-cap-input={category}
-                  value={draft[category]}
-                  onChange={(e) => handleChange(category, e.target.value)}
+                  value={row.amount}
+                  onChange={(e) => handleAmountChange(category, e.target.value)}
                   placeholder="Tu tope"
                   className="w-full rounded-[9px] bg-white border border-slate-200 px-2.5 py-1.5 text-[12.5px] text-right font-[var(--font-geist-mono)] text-luka-dark focus:outline-none focus:ring-2 focus:ring-luka-primary/20 focus:border-luka-primary placeholder:italic placeholder:text-slate-400"
                 />
+                <select
+                  value={row.currency}
+                  onChange={(e) => handleCurrencyChange(category, e.target.value)}
+                  aria-label={`Moneda del tope de ${category}`}
+                  className="rounded-[9px] bg-white border border-slate-200 px-1.5 py-1.5 text-[11.5px] font-[var(--font-geist-mono)] font-medium text-slate-600 text-center focus:outline-none focus:ring-2 focus:ring-luka-primary/20"
+                >
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={() => handleRemove(category)}
@@ -197,12 +250,13 @@ export function CategoryCapsEditor({
               spendByCategory={spendByCategory}
               excluded={excluded}
               onPick={handlePick}
-              formatSpend={(n) => formatMoney(n, currency as Currency)}
+              formatSpend={(n) => formatMoney(n, spendCurrency as Currency)}
             />
           )}
 
           <p className="text-[11.5px] text-slate-500 mt-2 leading-[1.45]">
-            Sólo se muestran las categorías con tope activo. Toca <strong>+ Agregar tope</strong> para incluir otra.
+            Sólo se muestran las categorías con tope activo. Puedes mezclar monedas —
+            cada tope sólo aplica a su moneda.
           </p>
         </div>
       )}

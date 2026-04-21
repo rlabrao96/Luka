@@ -59,11 +59,12 @@ async def set_budget(
 async def get_cat_budgets(
     household_id: uuid.UUID,
     month: date | None = None,
+    currency: str | None = Query(default=None, pattern=r"^(CLP|USD|COP|MXN|PEN|BRL)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    return await get_category_budgets(db, household_id, _normalize_month(month))
+    return await get_category_budgets(db, household_id, _normalize_month(month), currency=currency)
 
 
 @router.post("/categories/{household_id}", response_model=CategoryBudgetResponse)

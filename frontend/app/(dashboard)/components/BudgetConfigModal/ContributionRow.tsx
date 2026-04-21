@@ -6,6 +6,7 @@ import { Home, Check } from "lucide-react";
 import { api } from "@/app/lib/api";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { AccordionRow } from "./AccordionRow";
+import { CURRENCY_OPTIONS, isSupportedCurrency } from "./currencies";
 
 type Mode = "full" | "fixed" | "reimbursement";
 
@@ -33,9 +34,13 @@ export function ContributionRow({ expanded, onToggle }: Props) {
     queryFn: () => api.getMe(),
   });
 
+  const defaultCurrency = isSupportedCurrency(me?.preferred_currency)
+    ? me.preferred_currency
+    : "CLP";
+
   const [mode, setMode] = useState<Mode>("full");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("CLP");
+  const [currency, setCurrency] = useState<string>(defaultCurrency);
   const [savedTick, setSavedTick] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -50,8 +55,8 @@ export function ContributionRow({ expanded, onToggle }: Props) {
         ? me.fixed_contribution_amount.replace(/\.00$/, "")
         : ""
     );
-    setCurrency(me.fixed_contribution_currency ?? "CLP");
-  }, [me]);
+    setCurrency(me.fixed_contribution_currency ?? defaultCurrency);
+  }, [me, defaultCurrency]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -81,7 +86,7 @@ export function ContributionRow({ expanded, onToggle }: Props) {
           currentFixedAmountNum != null
             ? formatMoney(
                 currentFixedAmountNum,
-                (me?.fixed_contribution_currency ?? "CLP") as Currency
+                (me?.fixed_contribution_currency ?? defaultCurrency) as Currency
               )
             : ""
         })`
@@ -146,8 +151,9 @@ export function ContributionRow({ expanded, onToggle }: Props) {
             onChange={(e) => setCurrency(e.target.value)}
             className="w-20 rounded-[11px] border border-slate-200 px-2 py-2.5 text-[12px] font-[var(--font-geist-mono)] font-medium text-slate-500 bg-white text-center"
           >
-            <option value="CLP">CLP</option>
-            <option value="USD">USD</option>
+            {CURRENCY_OPTIONS.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
       )}

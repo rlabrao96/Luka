@@ -366,16 +366,21 @@ async def _category_caps(
     db: AsyncSession,
     household_id: uuid.UUID,
     month: date,
+    currency: str,
 ) -> dict[str, Decimal]:
-    """Return any per-category monthly caps from `category_budgets` for this month."""
+    """Return per-category monthly caps in `currency` for this month.
+
+    Caps are stored per-currency in `category_budgets`; a USD cap on a
+    category is ignored by the CLP view and vice versa. Callers get a plain
+    `{category: amount}` dict, same shape as before."""
     rows = await db.execute(
         text(
             """
             SELECT category, amount FROM category_budgets
-            WHERE household_id = :hid AND month = :month
+            WHERE household_id = :hid AND month = :month AND currency = :ccy
             """
         ),
-        {"hid": str(household_id), "month": month},
+        {"hid": str(household_id), "month": month, "ccy": currency},
     )
     return {r[0]: Decimal(str(r[1])) for r in rows}
 
@@ -1264,7 +1269,7 @@ async def get_budget_v2(
         month=month,
         currency=currency,
     )
-    caps = await _category_caps(db, household_id, month)
+    caps = await _category_caps(db, household_id, month, currency)
 
     # Risk-alert list (for the RiskAlertBand UI): historical volatility-based,
     # independent of this month's spend. A quiet category with volatile history

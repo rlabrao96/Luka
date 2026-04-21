@@ -6,13 +6,12 @@ import { Target, Check } from "lucide-react";
 import { api } from "@/app/lib/api";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { AccordionRow } from "./AccordionRow";
+import { CURRENCY_OPTIONS, isSupportedCurrency } from "./currencies";
 
 interface Props {
   expanded: boolean;
   onToggle: (id: "savings") => void;
 }
-
-const CURRENCIES = ["CLP", "USD"] as const;
 
 export function SavingsTargetRow({ expanded, onToggle }: Props) {
   const queryClient = useQueryClient();
@@ -20,9 +19,17 @@ export function SavingsTargetRow({ expanded, onToggle }: Props) {
     queryKey: ["budgetSettings"],
     queryFn: () => api.getBudgetSettings(),
   });
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.getMe(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const defaultCurrency = isSupportedCurrency(me?.preferred_currency)
+    ? me.preferred_currency
+    : "CLP";
 
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("CLP");
+  const [currency, setCurrency] = useState<string>(defaultCurrency);
   const [savedTick, setSavedTick] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -31,8 +38,8 @@ export function SavingsTargetRow({ expanded, onToggle }: Props) {
     setAmount(
       current.savings_target_amount != null ? String(current.savings_target_amount) : ""
     );
-    setCurrency(current.savings_target_currency ?? "CLP");
-  }, [current]);
+    setCurrency(current.savings_target_currency ?? defaultCurrency);
+  }, [current, defaultCurrency]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -65,13 +72,13 @@ export function SavingsTargetRow({ expanded, onToggle }: Props) {
         current?.savings_target_amount != null
           ? formatMoney(
               current.savings_target_amount,
-              (current?.savings_target_currency ?? "CLP") as Currency
+              (current?.savings_target_currency ?? defaultCurrency) as Currency
             )
           : "Sin meta"
       }
       valueUnit={
         current?.savings_target_amount != null
-          ? `${current.savings_target_currency ?? "CLP"} / mes`
+          ? `${current.savings_target_currency ?? defaultCurrency} / mes`
           : undefined
       }
       empty={current?.savings_target_amount == null}
@@ -92,7 +99,7 @@ export function SavingsTargetRow({ expanded, onToggle }: Props) {
           onChange={(e) => setCurrency(e.target.value)}
           className="w-20 rounded-[11px] border border-slate-200 px-2 py-2.5 text-[12px] font-[var(--font-geist-mono)] font-medium text-slate-500 bg-white text-center"
         >
-          {CURRENCIES.map((c) => (
+          {CURRENCY_OPTIONS.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>

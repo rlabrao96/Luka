@@ -193,6 +193,7 @@ export interface BudgetStatus {
 export interface CategoryBudgetItem {
   category: string;
   amount: number;
+  currency?: string;
 }
 
 export interface CategoryBudgetResponse {
@@ -451,10 +452,15 @@ export const api = {
     return apiFetch<BudgetStatus>(`/budgets/monthly/${householdId}${qs}`);
   },
 
-  getCategoryBudgets: (householdId: string, month?: string) =>
-    apiFetch<CategoryBudgetResponse>(
-      `/budgets/categories/${householdId}${month ? `?month=${month}` : ""}`
-    ),
+  getCategoryBudgets: (householdId: string, month?: string, currency?: string) => {
+    const qs = new URLSearchParams();
+    if (month) qs.set("month", month);
+    if (currency) qs.set("currency", currency);
+    const q = qs.toString();
+    return apiFetch<CategoryBudgetResponse>(
+      `/budgets/categories/${householdId}${q ? `?${q}` : ""}`
+    );
+  },
 
   setCategoryBudgets: (householdId: string, body: { month: string; budgets: CategoryBudgetItem[] }) =>
     apiFetch<CategoryBudgetResponse>(`/budgets/categories/${householdId}`, {

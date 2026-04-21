@@ -112,7 +112,8 @@ class CategoryBudget(Base):
             "household_id",
             "category",
             "month",
-            name="uq_category_budgets_household_cat_month",
+            "currency",
+            name="uq_category_budgets_household_cat_month_ccy",
         ),
     )
 
@@ -122,6 +123,7 @@ class CategoryBudget(Base):
     )
     category: Mapped[str] = mapped_column(String, nullable=False)
     month: Mapped[date] = mapped_column(Date, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="CLP")
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

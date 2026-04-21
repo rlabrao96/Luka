@@ -24,6 +24,7 @@ class SetBudgetRequest(BaseModel):
 class CategoryBudgetItem(BaseModel):
     category: str = Field(min_length=1, max_length=64)
     amount: float = Field(ge=0)
+    currency: str = Field(pattern=r"^(CLP|USD|COP|MXN|PEN|BRL)$", default="CLP")
 
 
 class CategoryBudgetResponse(BaseModel):
