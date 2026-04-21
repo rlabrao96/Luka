@@ -8,7 +8,9 @@ from __future__ import annotations
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from modules.auth.schemas import ALLOWED_CURRENCIES
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,16 +28,25 @@ from modules.budgets.user_budget_settings_service import (
 router = APIRouter(prefix="/settings/budget", tags=["settings"])
 
 
-_CURRENCY_PATTERN = "^(CLP|USD|COP|MXN|PEN|BRL)$"
 _AMOUNT_BOUNDS = {"ge": 0, "le": 1_000_000_000}
 
 
 class BudgetSettingsRequest(BaseModel):
     savings_target_amount: Decimal | None = Field(default=None, **_AMOUNT_BOUNDS)
-    savings_target_currency: str | None = Field(default=None, pattern=_CURRENCY_PATTERN)
+    savings_target_currency: str | None = Field(default=None, min_length=3, max_length=3)
     payday_day_of_month: int | None = None
     personal_allocation_amount: Decimal | None = Field(default=None, **_AMOUNT_BOUNDS)
-    personal_allocation_currency: str | None = Field(default=None, pattern=_CURRENCY_PATTERN)
+    personal_allocation_currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+    @field_validator("savings_target_currency", "personal_allocation_currency")
+    @classmethod
+    def _validate_currency(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        code = v.upper()
+        if code not in ALLOWED_CURRENCIES:
+            raise ValueError(f"unsupported currency: {v}")
+        return code
 
 
 class BudgetSettingsResponse(BaseModel):

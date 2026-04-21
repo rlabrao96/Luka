@@ -12,19 +12,15 @@ import {
   useHouseholdMembers,
 } from "@/app/lib/hooks/useHousehold";
 import { useLukaStore } from "@/app/lib/store";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/app/lib/api";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
+import { formatStoredAmount } from "@/app/lib/currency";
+import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import RatioSettingsModal from "./RatioSettingsModal";
 import InviteModal from "./InviteModal";
 import MemberCard from "./MemberCard";
 
 function fmt(n: number, currency: string = "CLP") {
-  const isDecimal = currency !== "CLP";
-  const displayVal = isDecimal ? Math.abs(n) / 100 : Math.abs(n);
-  const formatted = currency === "USD"
-    ? `US$${displayVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : `$${Math.round(displayVal).toLocaleString("es-CL")}`;
+  const formatted = formatStoredAmount(n, currency);
   return n < 0 ? `(${formatted})` : formatted;
 }
 
@@ -54,9 +50,9 @@ export default function CompartidoPage() {
   const [selectedMonth, setSelectedMonth] = useState<string | undefined>();
   const [ratioModalOpen, setRatioModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [currency, setCurrency] = useState("CLP");
+  const primaryCurrency = usePrimaryCurrency();
+  const [currency, setCurrency] = useState("");
 
-  const { data: me } = useQuery({ queryKey: ["me"], queryFn: api.getMe });
   const { data: summary = [], isLoading: loadingSummary } = useHouseholdSummary(currency);
   const { data: breakdown = [], isLoading: loadingBreakdown } = useCategoryBreakdown(selectedMonth, currency);
   const { data: settlement } = useSettlement(selectedMonth, currency);
@@ -69,8 +65,9 @@ export default function CompartidoPage() {
     ? monthOptions.find((m) => m.value === selectedMonth)?.label ?? selectedMonth
     : `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
 
-  const preferredCurrency = me?.preferred_currency;
-  useEffect(() => { if (preferredCurrency) setCurrency(preferredCurrency); }, [preferredCurrency]);
+  useEffect(() => {
+    if (!currency && primaryCurrency) setCurrency(primaryCurrency);
+  }, [primaryCurrency, currency]);
 
   const ratio = splitRatio?.split_ratio ?? [];
   const members = membersData?.members ?? [];
@@ -157,7 +154,7 @@ export default function CompartidoPage() {
             <option value="">Mes actual</option>
             {monthOptions.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
-          <CurrencyToggle value={currency} onChange={setCurrency} />
+          {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
           {!settlementEnabled && (
             <button onClick={() => setRatioModalOpen(true)}
               className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors" title="Configurar ratios">

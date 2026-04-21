@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { api, type BudgetV2Response } from "@/app/lib/api";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
+import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import { BudgetConfigModal } from "@/app/(dashboard)/components/BudgetConfigModal";
 import { RiskAlertBand } from "@/app/(dashboard)/components/RiskAlertBand";
 import { BudgetDrilldownCard } from "@/app/(dashboard)/components/BudgetDrilldownCard";
@@ -163,19 +164,18 @@ export default function BudgetsPage() {
   const [selectedMonth, setSelectedMonth] = useState<Date>(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
-  const [selectedCurrency, setSelectedCurrency] = useState<Currency>("CLP");
+  const primaryCurrency = usePrimaryCurrency();
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>("");
 
-  // Default currency from user preference
+  // Default currency from user's primary (preferred) currency
   const { data: me } = useQuery({
     queryKey: ["me"],
     queryFn: () => api.getMe(),
     staleTime: 5 * 60 * 1000,
   });
   useEffect(() => {
-    if (me?.preferred_currency === "CLP" || me?.preferred_currency === "USD") {
-      setSelectedCurrency(me.preferred_currency);
-    }
-  }, [me?.preferred_currency]);
+    if (!selectedCurrency && primaryCurrency) setSelectedCurrency(primaryCurrency);
+  }, [primaryCurrency, selectedCurrency]);
 
   const householdId = me?.household_id ?? null;
   const monthStr = monthParam(selectedMonth);
@@ -266,8 +266,6 @@ export default function BudgetsPage() {
     staleTime: 60 * 1000,
   });
 
-  const currenciesAvailable = household.data?.currencies_available ?? ["CLP"];
-  const showToggle = currenciesAvailable.length > 1;
 
   // ── Month nav ──
   function prevMonth() {
@@ -305,10 +303,10 @@ export default function BudgetsPage() {
           <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
         </div>
         <div className="flex items-center gap-2">
-          {showToggle && (
+          {selectedCurrency && (
             <CurrencyToggle
               value={selectedCurrency}
-              onChange={(c) => setSelectedCurrency(c as Currency)}
+              onChange={setSelectedCurrency}
             />
           )}
           {householdId && (

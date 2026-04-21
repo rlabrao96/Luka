@@ -1,25 +1,11 @@
-export type Currency = "CLP" | "USD";
+import { formatStoredAmount } from "@/app/lib/currency";
 
-/** Format a monetary amount in the given currency using Intl.NumberFormat.
- *  - CLP: stored as integers, no fractional digits, es-CL locale (e.g. "$1.234.567").
- *  - USD: stored as CENTS across Luka (email parser, manual, plaid sync).
- *    We divide by 100 at the display layer, then format with two
- *    fractional digits en-US (e.g. 195018 → "$1,950.18").
- *    Matches the convention used by TransactionCard, RecentTransactions,
- *    BalanceCard, and the dashboard page. */
+/** ISO 4217 currency code (e.g. "CLP", "USD", "BRL"). */
+export type Currency = string;
+
+/** Format a stored monetary amount using the LATAM-aware helper.
+ *  Zero-decimal currencies (CLP, COP, PYG, CRC) are treated as major units;
+ *  all others are divided by 100 before formatting. */
 export function formatMoney(amount: number, currency: Currency): string {
-  if (currency === "CLP") {
-    return new Intl.NumberFormat("es-CL", {
-      style: "currency",
-      currency: "CLP",
-      maximumFractionDigits: 0,
-    }).format(Math.round(amount));
-  }
-  const dollars = amount / 100;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(dollars);
+  return formatStoredAmount(amount, currency);
 }

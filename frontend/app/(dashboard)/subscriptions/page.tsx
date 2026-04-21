@@ -12,18 +12,13 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/app/lib/api";
 import type { RecurringExpense } from "@/app/lib/api";
+import { formatStoredAmount } from "@/app/lib/currency";
+import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 
 /* ── Formatting ─────────────────────────────────────────── */
 
 function formatAmount(n: number, currency: string) {
-  const isDecimal = currency !== "CLP";
-  const displayVal = isDecimal ? n / 100 : n;
-  if (currency === "USD")
-    return `US$${Math.abs(displayVal).toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  return `$${Math.round(Math.abs(displayVal)).toLocaleString("es-CL")}`;
+  return formatStoredAmount(n, currency);
 }
 
 function relativeTime(iso: string | null) {
@@ -40,19 +35,17 @@ function relativeTime(iso: string | null) {
 
 export default function SubscriptionsPage() {
   const { data, isLoading } = useSubscriptions();
-  const { data: me } = useQuery({ queryKey: ["me"], queryFn: api.getMe });
   const refreshMutation = useRefreshSubscriptions();
   const overrideMutation = useSubscriptionOverride();
 
-  const [currency, setCurrency] = useState("CLP");
+  const primaryCurrency = usePrimaryCurrency();
+  const [currency, setCurrency] = useState("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<RecurringExpense | null>(null);
 
-  // Sync currency from user preference
-  const preferredCurrency = me?.preferred_currency;
   useEffect(() => {
-    if (preferredCurrency) setCurrency(preferredCurrency);
-  }, [preferredCurrency]);
+    if (!currency && primaryCurrency) setCurrency(primaryCurrency);
+  }, [primaryCurrency, currency]);
 
   const allItems = data?.items ?? [];
   const summaryByCurrency = data?.summary_by_currency ?? {};
@@ -121,7 +114,7 @@ export default function SubscriptionsPage() {
               className={refreshMutation.isPending ? "animate-spin" : ""}
             />
           </button>
-          <CurrencyToggle value={currency} onChange={setCurrency} />
+          {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
         </div>
       </div>
 

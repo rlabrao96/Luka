@@ -1,5 +1,6 @@
 "use client";
 import { TrendingUp, TrendingDown, ArrowRightLeft } from "lucide-react";
+import { formatMajorAmount, formatMajorAmountCompact } from "@/app/lib/currency";
 
 interface CashFlowCardsProps {
   income: number;
@@ -8,24 +9,8 @@ interface CashFlowCardsProps {
   currency: string;
 }
 
-/** Full format for desktop. */
-function fmt(n: number, currency: string): string {
-  if (currency === "USD")
-    return `US$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(Math.abs(n)).toLocaleString("es-CL")}`;
-}
-
-/** Compact format for mobile — abbreviate large CLP values, drop USD decimals. */
-function fmtCompact(n: number, currency: string): string {
-  const abs = Math.abs(n);
-  if (currency === "USD") {
-    if (abs >= 10_000) return `US$${(abs / 1000).toFixed(0)}k`;
-    return `US$${abs.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-  }
-  if (abs >= 1_000_000) return `$${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 10_000) return `$${Math.round(abs / 1000)}k`;
-  return `$${Math.round(abs).toLocaleString("es-CL")}`;
-}
+const fmt = formatMajorAmount;
+const fmtCompact = formatMajorAmountCompact;
 
 export function CashFlowCards({ income, expenses, net, currency }: CashFlowCardsProps) {
   return (

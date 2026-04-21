@@ -122,3 +122,35 @@ export function formatStoredAmount(
     maximumFractionDigits: decimals,
   }).format(Math.abs(value));
 }
+
+/** Format an amount already in major units (e.g. after /100 normalization).
+ *  Unlike formatStoredAmount, no division is applied. */
+export function formatMajorAmount(
+  amount: number,
+  currency: string,
+  locale?: string,
+): string {
+  const decimals = isZeroDecimalCurrency(currency) ? 0 : 2;
+  const resolvedLocale =
+    locale ?? Intl.DateTimeFormat().resolvedOptions().locale ?? "es-CL";
+  return new Intl.NumberFormat(resolvedLocale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(Math.abs(amount));
+}
+
+/** Compact formatter for large major-unit amounts (k/M abbreviations). */
+export function formatMajorAmountCompact(
+  amount: number,
+  currency: string,
+): string {
+  const abs = Math.abs(amount);
+  const decimals = isZeroDecimalCurrency(currency) ? 0 : 2;
+  const symbol = FORMAT_MAP[currency]?.[0] ?? currency + " ";
+  if (abs >= 1_000_000) return `${symbol}${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 10_000) return `${symbol}${Math.round(abs / 1_000)}k`;
+  return formatMajorAmount(amount, currency) ||
+    `${symbol}${abs.toFixed(decimals)}`;
+}

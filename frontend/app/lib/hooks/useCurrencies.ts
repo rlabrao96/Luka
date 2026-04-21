@@ -6,8 +6,14 @@ export function useCurrencies() {
   return useQuery<UserCurrency[]>({
     queryKey: ["currencies"],
     queryFn: () => api.getCurrencies(),
-    staleTime: 60_000,
+    staleTime: 5 * 60 * 1000,
   });
+}
+
+/** Returns the user's primary (preferred) currency code, or undefined while loading. */
+export function usePrimaryCurrency(): string | undefined {
+  const { data } = useCurrencies();
+  return data?.find((c) => c.is_primary)?.currency_code ?? data?.[0]?.currency_code;
 }
 
 export function useAddCurrency() {

@@ -1,6 +1,8 @@
 import uuid
 from datetime import date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from modules.auth.schemas import ALLOWED_CURRENCIES
 
 
 class BudgetStatusResponse(BaseModel):
@@ -24,7 +26,15 @@ class SetBudgetRequest(BaseModel):
 class CategoryBudgetItem(BaseModel):
     category: str = Field(min_length=1, max_length=64)
     amount: float = Field(ge=0)
-    currency: str = Field(pattern=r"^(CLP|USD|COP|MXN|PEN|BRL)$", default="CLP")
+    currency: str = Field(default="CLP", min_length=3, max_length=3)
+
+    @field_validator("currency")
+    @classmethod
+    def _validate_currency(cls, v: str) -> str:
+        code = v.upper()
+        if code not in ALLOWED_CURRENCIES:
+            raise ValueError(f"unsupported currency: {v}")
+        return code
 
 
 class CategoryBudgetResponse(BaseModel):

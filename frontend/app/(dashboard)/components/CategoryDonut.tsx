@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { formatMajorAmount } from "@/app/lib/currency";
 
 const COLORS = [
   "#2563EB", // blue — primary
@@ -20,12 +21,7 @@ export function CategoryDonut({ data, currency = "CLP" }: CategoryDonutProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   /** Amounts are pre-normalized to standard currency unit. */
-  const fmtAmount = (v: number) => {
-    const n = Math.abs(Number(v));
-    if (currency === "USD")
-      return `US$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    return `$${Math.round(n).toLocaleString("es-CL")}`;
-  };
+  const fmtAmount = (v: number) => formatMajorAmount(Number(v), currency);
 
   // Recharts Pie requires positive values — use absolute amounts for rendering
   const chartData = data.map((d) => ({ ...d, amount: Math.abs(Number(d.amount)) }));

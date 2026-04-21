@@ -5,6 +5,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid
 } from "recharts";
+import { formatMajorAmount, formatMajorAmountCompact, isZeroDecimalCurrency } from "@/app/lib/currency";
 
 interface SpendingChartProps {
   data: Array<{ month: string; personal: number; compartido: number }>;
@@ -16,11 +17,10 @@ export function SpendingChart({ data, currency = "CLP" }: SpendingChartProps) {
   const personalId   = `personal-${uid}`;
   const compartidoId = `compartido-${uid}`;
 
-  // USD is stored in cents throughout the DB (Plaid convention); normalize
-  // to whole dollars before the chart ever sees the values so the Area
-  // heights, Y-axis ticks, and tooltip all agree.
+  // Non-zero-decimal currencies are stored in minor units (cents);
+  // normalize to major units before rendering so axes + tooltips agree.
   const normalized = useMemo(() => {
-    if (currency !== "USD") return data;
+    if (isZeroDecimalCurrency(currency)) return data;
     return data.map((d) => ({
       ...d,
       personal: d.personal / 100,
@@ -28,26 +28,12 @@ export function SpendingChart({ data, currency = "CLP" }: SpendingChartProps) {
     }));
   }, [data, currency]);
 
-  // Compact axis labels that handle negatives cleanly. Recharts calls this
-  // with the raw (already-normalized) numeric value per tick.
   const fmtAxis = (v: number) => {
     const sign = v < 0 ? "-" : "";
-    const n = Math.abs(v);
-    const prefix = currency === "USD" ? "US$" : "$";
-    if (n >= 1_000_000) return `${sign}${prefix}${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${sign}${prefix}${Math.round(n / 1000)}k`;
-    return `${sign}${prefix}${Math.round(n)}`;
+    return `${sign}${formatMajorAmountCompact(Math.abs(v), currency)}`;
   };
 
-  const fmtTooltip = (v: number) => {
-    if (currency === "USD") {
-      return `US$${v.toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
-    return `$${Math.round(v).toLocaleString("es-CL")}`;
-  };
+  const fmtTooltip = (v: number) => formatMajorAmount(v, currency);
 
   if (normalized.length === 0) {
     return (

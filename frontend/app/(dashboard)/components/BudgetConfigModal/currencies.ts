@@ -1,13 +1,11 @@
-// LATAM currency set supported by Luka. Matches the backend regex in
-// `user_budget_settings_router` / `cuota_schemas` / `SetCategoryBudgetRequest`.
-// Never hardcode a country-specific default in a component — fall back to the
-// caller's `preferred_currency` from `/auth/me`, and finally to `CLP` only if
-// that's missing.
+// Re-exports derived from the single source of truth in `lib/currency.ts`.
+// Do not add codes here — edit `SUPPORTED_CURRENCIES` instead.
+import { SUPPORTED_CURRENCIES } from "@/app/lib/currency";
 
-export const CURRENCY_OPTIONS = ["CLP", "USD", "COP", "MXN", "PEN", "BRL"] as const;
+export const CURRENCY_OPTIONS: readonly string[] = SUPPORTED_CURRENCIES.map((c) => c.code);
 
-export type CurrencyCode = (typeof CURRENCY_OPTIONS)[number];
+export type CurrencyCode = string;
 
 export function isSupportedCurrency(code: string | null | undefined): code is CurrencyCode {
-  return !!code && (CURRENCY_OPTIONS as readonly string[]).includes(code);
+  return !!code && CURRENCY_OPTIONS.includes(code);
 }

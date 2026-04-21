@@ -59,7 +59,7 @@ async def set_budget(
 async def get_cat_budgets(
     household_id: uuid.UUID,
     month: date | None = None,
-    currency: str | None = Query(default=None, pattern=r"^(CLP|USD|COP|MXN|PEN|BRL)$"),
+    currency: str | None = Query(default=None, min_length=3, max_length=3),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

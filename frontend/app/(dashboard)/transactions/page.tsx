@@ -10,8 +10,8 @@ import { ProcessingBanner } from "../components/ProcessingBanner";
 import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
-import { useCurrencies, useAddCurrency, useDeleteCurrency } from "@/app/lib/hooks/useCurrencies";
-import { SUPPORTED_CURRENCIES, formatStoredAmount } from "@/app/lib/currency";
+import { useCurrencies } from "@/app/lib/hooks/useCurrencies";
+import { formatStoredAmount } from "@/app/lib/currency";
 
 // Prefer the browser/runtime locale so dates match what the user sees in the
 // OS. Falls back to es-CL when running server-side (SSR) where Intl has no
@@ -39,22 +39,11 @@ const LOC_KIND = "line_of_credit";
 
 interface SummaryBarProps {
   accounts: BankAccountRow[];
-  transactions: Transaction[];
   selectedCurrency: string;
   selectedBank: string;
-  onCurrencyChange: (c: string) => void;
 }
 
-function SummaryBar({ accounts, transactions, selectedCurrency, selectedBank, onCurrencyChange }: SummaryBarProps) {
-  const currencies = useMemo(() => {
-    const set = new Set<string>();
-    accounts.forEach((a) => { if (a.currency) set.add(a.currency); });
-    transactions.forEach((t) => { if (t.currency) set.add(t.currency); });
-    return Array.from(set).sort();
-  }, [accounts, transactions]);
-
-  const hasUSD = currencies.includes("USD");
-
+function SummaryBar({ accounts, selectedCurrency, selectedBank }: SummaryBarProps) {
   const filtered = accounts.filter(
     (a) => a.is_active && a.currency === selectedCurrency
       && (selectedBank === "all" || a.bank_name === selectedBank)
@@ -135,26 +124,9 @@ function SummaryBar({ accounts, transactions, selectedCurrency, selectedBank, on
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-          Saldos disponibles
-        </span>
-        <div className="flex gap-1">
-          {["CLP", ...(hasUSD ? ["USD"] : [])].map((c) => (
-            <button
-              key={c}
-              onClick={() => onCurrencyChange(c)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                selectedCurrency === c
-                  ? "bg-luka-primary text-white"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
+      <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+        Saldos disponibles
+      </span>
       <div className={`grid grid-cols-1 ${gridClass[visibleCards.length] ?? "lg:grid-cols-4"} gap-3`}>
         {visibleCards.map(({ label, value, sublabel, bg, textColor }) => (
           <div
@@ -284,99 +256,54 @@ interface CurrencyPillBarProps {
 }
 
 function CurrencyPillBar({ currencies, selected, onSelect }: CurrencyPillBarProps) {
-  const addCurrency = useAddCurrency();
-  const deleteCurrency = useDeleteCurrency();
-  const [sheetOpen, setSheetOpen] = useState(false);
-
-  const activeCodes = new Set(currencies.map((c) => c.currency_code));
-  const available = SUPPORTED_CURRENCIES.filter((c) => !activeCodes.has(c.code));
-  const canRemove = currencies.length > 1;
+  const sorted = useMemo(
+    () => [...currencies].sort((a, b) => a.sort_order - b.sort_order),
+    [currencies],
+  );
 
   return (
-    <>
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {/* Todas pill */}
-        <button
-          onClick={() => onSelect(null)}
-          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            selected === null
-              ? "bg-blue-600 text-white"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-          }`}
-        >
-          Todas
-        </button>
+    <div role="group" aria-label="Moneda" className="flex items-center gap-1.5 flex-wrap">
+      <button
+        type="button"
+        onClick={() => onSelect(null)}
+        aria-pressed={selected === null}
+        className={`min-h-9 px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary ${
+          selected === null
+            ? "bg-luka-primary text-white"
+            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+        }`}
+      >
+        Todas
+      </button>
 
-        {/* Currency pills */}
-        {[...currencies].sort((a, b) => a.sort_order - b.sort_order).map((c) => (
-          <div
+      {sorted.map((c) => {
+        const active = selected === c.currency_code;
+        return (
+          <button
             key={c.currency_code}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              selected === c.currency_code
-                ? "bg-blue-600 text-white"
+            type="button"
+            onClick={() => onSelect(c.currency_code)}
+            aria-pressed={active}
+            className={`min-h-9 px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary ${
+              active
+                ? "bg-luka-primary text-white"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            <button onClick={() => onSelect(c.currency_code)} className="leading-none">
-              {c.currency_code}
-              {c.is_primary && (
-                <span className="ml-1 text-[9px] opacity-60 font-bold">★</span>
-              )}
-            </button>
-            {canRemove && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteCurrency.mutate(c.currency_code);
-                  if (selected === c.currency_code) onSelect(null);
-                }}
-                className="ml-0.5 opacity-60 hover:opacity-100 leading-none"
-                aria-label={`Eliminar ${c.currency_code}`}
+            {c.currency_code}
+            {c.is_primary && (
+              <span
+                aria-label="Moneda principal"
+                title="Moneda principal"
+                className="ml-1 text-[9px] opacity-60 font-bold"
               >
-                ×
-              </button>
+                ★
+              </span>
             )}
-          </div>
-        ))}
-
-        {/* Add button */}
-        {available.length > 0 && (
-          <button
-            onClick={() => setSheetOpen(true)}
-            className="px-2.5 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 hover:bg-slate-200"
-          >
-            +
           </button>
-        )}
-      </div>
-
-      {/* Sheet for adding a currency */}
-      {sheetOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setSheetOpen(false)}>
-          <div className="w-full max-w-lg bg-white rounded-t-2xl p-4 pb-safe" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-slate-800">Agregar moneda</span>
-              <button onClick={() => setSheetOpen(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
-            </div>
-            <div className="space-y-1 max-h-64 overflow-y-auto">
-              {available.map((c) => (
-                <button
-                  key={c.code}
-                  onClick={() => {
-                    addCurrency.mutate(c.code);
-                    setSheetOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 flex items-center justify-between"
-                >
-                  <span className="text-sm font-medium text-slate-700">{c.code}</span>
-                  <span className="text-xs text-slate-400">{c.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+        );
+      })}
+    </div>
   );
 }
 
@@ -593,10 +520,8 @@ export default function TransactionsPage() {
       {/* Summary cards — account balances */}
       <SummaryBar
         accounts={accounts}
-        transactions={[...myTxns, ...sharedTxns]}
         selectedCurrency={summaryBarCurrency}
         selectedBank={selectedBank}
-        onCurrencyChange={setSelectedCurrency}
       />
 
       {/* Pending transactions */}

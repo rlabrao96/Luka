@@ -15,6 +15,8 @@ import { useMyTransactions, useMonthlySpending, usePendingTransactions } from "@
 import { useBudgetStatus, useCategoryBudgets } from "@/app/lib/hooks/useBudget";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow } from "@/app/lib/api";
+import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
+import { isZeroDecimalCurrency } from "@/app/lib/currency";
 
 // Lazy-load chart components (~200KB Recharts bundle)
 const SpendingChart = dynamic(
@@ -36,14 +38,12 @@ function getMonthKey(iso: string): string {
 }
 
 /** Normalize a transaction amount to a signed value in the currency's standard unit.
- *  - Sign: uses transaction_type when amount is positive (expense → negative, income → positive).
- *    If amount is already negative, keeps it as-is.
- *  - USD: always stored as cents — divide by 100. */
+ *  Non-zero-decimal currencies are stored as minor units (cents) and divided by 100.
+ *  Sign: flips positive amounts to negative when the transaction_type isn't income. */
 function normalizeTxnAmount(t: { amount: number; currency: string; source: string; transaction_type: string | null }): number {
+  const currency = t.currency ?? "CLP";
   let raw = Number(t.amount);
-  // USD is always stored as cents
-  if ((t.currency ?? "CLP") === "USD") raw = raw / 100;
-  // If amount is positive but transaction_type is expense/transfer, flip to negative
+  if (!isZeroDecimalCurrency(currency)) raw = raw / 100;
   if (raw > 0 && t.transaction_type !== "income") raw = -raw;
   return raw;
 }
@@ -55,17 +55,11 @@ export default function DashboardPage() {
   // ── Controls ──
   const currentMonth = getCurrentMonth();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
-  const [selectedCurrency, setSelectedCurrency] = useState("CLP");
-
-  // Default currency from user preference
-  const { data: me } = useQuery({
-    queryKey: ["me"],
-    queryFn: () => api.getMe(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const primaryCurrency = usePrimaryCurrency();
+  const [selectedCurrency, setSelectedCurrency] = useState<string>("");
   useEffect(() => {
-    if (me?.preferred_currency) setSelectedCurrency(me.preferred_currency);
-  }, [me?.preferred_currency]);
+    if (!selectedCurrency && primaryCurrency) setSelectedCurrency(primaryCurrency);
+  }, [primaryCurrency, selectedCurrency]);
 
   const isViewingPast = selectedMonth !== currentMonth;
 
@@ -168,7 +162,9 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <MonthSelector value={selectedMonth} onChange={setSelectedMonth} currentMonth={currentMonth} />
-          <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
+          {selectedCurrency && (
+            <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
+          )}
         </div>
       </div>
 

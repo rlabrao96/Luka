@@ -1,5 +1,6 @@
 "use client";
 import type { BudgetStatus, CategoryBudgetItem } from "@/app/lib/api";
+import { formatMajorAmount, formatMajorAmountCompact, isZeroDecimalCurrency } from "@/app/lib/currency";
 
 interface CategorySpend {
   category: string;
@@ -13,15 +14,13 @@ interface BudgetBarsProps {
   currency: string;
 }
 
-/** Amounts are pre-normalized to standard currency unit. */
+/** Amounts are pre-normalized to standard currency unit.
+ *  Zero-decimal currencies (CLP, COP…) get compact abbreviations for large values. */
 function fmt(n: number, currency: string): string {
-  if (currency === "CLP" && Math.abs(n) >= 1_000_000)
-    return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (currency === "CLP" && Math.abs(n) >= 1_000)
-    return `$${Math.round(n / 1_000)}k`;
-  if (currency === "USD")
-    return `US$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
+  if (isZeroDecimalCurrency(currency) && Math.abs(n) >= 1_000) {
+    return formatMajorAmountCompact(n, currency);
+  }
+  return formatMajorAmount(n, currency);
 }
 
 function pctColor(pct: number): string {

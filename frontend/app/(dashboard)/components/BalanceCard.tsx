@@ -1,6 +1,7 @@
 "use client";
 import { Landmark } from "lucide-react";
 import type { BankAccountRow } from "@/app/lib/api";
+import { formatStoredAmount, isZeroDecimalCurrency } from "@/app/lib/currency";
 
 interface BalanceCardProps {
   accounts: BankAccountRow[];
@@ -11,17 +12,13 @@ const CHECKING_KINDS = new Set([
   "checking_account", "savings_account", "sight_account", "depository",
 ]);
 
-/** Normalize a bank account balance to standard currency unit.
- *  Plaid stores balances in cents; luka_connect stores in dollars/pesos. */
+/** Coerce a provider's balance into the app's storage convention (minor units
+ *  for non-zero-decimal currencies). Plaid already reports minor units; luka_connect
+ *  reports major units and needs ×100 for non-zero-decimal currencies. */
 function normalizeBalance(balance: number, currency: string, provider: string | null): number {
-  if (currency === "USD" && provider === "plaid") return balance / 100;
-  return balance;
-}
-
-function formatBalance(n: number, currency: string): string {
-  if (currency === "USD")
-    return `US$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
+  if (isZeroDecimalCurrency(currency)) return balance;
+  if (provider === "plaid") return balance;
+  return balance * 100;
 }
 
 export function BalanceCard({ accounts, currency }: BalanceCardProps) {
@@ -45,7 +42,7 @@ export function BalanceCard({ accounts, currency }: BalanceCardProps) {
         Saldo disponible
       </p>
       <p className="text-2xl font-bold mt-1 tabular-nums">
-        {formatBalance(total, currency)}
+        {formatStoredAmount(total, currency)}
       </p>
       <p className="text-xs opacity-70 mt-0.5">{subtitle}</p>
     </div>
