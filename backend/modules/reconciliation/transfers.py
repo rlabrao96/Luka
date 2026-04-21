@@ -28,13 +28,14 @@ async def detect_transfers(
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     pairs_found = 0
 
-    # Get all recent unpaired transactions for this household. We include rows
-    # already typed 'transfer' (e.g. via Vincular) as long as they have no
-    # pair_id yet — those need the twin leg linked.
+    # Get all recent non-transfer transactions for this household. Rows already
+    # typed 'transfer' are handled separately via pair_transfer_twin so we don't
+    # accidentally re-pair a just-linked Vincular row with an unrelated match.
     result = await session.execute(
         select(Transaction)
         .where(
             Transaction.household_id == household_id,
+            Transaction.transaction_type != "transfer",
             Transaction.transaction_date >= cutoff,
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),
@@ -100,3 +101,73 @@ async def detect_transfers(
                 break
 
     return pairs_found
+
+
+async def pair_transfer_twin(
+    session: AsyncSession,
+    bank_tx_id: uuid.UUID,
+    day_window: int = 2,
+) -> uuid.UUID | None:
+    """Find and link the opposite-leg twin of a single transfer transaction.
+
+    Used after manual Vincular so the linked bank row (already typed
+    'transfer') gets paired with its twin on another account. Scoped to one
+    bank_tx — avoids the broad rescan that could mis-pair unrelated rows.
+
+    Returns the new transfer_pair_id on success, or None if no twin exists.
+    """
+    bank_tx = (
+        await session.execute(select(Transaction).where(Transaction.id == bank_tx_id))
+    ).scalar_one_or_none()
+    if bank_tx is None or bank_tx.bank_account_id is None:
+        return None
+    if bank_tx.transfer_pair_id is not None:
+        return bank_tx.transfer_pair_id
+
+    window_start = bank_tx.transaction_date - timedelta(days=day_window)
+    window_end = bank_tx.transaction_date + timedelta(days=day_window)
+    amount_cents = round(abs(float(bank_tx.amount)) * 100)
+
+    candidates = (
+        (
+            await session.execute(
+                select(Transaction).where(
+                    Transaction.household_id == bank_tx.household_id,
+                    Transaction.user_id == bank_tx.user_id,
+                    Transaction.currency == bank_tx.currency,
+                    Transaction.id != bank_tx.id,
+                    Transaction.bank_account_id.is_not(None),
+                    Transaction.bank_account_id != bank_tx.bank_account_id,
+                    Transaction.transfer_pair_id.is_(None),
+                    Transaction.refund_pair_id.is_(None),
+                    Transaction.transaction_date.between(window_start, window_end),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Prefer the closest date match; break ties with opposite-sign exact amount.
+    twin: Transaction | None = None
+    best_delta = timedelta(days=day_window + 1)
+    for c in candidates:
+        if (c.amount > 0) == (bank_tx.amount > 0):
+            continue  # must be opposite sign
+        if round(abs(float(c.amount)) * 100) != amount_cents:
+            continue
+        delta = abs(c.transaction_date - bank_tx.transaction_date)
+        if delta < best_delta:
+            twin = c
+            best_delta = delta
+
+    if twin is None:
+        return None
+
+    pair_id = uuid.uuid4()
+    await session.execute(
+        update(Transaction)
+        .where(Transaction.id.in_([bank_tx.id, twin.id]))
+        .values(transaction_type="transfer", transfer_pair_id=pair_id)
+    )
+    return pair_id

@@ -50,15 +50,21 @@ async def detect_refunds(
     )
     transactions = result.scalars().all()
 
-    # Bucket by (bank_account_id, currency, normalized merchant, abs amount cents).
-    # Any refund pair must share all four keys, so same-bucket candidates are the
-    # only valid matches.
+    # Bucket by (bank_account_id, currency, merchant identity, abs amount cents).
+    # Merchant identity prefers merchant_id (robust to Plaid raw-name variance
+    # like "APPLE.COM/BILL" vs "APPLE*ITUNES") and falls back to the normalized
+    # raw merchant name when no merchant_id has been linked yet.
     buckets: dict[tuple, list[Transaction]] = defaultdict(list)
     for tx in transactions:
+        merchant_identity = (
+            ("id", tx.merchant_id)
+            if tx.merchant_id is not None
+            else ("raw", _normalize_merchant(tx.raw_merchant_name))
+        )
         key = (
             tx.bank_account_id,
             tx.currency,
-            _normalize_merchant(tx.raw_merchant_name),
+            merchant_identity,
             round(abs(float(tx.amount)) * 100),
         )
         buckets[key].append(tx)
