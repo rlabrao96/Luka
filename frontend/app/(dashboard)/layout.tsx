@@ -36,17 +36,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-luka-surface">
+    <div className="flex min-h-screen bg-luka-surface">
       <StoreInitializer
         userId={userData?.id ?? null}
         householdId={userData?.household_id ?? null}
         userFullName={userData?.full_name ?? null}
       />
       <SessionGuard />
-      {/* Sidebar — desktop only */}
+      {/* Sidebar — desktop only. Sticky so it stays put while the page
+          scrolls naturally at the document level. A single scrollbar (the
+          browser's) is less confusing than the nested main-scroll pattern. */}
       <Sidebar />
-      {/* Main scrolling area */}
-      <main className="flex-1 overflow-y-auto pb-24 lg:pb-0">
+      {/* Main content — no nested overflow; lets the document scroll. */}
+      <main className="flex-1 pb-24 lg:pb-0">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {children}
         </div>

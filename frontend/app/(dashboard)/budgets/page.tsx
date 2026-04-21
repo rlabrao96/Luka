@@ -127,7 +127,7 @@ function SectionFlowBody({
     );
   }
   return (
-    <div className="min-h-[22rem] overflow-x-auto">
+    <div className="min-h-[22rem]">
       <BudgetSankey
         nodes={data.sankey.nodes.map((n) => ({
           id: n.id,

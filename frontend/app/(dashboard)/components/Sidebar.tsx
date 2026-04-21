@@ -50,7 +50,7 @@ export function Sidebar() {
     .toUpperCase();
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 shrink-0 h-full bg-white border-r border-slate-200/80 shadow-sm">
+    <aside className="hidden lg:flex flex-col w-64 shrink-0 sticky top-0 h-screen bg-white border-r border-slate-200/80 shadow-sm">
       {/* Logo */}
       <div className="px-5 py-6 border-b border-slate-100">
         <div className="flex items-center justify-center py-3 border border-blue-100 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200">
