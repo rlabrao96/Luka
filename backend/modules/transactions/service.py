@@ -521,6 +521,16 @@ async def link_email_to_bank(
         enrichment=enrichment,
         user_id=user_id,
     )
+
+    # When the user vincula a transfer-typed pending, try to auto-pair the
+    # newly-typed bank tx with its twin (e.g., AmEx payment email linked to
+    # BofA's outgoing leg should ALSO rope in the AmEx card's incoming leg).
+    # Cheap and idempotent — guarded by transfer_pair_id IS NULL internally.
+    if enrichment.get("transaction_type") == "transfer":
+        from modules.reconciliation.transfers import detect_transfers
+
+        await detect_transfers(db, bank.household_id, lookback_days=7)
+
     await db.commit()
 
     # Reload the bank tx with enrichment applied.

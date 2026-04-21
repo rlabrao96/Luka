@@ -338,3 +338,62 @@ async def test_bulk_action_422_when_over_100_ids(db):
     with pytest.raises(ServiceError) as exc:
         await bulk_action(db, user.id, ids, "dismiss")
     assert exc.value.code == "too_many"
+
+
+@pytest.mark.asyncio
+async def test_link_propagates_transfer_type_split_and_nulls_category(db):
+    """Vincular must copy transaction_type, split_type, and null out category
+    when the pending email was a transfer (CC payment case). Regression test
+    for the user-observed bug where the bank row kept its old expense/income
+    classification after Vincular.
+    """
+    from modules.transactions.models import TransactionSplit
+
+    user, hh, account = await _seed_user_household(db)
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    email = _email(
+        user=user,
+        hh=hh,
+        account=account,
+        amount=Decimal("-2000"),
+        when=when,
+        category=None,
+    )
+    email.transaction_type = "transfer"
+    email.raw_merchant_name = "Pago Tarjeta ****6100"
+
+    bank = _bank(
+        user=user,
+        hh=hh,
+        account=account,
+        amount=Decimal("-2000"),
+        when=when,
+    )
+    bank.category = "Servicios"  # stale category from a prior pass
+    bank.transaction_type = "expense"
+
+    db.add_all([email, bank])
+    await db.flush()
+
+    # Email has a "shared" split — should propagate onto the bank row.
+    db.add(TransactionSplit(id=uuid.uuid4(), transaction_id=email.id, split_type="shared"))
+    # Bank has a "personal" split — should be overwritten to "shared".
+    db.add(TransactionSplit(id=uuid.uuid4(), transaction_id=bank.id, split_type="personal"))
+    await db.flush()
+
+    await link_email_to_bank(db, user.id, email.id, bank.id)
+
+    refreshed = await _reload(db, bank.id)
+    assert refreshed is not None
+    assert refreshed.transaction_type == "transfer"
+    assert refreshed.category is None  # stale 'Servicios' wiped
+
+    # Bank's split now reflects the email's decision.
+    split_res = await db.execute(
+        select(TransactionSplit.split_type).where(TransactionSplit.transaction_id == bank.id)
+    )
+    assert split_res.scalar_one() == "shared"
+
+    # Email row and its splits are gone.
+    assert (await _reload(db, email.id)) is None
