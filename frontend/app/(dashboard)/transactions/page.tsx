@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
 import { ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { FilterPanel } from "../components/FilterPanel";
+import { FilterPanelTriggers, FilterPanelBody, useFilterPanel } from "../components/FilterPanel";
 import { PendingBlock } from "../components/PendingBlock";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
@@ -250,6 +250,7 @@ export default function TransactionsPage() {
   const [pageSize, setPageSize] = useState<10 | 30 | 100>(30);
   const [page, setPage] = useState(1);
   const householdId = useLukaStore((s) => s.householdId);
+  const filterPanel = useFilterPanel();
 
   const primaryCurrency = usePrimaryCurrency();
 
@@ -343,28 +344,49 @@ export default function TransactionsPage() {
   return (
     <div className="space-y-6">
       <ProcessingBanner />
-      <PageHeader
-        title="Transacciones"
-        subtitle="Historial de movimientos"
-        filters={
-          <>
-            {selectedCurrency && (
-              <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
-            )}
-            <MonthSelector
-              value={selectedMonth}
-              onChange={setSelectedMonth}
-              currentMonth={nowKey}
-              currency={selectedCurrency || undefined}
-              size="md"
-              allowAll
-            />
-          </>
-        }
-      />
+      {(() => {
+        const activeCount = [
+          selectedBank !== "all" ? 1 : 0,
+          selectedCategory !== "all" ? 1 : 0,
+          selectedType !== "all" ? 1 : 0,
+          onlyUncategorized ? 1 : 0,
+        ].reduce((a, b) => a + b, 0);
+        return (
+          <PageHeader
+            title="Transacciones"
+            subtitle="Historial de movimientos"
+            controls={
+              <>
+                {selectedCurrency && (
+                  <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
+                )}
+                <MonthSelector
+                  value={selectedMonth}
+                  onChange={setSelectedMonth}
+                  currentMonth={nowKey}
+                  currency={selectedCurrency || undefined}
+                  size="md"
+                  allowAll
+                />
+                <FilterPanelTriggers
+                  searchOpen={filterPanel.searchOpen}
+                  filtersOpen={filterPanel.filtersOpen}
+                  onToggleSearch={filterPanel.toggleSearch}
+                  onToggleFilters={filterPanel.toggleFilters}
+                  activeCount={activeCount}
+                />
+              </>
+            }
+          />
+        );
+      })()}
 
-      {/* Filters */}
-      <FilterPanel
+      {/* Filter body — mobile collapsibles + desktop inline filters */}
+      <FilterPanelBody
+        searchOpen={filterPanel.searchOpen}
+        filtersOpen={filterPanel.filtersOpen}
+        onCloseSearch={filterPanel.closeSearch}
+        onCloseFilters={filterPanel.closeFilters}
         activeCount={[
           selectedBank !== "all" ? 1 : 0,
           selectedCategory !== "all" ? 1 : 0,
@@ -431,7 +453,7 @@ export default function TransactionsPage() {
           <Tag size={11} strokeWidth={2} />
           Sin categoría
         </button>
-      </FilterPanel>
+      </FilterPanelBody>
 
       {/* Summary cards — account balances */}
       {selectedCurrency && (

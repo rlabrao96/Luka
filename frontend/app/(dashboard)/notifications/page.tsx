@@ -1,7 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Store, CheckCircle, AlertTriangle, Trash2 } from "lucide-react";
+import { Store, CheckCircle, AlertTriangle, Trash2, CheckCheck } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNotifications, useUpdateNotification, useDeleteNotification } from "@/app/lib/hooks/useNotifications";
 import { api } from "@/app/lib/api";
@@ -92,13 +92,15 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notificaciones"
         subtitle="Alertas y actividad reciente"
-        actions={
+        controls={
           notifications.some((n) => n.status === "unread") ? (
             <button
               onClick={handleMarkAllRead}
-              className="text-sm text-luka-primary font-medium hover:underline h-9"
+              aria-label="Marcar todas leídas"
+              className="flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] text-xs font-semibold text-slate-700"
             >
-              Marcar todas leídas
+              <CheckCheck size={14} />
+              <span>Marcar leídas</span>
             </button>
           ) : undefined
         }

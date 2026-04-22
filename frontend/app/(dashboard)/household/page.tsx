@@ -125,29 +125,7 @@ export default function CompartidoPage() {
       <PageHeader
         title="Compartido"
         subtitle="Gastos compartidos y balance del grupo"
-        actions={
-          <>
-            {!settlementEnabled && (
-              <button
-                onClick={() => setRatioModalOpen(true)}
-                aria-label="Configurar ratios"
-                className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
-              >
-                <Settings size={16} className="text-slate-700" />
-              </button>
-            )}
-            {isOwner && members.length < 5 && (
-              <Button
-                onClick={() => setInviteModalOpen(true)}
-                size="sm"
-                className="bg-luka-primary hover:bg-blue-700 h-9"
-              >
-                <UserPlus size={14} className="mr-1.5" /> Agregar miembro
-              </Button>
-            )}
-          </>
-        }
-        filters={
+        controls={
           <>
             {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
             <MonthSelector
@@ -157,11 +135,22 @@ export default function CompartidoPage() {
               currency={currency || undefined}
               size="md"
             />
+            {!settlementEnabled && (
+              <button
+                onClick={() => setRatioModalOpen(true)}
+                aria-label="Configurar ratios"
+                className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
+              >
+                <Settings size={16} className="text-slate-700" />
+              </button>
+            )}
           </>
         }
       />
 
-      {/* Member cards — rendered from members (membership), not summary (transactions) */}
+      {/* Member cards — rendered from members (membership), not summary (transactions).
+           "Agregar miembro" lives at the END of the carousel as a dashed add-card —
+           contextual to the members it creates, and keeps the header free of big CTAs. */}
       <div className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory">
         {members.map((member, i) => {
           const amount = summaryByUser[member.user_id]?.shared_paid ?? 0;
@@ -182,6 +171,19 @@ export default function CompartidoPage() {
             <p className="text-xs text-slate-400 mt-1">⏳ Pendiente</p>
           </div>
         ))}
+        {isOwner && members.length + pendingInvites.length < 5 && (
+          <button
+            type="button"
+            onClick={() => setInviteModalOpen(true)}
+            className="flex-shrink-0 w-48 rounded-xl border-2 border-dashed border-luka-primary/30 hover:border-luka-primary hover:bg-luka-primary/5 transition-colors p-4 flex flex-col items-center justify-center gap-2 text-luka-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary"
+            aria-label="Agregar miembro"
+          >
+            <div className="w-9 h-9 rounded-full bg-luka-primary/10 flex items-center justify-center">
+              <UserPlus size={18} />
+            </div>
+            <p className="text-xs font-semibold">Agregar miembro</p>
+          </button>
+        )}
       </div>
 
       {/* Total */}

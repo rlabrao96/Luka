@@ -103,22 +103,22 @@ export default function SubscriptionsPage() {
       <PageHeader
         title="Suscripciones"
         subtitle="Gastos recurrentes detectados automáticamente"
-        actions={
-          <button
-            onClick={() => refreshMutation.mutate()}
-            disabled={refreshMutation.isPending}
-            aria-label="Actualizar suscripciones"
-            className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center text-slate-500 disabled:opacity-50"
-            title={`Última actualización: ${relativeTime(computedAt)}`}
-          >
-            <RefreshCw
-              size={16}
-              className={refreshMutation.isPending ? "animate-spin" : ""}
-            />
-          </button>
-        }
-        filters={
-          currency ? <CurrencyToggle value={currency} onChange={setCurrency} /> : undefined
+        controls={
+          <>
+            {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
+            <button
+              onClick={() => refreshMutation.mutate()}
+              disabled={refreshMutation.isPending}
+              aria-label="Actualizar suscripciones"
+              className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center text-slate-500 disabled:opacity-50"
+              title={`Última actualización: ${relativeTime(computedAt)}`}
+            >
+              <RefreshCw
+                size={16}
+                className={refreshMutation.isPending ? "animate-spin" : ""}
+              />
+            </button>
+          </>
         }
       />
 

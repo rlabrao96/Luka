@@ -5,41 +5,37 @@ interface PageHeaderProps {
   title: string;
   subtitle?: string;
   /**
-   * Actions row — page-level buttons (primary CTAs and icon buttons) that
-   * belong to this page. Rendered on its own line, below the title, always
-   * left-aligned. Examples: "Agregar miembro", refresh, settings gear,
-   * "Marcar todas leídas".
+   * Controls row — all compact, 36px-tall chips and icon buttons that
+   * belong to this page. Canonical order (enforced by convention, not the
+   * component) is:
+   *
+   *   currency → month → icon actions (refresh, settings, ratios, ...)
+   *   → filter triggers (search, filter)
+   *
+   * Big primary CTAs ("Agregar miembro", full-text buttons) do NOT belong
+   * here — the header is for controls that modify the current view, not
+   * for destructive or navigational buttons. Place those inline with the
+   * section of the page they act on.
    */
-  actions?: ReactNode;
-  /**
-   * Filters row — compact controls that modify the page's data view.
-   * Order is deliberate and consistent across every page:
-   *   currency → month → everything else (search, filter icons, ...).
-   * Pass the controls in that order; PageHeader just flex-wraps them.
-   */
-  filters?: ReactNode;
+  controls?: ReactNode;
   /** Opt-in extra classes on the outer header. */
   className?: string;
 }
 
 /**
- * Canonical dashboard page header. All top-level routes under (dashboard)/
- * open with <PageHeader/> so the title block, actions, and filter chips
- * always land in the same place — on mobile AND on desktop. The three
- * rows are:
+ * Canonical dashboard page header. Two rows max:
  *
  *   1. title + subtitle
- *   2. actions (left-aligned, this page's primary buttons)
- *   3. filters (left-aligned, currency first, then month, then others)
+ *   2. controls (currency, month, icon actions, filter triggers)
  *
- * If a row has no content it's skipped, so the header compresses on pages
- * that don't need all three bands.
+ * Row 2 flex-wraps on narrow viewports; every control is a 36px-tall chip
+ * so they align on the same baseline whether they're labels, icons, or
+ * pill toggles.
  */
 export function PageHeader({
   title,
   subtitle,
-  actions,
-  filters,
+  controls,
   className,
 }: PageHeaderProps) {
   return (
@@ -52,11 +48,8 @@ export function PageHeader({
           <p className="text-sm text-luka-muted mt-0.5">{subtitle}</p>
         )}
       </div>
-      {actions && (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
-      )}
-      {filters && (
-        <div className="flex flex-wrap items-center gap-2">{filters}</div>
+      {controls && (
+        <div className="flex flex-wrap items-center gap-2">{controls}</div>
       )}
     </header>
   );

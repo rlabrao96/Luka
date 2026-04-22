@@ -157,7 +157,7 @@ export default function DashboardPage() {
       <PageHeader
         title={`${greeting}, ${firstName}`}
         subtitle="Aquí está tu resumen financiero"
-        filters={
+        controls={
           <>
             {selectedCurrency && (
               <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
