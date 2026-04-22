@@ -732,12 +732,15 @@ git commit -m "feat(reconciliation): wire wallet-pair detection into the tick"
 
 - [ ] **Step 6.1: Write the script**
 
+The backfill runs `detect_wallet_pairs` inside a transaction and, **before committing**, queries the freshly-paired rows (those with a `transfer_pair_id` that didn't exist at the start of the run) and prints a table. Without `--apply`, the transaction is rolled back. This gives a spec-faithful preview without duplicating the matching logic.
+
 Create `backend/scripts/backfill_wallet_pairs.py`:
 
 ```python
 """One-time backfill: detect wallet funding pairs across a household's full history.
 
-Dry-run by default — prints a table of candidate pairs. Pass --apply to commit.
+Dry-run by default — prints a table of candidate pairs, then rolls back.
+Pass --apply to commit.
 
 Usage:
     python -m scripts.backfill_wallet_pairs --email rafaellabra96@gmail.com
@@ -748,6 +751,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import uuid
 
 from sqlalchemy import select
 
@@ -758,11 +762,60 @@ import modules.merchants.models  # noqa: F401
 import modules.plaid.models  # noqa: F401
 import modules.transactions.models  # noqa: F401
 from modules.auth.models import User
-from modules.households.models import HouseholdMember
+from modules.households.models import BankAccount, HouseholdMember
 from modules.reconciliation.wallets import detect_wallet_pairs
+from modules.transactions.models import Transaction
 
 # 10 years covers all possible history; effectively "no cap".
 _FULL_HISTORY_DAYS = 365 * 10
+
+
+async def _snapshot_paired_ids(db, household_id: uuid.UUID) -> set[uuid.UUID]:
+    """IDs of transactions already paired before the run."""
+    ids = (
+        await db.execute(
+            select(Transaction.id).where(
+                Transaction.household_id == household_id,
+                Transaction.transfer_pair_id.is_not(None),
+            )
+        )
+    ).scalars().all()
+    return set(ids)
+
+
+async def _print_new_pairs(db, household_id: uuid.UUID, pre_ids: set[uuid.UUID]) -> None:
+    """Print a table of pairs created by this run (not present in pre_ids)."""
+    rows = (
+        await db.execute(
+            select(Transaction, BankAccount)
+            .join(BankAccount, Transaction.bank_account_id == BankAccount.id)
+            .where(
+                Transaction.household_id == household_id,
+                Transaction.transfer_pair_id.is_not(None),
+                Transaction.id.not_in(pre_ids) if pre_ids else True,
+            )
+            .order_by(Transaction.transfer_pair_id, Transaction.transaction_date)
+        )
+    ).all()
+
+    # Group by transfer_pair_id.
+    by_pair: dict[uuid.UUID, list] = {}
+    for tx, acct in rows:
+        by_pair.setdefault(tx.transfer_pair_id, []).append((tx, acct))
+
+    if not by_pair:
+        return
+
+    header = f"{'pair':>4} | {'date':>10} | {'amount':>10} | {'account':<24} | merchant"
+    print(header)
+    print("-" * len(header))
+    for i, (_pid, legs) in enumerate(by_pair.items(), start=1):
+        for tx, acct in legs:
+            print(
+                f"{i:>4} | {tx.transaction_date.date().isoformat():>10} | "
+                f"{float(tx.amount):>10.2f} | {(acct.bank_name or '')[:24]:<24} | "
+                f"{tx.raw_merchant_name or ''}"
+            )
 
 
 async def main(email: str, apply_changes: bool) -> int:
@@ -786,8 +839,11 @@ async def main(email: str, apply_changes: bool) -> int:
 
         total_pairs = 0
         for hid in household_ids:
+            pre_ids = await _snapshot_paired_ids(db, hid)
             pairs = await detect_wallet_pairs(db, hid, lookback_days=_FULL_HISTORY_DAYS)
-            print(f"Household {hid}: {pairs} wallet pair(s) detected")
+            print(f"\nHousehold {hid}: {pairs} wallet pair(s) detected")
+            if pairs:
+                await _print_new_pairs(db, hid, pre_ids)
             total_pairs += pairs
 
         if apply_changes:
@@ -807,8 +863,6 @@ if __name__ == "__main__":
     args = ap.parse_args()
     sys.exit(asyncio.run(main(args.email, args.apply)))
 ```
-
-Note: `detect_wallet_pairs` currently does not print the candidate table. For the v1 script, the row count is enough — the user will spot-check by looking at the feed afterward. If a verbose preview is needed, extend `detect_wallet_pairs` with a `dry_run` flag that collects candidates into a list and returns them (deferred — not needed for first run).
 
 - [ ] **Step 6.2: Smoke-test the script (dry-run)**
 
