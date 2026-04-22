@@ -105,5 +105,17 @@ export const BANK_LOGOS: Record<string, BankLogoSpec> = {
 
 export function findBankLogo(key: string | null | undefined): BankLogoSpec | null {
   if (!key) return null;
-  return BANK_LOGOS[key.toLowerCase().trim()] ?? null;
+  const norm = key.toLowerCase().trim();
+  const exact = BANK_LOGOS[norm];
+  if (exact) return exact;
+
+  // Plaid often returns decorated names like "Venmo - Personal" or
+  // "Chase – Credit Card". Fall back to the first token split on common
+  // separators so those still resolve to the base bank icon.
+  const head = norm.split(/\s*[-–—|:]\s*/)[0].trim();
+  if (head && head !== norm) {
+    const byHead = BANK_LOGOS[head];
+    if (byHead) return byHead;
+  }
+  return null;
 }
