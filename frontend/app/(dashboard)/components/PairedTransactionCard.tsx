@@ -1,12 +1,14 @@
 "use client";
 import { useId, useMemo, useState } from "react";
-import { ArrowLeftRight, ChevronDown, Undo2 } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, TrendingDown, TrendingUp, Undo2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type BankAccountRow, type Transaction } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 import { formatStoredAmount } from "@/app/lib/currency";
 import { cn } from "@/lib/utils";
 import { TransactionCard } from "./TransactionCard";
+
+const WALLET_MERCHANT_RE = /\b(venmo|paypal|cash ?app)\b/i;
 
 /* ─── Public types + grouping helper ──────────────────────────────── */
 
@@ -114,16 +116,53 @@ export function PairedTransactionCard({
     return m;
   }, [accounts]);
 
-  // Pick the expense leg for merchant / display.
-  const expenseLeg =
-    legs.find((l) => Number(l.amount) < 0) ?? legs[0];
-  const currency = expenseLeg.currency ?? "CLP";
-  const absAmount = Math.abs(Number(expenseLeg.amount) || 0);
+  // Detect wallet pairs: one leg has a wallet-token merchant (the bank-side
+  // funding/cashout row, e.g. "Venmo"), the other has the counterparty name
+  // (the wallet-side row, e.g. "Nicolas Celasco"). These are rendered as the
+  // canonical expense/income, not as a generic inter-account transfer.
+  const walletBankLeg =
+    pairType === "transfer" && legs.length === 2
+      ? legs.find((l) => WALLET_MERCHANT_RE.test(l.raw_merchant_name))
+      : undefined;
+  const walletCanonicalLeg =
+    walletBankLeg
+      ? legs.find((l) => l.id !== walletBankLeg.id && !WALLET_MERCHANT_RE.test(l.raw_merchant_name))
+      : undefined;
+  const isWalletPair = !!(walletBankLeg && walletCanonicalLeg);
+
+  // Pick the leg used for the summary amount/title. Wallet pairs use the
+  // canonical leg (real counterparty); other pairs use the negative leg.
+  const summaryLeg =
+    isWalletPair
+      ? walletCanonicalLeg!
+      : (legs.find((l) => Number(l.amount) < 0) ?? legs[0]);
+  const currency = summaryLeg.currency ?? "CLP";
+  const summaryAmount = Number(summaryLeg.amount) || 0;
+  const summaryIsOutflow = summaryAmount < 0;
+  const absAmount = Math.abs(summaryAmount);
   const formattedAbs = formatStoredAmount(-absAmount, currency).replace(/^\(|\)$/g, "");
+  // For wallet pairs we show a signed amount (parens for expense). Others
+  // stay neutral/slate as before.
+  const formattedSigned = formatStoredAmount(summaryAmount, currency);
 
   let title: string;
   let subtitle: string;
-  if (pairType === "transfer") {
+  if (isWalletPair) {
+    title = toTitleCase(walletCanonicalLeg!.raw_merchant_name);
+    const walletName = walletCanonicalLeg!.bank_account_id
+      ? accountNameById.get(walletCanonicalLeg!.bank_account_id)
+      : undefined;
+    const bankName = walletBankLeg!.bank_account_id
+      ? accountNameById.get(walletBankLeg!.bank_account_id)
+      : undefined;
+    if (walletName && bankName) {
+      subtitle = summaryIsOutflow
+        ? `${toTitleCase(walletName)} · pagado con ${toTitleCase(bankName)}`
+        : `${toTitleCase(walletName)} · depositado en ${toTitleCase(bankName)}`;
+    } else {
+      subtitle = "Venmo";
+    }
+  } else if (pairType === "transfer") {
     const isCCPayment = legs.some((l) => looksLikeCCPayment(l.raw_merchant_name));
     title = isCCPayment ? "Pago tarjeta" : "Transferencia";
     // Transfer legs live on two different accounts; the negative leg is
@@ -138,20 +177,22 @@ export function PairedTransactionCard({
       : undefined;
     subtitle = fromName && toName ? `${toTitleCase(fromName)} → ${toTitleCase(toName)}` : "Entre cuentas";
   } else {
-    const merchant = toTitleCase(expenseLeg.raw_merchant_name);
+    const merchant = toTitleCase(summaryLeg.raw_merchant_name);
     title = `${merchant} · reembolsado`;
     // Both legs share the same bank account for a refund.
-    const accountName = expenseLeg.bank_account_id
-      ? accountNameById.get(expenseLeg.bank_account_id)
+    const accountName = summaryLeg.bank_account_id
+      ? accountNameById.get(summaryLeg.bank_account_id)
       : undefined;
     subtitle = accountName ? `en ${toTitleCase(accountName)}` : "Reembolso aplicado";
   }
 
   const legCount = legs.length;
   const ariaLabel =
-    pairType === "transfer"
-      ? `${title} ${formattedAbs}, ${legCount} transacciones`
-      : `${title} ${formattedAbs}, neto cero`;
+    pairType === "refund"
+      ? `${title} ${formattedAbs}, neto cero`
+      : isWalletPair
+        ? `${title} ${formattedSigned}, ${legCount} transacciones`
+        : `${title} ${formattedAbs}, ${legCount} transacciones`;
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] overflow-hidden">
@@ -164,19 +205,37 @@ export function PairedTransactionCard({
         className="w-full text-left p-3 sm:p-3.5 flex items-center gap-2 sm:gap-3 hover:bg-slate-50/50 transition-colors"
       >
         {/* Icon */}
-        <div
-          className={cn(
-            "hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0",
-            pairType === "transfer" ? "bg-blue-50 text-blue-500" : "bg-slate-100 text-slate-500"
-          )}
-          aria-hidden="true"
-        >
-          {pairType === "transfer" ? (
-            <ArrowLeftRight size={16} strokeWidth={2.5} />
-          ) : (
-            <Undo2 size={16} strokeWidth={2.5} />
-          )}
-        </div>
+        {isWalletPair ? (
+          <div
+            className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0"
+            style={{
+              background: summaryIsOutflow
+                ? "linear-gradient(135deg, #fef2f2, #fecaca)"
+                : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
+            }}
+            aria-hidden="true"
+          >
+            {summaryIsOutflow ? (
+              <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
+            ) : (
+              <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
+            )}
+          </div>
+        ) : (
+          <div
+            className={cn(
+              "hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0",
+              pairType === "transfer" ? "bg-blue-50 text-blue-500" : "bg-slate-100 text-slate-500"
+            )}
+            aria-hidden="true"
+          >
+            {pairType === "transfer" ? (
+              <ArrowLeftRight size={16} strokeWidth={2.5} />
+            ) : (
+              <Undo2 size={16} strokeWidth={2.5} />
+            )}
+          </div>
+        )}
 
         <div className="flex-1 min-w-0">
           {/* Line 1: title + amount */}
@@ -184,7 +243,16 @@ export function PairedTransactionCard({
             <p className="text-[13px] sm:text-sm font-semibold text-luka-dark truncate">
               {title}
             </p>
-            {pairType === "transfer" ? (
+            {isWalletPair ? (
+              <span
+                className={cn(
+                  "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
+                  summaryIsOutflow ? "text-luka-dark" : "text-emerald-600",
+                )}
+              >
+                {formattedSigned}
+              </span>
+            ) : pairType === "transfer" ? (
               <span className="text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0 text-slate-500">
                 {formattedAbs}
               </span>
