@@ -283,23 +283,25 @@ export default function BudgetsPage() {
               currency={me?.preferred_currency}
               size="md"
             />
-            {householdId && (
-              <button
-                type="button"
-                aria-label="Configurar presupuesto"
-                onClick={() => setConfigOpen(true)}
-                className="relative w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
-              >
-                <Settings2 size={16} className="text-slate-700" />
-                {needsSetup && (
-                  <span
-                    aria-hidden
-                    className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-luka-primary border-2 border-white"
-                  />
-                )}
-              </button>
-            )}
           </>
+        }
+        actions={
+          householdId ? (
+            <button
+              type="button"
+              aria-label="Configurar presupuesto"
+              onClick={() => setConfigOpen(true)}
+              className="relative w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
+            >
+              <Settings2 size={16} className="text-slate-700" />
+              {needsSetup && (
+                <span
+                  aria-hidden
+                  className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-luka-primary border-2 border-white"
+                />
+              )}
+            </button>
+          ) : undefined
         }
       />
 

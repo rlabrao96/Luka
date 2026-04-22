@@ -368,14 +368,16 @@ export default function TransactionsPage() {
                   size="md"
                   allowAll
                 />
-                <FilterPanelTriggers
-                  searchOpen={filterPanel.searchOpen}
-                  filtersOpen={filterPanel.filtersOpen}
-                  onToggleSearch={filterPanel.toggleSearch}
-                  onToggleFilters={filterPanel.toggleFilters}
-                  activeCount={activeCount}
-                />
               </>
+            }
+            actions={
+              <FilterPanelTriggers
+                searchOpen={filterPanel.searchOpen}
+                filtersOpen={filterPanel.filtersOpen}
+                onToggleSearch={filterPanel.toggleSearch}
+                onToggleFilters={filterPanel.toggleFilters}
+                activeCount={activeCount}
+              />
             }
           />
         );

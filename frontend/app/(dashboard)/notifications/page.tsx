@@ -92,7 +92,7 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notificaciones"
         subtitle="Alertas y actividad reciente"
-        controls={
+        actions={
           notifications.some((n) => n.status === "unread") ? (
             <button
               onClick={handleMarkAllRead}

@@ -135,16 +135,18 @@ export default function CompartidoPage() {
               currency={currency || undefined}
               size="md"
             />
-            {!settlementEnabled && (
-              <button
-                onClick={() => setRatioModalOpen(true)}
-                aria-label="Configurar ratios"
-                className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
-              >
-                <Settings size={16} className="text-slate-700" />
-              </button>
-            )}
           </>
+        }
+        actions={
+          !settlementEnabled ? (
+            <button
+              onClick={() => setRatioModalOpen(true)}
+              aria-label="Configurar ratios"
+              className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
+            >
+              <Settings size={16} className="text-slate-700" />
+            </button>
+          ) : undefined
         }
       />
 

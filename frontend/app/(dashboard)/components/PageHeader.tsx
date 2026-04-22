@@ -5,19 +5,22 @@ interface PageHeaderProps {
   title: string;
   subtitle?: string;
   /**
-   * Controls row — all compact, 36px-tall chips and icon buttons that
-   * belong to this page. Canonical order (enforced by convention, not the
-   * component) is:
-   *
-   *   currency → month → icon actions (refresh, settings, ratios, ...)
-   *   → filter triggers (search, filter)
-   *
-   * Big primary CTAs ("Agregar miembro", full-text buttons) do NOT belong
-   * here — the header is for controls that modify the current view, not
-   * for destructive or navigational buttons. Place those inline with the
-   * section of the page they act on.
+   * Left-aligned controls — view filters the user reaches for on every
+   * page. Canonical order is CurrencyToggle → MonthSelector. Keeping them
+   * on the left gives every page the same visual anchor point.
    */
   controls?: ReactNode;
+  /**
+   * Right-aligned actions — page-level icon buttons, filter triggers, and
+   * small status actions (refresh, settings gear, ratios, search/filter,
+   * mark-all-read). All 36px tall so they sit on the same baseline as the
+   * left-group chips.
+   *
+   * Big primary CTAs ("Agregar miembro", full-text buttons) do NOT belong
+   * here — the header is for controls that modify the current view.
+   * Place those inline with the section they act on.
+   */
+  actions?: ReactNode;
   /** Opt-in extra classes on the outer header. */
   className?: string;
 }
@@ -26,16 +29,17 @@ interface PageHeaderProps {
  * Canonical dashboard page header. Two rows max:
  *
  *   1. title + subtitle
- *   2. controls (currency, month, icon actions, filter triggers)
+ *   2. [controls left-aligned]       [actions right-aligned]
  *
- * Row 2 flex-wraps on narrow viewports; every control is a 36px-tall chip
- * so they align on the same baseline whether they're labels, icons, or
- * pill toggles.
+ * Row 2 uses justify-between so the two groups anchor to opposite edges
+ * on wide viewports; on narrow viewports they flex-wrap with no gap
+ * between groups (they collapse into a single left-aligned stream).
  */
 export function PageHeader({
   title,
   subtitle,
   controls,
+  actions,
   className,
 }: PageHeaderProps) {
   return (
@@ -48,8 +52,17 @@ export function PageHeader({
           <p className="text-sm text-luka-muted mt-0.5">{subtitle}</p>
         )}
       </div>
-      {controls && (
-        <div className="flex flex-wrap items-center gap-2">{controls}</div>
+      {(controls || actions) && (
+        <div className="flex flex-wrap items-center gap-2 justify-between">
+          {controls && (
+            <div className="flex flex-wrap items-center gap-2">{controls}</div>
+          )}
+          {actions && (
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              {actions}
+            </div>
+          )}
+        </div>
       )}
     </header>
   );
