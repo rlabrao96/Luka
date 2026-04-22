@@ -6,6 +6,11 @@ import { localeForCurrency, resolveAppLocale } from "@/app/lib/locale";
 import { useBreakpoint } from "@/app/lib/hooks/useBreakpoint";
 import { getLastNMonths } from "@/app/lib/months";
 
+/** Sentinel key meaning "no month filter — show everything". Kept as a
+ *  string so callers can use it transparently with the same `value` /
+ *  `onChange` signature the picker already exposes. */
+export const ALL_MONTHS = "all";
+
 interface MonthSelectorProps {
   value: string;
   onChange: (month: string) => void;
@@ -18,6 +23,12 @@ interface MonthSelectorProps {
   currency?: string;
   /** Compact-trigger variant (smaller padding, chevron always visible). */
   size?: "sm" | "md";
+  /** When true, prepend a "Todos los meses" option that emits the
+   *  `ALL_MONTHS` sentinel. Used by filter-style consumers (Transactions)
+   *  that want the picker to double as an "all / pick a month" chip. */
+  allowAll?: boolean;
+  /** Label used for the "all" option. Defaults to "Todos los meses". */
+  allLabel?: string;
 }
 
 export function MonthSelector({
@@ -27,15 +38,24 @@ export function MonthSelector({
   count = 12,
   currency,
   size = "sm",
+  allowAll = false,
+  allLabel = "Todos los meses",
 }: MonthSelectorProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const isMobile = useBreakpoint("sm");
   const locale = currency ? localeForCurrency(currency) : resolveAppLocale();
-  const options = useMemo(() => getLastNMonths(locale, count), [locale, count]);
+  const monthOptions = useMemo(() => getLastNMonths(locale, count), [locale, count]);
+  const options = useMemo(
+    () =>
+      allowAll
+        ? [{ key: ALL_MONTHS, label: allLabel }, ...monthOptions]
+        : monthOptions,
+    [allowAll, allLabel, monthOptions],
+  );
 
   const selectedLabel = options.find((o) => o.key === value)?.label ?? value;
-  const isViewingPast = value !== currentMonth;
+  const isViewingPast = value !== currentMonth && value !== ALL_MONTHS;
 
   useEffect(() => {
     if (isMobile) return;

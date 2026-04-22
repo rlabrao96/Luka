@@ -5,16 +5,17 @@ interface PageHeaderProps {
   title: string;
   subtitle?: string;
   /**
-   * Top-right slot — primary call-to-action and page-level icon buttons
-   * (e.g. "Agregar miembro", refresh, settings gear). Inline with the title
-   * on sm+; drops below the title block on narrow mobile if it overflows.
+   * Actions row — page-level buttons (primary CTAs and icon buttons) that
+   * belong to this page. Rendered on its own line, below the title, always
+   * left-aligned. Examples: "Agregar miembro", refresh, settings gear,
+   * "Marcar todas leídas".
    */
   actions?: ReactNode;
   /**
-   * Second row — compact filters that modify the page's data view
-   * (MonthSelector, CurrencyToggle, search/filter chips). Always lives
-   * below the title row so every page has a predictable "title → filters
-   * → content" rhythm.
+   * Filters row — compact controls that modify the page's data view.
+   * Order is deliberate and consistent across every page:
+   *   currency → month → everything else (search, filter icons, ...).
+   * Pass the controls in that order; PageHeader just flex-wraps them.
    */
   filters?: ReactNode;
   /** Opt-in extra classes on the outer header. */
@@ -23,8 +24,16 @@ interface PageHeaderProps {
 
 /**
  * Canonical dashboard page header. All top-level routes under (dashboard)/
- * should open with <PageHeader/> so the title, actions, and filters land in
- * the same place regardless of which page the user is on.
+ * open with <PageHeader/> so the title block, actions, and filter chips
+ * always land in the same place — on mobile AND on desktop. The three
+ * rows are:
+ *
+ *   1. title + subtitle
+ *   2. actions (left-aligned, this page's primary buttons)
+ *   3. filters (left-aligned, currency first, then month, then others)
+ *
+ * If a row has no content it's skipped, so the header compresses on pages
+ * that don't need all three bands.
  */
 export function PageHeader({
   title,
@@ -35,21 +44,17 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <header className={cn("space-y-3", className)}>
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-luka-dark tracking-tight">
-            {title}
-          </h1>
-          {subtitle && (
-            <p className="text-sm text-luka-muted mt-0.5">{subtitle}</p>
-          )}
-        </div>
-        {actions && (
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {actions}
-          </div>
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold text-luka-dark tracking-tight">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="text-sm text-luka-muted mt-0.5">{subtitle}</p>
         )}
       </div>
+      {actions && (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      )}
       {filters && (
         <div className="flex flex-wrap items-center gap-2">{filters}</div>
       )}

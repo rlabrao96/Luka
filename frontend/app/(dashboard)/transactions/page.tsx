@@ -12,23 +12,15 @@ import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import { formatStoredAmount, normalizeBalance } from "@/app/lib/currency";
-import { resolveAppLocale } from "@/app/lib/locale";
 import { CurrencyToggle } from "../components/CurrencyToggle";
 import { KpiCard } from "../components/KpiCard";
 import { PageHeader } from "../components/PageHeader";
-
-// Match the user's OS locale for date labels. SSR-safe via resolveAppLocale.
-const RESOLVED_LOCALE = resolveAppLocale();
+import { MonthSelector, ALL_MONTHS } from "../components/MonthSelector";
+import { currentMonthKey } from "@/app/lib/months";
 
 function getMonthKey(iso: string) {
   // Parse date string directly to avoid timezone shift
   return iso.split("T")[0].slice(0, 7);
-}
-
-function getMonthLabel(key: string) {
-  const [year, month] = key.split("-");
-  const d = new Date(Number(year), Number(month) - 1, 1);
-  return d.toLocaleDateString(RESOLVED_LOCALE, { month: "long", year: "numeric" });
 }
 
 const CHECKING_KINDS = new Set(["checking_account", "savings_account", "sight_account"]);
@@ -249,7 +241,8 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
 
 export default function TransactionsPage() {
   const [search, setSearch] = useState("");
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>(ALL_MONTHS);
+  const nowKey = currentMonthKey();
   const [selectedBank, setSelectedBank] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
@@ -277,12 +270,6 @@ export default function TransactionsPage() {
     staleTime: 60 * 1000,
   });
 
-  const monthOptions = useMemo(() => {
-    const keys = new Set<string>();
-    [...myTxns, ...sharedTxns].forEach((t) => keys.add(getMonthKey(t.transaction_date)));
-    return Array.from(keys).sort().reverse();
-  }, [myTxns, sharedTxns]);
-
   const bankOptions = useMemo(() => {
     const banks = new Set<string>();
     [...myTxns, ...sharedTxns].forEach((t) => { if (t.bank_name) banks.add(t.bank_name); });
@@ -300,7 +287,7 @@ export default function TransactionsPage() {
     if (selectedCurrency) {
       result = result.filter((t) => (t.currency ?? "CLP") === selectedCurrency);
     }
-    if (selectedMonth !== "all") result = result.filter((t) => getMonthKey(t.transaction_date) === selectedMonth);
+    if (selectedMonth !== ALL_MONTHS) result = result.filter((t) => getMonthKey(t.transaction_date) === selectedMonth);
     if (selectedBank !== "all") result = result.filter((t) => t.bank_name === selectedBank);
     if (selectedType !== "all") result = result.filter((t) => t.transaction_type === selectedType);
     if (onlyUncategorized) {
@@ -360,23 +347,32 @@ export default function TransactionsPage() {
         title="Transacciones"
         subtitle="Historial de movimientos"
         filters={
-          selectedCurrency ? (
-            <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
-          ) : undefined
+          <>
+            {selectedCurrency && (
+              <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
+            )}
+            <MonthSelector
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              currentMonth={nowKey}
+              currency={selectedCurrency || undefined}
+              size="md"
+              allowAll
+            />
+          </>
         }
       />
 
       {/* Filters */}
       <FilterPanel
         activeCount={[
-          selectedMonth !== "all" ? 1 : 0,
           selectedBank !== "all" ? 1 : 0,
           selectedCategory !== "all" ? 1 : 0,
           selectedType !== "all" ? 1 : 0,
           onlyUncategorized ? 1 : 0,
         ].reduce((a, b) => a + b, 0)}
         onClear={() => {
-          setSelectedMonth("all");
+          setSelectedMonth(ALL_MONTHS);
           setSelectedBank("all");
           setSelectedCategory("all");
           setSelectedType("all");
@@ -393,17 +389,6 @@ export default function TransactionsPage() {
             <option value="expense">Gasto</option>
             <option value="income">Ingreso</option>
             <option value="transfer">Transferencia entre cuentas</option>
-          </select>
-          <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        </div>
-
-        {/* Month dropdown */}
-        <div className="relative">
-          <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className={selectClass}>
-            <option value="all">Todos los meses</option>
-            {monthOptions.map((m) => (
-              <option key={m} value={m}>{getMonthLabel(m)}</option>
-            ))}
           </select>
           <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>

@@ -288,6 +288,12 @@ export default function BudgetsPage() {
         }
         filters={
           <>
+            {selectedCurrency && (
+              <CurrencyToggle
+                value={selectedCurrency}
+                onChange={setSelectedCurrency}
+              />
+            )}
             <MonthSelector
               value={selectedMonthKey}
               onChange={setSelectedMonthKey}
@@ -295,12 +301,6 @@ export default function BudgetsPage() {
               currency={me?.preferred_currency}
               size="md"
             />
-            {selectedCurrency && (
-              <CurrencyToggle
-                value={selectedCurrency}
-                onChange={setSelectedCurrency}
-              />
-            )}
           </>
         }
       />

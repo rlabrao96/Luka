@@ -149,6 +149,7 @@ export default function CompartidoPage() {
         }
         filters={
           <>
+            {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
             <MonthSelector
               value={selectedMonth}
               onChange={setSelectedMonth}
@@ -156,7 +157,6 @@ export default function CompartidoPage() {
               currency={currency || undefined}
               size="md"
             />
-            {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
           </>
         }
       />

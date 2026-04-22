@@ -159,10 +159,15 @@ export default function DashboardPage() {
         subtitle="Aquí está tu resumen financiero"
         filters={
           <>
-            <MonthSelector value={selectedMonth} onChange={setSelectedMonth} currentMonth={currentMonth} />
             {selectedCurrency && (
               <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
             )}
+            <MonthSelector
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              currentMonth={currentMonth}
+              size="md"
+            />
           </>
         }
       />
