@@ -36,7 +36,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex min-h-screen bg-luka-surface">
+    <div className="flex min-h-screen bg-luka-surface overflow-x-clip">
       <StoreInitializer
         userId={userData?.id ?? null}
         householdId={userData?.household_id ?? null}
@@ -47,8 +47,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
           scrolls naturally at the document level. A single scrollbar (the
           browser's) is less confusing than the nested main-scroll pattern. */}
       <Sidebar />
-      {/* Main content — no nested overflow; lets the document scroll. */}
-      <main className="flex-1 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
+      {/*
+        Main content — `min-w-0` lets the flex child shrink to the viewport
+        width (flex defaults to min-content); without it, any descendant with
+        long unbreakable text forces the page wider than the viewport and
+        mobile browsers fall back to pinch-zoom. `overflow-x-clip` is a
+        belt-and-suspenders guard against that.
+      */}
+      <main className="flex-1 min-w-0 overflow-x-clip pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {children}
         </div>

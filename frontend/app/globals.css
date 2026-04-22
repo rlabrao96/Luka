@@ -131,3 +131,10 @@
   animation: slide-up 300ms ease-out;
 }
 
+/* Defense in depth against horizontal overflow on mobile. An over-wide
+   descendant (a long unbreakable word, a pre/code block, a chart SVG) will
+   otherwise push the layout past the viewport and trigger pinch-zoom. */
+html, body {
+  overflow-x: clip;
+}
+
