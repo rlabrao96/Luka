@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { TrendingDown, TrendingUp, ChevronDown } from "lucide-react";
+import { TrendingDown, ChevronDown } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Transaction, api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
@@ -8,43 +8,13 @@ import { useCategories } from "@/app/lib/hooks/useCategories";
 import { TransactionCard } from "./TransactionCard";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
-import { formatStoredAmount } from "@/app/lib/currency";
+import { resolveAppLocale } from "@/app/lib/locale";
+import { useBreakpoint } from "@/app/lib/hooks/useBreakpoint";
+import { EmptyState } from "./EmptyState";
 import { PairedTransactionCard, groupPairs } from "./PairedTransactionCard";
 
-// Derived once: match the user's OS locale for date labels rather than
-// hardcoding es-CL. Task 4.6 polish. SSR fallback to es-CL.
-const RESOLVED_LOCALE =
-  typeof Intl !== "undefined"
-    ? Intl.DateTimeFormat().resolvedOptions().locale || "es-CL"
-    : "es-CL";
-
-
-function toTitleCase(str: string) {
-  return str
-    .toLowerCase()
-    .split(" ")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-/** Format a stored transaction amount (absolute, no sign). */
-function formatTxnAmount(txn: { amount: number; currency: string }): string {
-  return formatStoredAmount(Number(txn.amount), txn.currency ?? "CLP");
-}
-
-/* ─── useIsMobile hook ─── */
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const mql = window.matchMedia("(max-width: 1023px)");
-    setIsMobile(mql.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
-  return isMobile;
-}
+// Match the user's OS locale for date labels. SSR-safe via resolveAppLocale.
+const RESOLVED_LOCALE = resolveAppLocale();
 
 /* ─── Date grouping utilities ─── */
 
@@ -70,16 +40,6 @@ function formatDateHeader(dateKey: string): string {
     return date.toLocaleDateString(RESOLVED_LOCALE, { day: "2-digit", month: "short" });
   }
   return date.toLocaleDateString(RESOLVED_LOCALE, { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function groupByDate(txns: Transaction[]): Map<string, Transaction[]> {
-  const groups = new Map<string, Transaction[]>();
-  for (const txn of txns) {
-    const key = getDateKey(txn.transaction_date);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(txn);
-  }
-  return groups;
 }
 
 /* ─── CategoryCell (desktop inline dropdown) ─── */
@@ -184,19 +144,12 @@ export function RecentTransactions({
   transactions,
   compact = false,
 }: RecentTransactionsProps) {
-  const isMobile = useIsMobile();
+  const isMobile = useBreakpoint("lg");
   const [categorySheet, setCategorySheet] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
 
   if (!transactions.length) {
-    return (
-      <div className="py-12 flex flex-col items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-          <TrendingDown size={18} className="text-slate-400" />
-        </div>
-        <p className="text-xs text-luka-muted">No hay transacciones.</p>
-      </div>
-    );
+    return <EmptyState icon={TrendingDown} message="No hay transacciones." height={140} />;
   }
 
   async function handleCategorySelect(txn: Transaction, category: string | null) {
@@ -269,114 +222,19 @@ export function RecentTransactions({
                   return <TransactionCard key={txn.id} txn={txn} compact />;
                 }
 
-                // TODO(chunk-E): wire MarkAsCuotaDialog into the mobile / desktop
-                // non-compact transaction row. The dialog component lives at
-                // `./MarkAsCuotaDialog` and is already prefillable from a txn.
-                // The current non-compact layouts are inlined rather than
-                // delegating to TransactionCard, so exposing the "Marcar como
-                // cuota" affordance here requires adding a button adjacent to
-                // SplitTypeEditor / the desktop row actions and managing a
-                // per-txn open-state map. Deferring to a follow-up to avoid
-                // refactoring RecentTransactions during the parallel sprint.
-
-                /* Mobile non-compact: card layout with bottom sheet for category, SplitTypeEditor for split */
-                if (isMobile) {
-                  const isOutflow = Number(txn.amount) < 0;
-                  return (
-                    <div
-                      key={txn.id}
-                      className="bg-white rounded-xl p-3 border border-slate-100 shadow-[var(--shadow-card)]"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-baseline gap-2">
-                            <p className="text-[13px] font-semibold text-luka-dark truncate">
-                              {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
-                            </p>
-                            <span
-                              className={cn(
-                                "text-[13px] font-bold tabular-nums shrink-0",
-                                isOutflow ? "text-red-500" : "text-luka-success"
-                              )}
-                            >
-                              {isOutflow
-                                ? `(${formatTxnAmount(txn)})`
-                                : `+${formatTxnAmount(txn)}`}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center mt-1">
-                            <div className="flex items-center gap-1 min-w-0">
-                              <span className="text-[9px] text-slate-400 shrink-0">
-                                {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Manual" : "\u2014"}
-                              </span>
-                              <button
-                                onClick={() => setCategorySheet(txn)}
-                                className={cn(
-                                  "text-[9px] font-medium px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 max-w-[80px] text-center truncate",
-                                  txn.category
-                                    ? "bg-slate-100 text-slate-600"
-                                    : "bg-amber-50 text-amber-600"
-                                )}
-                              >
-                                {txn.category ?? "Sin categoría"}
-                              </button>
-                            </div>
-                            <SplitTypeEditor txn={txn} isMobile={true} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                /* Desktop non-compact: card layout with inline CategoryCell and SplitTypeEditor */
-                const isOutflow = Number(txn.amount) < 0;
+                /* Non-compact: delegate to TransactionCard with slotted editors.
+                 * Mobile → category opens a bottom sheet via onCategoryTap.
+                 * Desktop → inline CategoryCell dropdown via categorySlot. */
                 return (
-                  <div
+                  <TransactionCard
                     key={txn.id}
-                    className="bg-white rounded-xl p-3.5 border border-slate-100 shadow-[var(--shadow-card)] flex items-center gap-3"
-                  >
-                    <div
-                      className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center shrink-0"
-                      style={{
-                        background: isOutflow
-                          ? "linear-gradient(135deg, #fef2f2, #fecaca)"
-                          : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
-                      }}
-                    >
-                      {isOutflow ? (
-                        <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
-                      ) : (
-                        <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline gap-2">
-                        <p className="text-sm font-semibold text-luka-dark truncate">
-                          {txn.display_name ?? toTitleCase(txn.raw_merchant_name)}
-                        </p>
-                        <span
-                          className={cn(
-                            "text-[15px] font-bold tabular-nums shrink-0",
-                            isOutflow ? "text-luka-dark" : "text-luka-success"
-                          )}
-                        >
-                          {isOutflow
-                            ? `(${formatTxnAmount(txn)})`
-                            : `+${formatTxnAmount(txn)}`}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center mt-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[10px] text-slate-400 shrink-0">
-                            {txn.bank_name ? toTitleCase(txn.bank_name) : txn.source === "manual" ? "Agregado Manualmente" : "\u2014"}
-                          </span>
-                          <CategoryCell txn={txn} />
-                        </div>
-                        <SplitTypeEditor txn={txn} isMobile={false} />
-                      </div>
-                    </div>
-                  </div>
+                    txn={txn}
+                    displayName={txn.display_name}
+                    onCategoryTap={isMobile ? (t) => setCategorySheet(t) : undefined}
+                    categorySlot={!isMobile ? <CategoryCell txn={txn} /> : undefined}
+                    splitSlot={<SplitTypeEditor txn={txn} isMobile={isMobile} />}
+                    enableMarkCuota
+                  />
                 );
               })}
             </div>

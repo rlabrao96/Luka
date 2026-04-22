@@ -1,43 +1,38 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
+import { localeForCurrency, resolveAppLocale } from "@/app/lib/locale";
+import { useBreakpoint } from "@/app/lib/hooks/useBreakpoint";
+import { getLastNMonths } from "@/app/lib/months";
 
 interface MonthSelectorProps {
   value: string;
   onChange: (month: string) => void;
   currentMonth: string;
+  /** Number of months to expose in the list. Defaults to 12 so users can pick
+   *  any month in the last year without hitting a wall. */
+  count?: number;
+  /** Localize labels via a currency (e.g. "BRL" → pt-BR). When omitted we fall
+   *  back to the browser-resolved locale. */
+  currency?: string;
+  /** Compact-trigger variant (smaller padding, chevron always visible). */
+  size?: "sm" | "md";
 }
 
-function getMonthOptions(): { key: string; label: string }[] {
-  const now = new Date();
-  const options: { key: string; label: string }[] = [];
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = d.toLocaleDateString("es-CL", { month: "short", year: "numeric" });
-    options.push({ key, label: label.charAt(0).toUpperCase() + label.slice(1) });
-  }
-  return options;
-}
-
-function useIsMobile() {
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 639px)");
-    setMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return mobile;
-}
-
-export function MonthSelector({ value, onChange, currentMonth }: MonthSelectorProps) {
+export function MonthSelector({
+  value,
+  onChange,
+  currentMonth,
+  count = 12,
+  currency,
+  size = "sm",
+}: MonthSelectorProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const isMobile = useIsMobile();
-  const options = getMonthOptions();
+  const isMobile = useBreakpoint("sm");
+  const locale = currency ? localeForCurrency(currency) : resolveAppLocale();
+  const options = useMemo(() => getLastNMonths(locale, count), [locale, count]);
 
   const selectedLabel = options.find((o) => o.key === value)?.label ?? value;
   const isViewingPast = value !== currentMonth;
@@ -71,11 +66,19 @@ export function MonthSelector({ value, onChange, currentMonth }: MonthSelectorPr
     </button>
   ));
 
+  const triggerSize =
+    size === "md"
+      ? "h-9 px-3 text-sm"
+      : "py-1 px-3 text-xs";
+
   return (
     <div ref={ref} className="relative">
       <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1 rounded-lg px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap ${
+        className={`flex items-center gap-1 rounded-lg font-semibold transition-colors whitespace-nowrap ${triggerSize} ${
           isViewingPast
             ? "bg-luka-primary text-white"
             : "bg-slate-100 text-slate-500 hover:bg-slate-200"

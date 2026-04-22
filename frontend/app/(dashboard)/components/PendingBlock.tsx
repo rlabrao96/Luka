@@ -25,6 +25,7 @@ import { useCategories } from "@/app/lib/hooks/useCategories";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
 import { formatStoredAmount, isNegativeStored } from "@/app/lib/currency";
+import { toTitleCase } from "@/app/lib/strings";
 import { LinkMatchDialog } from "./LinkMatchDialog";
 import {
   DropdownMenu,
@@ -60,9 +61,6 @@ function useIsMobile() {
   return mobile;
 }
 
-function toTitleCase(str: string) {
-  return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-}
 
 /**
  * Age badge measures how long a pending row has been sitting in the backlog,

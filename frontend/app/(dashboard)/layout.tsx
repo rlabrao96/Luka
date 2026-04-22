@@ -48,7 +48,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           browser's) is less confusing than the nested main-scroll pattern. */}
       <Sidebar />
       {/* Main content — no nested overflow; lets the document scroll. */}
-      <main className="flex-1 pb-24 lg:pb-0">
+      <main className="flex-1 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {children}
         </div>

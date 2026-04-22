@@ -1,28 +1,21 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CreditCard, Users, Wallet, Repeat, Settings, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUnreadCount } from "@/app/lib/hooks/useNotifications";
-
-const NAV = [
-  { href: "/",             label: "Inicio",      icon: LayoutDashboard },
-  { href: "/transactions", label: "Gastos",       icon: CreditCard      },
-  { href: "/household",    label: "Compartido",    icon: Users           },
-  { href: "/budgets",      label: "Presupuesto",  icon: Wallet          },
-  { href: "/notifications", label: "Notif.",       icon: Bell            },
-  { href: "/settings",     label: "Config",        icon: Settings        },
-];
+import { NAV_ITEMS } from "./nav-items";
 
 export function BottomNav() {
   const pathname = usePathname();
   const { data } = useUnreadCount();
   const unreadCount = data?.count ?? 0;
+  const items = NAV_ITEMS.filter((i) => i.showInBottom);
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
     <nav
+      aria-label="Navegación principal"
       className={cn(
         "fixed left-3 right-3 z-50 lg:hidden",
         /* Lift above the home indicator: 8px base + iOS safe area */
@@ -37,26 +30,34 @@ export function BottomNav() {
         "px-1 py-1"
       )}
     >
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, shortLabel, icon: Icon }) => {
         const active = isActive(href);
         const showDot = href === "/notifications" && unreadCount > 0;
         return (
           <Link
             key={href}
             href={href}
+            aria-label={label}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl transition-all duration-200",
-              "text-[10px] font-medium relative",
+              "text-[9.5px] font-medium relative min-h-[44px]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary focus-visible:ring-offset-1",
               active
                 ? "text-luka-primary bg-luka-primary-light/60"
                 : "text-slate-400 active:bg-slate-50"
             )}
           >
-            <Icon size={20} strokeWidth={active ? 2.2 : 1.7} />
-            {showDot && (
-              <span className="absolute top-1 right-1/4 w-2 h-2 bg-red-500 rounded-full" />
-            )}
-            <span>{label}</span>
+            <span className="relative">
+              <Icon size={18} strokeWidth={active ? 2.2 : 1.7} />
+              {showDot && (
+                <span
+                  aria-hidden
+                  className="absolute -top-0.5 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white"
+                />
+              )}
+            </span>
+            <span className="truncate max-w-full px-0.5">{shortLabel}</span>
           </Link>
         );
       })}

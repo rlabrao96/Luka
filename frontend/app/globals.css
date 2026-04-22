@@ -25,9 +25,7 @@
   /* Keep luka-light for backwards compat */
   --color-luka-light:          #DBEAFE;
 
-  /* Direction icon gradients (used as inline styles, documented here for reference) */
-  /* Expense: linear-gradient(135deg, #fef2f2, #fecaca) */
-  /* Income:  linear-gradient(135deg, #ecfdf5, #d1fae5) */
+  /* Direction icon gradients now live in <DirectionIcon> (components/). */
 
   /* Card shadow scale */
   --shadow-card:     0 1px 3px rgba(0,0,0,0.03);
@@ -133,30 +131,3 @@
   animation: slide-up 300ms ease-out;
 }
 
-input[type="range"].luka-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 9999px;
-  outline: none;
-}
-input[type="range"].luka-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 24px;
-  height: 24px;
-  background: #2563eb;
-  border-radius: 50%;
-  cursor: pointer;
-  border: 3px solid white;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-}
-input[type="range"].luka-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: #2563eb;
-  border-radius: 50%;
-  cursor: pointer;
-  border: 3px solid white;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-}

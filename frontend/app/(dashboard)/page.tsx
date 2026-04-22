@@ -10,6 +10,7 @@ import { BalanceCard } from "./components/BalanceCard";
 import { CashFlowCards } from "./components/CashFlowCards";
 import { BudgetBars } from "./components/BudgetBars";
 import { RecentTransactions } from "./components/RecentTransactions";
+import { EmptyState } from "./components/EmptyState";
 
 import { useMyTransactions, useMonthlySpending, usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useBudgetStatus, useCategoryBudgets } from "@/app/lib/hooks/useBudget";
@@ -17,6 +18,7 @@ import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow } from "@/app/lib/api";
 import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import { isZeroDecimalCurrency } from "@/app/lib/currency";
+import { localeForCurrency } from "@/app/lib/locale";
 
 // Lazy-load chart components (~200KB Recharts bundle)
 const SpendingChart = dynamic(
@@ -39,13 +41,12 @@ function getMonthKey(iso: string): string {
 
 /** Normalize a transaction amount to a signed value in the currency's standard unit.
  *  Non-zero-decimal currencies are stored as minor units (cents) and divided by 100.
- *  Sign: flips positive amounts to negative when the transaction_type isn't income. */
+ *  Sign is taken from the stored value — expenses/transfers are already negative,
+ *  income positive, refunds positive on an expense row. Do not recompute from type. */
 function normalizeTxnAmount(t: { amount: number; currency: string; source: string; transaction_type: string | null }): number {
   const currency = t.currency ?? "CLP";
-  let raw = Number(t.amount);
-  if (!isZeroDecimalCurrency(currency)) raw = raw / 100;
-  if (raw > 0 && t.transaction_type !== "income") raw = -raw;
-  return raw;
+  const raw = Number(t.amount);
+  return isZeroDecimalCurrency(currency) ? raw : raw / 100;
 }
 
 export default function DashboardPage() {
@@ -171,7 +172,7 @@ export default function DashboardPage() {
       {/* Banner for past month */}
       {isViewingPast && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-700 text-center">
-          Viendo datos de {new Date(Number(selectedMonth.split("-")[0]), Number(selectedMonth.split("-")[1]) - 1).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+          Viendo datos de {new Date(Number(selectedMonth.split("-")[0]), Number(selectedMonth.split("-")[1]) - 1).toLocaleDateString(localeForCurrency(selectedCurrency), { month: "long", year: "numeric" })}
         </div>
       )}
 
@@ -219,7 +220,7 @@ export default function DashboardPage() {
             <h2 className="text-sm font-semibold text-luka-dark">Por categoría</h2>
             <p className="text-xs text-luka-muted mt-0.5">
               {isViewingPast
-                ? new Date(Number(selectedMonth.split("-")[0]), Number(selectedMonth.split("-")[1]) - 1).toLocaleDateString("es-CL", { month: "long" })
+                ? new Date(Number(selectedMonth.split("-")[0]), Number(selectedMonth.split("-")[1]) - 1).toLocaleDateString(localeForCurrency(selectedCurrency), { month: "long" })
                 : "Este mes"
               }
             </p>
@@ -227,12 +228,7 @@ export default function DashboardPage() {
           {categoryData.length > 0 ? (
             <CategoryDonut data={categoryData} currency={selectedCurrency} />
           ) : (
-            <div className="h-[200px] flex flex-col items-center justify-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-                <BarChart3 size={18} className="text-slate-400" />
-              </div>
-              <p className="text-xs text-luka-muted">Sin datos aún</p>
-            </div>
+            <EmptyState icon={BarChart3} message="Sin datos aún" />
           )}
         </div>
 
@@ -250,12 +246,7 @@ export default function DashboardPage() {
               currency={selectedCurrency}
             />
           ) : (
-            <div className="h-[200px] flex flex-col items-center justify-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-                <BarChart3 size={18} className="text-slate-400" />
-              </div>
-              <p className="text-xs text-luka-muted">Sin datos aún</p>
-            </div>
+            <EmptyState icon={BarChart3} message="Sin datos aún" />
           )}
         </div>
       </div>

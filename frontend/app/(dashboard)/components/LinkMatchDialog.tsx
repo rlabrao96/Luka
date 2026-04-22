@@ -8,16 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AlertCircle, Link2, Check } from "lucide-react";
+import { toTitleCase } from "@/app/lib/strings";
 
 type Props = {
   pendingTransaction: Transaction | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
-
-function toTitleCase(str: string) {
-  return str.toLowerCase().split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-}
 
 export function LinkMatchDialog({ pendingTransaction, open, onOpenChange }: Props) {
   const pendingId = pendingTransaction?.id ?? null;

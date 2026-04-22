@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useCreateCuota } from "@/app/lib/hooks/useCuotas";
+import { formatStoredAmount } from "@/app/lib/currency";
 
 type Props = {
   open: boolean;
@@ -10,7 +11,7 @@ type Props = {
     id: string;
     merchant_name: string;
     amount: number;
-    currency: "CLP" | "USD";
+    currency: string;
   };
 };
 
@@ -39,15 +40,7 @@ export function MarkAsCuotaDialog({ open, onClose, transaction }: Props) {
 
   if (!open) return null;
 
-  const formatPreview = (n: number) => {
-    if (transaction.currency === "USD") {
-      return `US$${(n / 100).toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
-    return `$${Math.round(n).toLocaleString("es-CL")}`;
-  };
+  const formatPreview = (n: number) => formatStoredAmount(n, transaction.currency);
 
   const disabled =
     createCuota.isPending || installmentsNum < 2 || !firstDate;

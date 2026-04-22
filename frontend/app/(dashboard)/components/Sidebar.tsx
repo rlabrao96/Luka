@@ -2,29 +2,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
-import {
-  LayoutDashboard,
-  CreditCard,
-  Users,
-  Wallet,
-  Repeat,
-  Settings,
-  LogOut,
-  TrendingUp,
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLukaStore } from "@/app/lib/store";
 import { createClient } from "@/app/lib/supabase/client";
 import { NotificationBadge } from "./NotificationBadge";
-
-const NAV = [
-  { href: "/",             label: "Dashboard",      icon: LayoutDashboard },
-  { href: "/transactions", label: "Transacciones",  icon: CreditCard      },
-  { href: "/household",    label: "Compartido",      icon: Users           },
-  { href: "/budgets",      label: "Presupuesto",     icon: Wallet          },
-  { href: "/subscriptions", label: "Suscripciones",  icon: Repeat          },
-  { href: "/settings",     label: "Configuración",   icon: Settings        },
-];
+import { NAV_ITEMS } from "./nav-items";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -70,7 +53,7 @@ export function Sidebar() {
         <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
           Menú
         </p>
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.filter((i) => i.showInSidebar).map(({ href, label, icon: Icon }) => {
           const active = isActive(href);
           return (
             <Link

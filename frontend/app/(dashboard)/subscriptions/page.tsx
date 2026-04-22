@@ -9,10 +9,17 @@ import {
   useRefreshSubscriptions,
   useSubscriptionOverride,
 } from "@/app/lib/hooks/useSubscriptions";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/app/lib/api";
 import type { RecurringExpense } from "@/app/lib/api";
 import { formatStoredAmount } from "@/app/lib/currency";
+import { localeForCurrency } from "@/app/lib/locale";
 import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 
 /* ── Formatting ─────────────────────────────────────────── */
@@ -276,29 +283,19 @@ export default function SubscriptionsPage() {
             </div>
           </div>
 
-          {/* Summary Table */}
+          {/* Summary — table on desktop, stacked cards on mobile */}
           <div>
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
               Detalle de suscripciones
             </p>
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-              {/* Table header */}
+              {/* Table header — desktop only */}
               <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_60px] gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase">
-                  Servicio
-                </span>
-                <span className="text-[11px] font-semibold text-slate-400 uppercase">
-                  Monto
-                </span>
-                <span className="text-[11px] font-semibold text-slate-400 uppercase">
-                  Último cobro
-                </span>
-                <span className="text-[11px] font-semibold text-slate-400 uppercase">
-                  Categoría
-                </span>
-                <span className="text-[11px] font-semibold text-slate-400 uppercase">
-                  Clasificación
-                </span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase">Servicio</span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase">Monto</span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase">Último cobro</span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase">Categoría</span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase">Clasificación</span>
                 <span />
               </div>
 
@@ -309,6 +306,10 @@ export default function SubscriptionsPage() {
                 .map((sub) => {
                   const isExpanded = expandedRow === sub.merchant_name;
                   const isInactive = sub.status === "inactive";
+                  const lastChargeLabel = new Date(sub.last_charge_date + "T00:00:00").toLocaleDateString(
+                    localeForCurrency(currency),
+                    { day: "numeric", month: "short", year: "numeric" },
+                  );
 
                   return (
                     <div
@@ -317,12 +318,69 @@ export default function SubscriptionsPage() {
                         isInactive ? "opacity-55" : ""
                       }`}
                     >
-                      {/* Main row */}
+                      {/* Mobile row — stacked layout */}
                       <div
-                        className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_60px] gap-2 px-4 py-3 items-center cursor-pointer hover:bg-slate-50 transition-colors"
-                        onClick={() =>
-                          setExpandedRow(isExpanded ? null : sub.merchant_name)
-                        }
+                        className="sm:hidden px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => setExpandedRow(isExpanded ? null : sub.merchant_name)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              {isExpanded ? (
+                                <ChevronUp size={14} className="text-slate-300 shrink-0" />
+                              ) : (
+                                <ChevronDown size={14} className="text-slate-300 shrink-0" />
+                              )}
+                              <p className="text-sm font-semibold text-gray-900 truncate">
+                                {sub.merchant_name}
+                              </p>
+                              {isInactive && (
+                                <span className="text-[9px] font-semibold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded uppercase shrink-0">
+                                  Inactiva
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5 ml-[18px]">
+                              {sub.months_seen} meses · {lastChargeLabel}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-bold text-gray-900 tabular-nums">
+                              {formatAmount(sub.last_amount, currency)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-2 ml-[18px] flex-wrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded truncate max-w-[140px]">
+                              {sub.category ?? "—"}
+                            </span>
+                            <span
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                sub.split_type === "shared"
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-blue-50 text-blue-700"
+                              }`}
+                            >
+                              {sub.split_type === "shared" ? "Compartido" : "Personal"}
+                            </span>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingItem(sub);
+                            }}
+                            className="text-xs text-blue-600 font-medium hover:underline min-h-[32px] px-1"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Desktop row — original 6-column grid */}
+                      <div
+                        className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_60px] gap-2 px-4 py-3 items-center cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => setExpandedRow(isExpanded ? null : sub.merchant_name)}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           {isExpanded ? (
@@ -349,12 +407,7 @@ export default function SubscriptionsPage() {
                         <span className="text-[13px] font-semibold text-gray-900 tabular-nums">
                           {formatAmount(sub.last_amount, currency)}
                         </span>
-                        <span className="text-xs text-slate-500">
-                          {new Date(sub.last_charge_date + "T00:00:00").toLocaleDateString(
-                            "es-CL",
-                            { day: "numeric", month: "short", year: "numeric" },
-                          )}
-                        </span>
+                        <span className="text-xs text-slate-500">{lastChargeLabel}</span>
                         <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-center truncate">
                           {sub.category ?? "—"}
                         </span>
@@ -388,7 +441,7 @@ export default function SubscriptionsPage() {
                             >
                               <span className="text-[11px] text-slate-400">
                                 {new Date(charge.date + "T00:00:00").toLocaleDateString(
-                                  "es-CL",
+                                  localeForCurrency(currency),
                                   { day: "numeric", month: "short", year: "numeric" },
                                 )}
                               </span>
@@ -468,21 +521,21 @@ function EditModal({
   ] as const;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <div className="bg-white rounded-xl border border-slate-200 p-5 w-full max-w-sm shadow-xl">
-        <p className="text-[15px] font-bold text-gray-900 mb-4">
-          Editar — {item.merchant_name}
-        </p>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="pr-8">Editar — {item.merchant_name}</DialogTitle>
+        </DialogHeader>
 
         {/* Category */}
-        <div className="mb-3">
+        <div>
           <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
             Categoría
           </label>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-gray-700 bg-white"
+            className="w-full border border-slate-200 rounded-lg px-3 h-11 sm:h-10 text-base sm:text-[13px] text-gray-700 bg-white"
           >
             <option value="">— Sin cambio —</option>
             {categoryList.map((c) => (
@@ -494,7 +547,7 @@ function EditModal({
         </div>
 
         {/* Status */}
-        <div className="mb-3">
+        <div>
           <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
             Estado
           </label>
@@ -502,8 +555,9 @@ function EditModal({
             {statusOptions.map((opt) => (
               <button
                 key={opt.value}
+                type="button"
                 onClick={() => setStatus(opt.value)}
-                className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`flex-1 px-2 h-10 rounded-lg text-xs font-semibold transition-colors ${
                   status === opt.value
                     ? "bg-luka-primary text-white"
                     : "bg-slate-100 text-slate-500 border border-slate-200"
@@ -516,14 +570,15 @@ function EditModal({
         </div>
 
         {/* Classification */}
-        <div className="mb-3">
+        <div>
           <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
             Clasificación
           </label>
           <div className="flex gap-1.5">
             <button
+              type="button"
               onClick={() => setSplitType("personal")}
-              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              className={`flex-1 px-2 h-10 rounded-lg text-xs font-semibold transition-colors ${
                 splitType === "personal"
                   ? "bg-blue-50 text-blue-700 border border-blue-200"
                   : "bg-slate-100 text-slate-500 border border-slate-200"
@@ -532,8 +587,9 @@ function EditModal({
               Personal
             </button>
             <button
+              type="button"
               onClick={() => setSplitType("shared")}
-              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              className={`flex-1 px-2 h-10 rounded-lg text-xs font-semibold transition-colors ${
                 splitType === "shared"
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                   : "bg-slate-100 text-slate-500 border border-slate-200"
@@ -544,8 +600,8 @@ function EditModal({
           </div>
         </div>
 
-        {/* Next Charge Day */}
-        <div className="mb-4">
+        {/* Next Charge Day — text-base avoids iOS zoom-on-focus */}
+        <div>
           <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
             Día del mes (opcional)
           </label>
@@ -553,16 +609,25 @@ function EditModal({
             type="number"
             min={1}
             max={31}
+            inputMode="numeric"
             value={chargeDay}
             onChange={(e) => setChargeDay(e.target.value)}
             placeholder={String(item.next_charge_day)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-gray-700"
+            className="w-full border border-slate-200 rounded-lg px-3 h-11 sm:h-10 text-base sm:text-[13px] text-gray-700"
           />
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 pt-1">
           <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 sm:flex-initial px-4 h-11 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 text-sm font-medium hover:bg-slate-100 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
             onClick={() =>
               onSave({
                 merchant_key: item.merchant_name,
@@ -574,18 +639,12 @@ function EditModal({
                 ...(splitType !== initialSplitType && { split_type: splitType }),
               })
             }
-            className="flex-1 px-4 py-2 rounded-lg bg-luka-primary text-white text-[13px] font-semibold hover:bg-blue-700 transition-colors"
+            className="flex-1 px-4 h-11 rounded-lg bg-luka-primary text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
           >
             Guardar
           </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 text-[13px] font-medium hover:bg-slate-100 transition-colors"
-          >
-            Cancelar
-          </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 import { Landmark } from "lucide-react";
 import type { BankAccountRow } from "@/app/lib/api";
-import { formatStoredAmount, isZeroDecimalCurrency } from "@/app/lib/currency";
+import { formatStoredAmount, normalizeBalance } from "@/app/lib/currency";
 
 interface BalanceCardProps {
   accounts: BankAccountRow[];
@@ -11,15 +11,6 @@ interface BalanceCardProps {
 const CHECKING_KINDS = new Set([
   "checking_account", "savings_account", "sight_account", "depository",
 ]);
-
-/** Coerce a provider's balance into the app's storage convention (minor units
- *  for non-zero-decimal currencies). Plaid already reports minor units; luka_connect
- *  reports major units and needs ×100 for non-zero-decimal currencies. */
-function normalizeBalance(balance: number, currency: string, provider: string | null): number {
-  if (isZeroDecimalCurrency(currency)) return balance;
-  if (provider === "plaid") return balance;
-  return balance * 100;
-}
 
 export function BalanceCard({ accounts, currency }: BalanceCardProps) {
   const filtered = accounts.filter(

@@ -1,15 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { api, type BudgetV2Response } from "@/app/lib/api";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
+import { MonthSelector } from "@/app/(dashboard)/components/MonthSelector";
 import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import { BudgetConfigModal } from "@/app/(dashboard)/components/BudgetConfigModal";
 import { RiskAlertBand } from "@/app/(dashboard)/components/RiskAlertBand";
 import { BudgetDrilldownCard } from "@/app/(dashboard)/components/BudgetDrilldownCard";
+import { localeForCurrency } from "@/app/lib/locale";
+import { currentMonthKey, dateFromMonthKey } from "@/app/lib/months";
 
 // Recharts' Sankey chart pulls in ~40KB of d3 + rendering code.
 // Load it on demand so the budgets route shell paints first.
@@ -20,26 +23,6 @@ const BudgetSankey = dynamic(
 
 function monthParam(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
-
-// LATAM-first locale picker. CLAUDE.md forbids hardcoding es-CL; we derive
-// from the user's preferred currency since `country` isn't on the /me payload.
-function localeFor(currency: string | undefined): string {
-  switch (currency) {
-    case "BRL":
-      return "pt-BR";
-    case "USD":
-      return "en-US";
-    case "MXN":
-      return "es-MX";
-    case "COP":
-      return "es-CO";
-    case "PEN":
-      return "es-PE";
-    case "CLP":
-    default:
-      return "es-CL";
-  }
 }
 
 function SectionSkeleton() {
@@ -161,9 +144,9 @@ function SectionFlowBody({
 
 export default function BudgetsPage() {
   // ── Controls ──
-  const [selectedMonth, setSelectedMonth] = useState<Date>(
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-  );
+  const nowKey = currentMonthKey();
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(nowKey);
+  const selectedMonth = dateFromMonthKey(selectedMonthKey);
   const primaryCurrency = usePrimaryCurrency();
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>("");
 
@@ -188,7 +171,7 @@ export default function BudgetsPage() {
   const [personalNodeId, setPersonalNodeId] = useState<string | null>(null);
   // Locale for date formatting in the drilldown list. Matches the Spanish
   // CLAUDE.md rule: derive from currency, don't hardcode es-CL.
-  const drilldownLocale = localeFor(me?.preferred_currency);
+  const drilldownLocale = localeForCurrency(me?.preferred_currency);
 
   // Prefetch budgetSettings so the gear-button empty-state dot is accurate
   // before the user opens the modal.
@@ -267,18 +250,6 @@ export default function BudgetsPage() {
   });
 
 
-  // ── Month nav ──
-  function prevMonth() {
-    setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
-  }
-  function nextMonth() {
-    const next = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1);
-    if (next <= new Date()) setSelectedMonth(next);
-  }
-  const isCurrentMonth =
-    selectedMonth.getFullYear() === new Date().getFullYear() &&
-    selectedMonth.getMonth() === new Date().getMonth();
-
   // Empty state: user has no household
   if (me && !householdId) {
     return (
@@ -329,31 +300,13 @@ export default function BudgetsPage() {
       </div>
 
       {/* Month selector */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          aria-label="Mes anterior"
-          onClick={prevMonth}
-          className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:border-luka-primary transition-colors shadow-[var(--shadow-card)]"
-        >
-          <ChevronLeft size={16} className="text-slate-600" />
-        </button>
-        <span className="text-sm font-semibold text-luka-dark capitalize min-w-[140px] text-center">
-          {selectedMonth.toLocaleDateString(localeFor(me?.preferred_currency), {
-            month: "long",
-            year: "numeric",
-          })}
-        </span>
-        <button
-          type="button"
-          aria-label="Mes siguiente"
-          onClick={nextMonth}
-          disabled={isCurrentMonth}
-          className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:border-luka-primary disabled:opacity-30 transition-colors shadow-[var(--shadow-card)]"
-        >
-          <ChevronRight size={16} className="text-slate-600" />
-        </button>
-      </div>
+      <MonthSelector
+        value={selectedMonthKey}
+        onChange={setSelectedMonthKey}
+        currentMonth={nowKey}
+        currency={me?.preferred_currency}
+        size="md"
+      />
 
       {/* Risk alert band — silent when no alerts */}
       {household.data && (

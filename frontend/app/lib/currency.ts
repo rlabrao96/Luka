@@ -150,6 +150,21 @@ export function formatMajorAmount(
   }).format(Math.abs(amount));
 }
 
+/** Coerce a provider's balance into the app's storage convention (minor units
+ *  for non-zero-decimal currencies). Plaid already reports minor units;
+ *  luka_connect and other providers report major units and need ×100 for
+ *  non-zero-decimal currencies. Zero-decimal currencies (CLP, COP, ...) are
+ *  major-unit across all providers. */
+export function normalizeBalance(
+  balance: number,
+  currency: string,
+  provider: string | null,
+): number {
+  if (isZeroDecimalCurrency(currency)) return balance;
+  if (provider === "plaid") return balance;
+  return balance * 100;
+}
+
 /** Compact formatter for large major-unit amounts (k/M abbreviations). */
 export function formatMajorAmountCompact(
   amount: number,

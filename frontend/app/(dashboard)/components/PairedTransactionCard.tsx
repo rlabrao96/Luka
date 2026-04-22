@@ -1,12 +1,14 @@
 "use client";
 import { useId, useMemo, useState } from "react";
-import { ArrowLeftRight, ChevronDown, TrendingDown, TrendingUp, Undo2 } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Undo2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type BankAccountRow, type Transaction } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
 import { formatStoredAmount } from "@/app/lib/currency";
+import { toTitleCase } from "@/app/lib/strings";
 import { cn } from "@/lib/utils";
 import { TransactionCard } from "./TransactionCard";
+import { DirectionIcon } from "./DirectionIcon";
 
 const WALLET_MERCHANT_RE = /\b(venmo|paypal|cash ?app)\b/i;
 
@@ -74,14 +76,6 @@ interface PairedTransactionCardProps {
   pairId: string;
   pairType: "transfer" | "refund";
   legs: Transaction[];
-}
-
-function toTitleCase(str: string) {
-  return str
-    .toLowerCase()
-    .split(" ")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
 }
 
 function looksLikeCCPayment(name: string): boolean {
@@ -214,21 +208,7 @@ export function PairedTransactionCard({
       >
         {/* Icon */}
         {isWalletPair ? (
-          <div
-            className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0"
-            style={{
-              background: summaryIsOutflow
-                ? "linear-gradient(135deg, #fef2f2, #fecaca)"
-                : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
-            }}
-            aria-hidden="true"
-          >
-            {summaryIsOutflow ? (
-              <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
-            ) : (
-              <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
-            )}
-          </div>
+          <DirectionIcon direction={summaryIsOutflow ? "outflow" : "inflow"} />
         ) : (
           <div
             className={cn(

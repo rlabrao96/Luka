@@ -2,6 +2,7 @@
 import { useCallback, useMemo } from "react";
 import { Sankey, Tooltip, ResponsiveContainer, Rectangle, Layer } from "recharts";
 import { formatMoney, type Currency } from "@/app/lib/format";
+import { useBreakpoint } from "@/app/lib/hooks/useBreakpoint";
 
 type Node = {
   id: string;
@@ -102,6 +103,7 @@ export default function BudgetSankey({
   onNodeClick,
   activeNodeId,
 }: Props) {
+  const narrow = useBreakpoint("sm");
   // Recharts Sankey divides layout by total flow — zero-sum input causes NaN
   // path attributes and collapses the ResponsiveContainer to -1 dimensions.
   const totalFlow = useMemo(
@@ -333,14 +335,20 @@ export default function BudgetSankey({
     >
       <div className="w-full overflow-x-auto">
         <div
-          className="min-w-[560px] md:min-w-[800px]"
+          className="min-w-[360px] sm:min-w-[560px] md:min-w-[800px]"
           style={{ height: chartHeight }}
         >
           <ResponsiveContainer width="100%" height="100%">
             <Sankey
               data={data}
-              margin={{ top: 28, right: 150, bottom: 44, left: 150 }}
-              nodePadding={32}
+              // Tighter margins on narrow viewports so the chart body
+              // doesn't collapse under 150px left+right label gutters.
+              margin={
+                narrow
+                  ? { top: 24, right: 72, bottom: 40, left: 72 }
+                  : { top: 28, right: 150, bottom: 44, left: 150 }
+              }
+              nodePadding={narrow ? 20 : 32}
               nodeWidth={16}
               linkCurvature={0.5}
               iterations={64}

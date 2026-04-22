@@ -11,17 +11,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
-import { formatStoredAmount } from "@/app/lib/currency";
+import { formatStoredAmount, normalizeBalance } from "@/app/lib/currency";
+import { resolveAppLocale } from "@/app/lib/locale";
 import { CurrencyToggle } from "../components/CurrencyToggle";
+import { KpiCard } from "../components/KpiCard";
 
-// Prefer the browser/runtime locale so dates match what the user sees in the
-// OS. Falls back to es-CL when running server-side (SSR) where Intl has no
-// navigator-derived locale. Computed once at module eval time — this is
-// purely a display preference, not reactive.
-const RESOLVED_LOCALE =
-  typeof Intl !== "undefined"
-    ? Intl.DateTimeFormat().resolvedOptions().locale || "es-CL"
-    : "es-CL";
+// Match the user's OS locale for date labels. SSR-safe via resolveAppLocale.
+const RESOLVED_LOCALE = resolveAppLocale();
 
 function getMonthKey(iso: string) {
   // Parse date string directly to avoid timezone shift
@@ -52,19 +48,19 @@ function SummaryBar({ accounts, selectedCurrency, selectedBank }: SummaryBarProp
 
   const checkingBalance = filtered
     .filter((a) => a.account_kind && CHECKING_KINDS.has(a.account_kind))
-    .reduce((s, a) => s + (a.balance_current ?? 0), 0);
+    .reduce((s, a) => s + normalizeBalance(a.balance_current ?? 0, selectedCurrency, a.provider), 0);
 
   const ccUsed = filtered
     .filter((a) => a.account_kind === CC_KIND)
-    .reduce((s, a) => s + (a.balance_current ?? 0), 0); // Already negative
+    .reduce((s, a) => s + normalizeBalance(a.balance_current ?? 0, selectedCurrency, a.provider), 0); // Already negative
 
   const ccLimit = filtered
     .filter((a) => a.account_kind === CC_KIND)
-    .reduce((s, a) => s + (a.balance_limit ?? 0), 0);
+    .reduce((s, a) => s + normalizeBalance(a.balance_limit ?? 0, selectedCurrency, a.provider), 0);
 
   const locBalance = filtered
     .filter((a) => a.account_kind === LOC_KIND)
-    .reduce((s, a) => s + (a.balance_current ?? 0), 0);
+    .reduce((s, a) => s + normalizeBalance(a.balance_current ?? 0, selectedCurrency, a.provider), 0);
 
   const hasLOC = filtered.some((a) => a.account_kind === LOC_KIND);
   const hasCC = filtered.some((a) => a.account_kind === CC_KIND);
@@ -79,16 +75,15 @@ function SummaryBar({ accounts, selectedCurrency, selectedBank }: SummaryBarProp
     label: string;
     value: string;
     sublabel: string;
-    bg: string;
-    textColor: string;
+    className: string;
+    valueClassName?: string;
     show: boolean;
   }> = [
     {
       label: "Cuenta Corriente",
       value: hasAnyBalance ? formatStoredAmount(checkingBalance, selectedCurrency) : "—",
       sublabel: "",
-      bg: "bg-blue-50 border-blue-100",
-      textColor: "text-luka-dark",
+      className: "bg-blue-50 border-blue-100",
       show: true,
     },
     {
@@ -97,26 +92,25 @@ function SummaryBar({ accounts, selectedCurrency, selectedBank }: SummaryBarProp
       sublabel: hasAnyBalance && ccLimit > 0
         ? `gastado de ${formatStoredAmount(ccLimit, selectedCurrency)}`
         : "",
-      bg: "bg-red-50 border-red-100",
-      textColor: ccUsed < 0 ? "text-red-600" : "text-luka-dark",
+      className: "bg-red-50 border-red-100",
+      valueClassName: ccUsed < 0 ? "text-red-600" : undefined,
       show: hasCC,
     },
     {
       label: "Línea de Crédito",
       value: hasAnyBalance ? formatStoredAmount(locBalance, selectedCurrency) : "—",
       sublabel: "disponible",
-      bg: "bg-emerald-50 border-emerald-100",
-      textColor: "text-luka-dark",
+      className: "bg-emerald-50 border-emerald-100",
       show: hasLOC,
     },
     {
       label: "Posición Neta",
       value: hasAnyBalance ? formatStoredAmount(netPosition, selectedCurrency) : "—",
       sublabel: "líquido - deuda TC",
-      bg: netPosition >= 0
+      className: netPosition >= 0
         ? "bg-emerald-50 border-emerald-200"
         : "bg-red-50 border-red-200",
-      textColor: netPosition >= 0 ? "text-emerald-700" : "text-red-600",
+      valueClassName: netPosition >= 0 ? "text-emerald-700" : "text-red-600",
       show: hasCC,
     },
   ];
@@ -129,21 +123,16 @@ function SummaryBar({ accounts, selectedCurrency, selectedBank }: SummaryBarProp
         Saldos disponibles
       </span>
       <div className={`grid grid-cols-1 ${gridClass[visibleCards.length] ?? "lg:grid-cols-4"} gap-3`}>
-        {visibleCards.map(({ label, value, sublabel, bg, textColor }) => (
-          <div
+        {visibleCards.map(({ label, value, sublabel, className, valueClassName }) => (
+          <KpiCard
             key={label}
-            className={`rounded-xl border p-4 ${bg}`}
-          >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 leading-tight">
-              {label}
-            </p>
-            <p className={`text-lg font-bold tabular-nums truncate ${textColor}`}>
-              {value}
-            </p>
-            {sublabel && (
-              <p className="text-[10px] text-slate-400 mt-0.5">{sublabel}</p>
-            )}
-          </div>
+            variant="compact"
+            label={label}
+            value={value}
+            sublabel={sublabel || undefined}
+            valueClassName={valueClassName}
+            className={className}
+          />
         ))}
       </div>
     </div>
@@ -168,18 +157,20 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
-      <div className="px-5 py-3.5 border-b border-slate-50 flex items-center justify-between gap-3">
+      <div className="px-5 py-3.5 border-b border-slate-50 flex items-center justify-between gap-3 flex-wrap">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
           Movimientos
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap justify-end">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-slate-400">Ver</span>
             {([10, 30, 100] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => onPageSize(s)}
-                className={`text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors ${
+                aria-label={`Mostrar ${s} por página`}
+                aria-pressed={pageSize === s}
+                className={`text-[11px] sm:text-[10px] font-medium min-w-[32px] h-8 sm:h-auto sm:min-w-0 px-2 sm:px-1.5 sm:py-0.5 rounded transition-colors ${
                   pageSize === s
                     ? "bg-luka-primary text-white"
                     : "text-slate-500 hover:text-luka-primary"
@@ -189,7 +180,7 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
               </button>
             ))}
           </div>
-          <p className="text-[10px] text-slate-400">
+          <p className="hidden sm:block text-[10px] text-slate-400">
             {transactions.length === 0 ? "0 resultados" : `Mostrando ${from}–${to} de ${transactions.length}`}
           </p>
         </div>
@@ -211,7 +202,7 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
             <button
               onClick={() => onPage(1)}
               disabled={page === 1}
-              title="Primera página"
+              aria-label="Primera página"
               className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronsLeft size={13} />
@@ -219,26 +210,31 @@ function TransactionTable({ transactions, loading, page, pageSize, onPage, onPag
             <button
               onClick={() => onPage(page - 1)}
               disabled={page === 1}
-              className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-slate-200 bg-white text-[11px] font-medium text-slate-600 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="Página anterior"
+              className="flex items-center gap-1 h-10 min-w-[44px] sm:h-7 sm:min-w-0 px-3 sm:px-2.5 rounded-lg border border-slate-200 bg-white text-[13px] sm:text-[11px] font-medium text-slate-600 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              <ChevronLeft size={12} /> Anterior
+              <ChevronLeft size={14} /> <span className="hidden sm:inline">Anterior</span>
             </button>
           </div>
-          <span className="text-[11px] font-medium text-slate-500">
-            Página <span className="text-luka-dark font-semibold">{page}</span> de {totalPages}
+          <span className="text-[11px] font-medium text-slate-500 text-center shrink-0">
+            <span className="text-luka-dark font-semibold">{page}</span>
+            <span className="hidden sm:inline"> de </span>
+            <span className="sm:hidden">/</span>
+            {totalPages}
           </span>
           <div className="flex items-center gap-1">
             <button
               onClick={() => onPage(page + 1)}
               disabled={page === totalPages}
-              className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-slate-200 bg-white text-[11px] font-medium text-slate-600 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="Página siguiente"
+              className="flex items-center gap-1 h-10 min-w-[44px] sm:h-7 sm:min-w-0 px-3 sm:px-2.5 rounded-lg border border-slate-200 bg-white text-[13px] sm:text-[11px] font-medium text-slate-600 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              Siguiente <ChevronRight size={12} />
+              <span className="hidden sm:inline">Siguiente</span> <ChevronRight size={14} />
             </button>
             <button
               onClick={() => onPage(totalPages)}
               disabled={page === totalPages}
-              title="Última página"
+              aria-label="Última página"
               className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-luka-primary hover:text-luka-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronsRight size={13} />
@@ -351,8 +347,10 @@ export default function TransactionsPage() {
     return applyFilters(unique).sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
   }, [myTxns, sharedTxns, selectedMonth, selectedBank, selectedCategory, selectedType, onlyUncategorized, search, selectedCurrency]);
 
+  // Mobile: 44px touch target + 16px-adjacent text so iOS Safari doesn't
+  // zoom-on-focus. Shrinks back to the desktop-compact size at sm+.
   const selectClass =
-    "h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-7 cursor-pointer";
+    "h-11 sm:h-8 rounded-lg border border-slate-200 bg-white px-3 text-[15px] sm:text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-8 cursor-pointer";
 
   return (
     <div className="space-y-6">

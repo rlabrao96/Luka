@@ -29,6 +29,11 @@ export function CategoryDonut({ data, currency = "CLP" }: CategoryDonutProps) {
   const absTotal = chartData.reduce((s, d) => s + d.amount, 0);
   const active = activeIndex !== null ? data[activeIndex] : null;
 
+  // Tap on a segment toggles its "active" state — touch devices don't fire
+  // hover, so without click support mobile users can't drill in at all.
+  const toggleActive = (i: number) =>
+    setActiveIndex((prev) => (prev === i ? null : i));
+
   return (
     <div className="flex flex-col gap-2">
       {/* Donut with fixed center total */}
@@ -47,6 +52,7 @@ export function CategoryDonut({ data, currency = "CLP" }: CategoryDonutProps) {
               strokeWidth={0}
               onMouseEnter={(_, index) => setActiveIndex(index)}
               onMouseLeave={() => setActiveIndex(null)}
+              onClick={(_, index) => toggleActive(index)}
             >
               {chartData.map((_, i) => (
                 <Cell
@@ -71,8 +77,9 @@ export function CategoryDonut({ data, currency = "CLP" }: CategoryDonutProps) {
         </div>
       </div>
 
-      {/* Hover info panel — appears below donut */}
+      {/* Hover/tap info panel — appears below donut */}
       <div
+        aria-live="polite"
         className={`rounded-lg px-3 py-2 border transition-all duration-150 ${
           active
             ? "bg-white border-slate-100 shadow-sm opacity-100"
@@ -100,14 +107,17 @@ export function CategoryDonut({ data, currency = "CLP" }: CategoryDonutProps) {
         </div>
       </div>
 
-      {/* Custom legend */}
+      {/* Custom legend — buttons so they're keyboard + touch reachable */}
       <div className="flex flex-wrap gap-x-3 gap-y-2 justify-center pb-2">
         {data.map((entry, i) => (
-          <div
+          <button
             key={entry.category}
-            className="flex items-center gap-1.5 cursor-pointer pb-1"
+            type="button"
+            onClick={() => toggleActive(i)}
             onMouseEnter={() => setActiveIndex(i)}
             onMouseLeave={() => setActiveIndex(null)}
+            aria-pressed={activeIndex === i}
+            className="flex items-center gap-1.5 pb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary rounded"
           >
             <div
               className="w-2.5 h-2.5 rounded-full shrink-0 transition-opacity"
@@ -122,7 +132,7 @@ export function CategoryDonut({ data, currency = "CLP" }: CategoryDonutProps) {
             >
               {entry.category}
             </span>
-          </div>
+          </button>
         ))}
       </div>
     </div>
