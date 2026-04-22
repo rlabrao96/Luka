@@ -189,15 +189,17 @@ Dedup (`backend/modules/reconciliation/dedup.py`) requires currency equality, si
 2. All comparisons use `abs(amount)` — all sources now store negative for expenses, positive for income. Currency and bank_account_id parity are enforced.
 3. On match: copies merchant_id, category, transaction_type from email tx -> bank tx; re-links splits; deletes email tx
 4. `detect_transfers()` finds same-amount opposite-sign pairs across accounts within +/-2 days, marks both as transfer. Guarded by `user_id` (no cross-member) and `currency` (no cross-currency) equality.
-5. `detect_refunds()` finds same-account opposite-sign pairs within 90 days and writes `refund_pair_id` to both rows.
+5. `detect_wallet_pairs()` (new 2026-04-22) pairs wallet-funding rows: sign is unconstrained (handles BofA→Venmo funding and Venmo→BofA cash-out symmetrically), window is ±5 days (wallet settlement is slower than bank-to-bank), gated on at least one leg being on a wallet account (Plaid `paypal` subtype → `account_kind='wallet'`, or `bank_name` containing `venmo`/`paypal`/`cashapp`) AND the bank-side merchant containing the short wallet token. The **bank leg** is re-typed to `transfer`; the wallet leg keeps its counterparty name as the canonical expense/income. Same `transfer_pair_id` semantics as regular transfers.
+6. `detect_refunds()` finds same-account opposite-sign pairs within 90 days and writes `refund_pair_id` to both rows.
 
 ### Reconciliation Lifecycle (`reconciliation_tick`)
-Every 15 minutes, for every household, the tick runs four passes in order:
+Every 15 minutes, for every household, the tick runs five passes in order:
 
 1. **Rematch aging email pendings** against settled Plaid rows via `find_plaid_match_for_email` — handles the race where email arrived before the bank sync and dedup was skipped.
-2. **Transfer detection** — `detect_transfers(lookback_days=7)`; `user_id` + `currency` equality enforced.
-3. **Refund detection** — `detect_refunds(lookback_days=90)`; same-account opposite-sign pairs get a shared `refund_pair_id`.
-4. **Aging pass** — email pendings older than 14 days that have had a Plaid sync since `created_at` get promoted to `status='orphan'` (surfaces in `unmatched_email` pending bucket).
+2. **Transfer detection** — `detect_transfers(lookback_days=7)`; opposite-sign only, ±2 days, own-account. `user_id` + `currency` equality enforced.
+3. **Wallet-pair detection** — `detect_wallet_pairs(lookback_days=30)`; same- or opposite-sign, ±5 days, gated on a connected wallet account + bank-side merchant token match. Bank leg re-typed to `transfer`; wallet leg keeps counterparty name.
+4. **Refund detection** — `detect_refunds(lookback_days=90)`; same-account opposite-sign pairs get a shared `refund_pair_id`.
+5. **Aging pass** — email pendings older than 14 days that have had a Plaid sync since `created_at` get promoted to `status='orphan'` (surfaces in `unmatched_email` pending bucket).
 
 An email row can also become an orphan via explicit user dismiss (`POST /transactions/{id}/dismiss`). Matched rows follow the legacy path: email row deleted, bank row enriched with email-sourced category/type. Transfer rows, refund pairs, and orphans are excluded from spend/income totals by `exclude_from_totals()` applied to all aggregation queries in `backend/modules/transactions/service.py`.
 
@@ -243,7 +245,7 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 | `refresh_subscriptions_cache` | 5:30 AM daily | Fast | Pre-compute recurring transaction patterns |
 | `schedule_plaid_syncs` | 3:30 AM daily | Fast | Enqueue Plaid sync jobs |
 | `run_reconciliation_job` | 6:00 AM daily | Slow | Match email + bank transactions |
-| `reconciliation_tick` | Every 15 min `{0,15,30,45}` | Slow | Per-household 4-pass tick: rematch aging emails → detect_transfers (7d) → detect_refunds (90d) → orphan aging (>14d) |
+| `reconciliation_tick` | Every 15 min `{0,15,30,45}` | Slow | Per-household 5-pass tick: rematch aging emails → detect_transfers (7d, opposite-sign ±2d) → detect_wallet_pairs (30d, wallet-gated ±5d) → detect_refunds (90d) → orphan aging (>14d) |
 | `run_template_agent` | 2:00 AM daily | Slow | Shadow validate active templates + generate new ones |
 
 ### Async Tasks
