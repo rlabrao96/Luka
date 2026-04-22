@@ -6,6 +6,7 @@ ACCOUNT_KIND_MAP = {
     ("depository", "checking"): "checking_account",
     ("depository", "savings"): "savings_account",
     ("credit", "credit card"): "credit_card",
+    ("depository", "paypal"): "wallet",
 }
 
 # Zelle patterns: extract person name
