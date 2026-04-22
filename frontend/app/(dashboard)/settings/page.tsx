@@ -9,6 +9,7 @@ import { CompartidoSection } from "./components/CompartidoSection";
 import { NotificationsSection } from "./components/NotificationsSection";
 import { CategoriesSection } from "./components/CategoriesSection";
 import { TransactionsConfigSection } from "./components/TransactionsConfigSection";
+import { FeatureTogglesSection } from "./components/FeatureTogglesSection";
 import { PrivacySection } from "./components/PrivacySection";
 import { DeleteAccountSection } from "./components/DeleteAccountSection";
 
@@ -47,6 +48,8 @@ export default function SettingsPage() {
         />
 
         <TransactionsConfigSection preferredCurrency={me.preferred_currency ?? "CLP"} />
+
+        <FeatureTogglesSection />
 
         <BankAccountsSection householdId={householdId} />
 

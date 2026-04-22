@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Transaction, api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
+import { useLukaStore } from "@/app/lib/store";
 import { TransactionCard } from "./TransactionCard";
 import { CategoryBottomSheet } from "./CategoryBottomSheet";
 import { SplitTypeEditor } from "./SplitTypeEditor";
@@ -145,6 +146,7 @@ export function RecentTransactions({
   compact = false,
 }: RecentTransactionsProps) {
   const isMobile = useBreakpoint("lg");
+  const showCuotaButton = useLukaStore((s) => s.showCuotaButton);
   const [categorySheet, setCategorySheet] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
 
@@ -233,7 +235,7 @@ export function RecentTransactions({
                     onCategoryTap={isMobile ? (t) => setCategorySheet(t) : undefined}
                     categorySlot={!isMobile ? <CategoryCell txn={txn} /> : undefined}
                     splitSlot={<SplitTypeEditor txn={txn} isMobile={isMobile} />}
-                    enableMarkCuota
+                    enableMarkCuota={showCuotaButton}
                   />
                 );
               })}
