@@ -67,7 +67,7 @@ When scanning a household's recent transactions, for every unpaired transaction 
 1. `tx_wallet.bank_account` is a wallet account (§6.1).
 2. Same `household_id`, same `user_id`, same `currency`.
 3. `abs(amount)` equal to the cent.
-4. **Same sign** as `tx_bank` (funding direction) **OR** opposite sign (cash-out direction).
+4. Sign is **not constrained** — same sign (funding direction, e.g. both negative) and opposite sign (cash-out direction) are both accepted. This is the key difference from the existing transfer detector.
 5. `|tx_wallet.date − tx_bank.date| ≤ 5 days`.
 6. Neither leg has `transfer_pair_id` or `refund_pair_id` set.
 
@@ -117,7 +117,7 @@ async def detect_wallet_pairs(
     ...
 ```
 
-`lookback_days=30` default (larger than the ±5 pair window so we catch pairs discovered after one leg ages past the existing 7-day transfer window). The pair window itself remains ±5.
+`lookback_days=30` default (larger than the ±5 pair window so we catch pairs discovered after one leg ages past the existing 7-day transfer window). The pair window itself remains ±5. Note: a same-sign row older than 7 days is intentionally out of scope for the opposite-sign transfer pass and will only be picked up by this new wallet pass — there is no re-evaluation path back into the older pass, which is by design.
 
 ## 8. Backfill
 
