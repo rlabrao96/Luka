@@ -92,6 +92,9 @@ frontend/
     (dashboard)/      Home, transactions, budgets, household, subscriptions, notifications, settings
     (public)/         Privacy policy, terms, data-deletion
     lib/              API client, Zustand store, React Query hooks, Supabase clients
+                      (locale.ts, months.ts, strings.ts, currency.ts, bank-logos.ts — shared primitives)
+  public/
+    bank-logos/       Official App Store icons for 44 LATAM + US banks (registry-driven)
 
 docs/                 Architecture docs, design specs, research
 ```
@@ -183,7 +186,7 @@ Automatic recurring transaction detection via DB-backed cache (refreshed on dema
 Manual bank account creation and management. Supports personal, partner, and joint (hogar) account types. Balance tracking with sync timestamps.
 
 **Settings** (`backend/modules/settings/`)
-User notification preferences, custom category ordering with drag-and-drop (up to 20 per type), category hide/show, and usage tracking. Categories fetched dynamically via API — all dropdowns across the app reflect user preferences in real time.
+User notification preferences, custom category ordering with drag-and-drop (up to 20 per type), category hide/show, and usage tracking. Categories fetched dynamically via API — all dropdowns across the app reflect user preferences in real time. Frontend feature flags live in a shared "Funciones" card on `/settings` (WhatsApp notifications + opt-in "Marcar como cuota" button, the latter persisted to localStorage via Zustand). Bank account cards render the official App Store icon for the institution via `frontend/app/lib/bank-logos.ts` (44 banks across CL/CO/BR/US/MX/PE), with a colored-initials fallback for unregistered banks — adding a new bank is one PNG drop + one registry row.
 
 ## Documentation
 

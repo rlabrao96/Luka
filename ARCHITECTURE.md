@@ -472,7 +472,10 @@ All four endpoints enforce `user_id` scope in SQL. `TransactionResponse` exposes
 - Dynamic Recharts imports (~200KB deferred via `next/dynamic`)
 - Optimistic updates on category changes and notification preferences
 - Bottom sheets on mobile for filters and category selection
-- Mobile-first responsive: floating bottom nav on mobile, sidebar on desktop
+- Mobile-first responsive: floating bottom nav (4 primary + "Más" overflow sheet) on mobile, sidebar on desktop. `viewport` export in `app/layout.tsx` ships `width=device-width, initialScale=1, viewportFit=cover` (Next 16 no longer auto-injects). Dashboard `<main>` applies `overflow-x-clip` + `min-w-0` + `pb-[calc(6rem+env(safe-area-inset-bottom,0px))]` to respect iOS home-indicator safe area and prevent horizontal overflow.
+- Unified `PageHeader` component splits left-aligned `controls` (currency toggle + `MonthSelector`) from right-aligned `actions` (icon buttons / filter chips) across every dashboard page.
+- Shared lib primitives in `frontend/app/lib/`: `locale.ts` (full LATAM `localeForCurrency` / `resolveAppLocale`), `months.ts` (`monthKey` / `dateFromMonthKey` / `getLastNMonths`), `strings.ts` (`toTitleCase`), `currency.ts` (`normalizeBalance` / `formatStoredAmount` / `isZeroDecimalCurrency`), `hooks/useBreakpoint.ts`. Eliminates per-page es-CL hardcoding and per-provider ÷100 drift.
+- **Bank logo registry** (`frontend/app/lib/bank-logos.ts` + `frontend/public/bank-logos/*.png`): 44 official App Store icons (from iTunes Search API, 512×512 PNG) keyed by both Luka Connect `bank_code` and Plaid `institution_name`. `findBankLogo` falls back to first-token split on `-/–/—/|/:` so decorated Plaid names like `"Venmo - Personal"` resolve. `BankLogo` component renders at any size with iOS-style rounded corners (~22% of side), `loading="lazy"` + `decoding="async"`, CDN-cached immutably. Used by `BankConnectionCard`, `PlaidConnectionCard`, and the connect-bank modal picker; falls back to colored-initials `BankIcon` for unregistered banks.
 - API client (`frontend/app/lib/api.ts`): 50+ methods covering all backend endpoints
 - Prefetch on hover for merchant review cards
 
