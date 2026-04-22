@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow, type BankConnection, type PlaidItem } from "@/app/lib/api";
 import { useBankConnections, useSyncStatus } from "@/app/lib/hooks/useSyncStatus";
+import { findBankLogo } from "@/app/lib/bank-logos";
+import { BankLogo } from "../../components/BankLogo";
 import { CountrySelectorModal } from "./CountrySelectorModal";
 import { usePlaidConnection } from "./PlaidLinkButton";
 
@@ -96,6 +98,7 @@ function BankConnectionCard({ connection }: { connection: BankConnection }) {
   const status = syncStatus?.last_sync_status ?? connection.last_sync_status;
   const lastSyncAt = syncStatus?.last_sync_at ?? connection.last_sync_at;
   const { color, label } = syncStatusDot(status);
+  const logo = findBankLogo(connection.bank_code);
 
   const { mutate: triggerSync, isPending: syncing } = useMutation({
     mutationFn: () => api.manualSync(connection.bank_code),
@@ -114,7 +117,7 @@ function BankConnectionCard({ connection }: { connection: BankConnection }) {
     <div className="rounded-xl border bg-white shadow-sm">
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div className="flex items-center gap-3">
-          {bank && <BankIcon bank={bank} />}
+          {logo ? <BankLogo logo={logo} /> : bank ? <BankIcon bank={bank} /> : null}
           <div>
             <span className="font-semibold text-luka-dark text-sm">
               <span className="mr-1.5">{connection.country === "US" ? "🇺🇸" : "🇨🇱"}</span>
@@ -204,7 +207,8 @@ function PlaidConnectionCard({ item }: { item: PlaidItem }) {
     },
   });
 
-  // Generate initials from institution name (first 2 chars of first 2 words)
+  // Try official logo; fall back to initials
+  const logo = findBankLogo(item.institution_name);
   const words = item.institution_name.split(" ");
   const initials = words.length >= 2
     ? words[0][0] + words[1][0]
@@ -214,12 +218,16 @@ function PlaidConnectionCard({ item }: { item: PlaidItem }) {
     <div className="rounded-xl border bg-white shadow-sm">
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div className="flex items-center gap-3">
-          <div
-            className="rounded-lg flex items-center justify-center font-bold flex-shrink-0 shadow-sm"
-            style={{ width: 36, height: 36, backgroundColor: "#1a56db", color: "#fff", fontSize: 13 }}
-          >
-            {initials.toUpperCase()}
-          </div>
+          {logo ? (
+            <BankLogo logo={logo} />
+          ) : (
+            <div
+              className="rounded-lg flex items-center justify-center font-bold flex-shrink-0 shadow-sm"
+              style={{ width: 36, height: 36, backgroundColor: "#1a56db", color: "#fff", fontSize: 13 }}
+            >
+              {initials.toUpperCase()}
+            </div>
+          )}
           <div>
             <span className="font-semibold text-luka-dark text-sm">
               <span className="mr-1.5">🇺🇸</span>
@@ -511,13 +519,15 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
           {/* Step 1: Bank selector */}
           {step === "select" && (
             <div className="space-y-1">
-              {BANKS.map((bank) => (
+              {BANKS.map((bank) => {
+                const bankLogo = findBankLogo(bank.code);
+                return (
                 <button
                   key={bank.code} type="button" disabled={!bank.available}
                   onClick={() => { if (bank.available) { setSelectedBank(bank); setStep("credentials"); } }}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${bank.available ? "hover:bg-slate-50 cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
                 >
-                  <BankIcon bank={bank} />
+                  {bankLogo ? <BankLogo logo={bankLogo} /> : <BankIcon bank={bank} />}
                   <span className="flex-1 text-left text-sm font-medium text-luka-dark">{bank.name}</span>
                   {bank.available ? (
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="text-luka-muted"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -525,15 +535,18 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
                     <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Pronto</span>
                   )}
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
 
           {/* Step 2: Credentials */}
-          {step === "credentials" && selectedBank && (
+          {step === "credentials" && selectedBank && (() => {
+            const selectedLogo = findBankLogo(selectedBank.code);
+            return (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="flex items-center gap-3 mb-4">
-                <BankIcon bank={selectedBank} size={44} />
+                {selectedLogo ? <BankLogo logo={selectedLogo} size={44} /> : <BankIcon bank={selectedBank} size={44} />}
                 <div>
                   <p className="font-semibold text-luka-dark text-sm">{selectedBank.name}</p>
                   <p className="text-xs text-luka-muted">Ingresa tus credenciales de banca en línea</p>
@@ -557,7 +570,8 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
               </div>
               <button type="button" onClick={() => setStep("select")} className="w-full text-xs text-luka-muted hover:text-luka-dark text-center">Volver</button>
             </form>
-          )}
+            );
+          })()}
 
           {/* Step 3: Connecting — waiting for session confirmation */}
           {step === "connecting" && selectedBank && (
