@@ -152,6 +152,48 @@ async def test_same_sign_funding_pair_matches_bofa_to_venmo(db):
 
 
 @pytest.mark.asyncio
+async def test_wallet_bank_name_with_suffix_still_matches_bare_merchant(db):
+    """Plaid returns bank_name='Venmo - Personal' but BofA merchant is just 'Venmo'.
+
+    The merchant gate must match on the short wallet token ('venmo'), not on
+    the full wallet bank_name.
+    """
+    user = await _seed_user(db)
+    hh = await _seed_household(db, user)
+    bofa = await _seed_account(
+        db, hh, user, bank_name="Bank of America", account_kind="checking_account"
+    )
+    venmo = await _seed_account(
+        db, hh, user, bank_name="Venmo - Personal", account_kind="checking_account"
+    )
+
+    day0 = datetime(2026, 3, 2, tzinfo=timezone.utc)
+    venmo_tx = _txn(
+        user=user,
+        household=hh,
+        account=venmo,
+        amount=Decimal("-240.00"),
+        merchant="Some Counterparty",
+        date=day0,
+    )
+    bofa_tx = _txn(
+        user=user,
+        household=hh,
+        account=bofa,
+        amount=Decimal("-240.00"),
+        merchant="Venmo",
+        date=day0 + timedelta(days=2),
+    )
+    db.add_all([venmo_tx, bofa_tx])
+    await db.flush()
+
+    pairs = await detect_wallet_pairs(db, hh.id, lookback_days=365 * 10)
+    assert pairs == 1
+    await db.refresh(bofa_tx)
+    assert bofa_tx.transaction_type == "transfer"
+
+
+@pytest.mark.asyncio
 async def test_opposite_sign_cashout_within_5_days_matches(db):
     """Venmo cash-out to BofA that takes 4 calendar days to settle."""
     user = await _seed_user(db)

@@ -35,12 +35,24 @@ def is_wallet_account(account: BankAccount) -> bool:
     subtype is 'paypal'), or by the account's `bank_name` containing a
     known wallet token (safety net for manually-added accounts).
     """
+    return _wallet_token(account) is not None
+
+
+def _wallet_token(account: BankAccount) -> str | None:
+    """Return the canonical wallet token for `account` (e.g. 'venmo'), or None.
+
+    Used as the string to look for in the *bank-side* merchant. The wallet
+    account's full bank_name may be 'Venmo - Personal' or 'PayPal Checking',
+    but what appears on a BofA statement is just 'VENMO' or 'PAYPAL'.
+    """
+    name = (account.bank_name or "").lower()
+    for token in _WALLET_BANK_NAMES:
+        if token in name:
+            return token
     if account.account_kind == "wallet":
-        return True
-    if account.bank_name is None:
-        return False
-    name = account.bank_name.lower()
-    return any(token in name for token in _WALLET_BANK_NAMES)
+        # Unknown-name wallet (manually added). Fall back to account name as-is.
+        return name or None
+    return None
 
 
 async def detect_wallet_pairs(
@@ -111,9 +123,8 @@ async def detect_wallet_pairs(
         for wallet_tx, wallet_acct in wallet_index.get(key, ()):
             if wallet_tx.id in matched_ids:
                 continue
-            if wallet_acct.bank_name is None:
-                continue
-            if wallet_acct.bank_name.lower() not in bank_merchant:
+            token = _wallet_token(wallet_acct)
+            if not token or token not in bank_merchant:
                 continue
             day_diff = abs((bank_tx.transaction_date - wallet_tx.transaction_date).days)
             if day_diff > _PAIR_WINDOW_DAYS:
