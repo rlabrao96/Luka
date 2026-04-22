@@ -57,7 +57,15 @@ export function groupPairs(txns: Transaction[]): TransactionOrPair[] {
     out.push({ kind: "pair", pairId, pairType, legs: [txn] });
   }
 
-  return out;
+  // Collapse pairs whose twin leg was filtered out of the visible list back
+  // to a single-transaction render. Otherwise the user sees a misleading
+  // "Transferencia · 1 transacción" card. If the user filtered to one side
+  // of a pair, showing that side as a normal row is the right UX.
+  return out.map((entry) =>
+    entry.kind === "pair" && entry.legs.length < 2
+      ? { kind: "single", txn: entry.legs[0] }
+      : entry,
+  );
 }
 
 /* ─── PairedTransactionCard ──────────────────────────────────────── */
