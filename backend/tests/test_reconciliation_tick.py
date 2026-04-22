@@ -400,3 +400,50 @@ async def test_tick_all_households_aggregates(db):
     # savepoint fixture's outer transaction still rolls everything back at teardown.
     totals = await reconciliation_tick_all_households(db)
     assert totals["rematched"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_tick_detects_wallet_pairs(db):
+    """The tick runs the wallet pass and reports pairs in its return dict."""
+    user, hh, bofa = await _seed_household(db)
+    venmo = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=user.id,
+        bank_name="Venmo",
+        account_type="personal",
+        currency="USD",
+        is_active=True,
+    )
+    db.add(venmo)
+    await db.flush()
+
+    # Use recent dates — the tick's wallet pass uses lookback_days=30.
+    day0 = datetime.now(timezone.utc) - timedelta(days=10)
+    venmo_tx = _plaid_tx(
+        user=user,
+        household=hh,
+        account=venmo,
+        amount=Decimal("-30.90"),
+        when=day0,
+        merchant="Nicolas Celasco",
+    )
+    bofa_tx = _plaid_tx(
+        user=user,
+        household=hh,
+        account=bofa,
+        amount=Decimal("-30.90"),
+        when=day0 + timedelta(days=3),
+        merchant="VENMO *PAYMENT",
+    )
+    db.add_all([venmo_tx, bofa_tx])
+    await db.flush()
+
+    totals = await reconciliation_tick_for_household(db, hh.id)
+    assert totals["wallet_pairs"] == 1
+
+    await db.refresh(venmo_tx)
+    await db.refresh(bofa_tx)
+    assert bofa_tx.transaction_type == "transfer"
+    assert venmo_tx.transaction_type == "expense"
+    assert bofa_tx.transfer_pair_id == venmo_tx.transfer_pair_id

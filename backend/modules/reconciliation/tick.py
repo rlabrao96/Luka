@@ -31,6 +31,7 @@ from modules.reconciliation.dedup import (
 )
 from modules.reconciliation.refunds import detect_refunds
 from modules.reconciliation.transfers import detect_transfers
+from modules.reconciliation.wallets import detect_wallet_pairs
 from modules.transactions.models import Transaction
 
 
@@ -71,10 +72,13 @@ async def reconciliation_tick_for_household(
         )
         rematched += 1
 
-    # ---------- 2. Transfer pass.
+    # ---------- 2. Transfer pass (opposite-sign, ±2 days, own-account).
     transfers = await detect_transfers(session, household_id, lookback_days=7)
 
-    # ---------- 3. Refund pass.
+    # ---------- 3. Wallet-pair pass (same- or opposite-sign, ±5 days, wallet-gated).
+    wallet_pairs = await detect_wallet_pairs(session, household_id, lookback_days=30)
+
+    # ---------- 4. Refund pass.
     refunds = await detect_refunds(session, household_id, lookback_days=90)
 
     # ---------- 4. Aging pass.
@@ -115,6 +119,7 @@ async def reconciliation_tick_for_household(
     return {
         "rematched": rematched,
         "transfers": transfers,
+        "wallet_pairs": wallet_pairs,
         "refunds": refunds,
         "orphaned": orphaned,
     }
@@ -125,7 +130,7 @@ async def reconciliation_tick_all_households(session: AsyncSession) -> dict[str,
     failure on one doesn't roll back the others' work."""
     household_ids = (await session.execute(select(Household.id))).scalars().all()
 
-    totals = {"rematched": 0, "transfers": 0, "refunds": 0, "orphaned": 0}
+    totals = {"rematched": 0, "transfers": 0, "wallet_pairs": 0, "refunds": 0, "orphaned": 0}
     for hid in household_ids:
         result = await reconciliation_tick_for_household(session, hid)
         for k in totals:
