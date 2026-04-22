@@ -663,66 +663,104 @@ function DetectedAccountCard({
     return val < 0 ? `(${formatted})` : formatted;
   };
 
+  const typeSelect = (
+    <select
+      value={account.account_type}
+      onChange={(e) => changeType(e.target.value as "personal" | "joint")}
+      disabled={updating}
+      className={`text-[10px] font-medium px-2 py-1 rounded-md border cursor-pointer appearance-none pr-5 disabled:opacity-50 transition-colors ${
+        account.account_type === "joint"
+          ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+          : "bg-blue-50 border-blue-200 text-blue-700"
+      }`}
+      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 4px center" }}
+    >
+      <option value="personal">Personal</option>
+      <option value="joint">Compartida</option>
+    </select>
+  );
+
+  const hideButton = (
+    <button
+      onClick={toggleActive}
+      disabled={updating}
+      className="text-[10px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
+    >
+      {account.is_active ? "Ocultar" : "Mostrar"}
+    </button>
+  );
+
+  const balanceBlock = (
+    <div className="text-right shrink-0">
+      <p className={`text-sm font-bold tabular-nums ${account.balance_current !== null && account.balance_current < 0 ? "text-red-500" : "text-slate-800"}`}>
+        {formatBalance(account.balance_current, account.currency)}
+      </p>
+      {account.last_synced_at && (
+        <p className="text-[9px] text-slate-400">
+          {new Date(account.last_synced_at).toLocaleDateString("es-CL")}
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <div
-      className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+      className={`p-3 rounded-lg border transition-colors ${
         account.is_active
           ? "bg-white border-slate-100"
           : "bg-slate-50 border-slate-100 opacity-60"
       }`}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-800 truncate">
-            {account.account_name ?? account.bank_name}
-          </p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] font-medium text-slate-400">
-              {kindLabels[account.account_kind ?? ""] ?? account.account_kind}
-            </span>
-            {account.currency && (
-              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
-                {account.currency}
+      {/* Mobile: stacked rows */}
+      <div className="sm:hidden space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-slate-800 truncate">
+              {account.account_name ?? account.bank_name}
+            </p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] font-medium text-slate-400 truncate">
+                {kindLabels[account.account_kind ?? ""] ?? account.account_kind}
               </span>
-            )}
+              {account.currency && (
+                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0">
+                  {account.currency}
+                </span>
+              )}
+            </div>
           </div>
+          {balanceBlock}
+        </div>
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+          {typeSelect}
+          {hideButton}
         </div>
       </div>
 
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="text-right">
-          <p className={`text-sm font-bold tabular-nums ${account.balance_current !== null && account.balance_current < 0 ? "text-red-500" : "text-slate-800"}`}>
-            {formatBalance(account.balance_current, account.currency)}
-          </p>
-          {account.last_synced_at && (
-            <p className="text-[9px] text-slate-400">
-              {new Date(account.last_synced_at).toLocaleDateString("es-CL")}
+      {/* Desktop: single row */}
+      <div className="hidden sm:flex items-center justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-800 truncate">
+              {account.account_name ?? account.bank_name}
             </p>
-          )}
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] font-medium text-slate-400">
+                {kindLabels[account.account_kind ?? ""] ?? account.account_kind}
+              </span>
+              {account.currency && (
+                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
+                  {account.currency}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-
-        <select
-          value={account.account_type}
-          onChange={(e) => changeType(e.target.value as "personal" | "joint")}
-          disabled={updating}
-          className={`text-[10px] font-medium px-2 py-1 rounded-md border cursor-pointer appearance-none pr-5 disabled:opacity-50 transition-colors ${
-            account.account_type === "joint"
-              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-              : "bg-blue-50 border-blue-200 text-blue-700"
-          }`}
-          style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 4px center" }}
-        >
-          <option value="personal">Personal</option>
-          <option value="joint">Compartida</option>
-        </select>
-
-        <button
-          onClick={toggleActive}
-          disabled={updating}
-          className="text-[10px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
-        >
-          {account.is_active ? "Ocultar" : "Mostrar"}
-        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          {balanceBlock}
+          {typeSelect}
+          {hideButton}
+        </div>
       </div>
     </div>
   );

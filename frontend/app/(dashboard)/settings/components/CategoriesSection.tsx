@@ -372,8 +372,8 @@ export function CategoriesSection() {
         </h3>
         <p className="text-xs text-slate-400 mb-4">Arrastra para reordenar.</p>
 
-        {/* Add row */}
-        <div className="flex gap-2 mb-2">
+        {/* Add row — stacks on mobile */}
+        <div className="flex flex-col sm:flex-row gap-2 mb-2">
           <input
             type="text"
             value={addInput}
@@ -386,37 +386,39 @@ export function CategoriesSection() {
             }}
             maxLength={40}
             placeholder="Nueva categoría"
-            className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2 outline-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            className="w-full sm:flex-1 text-base sm:text-sm border border-slate-200 rounded-xl px-3 py-2 outline-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
           />
-          <div className="flex gap-1 shrink-0">
+          <div className="flex gap-2">
+            <div className="flex gap-1 shrink-0">
+              <button
+                onClick={() => setAddType("expense")}
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  addType === "expense"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                Gasto
+              </button>
+              <button
+                onClick={() => setAddType("income")}
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  addType === "income"
+                    ? "bg-sky-500 text-white"
+                    : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                Ingreso
+              </button>
+            </div>
             <button
-              onClick={() => setAddType("expense")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                addType === "expense"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
-              }`}
+              onClick={() => addMutation.mutate()}
+              disabled={addDisabled}
+              className="flex-1 sm:flex-none px-4 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-colors bg-luka-primary text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
             >
-              Gasto
-            </button>
-            <button
-              onClick={() => setAddType("income")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                addType === "income"
-                  ? "bg-sky-500 text-white"
-                  : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              Ingreso
+              Agregar
             </button>
           </div>
-          <button
-            onClick={() => addMutation.mutate()}
-            disabled={addDisabled}
-            className="px-4 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-colors bg-luka-primary text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
-          >
-            Agregar
-          </button>
         </div>
 
         {addError && <p className="text-xs text-red-500 mb-2">{addError}</p>}
