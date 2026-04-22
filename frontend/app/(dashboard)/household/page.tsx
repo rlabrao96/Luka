@@ -20,6 +20,7 @@ import InviteModal from "./InviteModal";
 import MemberCard from "./MemberCard";
 import { localeForCurrency } from "@/app/lib/locale";
 import { MonthSelector } from "../components/MonthSelector";
+import { PageHeader } from "../components/PageHeader";
 import { currentMonthKey, getLastNMonths } from "@/app/lib/months";
 
 function fmt(n: number, currency: string = "CLP") {
@@ -94,10 +95,7 @@ export default function CompartidoPage() {
   if (loadingSummary) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Compartido</h2>
-          <p className="text-sm text-luka-muted mt-0.5">Gastos compartidos y balance del grupo</p>
-        </div>
+        <PageHeader title="Compartido" subtitle="Gastos compartidos y balance del grupo" />
         <p className="text-sm text-luka-muted">Cargando...</p>
       </div>
     );
@@ -107,10 +105,7 @@ export default function CompartidoPage() {
   if (!householdId || (members.length <= 1 && pendingInvites.length === 0)) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Compartido</h2>
-          <p className="text-sm text-luka-muted mt-0.5">Gastos compartidos y balance del grupo</p>
-        </div>
+        <PageHeader title="Compartido" subtitle="Gastos compartidos y balance del grupo" />
         <Card className="bg-white">
           <CardContent className="py-16 text-center space-y-4">
             <p className="text-sm text-luka-muted">No tienes un grupo compartido</p>
@@ -127,35 +122,44 @@ export default function CompartidoPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Compartido</h2>
-          <p className="text-sm text-luka-muted mt-0.5">Gastos compartidos y balance del grupo</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <MonthSelector
-            value={selectedMonth}
-            onChange={setSelectedMonth}
-            currentMonth={nowKey}
-            currency={currency || undefined}
-            size="md"
-          />
-          {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
-          {!settlementEnabled && (
-            <button onClick={() => setRatioModalOpen(true)}
-              aria-label="Configurar ratios"
-              className="w-11 h-11 sm:w-auto sm:h-auto sm:p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors flex items-center justify-center">
-              <Settings size={16} />
-            </button>
-          )}
-          {isOwner && members.length < 5 && (
-            <Button onClick={() => setInviteModalOpen(true)} size="sm" className="bg-luka-primary hover:bg-blue-700 h-11 sm:h-9">
-              <UserPlus size={14} className="mr-1.5" /> Agregar miembro
-            </Button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title="Compartido"
+        subtitle="Gastos compartidos y balance del grupo"
+        actions={
+          <>
+            {!settlementEnabled && (
+              <button
+                onClick={() => setRatioModalOpen(true)}
+                aria-label="Configurar ratios"
+                className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
+              >
+                <Settings size={16} className="text-slate-700" />
+              </button>
+            )}
+            {isOwner && members.length < 5 && (
+              <Button
+                onClick={() => setInviteModalOpen(true)}
+                size="sm"
+                className="bg-luka-primary hover:bg-blue-700 h-9"
+              >
+                <UserPlus size={14} className="mr-1.5" /> Agregar miembro
+              </Button>
+            )}
+          </>
+        }
+        filters={
+          <>
+            <MonthSelector
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              currentMonth={nowKey}
+              currency={currency || undefined}
+              size="md"
+            />
+            {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
+          </>
+        }
+      />
 
       {/* Member cards — rendered from members (membership), not summary (transactions) */}
       <div className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory">

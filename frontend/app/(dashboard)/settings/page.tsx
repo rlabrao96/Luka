@@ -12,6 +12,7 @@ import { TransactionsConfigSection } from "./components/TransactionsConfigSectio
 import { FeatureTogglesSection } from "./components/FeatureTogglesSection";
 import { PrivacySection } from "./components/PrivacySection";
 import { DeleteAccountSection } from "./components/DeleteAccountSection";
+import { PageHeader } from "../components/PageHeader";
 
 export default function SettingsPage() {
   const householdId = useLukaStore((s) => s.householdId);
@@ -33,10 +34,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 pb-32">
-      <div>
-        <h1 className="text-2xl font-bold text-luka-dark">Configuración</h1>
-        <p className="text-sm text-slate-500 mt-1">Administra tu cuenta y preferencias</p>
-      </div>
+      <PageHeader title="Configuración" subtitle="Administra tu cuenta y preferencias" />
 
       <div className="space-y-4">
         <ProfileSection

@@ -7,6 +7,7 @@ import { api, type BudgetV2Response } from "@/app/lib/api";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { CurrencyToggle } from "@/app/(dashboard)/components/CurrencyToggle";
 import { MonthSelector } from "@/app/(dashboard)/components/MonthSelector";
+import { PageHeader } from "@/app/(dashboard)/components/PageHeader";
 import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import { BudgetConfigModal } from "@/app/(dashboard)/components/BudgetConfigModal";
 import { RiskAlertBand } from "@/app/(dashboard)/components/RiskAlertBand";
@@ -254,10 +255,7 @@ export default function BudgetsPage() {
   if (me && !householdId) {
     return (
       <div className="space-y-5">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Presupuesto</h2>
-          <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
-        </div>
+        <PageHeader title="Presupuesto" subtitle="Control de ingresos y gastos" />
         <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-[var(--shadow-card)] text-center text-sm text-slate-500">
           Crea o únete a un hogar para ver tu presupuesto.
         </div>
@@ -267,20 +265,11 @@ export default function BudgetsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Presupuesto</h2>
-          <p className="text-sm text-gray-400 mt-0.5">Control de ingresos y gastos</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {selectedCurrency && (
-            <CurrencyToggle
-              value={selectedCurrency}
-              onChange={setSelectedCurrency}
-            />
-          )}
-          {householdId && (
+      <PageHeader
+        title="Presupuesto"
+        subtitle="Control de ingresos y gastos"
+        actions={
+          householdId ? (
             <button
               type="button"
               aria-label="Configurar presupuesto"
@@ -295,17 +284,25 @@ export default function BudgetsPage() {
                 />
               )}
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* Month selector */}
-      <MonthSelector
-        value={selectedMonthKey}
-        onChange={setSelectedMonthKey}
-        currentMonth={nowKey}
-        currency={me?.preferred_currency}
-        size="md"
+          ) : undefined
+        }
+        filters={
+          <>
+            <MonthSelector
+              value={selectedMonthKey}
+              onChange={setSelectedMonthKey}
+              currentMonth={nowKey}
+              currency={me?.preferred_currency}
+              size="md"
+            />
+            {selectedCurrency && (
+              <CurrencyToggle
+                value={selectedCurrency}
+                onChange={setSelectedCurrency}
+              />
+            )}
+          </>
+        }
       />
 
       {/* Risk alert band — silent when no alerts */}

@@ -15,6 +15,7 @@ import { formatStoredAmount, normalizeBalance } from "@/app/lib/currency";
 import { resolveAppLocale } from "@/app/lib/locale";
 import { CurrencyToggle } from "../components/CurrencyToggle";
 import { KpiCard } from "../components/KpiCard";
+import { PageHeader } from "../components/PageHeader";
 
 // Match the user's OS locale for date labels. SSR-safe via resolveAppLocale.
 const RESOLVED_LOCALE = resolveAppLocale();
@@ -355,17 +356,15 @@ export default function TransactionsPage() {
   return (
     <div className="space-y-6">
       <ProcessingBanner />
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-luka-dark tracking-tight">Transacciones</h2>
-          <p className="text-sm text-luka-muted mt-0.5">Historial de movimientos</p>
-        </div>
-        {selectedCurrency && (
-          <div className="shrink-0">
+      <PageHeader
+        title="Transacciones"
+        subtitle="Historial de movimientos"
+        filters={
+          selectedCurrency ? (
             <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
-          </div>
-        )}
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* Filters */}
       <FilterPanel

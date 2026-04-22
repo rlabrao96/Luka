@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNotifications, useUpdateNotification, useDeleteNotification } from "@/app/lib/hooks/useNotifications";
 import { api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "../components/PageHeader";
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -87,18 +88,21 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-luka-dark">Notificaciones</h1>
-        {notifications.some((n) => n.status === "unread") && (
-          <button
-            onClick={handleMarkAllRead}
-            className="text-sm text-luka-primary hover:underline"
-          >
-            Marcar todas leidas
-          </button>
-        )}
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Notificaciones"
+        subtitle="Alertas y actividad reciente"
+        actions={
+          notifications.some((n) => n.status === "unread") ? (
+            <button
+              onClick={handleMarkAllRead}
+              className="text-sm text-luka-primary font-medium hover:underline h-9"
+            >
+              Marcar todas leídas
+            </button>
+          ) : undefined
+        }
+      />
 
       {notifications.length === 0 ? (
         <div className="text-center py-12 text-luka-muted">

@@ -11,6 +11,7 @@ import { CashFlowCards } from "./components/CashFlowCards";
 import { BudgetBars } from "./components/BudgetBars";
 import { RecentTransactions } from "./components/RecentTransactions";
 import { EmptyState } from "./components/EmptyState";
+import { PageHeader } from "./components/PageHeader";
 
 import { useMyTransactions, useMonthlySpending, usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useBudgetStatus, useCategoryBudgets } from "@/app/lib/hooks/useBudget";
@@ -153,21 +154,18 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-luka-dark tracking-tight">
-            {greeting}, {firstName}
-          </h1>
-          <p className="text-sm text-luka-muted mt-0.5">Aquí está tu resumen financiero</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <MonthSelector value={selectedMonth} onChange={setSelectedMonth} currentMonth={currentMonth} />
-          {selectedCurrency && (
-            <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title={`${greeting}, ${firstName}`}
+        subtitle="Aquí está tu resumen financiero"
+        filters={
+          <>
+            <MonthSelector value={selectedMonth} onChange={setSelectedMonth} currentMonth={currentMonth} />
+            {selectedCurrency && (
+              <CurrencyToggle value={selectedCurrency} onChange={setSelectedCurrency} />
+            )}
+          </>
+        }
+      />
 
       {/* Banner for past month */}
       {isViewingPast && (

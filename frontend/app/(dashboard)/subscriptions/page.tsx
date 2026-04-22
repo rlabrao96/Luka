@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PageHeader } from "../components/PageHeader";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/app/lib/api";
 import type { RecurringExpense } from "@/app/lib/api";
@@ -99,21 +100,15 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-            Suscripciones
-          </h2>
-          <p className="text-sm text-gray-400 mt-0.5">
-            Gastos recurrentes detectados automáticamente
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Suscripciones"
+        subtitle="Gastos recurrentes detectados automáticamente"
+        actions={
           <button
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
-            className="p-2 rounded-lg text-slate-400 hover:text-luka-primary hover:bg-blue-50 transition-colors disabled:opacity-50"
+            aria-label="Actualizar suscripciones"
+            className="w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center text-slate-500 disabled:opacity-50"
             title={`Última actualización: ${relativeTime(computedAt)}`}
           >
             <RefreshCw
@@ -121,9 +116,11 @@ export default function SubscriptionsPage() {
               className={refreshMutation.isPending ? "animate-spin" : ""}
             />
           </button>
-          {currency && <CurrencyToggle value={currency} onChange={setCurrency} />}
-        </div>
-      </div>
+        }
+        filters={
+          currency ? <CurrencyToggle value={currency} onChange={setCurrency} /> : undefined
+        }
+      />
 
       {/* Currency-specific empty state */}
       {items.length === 0 ? (
