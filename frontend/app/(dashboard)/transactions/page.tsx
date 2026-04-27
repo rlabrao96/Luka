@@ -339,7 +339,7 @@ export default function TransactionsPage() {
   // Mobile: 44px touch target + 16px-adjacent text so iOS Safari doesn't
   // zoom-on-focus. Shrinks back to the desktop-compact size at sm+.
   const selectClass =
-    "h-11 sm:h-8 rounded-lg border border-slate-200 bg-white px-3 text-[15px] sm:text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-8 cursor-pointer";
+    "w-full h-11 sm:h-8 sm:w-auto rounded-lg border border-slate-200 bg-white px-3 text-[15px] sm:text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-luka-primary appearance-none pr-8 cursor-pointer";
 
   return (
     <div className="space-y-6">
