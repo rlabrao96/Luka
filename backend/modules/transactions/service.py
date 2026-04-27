@@ -14,12 +14,17 @@ from core.cache import _get_redis
 async def ensure_default_split(
     db: AsyncSession,
     txn: Transaction,
-    default_split_type: str = "personal",
+    default_split_type: str | None = None,
 ) -> None:
     """Create a TransactionSplit row for `txn` if none exists yet. Idempotent.
 
-    Transfers don't carry a personal/shared classification — skipped. The caller
-    chooses the default (e.g. "shared" for joint accounts, "personal" otherwise).
+    Transfers don't carry a personal/shared classification — skipped. When the
+    caller passes `default_split_type` explicitly (e.g. Plaid + bank_connect
+    ingestion pre-look-up the account type), that value is used directly — no
+    extra DB query. When omitted, this function defends against new ingestion
+    paths that forget the kwarg by auto-detecting from the transaction's
+    `BankAccount.account_type`: joint accounts default to "shared", everything
+    else falls back to "personal".
     """
     if txn.transaction_type == "transfer":
         return
@@ -28,6 +33,14 @@ async def ensure_default_split(
     )
     if existing.scalar_one_or_none() is not None:
         return
+
+    if default_split_type is None:
+        # Auto-detect from the account so any future call site is safe.
+        account_type = await db.scalar(
+            select(BankAccount.account_type).where(BankAccount.id == txn.bank_account_id)
+        )
+        default_split_type = "shared" if account_type == "joint" else "personal"
+
     db.add(TransactionSplit(transaction_id=txn.id, split_type=default_split_type))
 
 

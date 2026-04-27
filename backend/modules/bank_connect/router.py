@@ -293,6 +293,17 @@ async def _process_movements(
     if not household_id:
         return 0, 0, len(movements)
 
+    # Pre-fetch account types so joint accounts default their splits to "shared".
+    # Mirrors the email + Plaid ingestion paths.
+    acct_type_result = await db.execute(
+        select(BankAccount.id, BankAccount.account_type).where(
+            BankAccount.household_id == household_id
+        )
+    )
+    account_type_map: dict[uuid.UUID, str] = {
+        acct_id: acct_type for acct_id, acct_type in acct_type_result.all()
+    }
+
     for mov in movements:
         # Skip movements with missing or invalid dates
         if not mov.get("date") or not isinstance(mov["date"], str) or len(mov["date"]) < 8:
@@ -394,7 +405,10 @@ async def _process_movements(
             # idempotent otherwise — single source of truth for the personal default.
             from modules.transactions.service import ensure_default_split
 
-            await ensure_default_split(db, txn)
+            is_joint = ba_id is not None and account_type_map.get(ba_id) == "joint"
+            await ensure_default_split(
+                db, txn, default_split_type="shared" if is_joint else "personal"
+            )
         created += 1
 
     return created, enriched, skipped

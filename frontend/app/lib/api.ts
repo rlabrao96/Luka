@@ -338,6 +338,7 @@ export interface ReviewCard {
   total_amount: number;
   currency: string;
   is_verified: boolean;
+  is_joint_account: boolean;
 }
 
 export interface ReviewStatus {
@@ -718,7 +719,7 @@ export const api = {
   // --- Merchant Review ---
   getReviewCards: (jobId: string) => apiFetch<ReviewCard[]>(`/merchant-review/${jobId}`),
   getReviewStatus: (jobId: string) => apiFetch<ReviewStatus>(`/merchant-review/${jobId}/status`),
-  approveMerchant: (jobId: string, canonicalId: string, data: { display_name?: string; category?: string; action: string }) =>
+  approveMerchant: (jobId: string, canonicalId: string, data: { display_name?: string; category?: string; split_type?: "personal" | "shared"; action: string }) =>
     apiFetch<{ ok: boolean }>(`/merchant-review/${jobId}/merchants/${canonicalId}`, {
       method: "PATCH",
       body: JSON.stringify(data),

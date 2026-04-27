@@ -31,7 +31,7 @@ export function useOptimisticReview(jobId: string) {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: ({ canonicalId, data }: { canonicalId: string; data: { display_name?: string; category?: string; action: string } }) =>
+    mutationFn: ({ canonicalId, data }: { canonicalId: string; data: { display_name?: string; category?: string; split_type?: "personal" | "shared"; action: string } }) =>
       api.approveMerchant(jobId, canonicalId, data),
     onError: (_error, variables) => {
       console.error(`Failed to save merchant ${variables.canonicalId}`, _error);
@@ -46,7 +46,7 @@ export function useOptimisticReview(jobId: string) {
   });
 
   const submit = useCallback(
-    (canonicalId: string, data: { display_name?: string; category?: string; action: string }) => {
+    (canonicalId: string, data: { display_name?: string; category?: string; split_type?: "personal" | "shared"; action: string }) => {
       mutation.mutate({ canonicalId, data });
     },
     [mutation]

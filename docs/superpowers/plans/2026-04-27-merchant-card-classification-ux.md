@@ -185,8 +185,7 @@ def upgrade() -> None:
     # transaction belongs to a joint bank account, where it's currently 'personal'.
     op.execute("""
         UPDATE transaction_splits ts
-        SET split_type = 'shared',
-            updated_at = NOW()
+        SET split_type = 'shared'
         FROM transactions t
         JOIN bank_accounts ba ON ba.id = t.bank_account_id
         WHERE ts.transaction_id = t.id
@@ -197,6 +196,7 @@ def upgrade() -> None:
     # Note: transfers don't get TransactionSplit rows (ensure_default_split skips
     # them), so the transaction_type filter is belt-and-suspenders — preserves
     # invariant if any historic transfer accidentally got a split row.
+    # Note: transaction_splits has no `updated_at` column (only created_at).
 ```
 
 - [ ] **Step 3: Write the downgrade**
