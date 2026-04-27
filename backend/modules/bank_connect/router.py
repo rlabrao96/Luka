@@ -389,9 +389,12 @@ async def _process_movements(
             # Delete the email transaction
             await db.execute(delete(Transaction).where(Transaction.id == email_txn.id))
             enriched += 1
-        elif not is_transfer:
-            # Regular expense/income without email match → create a default split
-            db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+        else:
+            # No email match. ensure_default_split is a no-op for transfers and
+            # idempotent otherwise — single source of truth for the personal default.
+            from modules.transactions.service import ensure_default_split
+
+            await ensure_default_split(db, txn)
         created += 1
 
     return created, enriched, skipped

@@ -365,6 +365,10 @@ async def _handle_manual_expense_trigger(
     )
     db.add(txn)
     await db.flush()
+
+    from modules.transactions.service import ensure_default_split
+
+    await ensure_default_split(db, txn)
     await db.commit()
 
     categories = (await get_user_ranked_categories(user_id, merchant, db, category_type="expense"))[

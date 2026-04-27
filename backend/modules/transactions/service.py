@@ -11,6 +11,26 @@ from modules.merchants.service import record_category_selection
 from core.cache import _get_redis
 
 
+async def ensure_default_split(
+    db: AsyncSession,
+    txn: Transaction,
+    default_split_type: str = "personal",
+) -> None:
+    """Create a TransactionSplit row for `txn` if none exists yet. Idempotent.
+
+    Transfers don't carry a personal/shared classification — skipped. The caller
+    chooses the default (e.g. "shared" for joint accounts, "personal" otherwise).
+    """
+    if txn.transaction_type == "transfer":
+        return
+    existing = await db.execute(
+        select(TransactionSplit.id).where(TransactionSplit.transaction_id == txn.id)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+    db.add(TransactionSplit(transaction_id=txn.id, split_type=default_split_type))
+
+
 async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date) -> list[dict]:
     result = await db.execute(
         select(

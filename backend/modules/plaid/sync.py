@@ -222,6 +222,14 @@ async def run_plaid_sync(
         session.add(new_tx)
         await session.flush()
 
+        # Default to a personal split so category-usage queries and partner edits
+        # behave consistently. apply_match_and_delete_emails may re-link an
+        # existing email-side split onto this txn — the helper is idempotent so
+        # the default is only used when no match attaches one.
+        from modules.transactions.service import ensure_default_split
+
+        await ensure_default_split(session, new_tx)
+
         if match:
             await apply_match_and_delete_emails(
                 session,

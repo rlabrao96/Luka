@@ -15,7 +15,7 @@ from modules.merchants.service import lookup_merchant
 from modules.merchants.normalizer import normalize_merchant
 from modules.whatsapp.sender import send_expense_alert, send_transfer_alert
 from modules.whatsapp.session import WhatsAppSession, save_session, save_msgid
-from modules.transactions.models import Transaction, TransactionSplit, ProcessedWebhook, FailedJob
+from modules.transactions.models import Transaction, ProcessedWebhook, FailedJob
 from modules.auth.models import User
 from modules.households.models import BankAccount
 from modules.email.factory import get_email_provider
@@ -409,16 +409,15 @@ async def process_email(
                 db.add(log_entry)
                 await db.commit()
 
-                # Add transaction split AFTER commit so txn.id exists
+                # Add transaction split AFTER commit so txn.id exists. Joint accounts
+                # auto-classify as shared; everything else defaults to personal.
+                from modules.transactions.service import ensure_default_split
+
                 is_joint = bank_account and bank_account.account_type == "joint"
-                if is_joint and tx_type != "transfer":
-                    # Auto-classify as shared, just ask for category
-                    split = TransactionSplit(
-                        transaction_id=txn.id,
-                        split_type="shared",
-                    )
-                    db.add(split)
-                    await db.commit()
+                await ensure_default_split(
+                    db, txn, default_split_type="shared" if is_joint else "personal"
+                )
+                await db.commit()
 
                 # Build WhatsApp session
                 phone = user.phone_whatsapp
