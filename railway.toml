@@ -3,6 +3,11 @@ builder = "DOCKERFILE"
 dockerfilePath = "backend/Dockerfile"
 
 [deploy]
-startCommand = "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT"
+# releaseCommand runs ONCE per deploy in a separate phase, before any new
+# instance accepts traffic. The previous setup relied on alembic running
+# inside startCommand, which Railway silently ignored on this service —
+# migration 041 had to be applied by hand.
+releaseCommand = "alembic upgrade head"
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
