@@ -81,6 +81,22 @@ function ageBadge(txn: Transaction): { label: string; className: string } | null
   return { label: `hace ${days}d`, className: "bg-red-100 text-red-700" };
 }
 
+/**
+ * Inline (no-pill) variant of ageBadge: returns just the label and the
+ * color class, for the mobile 3-row layout where the age tag is rendered
+ * as colored text alongside `bank · date`.
+ */
+function ageInline(txn: Transaction): { label: string; colorClass: string } | null {
+  const anchor = txn.created_at ?? txn.transaction_date;
+  if (!anchor) return null;
+  const ms = Date.now() - new Date(anchor).getTime();
+  const days = Math.floor(ms / 86_400_000);
+  if (days < 0) return null;
+  if (days < 3) return { label: "Nuevo", colorClass: "text-emerald-600 font-semibold" };
+  if (days < 8) return { label: `hace ${days}d`, colorClass: "text-amber-700 font-semibold" };
+  return { label: `hace ${days}d`, colorClass: "text-red-600 font-semibold" };
+}
+
 /* ─── Inline category dropdown ─── */
 
 interface PendingCategoryCellProps {
@@ -243,7 +259,7 @@ function PendingSplitCell({ txn }: { txn: Transaction }) {
 
 /* ─── Mobile category pill ─── */
 
-function PendingCategoryPill({ txn }: { txn: Transaction }) {
+function PendingCategoryPill({ txn, expand = false }: { txn: Transaction; expand?: boolean }) {
   const [open, setOpen] = useState(false);
   const [localCategory, setLocalCategory] = useState(txn.category);
   const queryClient = useQueryClient();
@@ -280,7 +296,10 @@ function PendingCategoryPill({ txn }: { txn: Transaction }) {
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          "text-[9px] font-medium px-1.5 py-0.5 rounded max-w-[80px] text-center truncate cursor-pointer hover:opacity-80",
+          "font-medium rounded cursor-pointer hover:opacity-80",
+          expand
+            ? "text-[11px] px-2 py-1 max-w-full text-left truncate"
+            : "text-[9px] px-1.5 py-0.5 max-w-[80px] text-center truncate",
           localCategory ? "bg-slate-100 text-slate-600" : "bg-amber-50 text-amber-600"
         )}
       >
@@ -402,8 +421,50 @@ function PendingSection({
             : `+${formatStoredAmount(amount, currency)}`;
           const bankName = txn.bank_name;
           const age = ageBadge(txn);
+          const ageInlineTag = ageInline(txn);
           const isChecked = selected.has(txn.id);
           const isNegativeAmount = isTransfer || isOutflow;
+          const dateText = new Date(txn.transaction_date).toLocaleDateString("es-CL", { day: "2-digit", month: "short" });
+
+          const sourceChip = (
+            <span className={cn(
+              "text-[8px] sm:text-[9px] px-1 py-0.5 rounded font-medium shrink-0",
+              txn.source_type === "plaid" ? "bg-emerald-50 text-emerald-500" : "bg-blue-50 text-blue-500"
+            )}>
+              {txn.source_type === "plaid" ? "bank" : "email"}
+            </span>
+          );
+
+          const merchantText = (
+            <p className="text-[13px] sm:text-sm font-semibold text-luka-dark truncate">
+              {toTitleCase(txn.raw_merchant_name)}
+            </p>
+          );
+
+          const amountSpan = (
+            <span
+              className={cn(
+                "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
+                isTransfer ? "text-sky-500" : isOutflow ? "text-red-500" : "text-luka-success"
+              )}
+              aria-label={isNegativeAmount ? `menos ${formatStoredAmount(amount, currency)}` : undefined}
+            >
+              {formattedAmount}
+            </span>
+          );
+
+          const splitPill = txn.transaction_type !== "transfer"
+            ? (isMobile ? <SplitTypeEditor txn={txn} isMobile={true} /> : <PendingSplitCell txn={txn} />)
+            : null;
+
+          const rowActionMenu = !selectMode ? (
+            <RowActionMenu
+              txn={txn}
+              bucket={bucket}
+              onLink={onLink}
+              onRequestDelete={onRequestDelete}
+            />
+          ) : null;
 
           return (
             <div
@@ -414,110 +475,123 @@ function PendingSection({
                 selectMode && isChecked ? "ring-2 ring-luka-primary/30" : ""
               )}
             >
-              <div className="flex items-center gap-2 sm:gap-3">
-                {selectMode && (
-                  <Checkbox
-                    checked={isChecked}
-                    onCheckedChange={() => onToggleSelect(txn.id)}
-                    aria-label={`Seleccionar ${toTitleCase(txn.raw_merchant_name)}`}
-                    className="shrink-0"
-                  />
-                )}
-                {/* Direction icon — hidden on mobile */}
-                <div
-                  className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0"
-                  style={{
-                    background: isTransfer
-                      ? "linear-gradient(135deg, #f0f9ff, #bae6fd)"
-                      : isOutflow
-                        ? "linear-gradient(135deg, #fef2f2, #fecaca)"
-                        : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
-                  }}
-                >
-                  {isTransfer ? (
-                    <ArrowLeftRight size={16} className="text-sky-500" strokeWidth={2.5} />
-                  ) : isOutflow ? (
-                    <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
-                  ) : (
-                    <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
+              {isMobile ? (
+                <div className="grid grid-cols-[1fr_auto] gap-x-2.5 gap-y-1.5 items-center">
+                  {/* Row 1 */}
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {selectMode && (
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={() => onToggleSelect(txn.id)}
+                        aria-label={`Seleccionar ${toTitleCase(txn.raw_merchant_name)}`}
+                        className="shrink-0"
+                      />
+                    )}
+                    {sourceChip}
+                    {merchantText}
+                  </div>
+                  <div className="whitespace-nowrap">{amountSpan}</div>
+
+                  {/* Row 2 */}
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 min-w-0 flex-wrap">
+                    <span className="truncate">{bankName ? toTitleCase(bankName) : "—"}</span>
+                    <span>·</span>
+                    <span>{dateText}</span>
+                    {ageInlineTag && (
+                      <>
+                        <span>·</span>
+                        <span className={ageInlineTag.colorClass}>{ageInlineTag.label}</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-end">
+                    {splitPill}
+                  </div>
+
+                  {/* Row 3 */}
+                  <div className="flex items-center min-w-0">
+                    {txn.transaction_type === "transfer" ? (
+                      <span className="text-[11px] font-medium px-2 py-1 rounded bg-slate-100 text-slate-500">
+                        Ajuste entre cuentas
+                      </span>
+                    ) : (
+                      <PendingCategoryPill txn={txn} expand />
+                    )}
+                  </div>
+                  <div className="flex items-center justify-end">{rowActionMenu}</div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 sm:gap-3">
+                  {selectMode && (
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={() => onToggleSelect(txn.id)}
+                      aria-label={`Seleccionar ${toTitleCase(txn.raw_merchant_name)}`}
+                      className="shrink-0"
+                    />
                   )}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  {/* Line 1 */}
-                  <div className="flex justify-between items-baseline gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className={cn(
-                        "text-[8px] sm:text-[9px] px-1 py-0.5 rounded font-medium shrink-0",
-                        txn.source_type === "plaid" ? "bg-emerald-50 text-emerald-500" : "bg-blue-50 text-blue-500"
-                      )}>
-                        {txn.source_type === "plaid" ? "bank" : "email"}
-                      </span>
-                      <p className="text-[13px] sm:text-sm font-semibold text-luka-dark truncate">
-                        {toTitleCase(txn.raw_merchant_name)}
-                      </p>
-                    </div>
-                    <span
-                      className={cn(
-                        "text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0",
-                        isTransfer ? "text-sky-500" : isOutflow ? "text-red-500" : "text-luka-success"
-                      )}
-                      aria-label={isNegativeAmount ? `menos ${formatStoredAmount(amount, currency)}` : undefined}
-                    >
-                      {formattedAmount}
-                    </span>
+                  {/* Direction icon — desktop only */}
+                  <div
+                    className="hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0"
+                    style={{
+                      background: isTransfer
+                        ? "linear-gradient(135deg, #f0f9ff, #bae6fd)"
+                        : isOutflow
+                          ? "linear-gradient(135deg, #fef2f2, #fecaca)"
+                          : "linear-gradient(135deg, #ecfdf5, #d1fae5)",
+                    }}
+                  >
+                    {isTransfer ? (
+                      <ArrowLeftRight size={16} className="text-sky-500" strokeWidth={2.5} />
+                    ) : isOutflow ? (
+                      <TrendingDown size={16} className="text-red-400" strokeWidth={2.5} />
+                    ) : (
+                      <TrendingUp size={16} className="text-emerald-500" strokeWidth={2.5} />
+                    )}
                   </div>
 
-                  {/* Line 2 */}
-                  <div className="flex justify-between items-center mt-1">
-                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
-                      <span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
-                        {bankName ? toTitleCase(bankName) : "—"}
-                      </span>
-                      <span className="text-[9px] sm:text-[10px] text-slate-300 shrink-0">
-                        {new Date(txn.transaction_date).toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}
-                      </span>
-                      {age && (
-                        <span
-                          className={cn(
-                            "text-[9px] sm:text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0",
-                            age.className,
-                          )}
-                        >
-                          {age.label}
-                        </span>
-                      )}
-                      {txn.transaction_type === "transfer" ? (
-                        <span className="text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
-                          Ajuste entre cuentas
-                        </span>
-                      ) : isMobile ? (
-                        <PendingCategoryPill txn={txn} />
-                      ) : (
-                        <PendingCategoryCell txn={txn} />
-                      )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {sourceChip}
+                        {merchantText}
+                      </div>
+                      {amountSpan}
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {txn.transaction_type !== "transfer" && (
-                        isMobile ? (
-                          <SplitTypeEditor txn={txn} isMobile={true} />
+                    <div className="flex justify-between items-center mt-1">
+                      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                        <span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">
+                          {bankName ? toTitleCase(bankName) : "—"}
+                        </span>
+                        <span className="text-[9px] sm:text-[10px] text-slate-300 shrink-0">
+                          {dateText}
+                        </span>
+                        {age && (
+                          <span
+                            className={cn(
+                              "text-[9px] sm:text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0",
+                              age.className,
+                            )}
+                          >
+                            {age.label}
+                          </span>
+                        )}
+                        {txn.transaction_type === "transfer" ? (
+                          <span className="text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
+                            Ajuste entre cuentas
+                          </span>
                         ) : (
-                          <PendingSplitCell txn={txn} />
-                        )
-                      )}
-                      {!selectMode && (
-                        <RowActionMenu
-                          txn={txn}
-                          bucket={bucket}
-                          onLink={onLink}
-                          onRequestDelete={onRequestDelete}
-                        />
-                      )}
+                          <PendingCategoryCell txn={txn} />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {splitPill}
+                        {rowActionMenu}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
@@ -531,7 +605,7 @@ function PendingSection({
 export function PendingBlock() {
   const { data, isLoading, isError, refetch } = usePendingTransactions();
   const queryClient = useQueryClient();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const isMobile = useIsMobile();
 
   // Link dialog state
