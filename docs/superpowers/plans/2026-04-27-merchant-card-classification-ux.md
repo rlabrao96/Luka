@@ -18,6 +18,7 @@
 - **Modify** `backend/modules/merchant_review/service.py` — rewrite `get_review_cards` (4 batched queries); extend `approve_merchant` to accept `split_type`.
 - **Modify** `backend/modules/merchant_review/schemas.py` — add `split_type` field on the approve request.
 - **Modify** `backend/modules/merchant_review/router.py` — pass `split_type` through.
+- **Modify** `backend/modules/merchant_review/schemas.py` — add `is_joint_account: bool` to the card response (set by Task 9).
 - **Modify** `backend/modules/plaid/sync.py:225-231` — pass joint-aware default to `ensure_default_split`.
 - **Modify** `backend/modules/bank_connect/router.py:393-397` — pass joint-aware default.
 - **Create** `backend/alembic/versions/<rev>_backfill_joint_split_type.py` — backfill `transaction_splits.split_type='shared'` for transactions on joint accounts.
@@ -53,14 +54,17 @@
 **Files:**
 - Create: `backend/tests/test_joint_account_split_default.py`
 
-- [ ] **Step 1: Inspect existing test helpers**
+- [ ] **Step 1: Inspect existing test helpers and find ingestion entrypoints**
 
 ```bash
 ls backend/tests/fixtures backend/tests/helpers
 grep -rn "joint\|account_type" backend/tests/helpers backend/tests/fixtures 2>/dev/null | head
+# Locate the actual Plaid ingestion function and the bank_connect routine that calls ensure_default_split:
+grep -n "ensure_default_split\|^async def\|^def " backend/modules/plaid/sync.py | head -30
+grep -n "ensure_default_split\|^async def\|^def " backend/modules/bank_connect/router.py | head -30
 ```
 
-Identify a helper that creates a `BankAccount` with `account_type='joint'` and a helper to create a transaction. If none exists, build them in the test file.
+Identify (a) a fixture that creates a `BankAccount` with `account_type='joint'` (or build one in the test file), and (b) the exact function names you'll call into for Plaid sync and bank_connect ingestion. The plan's example uses `sync_plaid_transactions_for_item` as a placeholder — verify and adjust.
 
 - [ ] **Step 2: Write failing test for Plaid sync path**
 
@@ -190,6 +194,9 @@ def upgrade() -> None:
           AND ts.split_type = 'personal'
           AND t.transaction_type != 'transfer'
     """)
+    # Note: transfers don't get TransactionSplit rows (ensure_default_split skips
+    # them), so the transaction_type filter is belt-and-suspenders — preserves
+    # invariant if any historic transfer accidentally got a split row.
 ```
 
 - [ ] **Step 3: Write the downgrade**
@@ -302,19 +309,21 @@ git push
 Replace the per-card loop with four batched queries:
 
 1. **Canonicals + raw_names** — keep the existing first query (it returns one row per canonical with `array_agg(Merchant.raw_name)`).
-2. **Stats per raw_name** — single query:
+2. **Stats per raw_name** — single query with `FILTER` clauses to fold scoped + unscoped into one pass (preserves the current "scoped first, fallback unscoped per merchant" semantics without a second roundtrip):
 
    ```sql
    SELECT t.raw_merchant_name, t.currency,
-          COUNT(*) AS cnt, SUM(t.amount) AS total
+          COUNT(*) FILTER (WHERE :tx_id_uuids IS NULL OR t.id = ANY(:tx_id_uuids)) AS scoped_cnt,
+          SUM(t.amount) FILTER (WHERE :tx_id_uuids IS NULL OR t.id = ANY(:tx_id_uuids)) AS scoped_total,
+          COUNT(*) AS unscoped_cnt,
+          SUM(t.amount) AS unscoped_total
    FROM transactions t
    WHERE t.user_id = :uid
      AND t.raw_merchant_name = ANY(:raw_names)
-     AND (:tx_id_uuids IS NULL OR t.id = ANY(:tx_id_uuids))
    GROUP BY t.raw_merchant_name, t.currency
    ```
 
-   Run twice if `tx_id_uuids` is set: once scoped, once unscoped, in parallel via `asyncio.gather`. Pick scoped if non-empty for that merchant; else fallback unscoped (preserves current scope-fallback semantics).
+   In Python, per merchant: use scoped values when `scoped_cnt > 0`, else fall back to unscoped.
 
 3. **Transactions list (top 25 per merchant)** — windowed:
 
