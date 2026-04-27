@@ -11,6 +11,23 @@
 const COMBINING_MARKS = /[̀-ͯ]/g;
 
 /**
+ * Sentence-case a category name to match the seed-default convention
+ * (`Otros ingresos`, `Arriendo/Hipoteca`, `Transferencia de terceros`).
+ *
+ * Lowercases the whole string, then uppercases the first letter and the
+ * first letter after each `/` separator. Preserves Spanish lowercase
+ * particles in multi-word names; capitalizes both halves of compound
+ * names like `Arriendo/Hipoteca`.
+ */
+export function toCategoryCase(s: string): string {
+  const trimmed = s.trim();
+  if (!trimmed) return trimmed;
+  return trimmed
+    .toLowerCase()
+    .replace(/(^|\/)(\p{L})/gu, (_, sep, ch: string) => sep + ch.toUpperCase());
+}
+
+/**
  * Normalize a category name for comparison.
  *
  * Steps: trim → lowercase → NFD-strip accents → collapse internal whitespace.

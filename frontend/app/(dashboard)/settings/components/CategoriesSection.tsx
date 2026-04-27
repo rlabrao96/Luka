@@ -21,7 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { api } from "@/app/lib/api";
-import { findDuplicate } from "@/app/lib/category-dedup";
+import { findDuplicate, toCategoryCase } from "@/app/lib/category-dedup";
 
 type CatPref = {
   category: string;
@@ -314,7 +314,7 @@ export function CategoriesSection() {
   });
 
   const addMutation = useMutation({
-    mutationFn: () => api.addCategory(addInput.trim(), addType),
+    mutationFn: () => api.addCategory(toCategoryCase(addInput), addType),
     onSuccess: () => {
       setAddInput("");
       setAddError(null);
