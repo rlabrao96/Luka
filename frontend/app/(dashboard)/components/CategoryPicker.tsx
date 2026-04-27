@@ -20,7 +20,7 @@ export interface CategoryPickerProps {
   // When true, render the body inline — no sheet/popover shell. Used by edit mode.
   inline?: boolean;
   // Optional anchor element for desktop popover positioning.
-  anchorRef?: React.RefObject<HTMLElement>;
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
 const collator = new Intl.Collator("es", { sensitivity: "base" });
@@ -212,7 +212,7 @@ function DesktopPopover({
 }: {
   open: boolean;
   onClose: () => void;
-  anchorRef?: React.RefObject<HTMLElement>;
+  anchorRef?: React.RefObject<HTMLElement | null>;
   children: React.ReactNode;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -316,7 +316,7 @@ function ResponsiveShell({
 }: {
   open: boolean;
   onClose: () => void;
-  anchorRef?: React.RefObject<HTMLElement>;
+  anchorRef?: React.RefObject<HTMLElement | null>;
   children: React.ReactNode;
 }) {
   const [isDesktop, setIsDesktop] = useState(false);

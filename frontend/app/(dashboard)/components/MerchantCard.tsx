@@ -1,9 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
-import { ReviewCard, ReviewTransactionInfo } from "@/app/lib/api";
+import { useState, useEffect, useRef } from "react";
+import { ReviewCard } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 import { getCategoryIconOrInitial } from "@/app/lib/category-icons";
 import { formatAmount } from "@/app/lib/currency";
+import { CategoryPicker } from "./CategoryPicker";
 
 // USD and other decimal currencies stored as cents in DB — divide by 100
 function formatTxAmount(amount: number, currency: string): string {
@@ -15,35 +16,45 @@ function formatTxAmount(amount: number, currency: string): string {
   return formatted;
 }
 
+type SplitType = "personal" | "shared";
+
 interface Props {
   card: ReviewCard;
   categories: string[];
-  onApprove: (displayName?: string, category?: string) => void;
+  onApprove: (displayName?: string, category?: string, splitType?: SplitType) => void;
   onSkip: () => void;
   editRequested?: boolean;
 }
 
-export function MerchantCard({ card, categories, onApprove, onSkip, editRequested }: Props) {
+export function MerchantCard({ card, onApprove, editRequested }: Props) {
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(card.display_name);
   const [selectedCategory, setSelectedCategory] = useState(
     card.default_category ?? (card.llm_suggested_categories ?? [])[0] ?? ""
   );
-  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [splitType, setSplitType] = useState<SplitType>(
+    card.is_joint_account ? "shared" : "personal"
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const categoryAnchorRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (editRequested) setEditing(true);
   }, [editRequested]);
 
-  const llmSuggestions = card.llm_suggested_categories ?? [];
-  const suggestions = llmSuggestions.length > 0
-    ? llmSuggestions
-    : [card.default_category].filter(Boolean) as string[];
+  const dominantSign: "positive" | "negative" =
+    card.total_amount >= 0 ? "positive" : "negative";
+  const filteredSuggestions = (card.llm_suggested_categories ?? []).filter(
+    (c) => c.toLowerCase() !== "otros"
+  );
 
   const handleSaveApprove = () => {
     const nameChanged = displayName !== card.display_name ? displayName : undefined;
-    onApprove(nameChanged, selectedCategory || undefined);
+    onApprove(nameChanged, selectedCategory || undefined, splitType);
   };
+
+  const toggleSplit = () =>
+    setSplitType((prev) => (prev === "personal" ? "shared" : "personal"));
 
   if (editing) {
     return (
@@ -69,48 +80,49 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
           <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
             Categoría
           </label>
-          <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {suggestions.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => { setSelectedCategory(cat); setShowAllCategories(false); }}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                  selectedCategory === cat
-                    ? "bg-luka-primary text-white"
-                    : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
-                )}
-              >
-                {cat}
-              </button>
-            ))}
-            {!showAllCategories && (
-              <button
-                onClick={() => setShowAllCategories(true)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
-              >
-                Otra...
-              </button>
-            )}
+          <div className="mt-1.5">
+            <CategoryPicker
+              inline
+              open
+              onClose={() => {}}
+              currentCategory={selectedCategory || null}
+              suggestions={filteredSuggestions}
+              dominantSign={dominantSign}
+              onSelect={(cat) => setSelectedCategory(cat ?? "")}
+            />
           </div>
-          {showAllCategories && (
-            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-slate-100">
-              {categories.filter((c) => !suggestions.includes(c)).map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => { setSelectedCategory(cat); setShowAllCategories(false); }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                    selectedCategory === cat
-                      ? "bg-luka-primary text-white"
-                      : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
-                  )}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          )}
+        </div>
+
+        <div className="mb-4">
+          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            Tipo
+          </label>
+          <div className="flex gap-2 mt-1.5">
+            <button
+              type="button"
+              onClick={() => setSplitType("personal")}
+              className={cn(
+                "px-3.5 py-1 rounded-full text-sm font-medium transition-colors",
+                splitType === "personal"
+                  ? "bg-blue-50 text-blue-600"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              )}
+            >
+              Personal
+            </button>
+            <button
+              type="button"
+              onClick={() => setSplitType("shared")}
+              className={cn(
+                "px-3.5 py-1 rounded-full text-sm font-medium transition-colors",
+                splitType === "shared"
+                  ? "bg-emerald-50 text-emerald-600"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              )}
+            >
+              Compartido
+            </button>
+          </div>
         </div>
 
         <div className="bg-slate-50 rounded-xl p-3 mb-4">
@@ -160,11 +172,40 @@ export function MerchantCard({ card, categories, onApprove, onSkip, editRequeste
           );
         })()}
         <h2 className="text-2xl font-bold text-luka-dark">{card.display_name}</h2>
-        {selectedCategory && (
-          <span className="inline-block mt-2 bg-blue-50 text-luka-primary text-sm font-medium px-3.5 py-1 rounded-full">
-            {selectedCategory}
-          </span>
-        )}
+        <div className="flex flex-col items-center gap-1.5 mt-2">
+          <button
+            ref={categoryAnchorRef}
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="bg-slate-100 text-slate-600 text-sm font-medium px-3.5 py-1 rounded-full hover:bg-slate-200 transition-colors"
+          >
+            {selectedCategory || "Sin categoría"}
+          </button>
+          <button
+            type="button"
+            onClick={toggleSplit}
+            className={cn(
+              "text-sm font-medium px-3.5 py-1 rounded-full transition-colors",
+              splitType === "shared"
+                ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                : "bg-blue-50 text-blue-600 hover:bg-blue-100"
+            )}
+          >
+            {splitType === "shared" ? "Compartido" : "Personal"}
+          </button>
+        </div>
+        <CategoryPicker
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          currentCategory={selectedCategory || null}
+          suggestions={filteredSuggestions}
+          dominantSign={dominantSign}
+          anchorRef={categoryAnchorRef}
+          onSelect={(cat) => {
+            setSelectedCategory(cat ?? "");
+            setPickerOpen(false);
+          }}
+        />
       </div>
 
       <div className="bg-slate-50 rounded-xl p-4 flex-1 flex flex-col">

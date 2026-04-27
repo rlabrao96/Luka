@@ -45,11 +45,16 @@ export default function ReviewPage() {
   };
 
   // Mobile handlers
-  const handleApprove = (displayName?: string, category?: string) => {
+  const handleApprove = (
+    displayName?: string,
+    category?: string,
+    splitType?: "personal" | "shared"
+  ) => {
     if (!currentCard) return;
     submit(currentCard.canonical_merchant_id, {
       display_name: displayName,
       category,
+      split_type: splitType,
       action: "approve",
     });
     setEditRequested(false);
@@ -70,10 +75,16 @@ export default function ReviewPage() {
   };
 
   // Desktop grid handlers
-  const handleGridApprove = (card: typeof cards[0], displayName?: string, category?: string) => {
+  const handleGridApprove = (
+    card: typeof cards[0],
+    displayName?: string,
+    category?: string,
+    splitType?: "personal" | "shared"
+  ) => {
     submit(card.canonical_merchant_id, {
       display_name: displayName,
       category,
+      split_type: splitType,
       action: "approve",
     });
     setProcessedIds((prev) => new Set(prev).add(card.canonical_merchant_id));
@@ -161,8 +172,8 @@ export default function ReviewPage() {
                 <MerchantCard
                   card={card}
                   categories={userCategories}
-                  onApprove={(dn, cat) => {
-                    handleGridApprove(card, dn, cat);
+                  onApprove={(dn, cat, st) => {
+                    handleGridApprove(card, dn, cat, st);
                     setEditingIds((prev) => { const s = new Set(prev); s.delete(card.canonical_merchant_id); return s; });
                   }}
                   onSkip={() => handleGridSkip(card)}
