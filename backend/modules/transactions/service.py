@@ -170,11 +170,16 @@ async def get_shared_transactions(
 async def update_category(
     db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID, category: str | None
 ) -> bool:
-    """Update transaction category. Returns False if transaction not found or not owned by user."""
+    """Update transaction category. Returns False if the transaction does not exist
+    or the user is not an active member of its household — so any household member
+    can recategorize a shared Plaid/email transaction, not just the owner."""
     result = await db.execute(
-        select(Transaction).where(
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .where(
             Transaction.id == transaction_id,
-            Transaction.user_id == user_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
         )
     )
     txn = result.scalar_one_or_none()
@@ -196,11 +201,15 @@ async def update_category(
 async def update_split_type(
     db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID, split_type: str
 ) -> bool:
-    """Update transaction split type. Returns False if not found or not owned."""
+    """Update transaction split type. Any active member of the transaction's
+    household can flip personal/shared — single-owner gating broke partner edits."""
     result = await db.execute(
-        select(Transaction).where(
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .where(
             Transaction.id == transaction_id,
-            Transaction.user_id == user_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
         )
     )
     txn = result.scalar_one_or_none()
