@@ -408,9 +408,9 @@ The four consolidation endpoints (match-candidates / link / dismiss / bulk-actio
 ### Merchant Review (`/merchant-review`)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/{job_id}` | Get review job |
+| GET | `/{job_id}` | Get review job (4 batched queries; payload includes `is_joint_account`) |
 | GET | `/{job_id}/status` | Job progress |
-| PATCH | `/{job_id}/merchants/{id}` | Update merchant mapping |
+| PATCH | `/{job_id}/merchants/{id}` | Approve/skip merchant; body accepts optional `split_type` (`personal`/`shared`) which is applied to all linked transactions in scope |
 | POST | `/{job_id}/skip` | Skip review |
 | DELETE | `/{job_id}` | Cancel review job |
 
@@ -459,7 +459,8 @@ The four consolidation endpoints (match-candidates / link / dismiss / bulk-actio
 - `AllocationCard` — 50/20/30 allocation sliders with suggestion pills
 - `MonthSelector` — dropdown (desktop) / bottom sheet (mobile)
 - `PendingBlock` — pending/unreconciled transaction buckets with date display, source badges ("email"/"bank"), correct category type by amount sign, and transfer display ("Ajuste entre cuentas")
-- `MerchantCard` — merchant review approval cards (currency-aware formatting, prefetch on hover)
+- `MerchantCard` — merchant review approval cards. Front state: tappable category pill (opens `CategoryPicker`) + tappable Personal/Shared pill (inline toggle). Default split derives from `card.is_joint_account`. Edit mode embeds `CategoryPicker` inline; pencil button still opens it. Approve flow plumbs `split_type` through to the backend.
+- `CategoryPicker` — shared category picker. Mobile: bottom sheet. Desktop: anchored popover. Inline mode for embed. Sections: optional amber **Sugeridas** card (LLM picks, "Otros" filtered), then Gastos and Ingresos in a 3-column icon-tile grid, alphabetical via `Intl.Collator('es')`. Section order driven by `dominantSign` (positive→Ingresos first). Replaces the deleted `CategoryBottomSheet`; reused by `MerchantCard`, `PendingBlock`, and `RecentTransactions`.
 - `SessionGuard` — PWA persistent sessions + 30-min inactivity timeout
 - `StoreInitializer` — prefetches all dashboard data on mount
 
