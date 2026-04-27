@@ -137,7 +137,7 @@ Tapping the split pill flips between `personal` and `shared` and persists the ch
 
 - The merchant review flow operates on `CanonicalMerchant`, not on individual transactions. The split-type decision the user makes on the card needs to apply to all transactions linked to the canonical (the existing `approve_merchant` flow already does this for category — same scope for split type).
 - Add an optional `split_type` parameter on `POST /merchant-review/{jobId}/merchants/{canonicalId}`. When present and `action="approve"`, server applies it to all linked transactions in the same way category is applied.
-- For joint-account transactions: the server still enforces `shared` regardless of what the user picked on the card (preserve the architectural rule). On the joint case, the pill stays editable in the UI but tapping it shows a tooltip "Esta cuenta es conjunta — todas las transacciones son compartidas" and the value can't be changed. Confirm this is desired UX before implementing; alternative: hide the pill entirely on joint accounts.
+- For joint-account transactions: default is `shared`, but the pill is fully editable to `personal` if the user explicitly wants it (e.g., a personal expense paid from the joint card). The server respects whatever value the user picks. The "joint → auto-shared" rule only sets the default at creation time; user overrides win.
 
 ### 4.6 TransactionCard pill harmonization
 
@@ -169,7 +169,7 @@ For ~20 merchants this is 60–80 sequential roundtrips. Refactor to:
 
 1. **One query** for canonicals + raw_names (existing first query, unchanged).
 2. **One query** for transaction stats grouped by `raw_merchant_name`: returns `(raw_name, count, sum, currency)`. Then map back to canonicals via the `raw_names` arrays we already have. The fallback path becomes a second pass on the same query result, no extra roundtrip.
-3. **One query** for the transactions list, ordered by date desc, with a `LIMIT` per canonical via window function (`ROW_NUMBER() OVER (PARTITION BY raw_merchant_name ORDER BY transaction_date DESC)`) — keep, say, the most recent 25 per merchant for the UI list. Group result back by canonical in Python.
+3. **One query** for the transactions list, ordered by date desc, with a `LIMIT` per canonical via window function. Wrap `ROW_NUMBER() OVER (PARTITION BY raw_merchant_name ORDER BY transaction_date DESC)` in a subquery (window functions can't appear in `WHERE`) and filter `rn <= 25` in the outer query — keep the most recent 25 per merchant for the UI list. Group result back by canonical in Python.
 4. **One query** for LLM suggestions: `SELECT raw_name, llm_suggested_categories FROM merchants WHERE raw_name IN (...)`. Index the join on the array we already have.
 
 End state: 4 queries total regardless of card count. Expected response time on a 20-card payload drops from multi-second to sub-500ms (most rows being trivial counts).
@@ -231,7 +231,7 @@ Existing flow: `onCategoryTap` opens the picker. After this work, the picker is 
 ### Backend (pytest, real DB per CLAUDE.md)
 
 - `test_get_review_cards_batched.py` — verify a multi-canonical job returns equivalent payload to the old implementation, including transaction counts, totals, currency, LLM suggestions. Compare query count (use SQLAlchemy event listener) — assert ≤4 queries regardless of N cards.
-- `test_approve_merchant_split_type.py` — approve with `split_type='shared'` on a non-joint account; verify all linked transactions update. Approve with `split_type='personal'` on a joint account; verify server enforces `shared`.
+- `test_approve_merchant_split_type.py` — approve with `split_type='shared'` on a non-joint account; verify all linked transactions update. Approve with `split_type='personal'` on a joint account; verify the user override wins (rows persist as `personal`).
 - `test_joint_account_default.py` — ingest a transaction on a joint account via each entry path (bank sync, email, Plaid); verify `split_type='shared'`. Same on personal account → `personal`.
 - Migration test — seed mixed accounts, run backfill, assert the joint-account rows get corrected and personal-account rows are untouched.
 
@@ -255,6 +255,8 @@ No unit tests (no infra per CLAUDE.md). Manual verification via `/browser-use`:
 
 ## 10. Open questions
 
-1. **Joint-account split tap UX:** when the user taps the split pill on a joint-account merchant card, do we (a) hide the pill entirely (no edit possible), or (b) show it but display a tooltip/toast explaining the override? §4.5 leans toward (b); confirm before implementation.
-2. **"Sin categoría" surfacing:** §4.4 places "Sin categoría" as a clear-selection row at the top of the body. Confirm this is the right spot vs. omitting it from the picker entirely (since the picker is "pick a category", not "clear category").
-3. **Pagination fallback:** §4.8 commits to N+1 elimination only. If post-fix latency is still poor with very large jobs (50+ cards), do we want pagination as a follow-up or in scope here?
+All resolved during brainstorm. Recorded for traceability:
+
+1. **Joint-account split tap UX:** Resolved — pill is fully editable both ways; the joint rule only sets the default, user overrides win (see §4.5).
+2. **"Sin categoría" surfacing:** Resolved — render it as a clear-selection row at the top of the picker body, only when `currentCategory` is non-null. Matches the existing `CategoryBottomSheet` behavior the picker is replacing.
+3. **Pagination fallback:** Resolved — strictly out of scope. Measurement-driven follow-up only if post-fix latency is still poor.
