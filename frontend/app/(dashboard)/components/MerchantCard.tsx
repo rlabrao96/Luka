@@ -20,21 +20,27 @@ type SplitType = "personal" | "shared";
 
 interface Props {
   card: ReviewCard;
-  categories: string[];
   onApprove: (displayName?: string, category?: string, splitType?: SplitType) => void;
-  onSkip: () => void;
+  onSplitChange?: (splitType: SplitType) => void;
   editRequested?: boolean;
 }
 
-export function MerchantCard({ card, onApprove, editRequested }: Props) {
+export function MerchantCard({ card, onApprove, onSplitChange, editRequested }: Props) {
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(card.display_name);
   const [selectedCategory, setSelectedCategory] = useState(
     card.default_category ?? (card.llm_suggested_categories ?? [])[0] ?? ""
   );
-  const [splitType, setSplitType] = useState<SplitType>(
+  const [splitType, setSplitTypeState] = useState<SplitType>(
     card.is_joint_account ? "shared" : "personal"
   );
+  const setSplitType = (next: SplitType | ((prev: SplitType) => SplitType)) => {
+    setSplitTypeState((prev) => {
+      const value = typeof next === "function" ? (next as (p: SplitType) => SplitType)(prev) : next;
+      onSplitChange?.(value);
+      return value;
+    });
+  };
   const [pickerOpen, setPickerOpen] = useState(false);
   const categoryAnchorRef = useRef<HTMLButtonElement>(null);
 

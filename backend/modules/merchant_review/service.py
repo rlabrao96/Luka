@@ -162,6 +162,9 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 COALESCE(SUM(t.amount) FILTER (WHERE t.id = ANY(:tx_ids)), 0) AS scoped_total,
                 COUNT(*) AS unscoped_cnt,
                 COALESCE(SUM(t.amount), 0) AS unscoped_total,
+                -- LEFT JOIN: txns with NULL bank_account_id yield NULL ba.account_type, the
+                -- comparison evaluates to NULL, and bool_or skips NULLs — so the result is
+                -- TRUE only if at least one row truly has a joint account, else FALSE.
                 bool_or(ba.account_type = 'joint') AS is_joint
             FROM transactions t
             LEFT JOIN bank_accounts ba ON ba.id = t.bank_account_id

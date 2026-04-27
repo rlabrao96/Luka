@@ -1,11 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { SkipForward, Pencil, Check } from "lucide-react";
 import { MerchantCard } from "../../../components/MerchantCard";
 import { useMerchantReview, useOptimisticReview, useSkipReview } from "@/app/lib/hooks/useMerchantReview";
-import { api } from "@/app/lib/api";
+
+type SplitType = "personal" | "shared";
 
 export default function ReviewPage() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -18,14 +18,9 @@ export default function ReviewPage() {
   // Track processed and editing cards for desktop grid
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
-
-  // Fetch user's category preferences
-  const { data: catPrefs } = useQuery({
-    queryKey: ["category-preferences"],
-    queryFn: () => api.getCategoryPreferences(),
-    staleTime: Infinity,
-  });
-  const userCategories = (catPrefs?.categories ?? []).map((c) => c.category);
+  // Lifted splitType per card so the parent's Approve button can read it
+  // (front-state pill toggles live in MerchantCard but mirror up here).
+  const [splitTypes, setSplitTypes] = useState<Record<string, SplitType>>({});
 
   useEffect(() => {
     setEditRequested(false);
@@ -48,13 +43,17 @@ export default function ReviewPage() {
   const handleApprove = (
     displayName?: string,
     category?: string,
-    splitType?: "personal" | "shared"
+    splitType?: SplitType
   ) => {
     if (!currentCard) return;
+    const effectiveSplit =
+      splitType ??
+      splitTypes[currentCard.canonical_merchant_id] ??
+      (currentCard.is_joint_account ? "shared" : "personal");
     submit(currentCard.canonical_merchant_id, {
       display_name: displayName,
       category,
-      split_type: splitType,
+      split_type: effectiveSplit,
       action: "approve",
     });
     setEditRequested(false);
@@ -79,12 +78,16 @@ export default function ReviewPage() {
     card: typeof cards[0],
     displayName?: string,
     category?: string,
-    splitType?: "personal" | "shared"
+    splitType?: SplitType
   ) => {
+    const effectiveSplit =
+      splitType ??
+      splitTypes[card.canonical_merchant_id] ??
+      (card.is_joint_account ? "shared" : "personal");
     submit(card.canonical_merchant_id, {
       display_name: displayName,
       category,
-      split_type: splitType,
+      split_type: effectiveSplit,
       action: "approve",
     });
     setProcessedIds((prev) => new Set(prev).add(card.canonical_merchant_id));
@@ -171,12 +174,13 @@ export default function ReviewPage() {
               <div key={card.canonical_merchant_id} className="flex flex-col">
                 <MerchantCard
                   card={card}
-                  categories={userCategories}
                   onApprove={(dn, cat, st) => {
                     handleGridApprove(card, dn, cat, st);
                     setEditingIds((prev) => { const s = new Set(prev); s.delete(card.canonical_merchant_id); return s; });
                   }}
-                  onSkip={() => handleGridSkip(card)}
+                  onSplitChange={(st) =>
+                    setSplitTypes((prev) => ({ ...prev, [card.canonical_merchant_id]: st }))
+                  }
                   editRequested={editingIds.has(card.canonical_merchant_id)}
                 />
                 {/* Per-card actions */}
@@ -219,9 +223,7 @@ export default function ReviewPage() {
                 <MerchantCard
                   key={card.canonical_merchant_id}
                   card={card}
-                  categories={userCategories}
                   onApprove={() => {}}
-                  onSkip={() => {}}
                 />
               ))}
             </div>
@@ -272,9 +274,10 @@ export default function ReviewPage() {
               <MerchantCard
                 key={currentCard.canonical_merchant_id}
                 card={currentCard}
-                categories={userCategories}
                 onApprove={handleApprove}
-                onSkip={handleSkip}
+                onSplitChange={(st) =>
+                  setSplitTypes((prev) => ({ ...prev, [currentCard.canonical_merchant_id]: st }))
+                }
                 editRequested={editRequested}
               />
             </div>
