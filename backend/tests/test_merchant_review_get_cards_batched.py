@@ -250,3 +250,138 @@ async def test_get_review_cards_uses_at_most_4_queries(db):
     assert len(queries) <= 4, f"Expected <=4 queries, got {len(queries)}:\n" + "\n---\n".join(
         queries
     )
+
+
+# ---------------------------------------------------------------- legacy path
+
+
+@pytest.mark.asyncio
+async def test_get_review_cards_legacy_review_job_id_returns_transactions(db):
+    """Legacy jobs without transaction_ids must still return populated `transactions` lists.
+
+    Previously the SQL emitted priority=1 rows but the Python lookup asked for
+    priority=2 → empty `transactions`. This pins the regression.
+    """
+    user, hh, acc = await _seed_user_and_account(db, currency="CLP")
+
+    # Job WITHOUT transaction_ids (legacy mode).
+    job = MerchantReviewJob(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        status="processing",
+        total_merchants=2,
+        reviewed_count=0,
+        transaction_ids=None,
+    )
+    db.add(job)
+    await db.flush()
+
+    suffix = uuid.uuid4().hex[:6]
+    for display_name, raw_names in [
+        (f"Lider {suffix}", [f"LIDER PROVIDENCIA {suffix}"]),
+        (f"Netflix {suffix}", [f"NETFLIX.COM {suffix}"]),
+    ]:
+        await _seed_canonical_with_txs(
+            db,
+            user=user,
+            household=hh,
+            account=acc,
+            display_name=display_name,
+            raw_names=raw_names,
+            txs_per_raw=2,
+            currency="CLP",
+            review_job_id=job.id,  # legacy: canonical points at job
+        )
+
+    cards = await get_review_cards(db, job.id, user.id)
+
+    assert len(cards) == 2
+    for c in cards:
+        assert len(c["transactions"]) > 0, f"legacy card empty: {c['display_name']}"
+        assert c["transaction_count"] >= 2
+        # Internal sort key must not leak into payload.
+        for t in c["transactions"]:
+            assert "_sort_dt" not in t
+
+
+# ---------------------------------------------------------------- date sort
+
+
+@pytest.mark.asyncio
+async def test_get_review_cards_sorts_transactions_by_real_datetime(db):
+    """Cross-raw_name sort must be by real datetime, not lexicographic on '%d-%b-%Y'."""
+    user, hh, acc = await _seed_user_and_account(db, currency="CLP")
+    suffix = uuid.uuid4().hex[:6]
+
+    canonical = CanonicalMerchant(
+        id=uuid.uuid4(),
+        display_name=f"Multi {suffix}",
+        default_category="Comida",
+        is_verified=False,
+    )
+    db.add(canonical)
+    await db.flush()
+
+    raw_a = f"RAW A {suffix}"
+    raw_b = f"RAW B {suffix}"
+    for raw in (raw_a, raw_b):
+        db.add(
+            Merchant(
+                id=uuid.uuid4(),
+                raw_name=raw,
+                normalized_name=raw.lower(),
+                llm_suggested_categories=["Comida"],
+                canonical_merchant_id=canonical.id,
+            )
+        )
+    await db.flush()
+
+    # raw_a: an older tx. raw_b: a newer tx. Lexicographic on "%d-%b-%Y"
+    # would mis-order something like "03-Jan-2026" vs "15-Feb-2025".
+    older_tx_date = datetime(2025, 2, 15, 12, 0, tzinfo=timezone.utc)
+    newer_tx_date = datetime(2026, 1, 3, 12, 0, tzinfo=timezone.utc)
+
+    older_tx = Transaction(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        household_id=hh.id,
+        bank_account_id=acc.id,
+        raw_merchant_name=raw_a,
+        amount=Decimal("-100.00"),
+        currency="CLP",
+        transaction_date=older_tx_date,
+        source="gmail",
+        source_type="email",
+        status="settled",
+        transaction_type="expense",
+    )
+    newer_tx = Transaction(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        household_id=hh.id,
+        bank_account_id=acc.id,
+        raw_merchant_name=raw_b,
+        amount=Decimal("-200.00"),
+        currency="CLP",
+        transaction_date=newer_tx_date,
+        source="gmail",
+        source_type="email",
+        status="settled",
+        transaction_type="expense",
+    )
+    db.add_all([older_tx, newer_tx])
+    await db.flush()
+
+    job = await _seed_review_job(db, user=user, transaction_ids=[older_tx.id, newer_tx.id])
+
+    cards = await get_review_cards(db, job.id, user.id)
+    assert len(cards) == 1
+    txs = cards[0]["transactions"]
+    assert len(txs) == 2
+    # Newest tx must come first regardless of which raw_name it belongs to.
+    assert txs[0]["raw_name"] == raw_b
+    assert txs[0]["date"] == "03-Jan-2026"
+    assert txs[1]["raw_name"] == raw_a
+    # Internal sort key must not leak into payload.
+    for t in txs:
+        assert "_sort_dt" not in t

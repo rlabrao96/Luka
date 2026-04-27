@@ -126,12 +126,10 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
 
     # Collect every raw_name across canonicals, plus per-canonical first-name lookup.
     all_raw_names: set[str] = set()
-    canonical_first_name: dict[uuid.UUID, str] = {}
     canonical_first_suggestion: dict[uuid.UUID, list] = {}
     for row in rows:
         unique_names = list(dict.fromkeys(row.raw_names))  # preserve order, dedupe
         all_raw_names.update(unique_names)
-        canonical_first_name[row.id] = unique_names[0]
         # Find suggestion paired with the first raw_name (parallel arrays).
         first_idx = row.raw_names.index(unique_names[0])
         suggestions = row.llm_suggestions or []
@@ -278,9 +276,10 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
         key = (r.raw_merchant_name, int(r.priority))
         tx_by_raw_priority.setdefault(key, []).append(
             {
+                "_sort_dt": r.transaction_date,  # real datetime for sorting; stripped before return
                 "raw_name": r.raw_merchant_name,
                 "date": r.transaction_date.strftime("%d-%b-%Y") if r.transaction_date else None,
-                "amount": float(r.amount) if r.amount else 0,
+                "amount": float(r.amount) if r.amount is not None else 0.0,
                 "currency": r.currency or "CLP",
             }
         )
@@ -310,12 +309,17 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
         total = scoped_total if use_scope else unscoped_total
 
         # Pick scoped tx list if any scoped rows exist for this canonical, else unscoped.
-        priority = 1 if use_scope else 2
-        transactions_info: list[dict] = []
+        # Legacy jobs (no transaction_ids) emit only priority=1 rows in tx_sql, so we
+        # must look up priority=1 there even though use_scope is False.
+        priority = 1 if (use_scope or not tx_id_uuids) else 2
+        bucket: list[dict] = []
         for name in unique_names:
-            transactions_info.extend(tx_by_raw_priority.get((name, priority), []))
-        # Re-sort by date desc (mimicking the original ORDER BY transaction_date DESC).
-        transactions_info.sort(key=lambda t: t["date"] or "", reverse=True)
+            bucket.extend(tx_by_raw_priority.get((name, priority), []))
+        # Sort by real datetime desc (lexicographic sort on "%d-%b-%Y" is wrong).
+        _MIN_DT = datetime.min.replace(tzinfo=timezone.utc)
+        bucket.sort(key=lambda t: t["_sort_dt"] or _MIN_DT, reverse=True)
+        # Strip the internal sort key before returning to caller.
+        transactions_info = [{k: v for k, v in t.items() if k != "_sort_dt"} for t in bucket]
 
         # Currency from first transaction (preserves prior behavior).
         card_currency = transactions_info[0]["currency"] if transactions_info else currency
