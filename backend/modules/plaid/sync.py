@@ -1,5 +1,6 @@
 """Plaid transaction sync: fetches transactions via cursor, creates accounts, maps and deduplicates."""
 
+import asyncio
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -90,23 +91,45 @@ async def run_plaid_sync(
     all_removed = []
     accounts_data = []
 
+    # On the very first sync after item/public_token/exchange, Plaid is still
+    # ingesting the institution's data. /transactions/sync may return an empty
+    # response (no accounts, no added) for the first ~5–30s. Retry with backoff
+    # so the user sees their accounts and history without a manual refresh.
+    initial_retry_delays = [3, 5, 8, 13, 21] if initial else [0]
+
     try:
-        # Paginate through all updates
-        has_more = True
-        while has_more:
-            kwargs = {"access_token": access_token, "cursor": cursor}
-            if initial and not cursor:
-                kwargs["count"] = 500
-            response = sync_transactions(**kwargs)
+        for attempt, delay in enumerate(initial_retry_delays):
+            # Reset accumulators for the retry; keep the (still-None) cursor.
+            all_added = []
+            all_modified = []
+            all_removed = []
+            accounts_data = []
 
-            all_added.extend(response.added)
-            all_modified.extend(response.modified)
-            all_removed.extend(response.removed)
-            if response.accounts:
-                accounts_data = response.accounts
+            has_more = True
+            page_cursor = cursor
+            while has_more:
+                kwargs = {"access_token": access_token, "cursor": page_cursor}
+                if initial and not page_cursor:
+                    kwargs["count"] = 500
+                response = sync_transactions(**kwargs)
 
-            has_more = response.has_more
-            cursor = response.next_cursor
+                all_added.extend(response.added)
+                all_modified.extend(response.modified)
+                all_removed.extend(response.removed)
+                if response.accounts:
+                    accounts_data = response.accounts
+
+                has_more = response.has_more
+                page_cursor = response.next_cursor
+
+            # Persist the latest cursor whether or not data arrived this attempt.
+            cursor = page_cursor
+
+            # Done if we got data, or this isn't an initial sync, or we're out of retries.
+            if accounts_data or all_added or not initial:
+                break
+            if attempt < len(initial_retry_delays) - 1:
+                await asyncio.sleep(delay)
 
     except Exception as e:
         error_str = str(e)
