@@ -26,6 +26,8 @@ const CATEGORY_ICON_MAP: Record<string, string> = {
   "Bakery": "🥐",
   "Bar": "🍺",
   "Bars": "🍺",
+  "Drinks": "🍹",
+  "Tragos": "🍹",
   "Delivery": "📦",
 
   // ── Groceries ──
@@ -233,6 +235,8 @@ const CATEGORY_ICON_MAP: Record<string, string> = {
   "Ingreso": "💰",
   "Income": "💰",
   "Freelance": "💼",
+  "Trabajo": "💼",
+  "Work": "💼",
   "Bono": "🎯",
   "Bonos": "🎯",
   "Bonus": "🎯",
@@ -245,6 +249,9 @@ const CATEGORY_ICON_MAP: Record<string, string> = {
   "Dividends": "📊",
   "Reembolso": "↩️",
   "Refund": "↩️",
+  "Por Reembolsar": "💸",
+  "Por reembolsar": "💸",
+  "Pending Refund": "💸",
   "Venta": "🏷️",
   "Sale": "🏷️",
   "Arriendo recibido": "🏠",
