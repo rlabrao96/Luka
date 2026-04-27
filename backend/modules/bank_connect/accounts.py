@@ -38,9 +38,13 @@ async def ensure_accounts(
     Auto-create/update bank accounts from scrape data. Returns ba_map:
     dict[(account_name, currency) -> bank_account_id]
     """
-    # Resolve household
+    # Resolve user's active household. The unique partial index
+    # uq_household_members_user_active guarantees at most one row matches.
     hm_result = await db.execute(
-        select(HouseholdMember.household_id).where(HouseholdMember.user_id == user_id)
+        select(HouseholdMember.household_id).where(
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
     )
     household_id = hm_result.scalar_one_or_none()
     if not household_id:

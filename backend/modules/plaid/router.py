@@ -66,9 +66,13 @@ async def exchange_token_endpoint(
     user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    # Get user's household
+    # Get user's active household. The unique partial index
+    # uq_household_members_user_active guarantees at most one row matches.
     result = await session.execute(
-        select(HouseholdMember.household_id).where(HouseholdMember.user_id == user.id)
+        select(HouseholdMember.household_id).where(
+            HouseholdMember.user_id == user.id,
+            HouseholdMember.left_at.is_(None),
+        )
     )
     household_id = result.scalar_one_or_none()
     if not household_id:
