@@ -150,18 +150,25 @@ async def run_plaid_sync(
     # Load household bank accounts ONCE for CC counterpart resolution.
     # Build a {account_number: id} dict and a [(bank_name.lower(), id)] list.
     hh_accounts_result = await session.execute(
-        select(BankAccount.id, BankAccount.bank_name, BankAccount.account_number).where(
+        select(
+            BankAccount.id,
+            BankAccount.bank_name,
+            BankAccount.account_number,
+            BankAccount.account_type,
+        ).where(
             BankAccount.household_id == item.household_id,
             BankAccount.is_active.is_(True),
         )
     )
     mask_map: dict[str, uuid.UUID] = {}
     name_list: list[tuple[str, uuid.UUID]] = []
-    for acct_id, bank_name, acct_num in hh_accounts_result.all():
+    account_type_map: dict[uuid.UUID, str] = {}
+    for acct_id, bank_name, acct_num, acct_type in hh_accounts_result.all():
         if acct_num:
             mask_map[acct_num] = acct_id
         if bank_name:
             name_list.append((bank_name.lower(), acct_id))
+        account_type_map[acct_id] = acct_type
 
     stats = {"added": 0, "modified": 0, "removed": 0, "deduped": 0, "new_tx_ids": []}
 
@@ -228,7 +235,10 @@ async def run_plaid_sync(
         # the default is only used when no match attaches one.
         from modules.transactions.service import ensure_default_split
 
-        await ensure_default_split(session, new_tx)
+        is_joint = account_type_map.get(bank_account_id) == "joint"
+        await ensure_default_split(
+            session, new_tx, default_split_type="shared" if is_joint else "personal"
+        )
 
         if match:
             await apply_match_and_delete_emails(
