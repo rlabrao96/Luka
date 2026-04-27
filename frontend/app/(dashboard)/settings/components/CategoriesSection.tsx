@@ -21,6 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { api } from "@/app/lib/api";
+import { findDuplicate } from "@/app/lib/category-dedup";
 
 type CatPref = {
   category: string;
@@ -281,6 +282,7 @@ export function CategoriesSection() {
   const [addInput, setAddInput] = useState("");
   const [addType, setAddType] = useState<"expense" | "income">("expense");
   const [addError, setAddError] = useState<string | null>(null);
+  const [nearMatch, setNearMatch] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CatPref | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -330,6 +332,34 @@ export function CategoriesSection() {
       }
     },
   });
+
+  // Reset the near-match dialog whenever the input changes — a new edit
+  // means the previous suggestion no longer applies.
+  function handleInputChange(value: string) {
+    setAddInput(value);
+    setAddError(null);
+    if (nearMatch) setNearMatch(null);
+  }
+
+  // Run dedup check before firing the API call. Exact dupe → inline error.
+  // Near match → confirmation dialog. Otherwise submit as today.
+  function handleAdd() {
+    const trimmed = addInput.trim();
+    if (!trimmed) return;
+    const sameTypeNames = localCats
+      .filter((c) => c.category_type === addType)
+      .map((c) => c.category);
+    const dup = findDuplicate(trimmed, sameTypeNames);
+    if (dup.kind === "exact") {
+      setAddError(`Ya tienes la categoría "${dup.canonical}".`);
+      return;
+    }
+    if (dup.kind === "near") {
+      setNearMatch(dup.canonical);
+      return;
+    }
+    addMutation.mutate();
+  }
 
   const mutateRef = useRef(reorderMutation.mutate);
   mutateRef.current = reorderMutation.mutate;
@@ -400,12 +430,9 @@ export function CategoriesSection() {
           <input
             type="text"
             value={addInput}
-            onChange={(e) => {
-              setAddInput(e.target.value);
-              setAddError(null);
-            }}
+            onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !addDisabled) addMutation.mutate();
+              if (e.key === "Enter" && !addDisabled) handleAdd();
             }}
             maxLength={40}
             placeholder="Nueva categoría"
@@ -435,7 +462,7 @@ export function CategoriesSection() {
               </button>
             </div>
             <button
-              onClick={() => addMutation.mutate()}
+              onClick={handleAdd}
               disabled={addDisabled}
               className="flex-1 sm:flex-none px-4 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-colors bg-luka-primary text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
             >
@@ -490,6 +517,40 @@ export function CategoriesSection() {
           <p className="text-xs text-red-500 mt-2">Error al guardar. Intenta de nuevo.</p>
         )}
       </div>
+
+      {nearMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-2">
+              ¿Quisiste decir <span className="text-blue-600">{nearMatch}</span>?
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Si es algo distinto, podés crearla igual.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setNearMatch(null);
+                  setAddInput("");
+                  setAddError(null);
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-luka-primary rounded-lg hover:bg-blue-700"
+              >
+                Usar {nearMatch}
+              </button>
+              <button
+                onClick={() => {
+                  setNearMatch(null);
+                  addMutation.mutate();
+                }}
+                className="px-3 py-1.5 text-xs text-slate-600 rounded-lg hover:bg-slate-50"
+              >
+                Crear igual
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteTarget && (
         <DeleteConfirmModal
