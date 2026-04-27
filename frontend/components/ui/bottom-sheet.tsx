@@ -28,7 +28,7 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50" style={{ touchAction: "none" }}>
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 transition-opacity duration-200"
@@ -41,19 +41,25 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
         aria-modal="true"
         aria-label={title}
         className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-[0_-4px_24px_rgba(0,0,0,0.12)] animate-slide-up max-h-[70vh] flex flex-col"
+        style={{ touchAction: "pan-y" }}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-8 h-1 rounded-full bg-slate-300" />
-        </div>
+        {/* Drag handle (tap to close) */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cerrar"
+          className="flex justify-center pt-3 pb-2 w-full cursor-pointer"
+        >
+          <div className="w-10 h-1.5 rounded-full bg-slate-300" />
+        </button>
         {/* Title */}
         {title && (
-          <div className="px-5 pb-3 border-b border-slate-100">
+          <div className="px-6 pb-3 border-b border-slate-100">
             <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
           </div>
         )}
         {/* Content */}
-        <div className="overflow-y-auto flex-1 px-5 py-3">
+        <div className="overflow-y-auto flex-1 px-6 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {children}
         </div>
       </div>
