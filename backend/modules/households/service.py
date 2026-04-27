@@ -2,7 +2,7 @@ import json
 import secrets
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -439,7 +439,8 @@ async def get_category_breakdown(
     params: dict = {"household_id": str(household_id)}
     if month:
         month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = :month_start"
-        params["month_start"] = f"{month}-01"
+        # asyncpg rejects raw strings for DATE bind params; coerce explicitly.
+        params["month_start"] = date.fromisoformat(f"{month}-01")
     else:
         month_clause = (
             "DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)"
@@ -538,7 +539,8 @@ async def get_settlement(
     params: dict = {"household_id": str(household_id)}
     if month:
         month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = :month_start"
-        params["month_start"] = f"{month}-01"
+        # asyncpg rejects raw strings for DATE bind params; coerce explicitly.
+        params["month_start"] = date.fromisoformat(f"{month}-01")
     else:
         month_clause = (
             "DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)"
