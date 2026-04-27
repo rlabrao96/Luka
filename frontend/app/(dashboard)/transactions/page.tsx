@@ -13,7 +13,7 @@ import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import { formatStoredAmount, normalizeBalance } from "@/app/lib/currency";
 import { CurrencyToggle } from "../components/CurrencyToggle";
-import { KpiCard } from "../components/KpiCard";
+import { cn } from "@/lib/utils";
 import { PageHeader } from "../components/PageHeader";
 import { MonthSelector, ALL_MONTHS } from "../components/MonthSelector";
 import { currentMonthKey } from "@/app/lib/months";
@@ -47,86 +47,69 @@ function SummaryBar({ accounts, selectedCurrency, selectedBank }: SummaryBarProp
     .filter((a) => a.account_kind === CC_KIND)
     .reduce((s, a) => s + normalizeBalance(a.balance_current ?? 0, selectedCurrency, a.provider), 0); // Already negative
 
-  const ccLimit = filtered
-    .filter((a) => a.account_kind === CC_KIND)
+  // Sum of CC limits ONLY across cards that have a non-null balance_limit.
+  // Using `a.balance_limit ?? 0` would silently coerce nulls to 0, defeating
+  // the "no limit" detection used to hide the usage bar entirely.
+  const ccLimitWithLimit = filtered
+    .filter((a) => a.account_kind === CC_KIND && a.balance_limit !== null && a.balance_limit !== undefined)
     .reduce((s, a) => s + normalizeBalance(a.balance_limit ?? 0, selectedCurrency, a.provider), 0);
 
-  const locBalance = filtered
-    .filter((a) => a.account_kind === LOC_KIND)
-    .reduce((s, a) => s + normalizeBalance(a.balance_current ?? 0, selectedCurrency, a.provider), 0);
-
-  const hasLOC = filtered.some((a) => a.account_kind === LOC_KIND);
   const hasCC = filtered.some((a) => a.account_kind === CC_KIND);
-
-  const netPosition = checkingBalance + locBalance + ccUsed;
 
   const hasAnyBalance = filtered.some((a) => a.balance_current !== null);
 
-  const gridClass = { 1: "lg:grid-cols-1", 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4" } as Record<number, string>;
-
-  const cards: Array<{
-    label: string;
-    value: string;
-    sublabel: string;
-    className: string;
-    valueClassName?: string;
-    show: boolean;
-  }> = [
-    {
-      label: "Cuenta Corriente",
-      value: hasAnyBalance ? formatStoredAmount(checkingBalance, selectedCurrency) : "—",
-      sublabel: "",
-      className: "bg-blue-50 border-blue-100",
-      show: true,
-    },
-    {
-      label: "Tarjeta de Crédito",
-      value: hasAnyBalance ? formatStoredAmount(ccUsed, selectedCurrency) : "—",
-      sublabel: hasAnyBalance && ccLimit > 0
-        ? `gastado de ${formatStoredAmount(ccLimit, selectedCurrency)}`
-        : "",
-      className: "bg-red-50 border-red-100",
-      valueClassName: ccUsed < 0 ? "text-red-600" : undefined,
-      show: hasCC,
-    },
-    {
-      label: "Línea de Crédito",
-      value: hasAnyBalance ? formatStoredAmount(locBalance, selectedCurrency) : "—",
-      sublabel: "disponible",
-      className: "bg-emerald-50 border-emerald-100",
-      show: hasLOC,
-    },
-    {
-      label: "Posición Neta",
-      value: hasAnyBalance ? formatStoredAmount(netPosition, selectedCurrency) : "—",
-      sublabel: "líquido - deuda TC",
-      className: netPosition >= 0
-        ? "bg-emerald-50 border-emerald-200"
-        : "bg-red-50 border-red-200",
-      valueClassName: netPosition >= 0 ? "text-emerald-700" : "text-red-600",
-      show: hasCC,
-    },
-  ];
-
-  const visibleCards = cards.filter((c) => c.show);
+  const ccUsagePct = ccLimitWithLimit > 0
+    ? Math.max(0, Math.min(100, (Math.abs(ccUsed) / ccLimitWithLimit) * 100))
+    : 0;
+  const ccBarColor = ccUsagePct > 80
+    ? "bg-red-500"
+    : ccUsagePct > 50
+      ? "bg-amber-400"
+      : "bg-emerald-400";
 
   return (
     <div className="space-y-2">
       <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-        Saldos disponibles
+        Saldos
       </span>
-      <div className={`grid grid-cols-1 ${gridClass[visibleCards.length] ?? "lg:grid-cols-4"} gap-3`}>
-        {visibleCards.map(({ label, value, sublabel, className, valueClassName }) => (
-          <KpiCard
-            key={label}
-            variant="compact"
-            label={label}
-            value={value}
-            sublabel={sublabel || undefined}
-            valueClassName={valueClassName}
-            className={className}
-          />
-        ))}
+      <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+        <div className={`grid ${hasCC ? "grid-cols-2" : "grid-cols-1"} gap-x-4`}>
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              Cta. Corriente
+            </p>
+            <p className="text-[18px] font-bold text-luka-dark mt-1 tabular-nums truncate">
+              {hasAnyBalance ? formatStoredAmount(checkingBalance, selectedCurrency) : "—"}
+            </p>
+          </div>
+          {hasCC && (
+            <div className="min-w-0 border-l border-slate-100 pl-4">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                Tarjeta — Usado
+              </p>
+              <p className={cn(
+                "text-[18px] font-bold mt-1 tabular-nums truncate",
+                ccUsed < 0 ? "text-red-600" : "text-luka-dark"
+              )}>
+                {hasAnyBalance ? formatStoredAmount(ccUsed, selectedCurrency) : "—"}
+              </p>
+              {ccLimitWithLimit > 0 && (
+                <div className="mt-2">
+                  <div className="h-1 w-full rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={cn("h-full rounded-full transition-all", ccBarColor)}
+                      style={{ width: `${ccUsagePct}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between mt-1 text-[9px] text-slate-400 tabular-nums">
+                    <span>{Math.round(ccUsagePct)}%</span>
+                    <span>{formatStoredAmount(ccLimitWithLimit, selectedCurrency)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
