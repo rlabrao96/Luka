@@ -84,23 +84,6 @@ export function MerchantCard({ card, onApprove, onSplitChange, editRequested }: 
 
         <div className="mb-4">
           <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-            Categoría
-          </label>
-          <div className="mt-1.5">
-            <CategoryPicker
-              inline
-              open
-              onClose={() => {}}
-              currentCategory={selectedCategory || null}
-              suggestions={filteredSuggestions}
-              dominantSign={dominantSign}
-              onSelect={(cat) => setSelectedCategory(cat ?? "")}
-            />
-          </div>
-        </div>
-
-        <div className="mb-4">
-          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
             Tipo
           </label>
           <div className="flex gap-2 mt-1.5">
@@ -128,6 +111,23 @@ export function MerchantCard({ card, onApprove, onSplitChange, editRequested }: 
             >
               Compartido
             </button>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            Categoría
+          </label>
+          <div className="mt-1.5">
+            <CategoryPicker
+              inline
+              open
+              onClose={() => {}}
+              currentCategory={selectedCategory || null}
+              suggestions={filteredSuggestions}
+              dominantSign={dominantSign}
+              onSelect={(cat) => setSelectedCategory(cat ?? "")}
+            />
           </div>
         </div>
 
