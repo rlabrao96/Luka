@@ -2,6 +2,11 @@
  * Category → icon lookup (Spanish + English).
  * Not user-facing — used to resolve an icon when a category name matches.
  * Falls back to first letter if no match found.
+ *
+ * Canonical seed-default category list lives at
+ * `backend/modules/settings/service.py::_DEFAULT_CATEGORIES`. Every entry in
+ * that list MUST resolve to an emoji here (otherwise the dashboard renders an
+ * ugly initial). When new defaults are added there, mirror them in this map.
  */
 
 const CATEGORY_ICON_MAP: Record<string, string> = {
@@ -59,6 +64,7 @@ const CATEGORY_ICON_MAP: Record<string, string> = {
   "Alquiler": "🏠",
   "Hipoteca": "🏦",
   "Mortgage": "🏦",
+  "Arriendo/Hipoteca": "🏠",
   "Muebles": "🛋️",
   "Furniture": "🛋️",
   "Decoracion": "🖼️",
@@ -73,6 +79,8 @@ const CATEGORY_ICON_MAP: Record<string, string> = {
   // ── Utilities ──
   "Servicios": "💡",
   "Utilities": "💡",
+  "Cuentas": "🧾",
+  "Bills": "🧾",
   "Electricidad": "⚡",
   "Electricity": "⚡",
   "Agua": "💧",
@@ -97,6 +105,10 @@ const CATEGORY_ICON_MAP: Record<string, string> = {
   "Gimnasio": "🏋️",
   "Gym": "🏋️",
   "Fitness": "🏋️",
+  "Deporte": "⚽",
+  "Deportes": "⚽",
+  "Sport": "⚽",
+  "Sports": "⚽",
   "Bienestar": "🧘",
   "Wellness": "🧘",
 
@@ -221,8 +233,14 @@ const CATEGORY_ICON_MAP: Record<string, string> = {
   "Ingreso": "💰",
   "Income": "💰",
   "Freelance": "💼",
+  "Bono": "🎯",
   "Bonos": "🎯",
   "Bonus": "🎯",
+  "Deuda pendiente": "💳",
+  "Otros ingresos": "💵",
+  "Other Income": "💵",
+  "Transferencia de terceros": "🔄",
+  "Third-party Transfer": "🔄",
   "Dividendos": "📊",
   "Dividends": "📊",
   "Reembolso": "↩️",
