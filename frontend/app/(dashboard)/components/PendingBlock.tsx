@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
-import { CategoryBottomSheet } from "./CategoryBottomSheet";
+import { CategoryPicker } from "./CategoryPicker";
 import { SplitTypeEditor } from "./SplitTypeEditor";
 import { formatStoredAmount, isNegativeStored } from "@/app/lib/currency";
 import { toTitleCase } from "@/app/lib/strings";
@@ -250,7 +250,8 @@ function PendingCategoryPill({ txn }: { txn: Transaction }) {
 
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
 
-  const isIncome = Number(txn.amount) > 0 && txn.transaction_type !== "transfer";
+  const dominantSign: "positive" | "negative" =
+    Number(txn.amount) > 0 && txn.transaction_type !== "transfer" ? "positive" : "negative";
 
   async function handleSelect(cat: string | null) {
     setLocalCategory(cat);
@@ -285,11 +286,11 @@ function PendingCategoryPill({ txn }: { txn: Transaction }) {
       >
         {localCategory ?? "Sin categoría"}
       </button>
-      <CategoryBottomSheet
+      <CategoryPicker
         open={open}
         onClose={() => setOpen(false)}
         currentCategory={localCategory}
-        isIncome={isIncome}
+        dominantSign={dominantSign}
         onSelect={handleSelect}
       />
     </>

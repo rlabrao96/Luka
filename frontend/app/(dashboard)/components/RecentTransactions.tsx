@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
 import { useLukaStore } from "@/app/lib/store";
 import { TransactionCard } from "./TransactionCard";
-import { CategoryBottomSheet } from "./CategoryBottomSheet";
+import { CategoryPicker } from "./CategoryPicker";
 import { SplitTypeEditor } from "./SplitTypeEditor";
 import { resolveAppLocale } from "@/app/lib/locale";
 import { useBreakpoint } from "@/app/lib/hooks/useBreakpoint";
@@ -244,13 +244,13 @@ export function RecentTransactions({
         );
       })}
 
-      {/* Mobile category bottom sheet */}
+      {/* Mobile category picker */}
       {categorySheet && (
-        <CategoryBottomSheet
+        <CategoryPicker
           open={!!categorySheet}
           onClose={() => setCategorySheet(null)}
           currentCategory={categorySheet.category}
-          isIncome={categorySheet.transaction_type === "income"}
+          dominantSign={Number(categorySheet.amount) > 0 ? "positive" : "negative"}
           onSelect={(cat) => {
             handleCategorySelect(categorySheet, cat);
             setCategorySheet(null);
