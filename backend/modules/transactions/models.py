@@ -52,7 +52,6 @@ class TransactionSplit(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     transaction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("transactions.id"), nullable=False)
     split_type: Mapped[str] = mapped_column(String, nullable=False)  # personal|partner|shared
-    category: Mapped[str | None] = mapped_column(String, nullable=True)
     decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )

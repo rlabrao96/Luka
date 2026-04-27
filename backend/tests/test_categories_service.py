@@ -233,7 +233,7 @@ async def test_reorder_categories_mismatch_raises():
 
 @pytest.mark.asyncio
 async def test_get_category_usage_returns_count():
-    """Returns count of TransactionSplit rows with matching category."""
+    """Returns count of Transaction rows in the user's active household tagged with the category."""
     from modules.settings.service import get_category_usage
 
     user_id = uuid.uuid4()
@@ -251,34 +251,32 @@ async def test_get_category_usage_returns_count():
 
 @pytest.mark.asyncio
 async def test_delete_category_no_reclassify():
-    """Deletes preference row and merchant selections without updating transactions."""
+    """Nulls out matching transactions, deletes merchant selections, deletes preference."""
     from modules.settings.service import delete_category
 
     user_id = uuid.uuid4()
     db = _mock_db()
-    # reclassify_to is None → only deletes
     db.execute = AsyncMock()
 
     await delete_category(db, user_id, "Hogar", reclassify_to=None)
 
     db.commit.assert_called_once()
-    assert db.execute.call_count == 2  # delete MerchantCategorySelection + delete preference
+    # update Transaction.category=NULL + delete MerchantCategorySelection + delete preference
+    assert db.execute.call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_delete_category_with_reclassify():
-    """Updates transactions + splits, deletes merchant selections, deletes preference."""
+    """Reclassifies transactions, deletes merchant selections, deletes preference."""
     from modules.settings.service import delete_category
 
     user_id = uuid.uuid4()
     db = _mock_db()
 
-    # First execute: validate reclassify_to exists
     target_pref = _make_pref("Otros", "expense")
     execute_responses = iter(
         [
             _execute_returning(scalar_val=target_pref),  # reclassify_to validation
-            MagicMock(),  # update splits
             MagicMock(),  # update transactions
             MagicMock(),  # delete merchant selections
             MagicMock(),  # delete preference
@@ -289,7 +287,7 @@ async def test_delete_category_with_reclassify():
     await delete_category(db, user_id, "Hogar", reclassify_to="Otros")
 
     db.commit.assert_called_once()
-    assert db.execute.call_count == 5
+    assert db.execute.call_count == 4
 
 
 @pytest.mark.asyncio

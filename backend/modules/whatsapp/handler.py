@@ -292,7 +292,6 @@ async def _save_split(
     split = TransactionSplit(
         transaction_id=txn.id,
         split_type=split_type,
-        category=category,
         decided_at=datetime.now(timezone.utc),
     )
     db.add(split)
