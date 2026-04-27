@@ -74,7 +74,7 @@ Fast worker does NOT run reconciliation — the 15-min `reconciliation_tick` cro
 | `household_members` | User<->household junction (role: owner/member) | -> users, households |
 | `household_invites` | Invitation tokens with expiry | -> households |
 | `transactions` | Core financial records. Canonical status vocabulary: `pending \| settled \| orphan` (enforced by CHECK constraint; legacy `confirmed` removed). Columns include `transfer_pair_id`, `refund_pair_id` (both exclude row from totals), `card_last_four` (VARCHAR(4)), `orphaned_at` (TIMESTAMPTZ), `dismissed_by_user` (BOOLEAN). Indexed by `(household_id, transaction_date DESC)`, partial `(user_id) WHERE status='pending'`, partials on both pair_id columns, GIN trigram on `raw_merchant_name` (requires `pg_trgm`). | -> users, households, bank_accounts, merchants |
-| `transaction_splits` | Per-tx split info (personal/partner/shared) | -> transactions |
+| `transaction_splits` | Per-tx split info (`personal` / `partner` / `shared`). Created at every transaction-creation site by `ensure_default_split` (idempotent, no-op on transfers; defaults to `shared` for joint accounts, `personal` otherwise). The legacy `category` column was dropped in migration 041 — `transactions.category` is the single source of truth. | -> transactions |
 | `bank_accounts` | Connected accounts with sync state | -> households, users |
 | `merchants` | Raw merchant names -> canonical mapping | -> canonical_merchants |
 | `canonical_merchants` | Verified merchant entities | <- merchants |
@@ -111,6 +111,9 @@ Fast worker does NOT run reconciliation — the 15-min `reconciliation_tick` cro
 
 ### Per-category currency caps (migration 040)
 Migration 040 added `category_budgets.currency` (NOT NULL, backfill `'CLP'`) and replaced the old unique constraint with `uq_category_budgets_household_cat_month_ccy` on `(household_id, category, month, currency)`. `v2_service._category_caps` now filters by the view's currency, so a USD cap is ignored by the CLP Sankey and vice versa. The "Configurar presupuesto" modal UI exposes a per-row currency select on every cap, with the full LATAM set validated both client-side and in the `CategoryBudgetItem` pydantic schema.
+
+### Single category column (migration 041)
+Migration 041 dropped `transaction_splits.category`. The schema previously carried the same logical value in two places (`transactions.category` and `transaction_splits.category`) with no enforcement, and only the WhatsApp handler ever wrote to the split copy. Web UI categorization wrote only to `transactions.category`, so the two diverged — and `get_category_usage` (which counted on the split copy) returned 0 for any category set via the dashboard, silently breaking the category-delete reclassify modal. The migration backfills any orphan WhatsApp-only split values back into `transactions.category` before dropping the column. `get_category_usage`, `delete_category`, and `whatsapp/handler.py:_save_split` now all operate on the single canonical field.
 
 ### Transaction consolidation (migration 039)
 Migration 039 added `card_last_four`, `refund_pair_id`, `orphaned_at`, `dismissed_by_user` to `transactions`; migrated status vocabulary `pending|confirmed|settled` → `pending|settled|orphan` with a CHECK constraint; added hot-path indexes listed above; and enabled `pg_trgm` for the GIN trigram index on `raw_merchant_name`. It also linearized the previously-ambiguous `029` branch by renaming `029_user_currencies.py` → `029b_user_currencies.py` (chains after `029_category_budgets`), unblocking `alembic upgrade head`.
@@ -281,6 +284,7 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 - Workers: `python -m arq worker.FastWorkerSettings` / `worker.SlowWorkerSettings`
 - Three services: API server, fast worker, slow worker
 - Production URL: `https://luka-production-eb87.up.railway.app`
+- **Migrations auto-apply on every API container start.** `alembic upgrade head` is baked into the Dockerfile's `CMD` (default `*` branch only — workers branch on `$START_COMMAND` and skip migration). Railway honours the Dockerfile `CMD` on the API service even when `railway.toml` specifies `releaseCommand` / `startCommand`, which is why the previous toml-only configuration silently dropped migration 041 — keep migrations in the Dockerfile to ensure they always run.
 
 **Frontend (Vercel)**
 - Framework: Next.js (auto-detected)
@@ -311,9 +315,9 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 | GET | `/transactions/monthly-summary` | Monthly totals |
 | GET | `/transactions/shared` | Shared household transactions |
 | GET | `/transactions/pending` | Pending/unreconciled transactions |
-| PATCH | `/transactions/{id}/category` | Update category (trains merchant) |
-| PATCH | `/transactions/{id}/split-type` | Change split type |
-| DELETE | `/transactions/{id}` | Delete transaction |
+| PATCH | `/transactions/{id}/category` | Update category. Authorized by **active household membership** (any partner can recategorize a shared row), not direct row ownership. |
+| PATCH | `/transactions/{id}/split-type` | Change split type. Same household-membership auth as category. |
+| DELETE | `/transactions/{id}` | Delete transaction (pending email rows only). User-scoped — partner cannot dismiss the other's pending alerts. |
 
 #### Transactions — consolidation actions
 
@@ -324,7 +328,7 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 | POST | `/transactions/{id}/dismiss` | Mark a pending row as `status='orphan'` (user-dismissed, stamps `dismissed_by_user=true` + `orphaned_at`) |
 | POST | `/transactions/bulk-action` | Body `{transaction_ids, action: "dismiss"\|"delete"}`; capped at 100 IDs per call |
 
-All four endpoints enforce `user_id` scope in SQL. `TransactionResponse` exposes `created_at`, `orphaned_at`, `transfer_pair_id`, `refund_pair_id`, `source_type` for frontend grouping / age display.
+The four consolidation endpoints (match-candidates / link / dismiss / bulk-action) act on the user's own pending alerts and intentionally enforce `user_id` scope. The two settled-row mutations (`update_category` + `update_split_type`) authorize via active household membership instead, so a partner can correct shared transactions owned by the other partner. `TransactionResponse` exposes `created_at`, `orphaned_at`, `transfer_pair_id`, `refund_pair_id`, `source_type` for frontend grouping / age display.
 
 ### Households (`/households`)
 | Method | Path | Description |
