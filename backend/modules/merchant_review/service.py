@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.merchant_review.models import CanonicalMerchant, MerchantReviewJob
 from modules.merchants.models import Merchant
 from modules.notifications.models import Notification
-from modules.transactions.models import Transaction
+from modules.transactions.models import Transaction, TransactionSplit
 
 logger = logging.getLogger(__name__)
 
@@ -348,8 +348,15 @@ async def approve_merchant(
     canonical_id: uuid.UUID,
     display_name: str | None,
     category: str | None,
+    split_type: str | None = None,
 ) -> bool:
-    """Approve (and optionally edit) a canonical merchant."""
+    """Approve (and optionally edit) a canonical merchant.
+
+    ``split_type`` semantics: when None, existing ``transaction_splits`` rows
+    are left untouched (backward compatible). When set, the value is applied
+    verbatim to every linked transaction's split row — user override wins,
+    even on joint accounts.
+    """
     canonical = await db.execute(
         select(CanonicalMerchant).where(CanonicalMerchant.id == canonical_id)
     )
@@ -367,31 +374,44 @@ async def approve_merchant(
     # Use explicit category or fall back to canonical's default
     effective_category = category or merchant.default_category
 
-    # Apply category to linked transactions
-    if effective_category:
-        # Load job to get transaction_ids scope
-        job_result = await db.execute(
-            select(MerchantReviewJob).where(MerchantReviewJob.id == job_id)
-        )
-        review_job = job_result.scalar_one_or_none()
-        job_tx_ids = review_job.transaction_ids if review_job else None
+    # Resolve scope (raw_names + optional transaction_id whitelist) once;
+    # both category and split_type application share it.
+    job_result = await db.execute(select(MerchantReviewJob).where(MerchantReviewJob.id == job_id))
+    scope_job = job_result.scalar_one_or_none()
+    job_tx_ids = scope_job.transaction_ids if scope_job else None
+    tx_id_uuids = [uuid.UUID(tid) for tid in job_tx_ids] if job_tx_ids else None
 
-        linked_merchants = await db.execute(
-            select(Merchant.raw_name).where(Merchant.canonical_merchant_id == canonical_id)
+    linked_merchants = await db.execute(
+        select(Merchant.raw_name).where(Merchant.canonical_merchant_id == canonical_id)
+    )
+    raw_names = [r[0] for r in linked_merchants.all()]
+
+    # Apply category to linked transactions
+    if effective_category and raw_names:
+        where_clauses = [
+            Transaction.user_id == user_id,
+            Transaction.raw_merchant_name.in_(raw_names),
+        ]
+        if tx_id_uuids:
+            where_clauses.append(Transaction.id.in_(tx_id_uuids))
+        await db.execute(
+            Transaction.__table__.update().where(*where_clauses).values(category=effective_category)
         )
-        raw_names = [r[0] for r in linked_merchants.all()]
-        if raw_names:
-            where_clauses = [
-                Transaction.user_id == user_id,
-                Transaction.raw_merchant_name.in_(raw_names),
-            ]
-            if job_tx_ids:
-                where_clauses.append(Transaction.id.in_([uuid.UUID(tid) for tid in job_tx_ids]))
-            await db.execute(
-                Transaction.__table__.update()
-                .where(*where_clauses)
-                .values(category=effective_category)
-            )
+
+    # Apply split_type to linked transactions' split rows (None = no change).
+    # User override wins — no server-side coercion for joint accounts.
+    if split_type is not None and raw_names:
+        tx_select = select(Transaction.id).where(
+            Transaction.user_id == user_id,
+            Transaction.raw_merchant_name.in_(raw_names),
+        )
+        if tx_id_uuids:
+            tx_select = tx_select.where(Transaction.id.in_(tx_id_uuids))
+        await db.execute(
+            TransactionSplit.__table__.update()
+            .where(TransactionSplit.transaction_id.in_(tx_select))
+            .values(split_type=split_type)
+        )
 
     # Increment reviewed count on the job
     job = await db.execute(select(MerchantReviewJob).where(MerchantReviewJob.id == job_id))

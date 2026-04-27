@@ -49,7 +49,13 @@ async def approve_merchant(
         return {"ok": True}
 
     ok = await service.approve_merchant(
-        db, current_user.id, job_id, canonical_id, body.display_name, body.category
+        db,
+        current_user.id,
+        job_id,
+        canonical_id,
+        body.display_name,
+        body.category,
+        split_type=body.split_type,
     )
     if not ok:
         raise HTTPException(404, "Merchant not found")

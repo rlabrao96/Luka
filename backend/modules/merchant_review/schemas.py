@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -32,4 +34,8 @@ class ReviewStatusResponse(BaseModel):
 class MerchantApproval(BaseModel):
     display_name: str | None = None  # None = keep LLM suggestion
     category: str | None = None  # None = keep LLM suggestion
+    # None = don't change existing TransactionSplit rows (backward compat).
+    # When set, the user's choice is applied verbatim — even on joint accounts
+    # the override wins (no server-side coercion).
+    split_type: Literal["personal", "shared"] | None = None
     action: str  # "approve", "skip"
