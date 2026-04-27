@@ -350,8 +350,8 @@ export function CategoriesSection() {
   const addDisabled =
     !addInput.trim() ||
     addMutation.isPending ||
-    (addType === "expense" && addTypeExpenseCount >= 10) ||
-    (addType === "income" && addTypeIncomeCount >= 10);
+    (addType === "expense" && addTypeExpenseCount >= 20) ||
+    (addType === "income" && addTypeIncomeCount >= 20);
 
   if (isLoading) {
     return (
@@ -423,10 +423,10 @@ export function CategoriesSection() {
 
         {addError && <p className="text-xs text-red-500 mb-2">{addError}</p>}
         {!addError && addInput.trim() && (
-          (addType === "expense" && addTypeExpenseCount >= 10)
-            ? <p className="text-xs text-amber-600 mb-2">Límite de 10 gastos alcanzado. Elimina una para agregar otra.</p>
-            : (addType === "income" && addTypeIncomeCount >= 10)
-              ? <p className="text-xs text-amber-600 mb-2">Límite de 10 ingresos alcanzado. Elimina una para agregar otra.</p>
+          (addType === "expense" && addTypeExpenseCount >= 20)
+            ? <p className="text-xs text-amber-600 mb-2">Límite de 20 gastos alcanzado. Elimina una para agregar otra.</p>
+            : (addType === "income" && addTypeIncomeCount >= 20)
+              ? <p className="text-xs text-amber-600 mb-2">Límite de 20 ingresos alcanzado. Elimina una para agregar otra.</p>
               : null
         )}
 
