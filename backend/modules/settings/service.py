@@ -178,9 +178,17 @@ async def reorder_categories(db: AsyncSession, user_id: uuid.UUID, items: list[d
 
 
 async def get_category_usage(db: AsyncSession, user_id: uuid.UUID, category: str) -> int:
+    """Count transactions in the user's active household tagged with this category.
+    Household-scoped (not user-owned) so partners see the true count for shared
+    Plaid transactions owned by the other member."""
     from modules.transactions.models import Transaction, TransactionSplit
+    from modules.households.models import HouseholdMember
 
-    txn_ids = select(Transaction.id).where(Transaction.user_id == user_id)
+    member_household_ids = select(HouseholdMember.household_id).where(
+        HouseholdMember.user_id == user_id,
+        HouseholdMember.left_at.is_(None),
+    )
+    txn_ids = select(Transaction.id).where(Transaction.household_id.in_(member_household_ids))
     result = await db.execute(
         select(func.count()).where(
             TransactionSplit.transaction_id.in_(txn_ids),
@@ -193,8 +201,18 @@ async def get_category_usage(db: AsyncSession, user_id: uuid.UUID, category: str
 async def delete_category(
     db: AsyncSession, user_id: uuid.UUID, category: str, reclassify_to: str | None
 ) -> None:
+    """Delete a user's category preference. Affected transactions in any of the
+    user's active households are either reclassified to `reclassify_to` (if
+    provided) or set to NULL — never left tagged with the deleted name."""
     from modules.transactions.models import Transaction, TransactionSplit
     from modules.merchants.models import MerchantCategorySelection
+    from modules.households.models import HouseholdMember
+
+    member_household_ids = select(HouseholdMember.household_id).where(
+        HouseholdMember.user_id == user_id,
+        HouseholdMember.left_at.is_(None),
+    )
+    txn_ids = select(Transaction.id).where(Transaction.household_id.in_(member_household_ids))
 
     if reclassify_to is not None:
         check = await db.execute(
@@ -206,20 +224,23 @@ async def delete_category(
         if check.scalar_one_or_none() is None:
             raise ValueError(f"Reclassify target '{reclassify_to}' not found in your categories")
 
-        txn_ids = select(Transaction.id).where(Transaction.user_id == user_id)
-        await db.execute(
-            update(TransactionSplit)
-            .where(
-                TransactionSplit.transaction_id.in_(txn_ids),
-                TransactionSplit.category == category,
-            )
-            .values(category=reclassify_to)
+    new_category_value = reclassify_to  # None when leaving transactions uncategorized
+    await db.execute(
+        update(TransactionSplit)
+        .where(
+            TransactionSplit.transaction_id.in_(txn_ids),
+            TransactionSplit.category == category,
         )
-        await db.execute(
-            update(Transaction)
-            .where(Transaction.user_id == user_id, Transaction.category == category)
-            .values(category=reclassify_to)
+        .values(category=new_category_value)
+    )
+    await db.execute(
+        update(Transaction)
+        .where(
+            Transaction.household_id.in_(member_household_ids),
+            Transaction.category == category,
         )
+        .values(category=new_category_value)
+    )
 
     await db.execute(
         delete(MerchantCategorySelection).where(

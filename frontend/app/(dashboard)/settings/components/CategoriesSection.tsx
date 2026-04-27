@@ -60,8 +60,12 @@ function DeleteConfirmModal({
     (c) => c.category !== category && c.category_type === categoryType
   );
 
+  // Sentinel for "leave transactions uncategorized" radio. Backend receives null.
+  const NONE = "__none__";
+  const wireReclassify = reclassifyTo === NONE ? null : reclassifyTo;
+
   const deleteMutation = useMutation({
-    mutationFn: () => api.deleteCategory(category, count > 0 ? reclassifyTo : null),
+    mutationFn: () => api.deleteCategory(category, wireReclassify),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["category-preferences"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -111,6 +115,21 @@ function DeleteConfirmModal({
                   <span className="text-sm text-slate-700">{c.category}</span>
                 </label>
               ))}
+              <label
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-t border-slate-100 mt-1 pt-2"
+              >
+                <input
+                  type="radio"
+                  name="reclassify"
+                  value={NONE}
+                  checked={reclassifyTo === NONE}
+                  onChange={() => setReclassifyTo(NONE)}
+                  className="accent-slate-500"
+                />
+                <span className="text-sm text-slate-500 italic">
+                  Dejar sin categoría
+                </span>
+              </label>
             </div>
           </div>
         ) : (
@@ -133,7 +152,11 @@ function DeleteConfirmModal({
             disabled={!canConfirm || deleteMutation.isPending}
             className="px-3 py-1.5 text-xs font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:opacity-40"
           >
-            {count > 0 ? "Eliminar y reclasificar" : "Eliminar"}
+            {count === 0
+              ? "Eliminar"
+              : reclassifyTo === NONE
+                ? "Eliminar y dejar sin categoría"
+                : "Eliminar y reclasificar"}
           </button>
         </div>
       </div>
