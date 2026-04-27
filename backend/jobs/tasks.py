@@ -24,7 +24,7 @@ from modules.merchant_review.llm_grouping import group_raw_merchants
 from modules.merchant_review.service import create_canonicals_from_groups
 from modules.merchant_review.models import CanonicalMerchant, MerchantReviewJob
 from modules.notifications.models import Notification
-from sqlalchemy import select, and_, delete, update, text
+from sqlalchemy import select, and_, delete, update, text, func
 from datetime import datetime, timedelta, timezone
 import uuid
 import smtplib
@@ -664,6 +664,165 @@ async def refresh_subscriptions_for_user(ctx: dict, user_id: str) -> None:
             logger.warning("Failed to refresh subscriptions for user %s", user_id, exc_info=True)
 
 
+async def _count_unverified_for_job(
+    db,
+    job_id: uuid.UUID,
+    user_id: uuid.UUID,
+    transaction_ids: list | None,
+) -> int:
+    """Count unverified canonical merchants reachable from a review job.
+
+    Mirrors the scoping logic in `get_review_cards`: prefers the explicit
+    transaction_ids scope when present, otherwise falls back to the legacy
+    `CanonicalMerchant.review_job_id` linkage.
+    """
+    from modules.merchants.models import Merchant
+
+    base = (
+        select(func.count(func.distinct(CanonicalMerchant.id)))
+        .select_from(CanonicalMerchant)
+        .join(Merchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
+        .join(Transaction, Transaction.raw_merchant_name == Merchant.raw_name)
+        .where(CanonicalMerchant.is_verified.is_(False))
+    )
+    if transaction_ids:
+        tx_uuids = [uuid.UUID(tid) for tid in transaction_ids]
+        stmt = base.where(Transaction.id.in_(tx_uuids))
+    else:
+        stmt = base.where(
+            Transaction.user_id == user_id,
+            CanonicalMerchant.review_job_id == job_id,
+        )
+    result = await db.execute(stmt)
+    return int(result.scalar_one() or 0)
+
+
+async def _find_mergeable_review_notification(
+    db,
+    user_id: uuid.UUID,
+    exclude_job_id: uuid.UUID,
+):
+    """Find an unactioned merchant_review notification with an in-flight job.
+
+    Returns (Notification, MerchantReviewJob) or None. "Unactioned" means
+    status in {unread, read} (not actioned/dismissed) and the linked job has
+    not been completed yet (`completed_at IS NULL`). Excludes the job we're
+    currently processing so we don't merge a job into itself.
+    """
+    # Lock the candidate row so two near-simultaneous bank syncs can't both
+    # merge into it and silently drop each other's transaction_ids.
+    stmt = (
+        select(Notification, MerchantReviewJob)
+        .join(MerchantReviewJob, MerchantReviewJob.notification_id == Notification.id)
+        .where(
+            Notification.user_id == user_id,
+            Notification.type == "merchant_review",
+            Notification.status.in_(("unread", "read")),
+            MerchantReviewJob.completed_at.is_(None),
+            MerchantReviewJob.id != exclude_job_id,
+        )
+        .order_by(Notification.created_at.desc())
+        .limit(1)
+        .with_for_update(of=MerchantReviewJob)
+    )
+    result = await db.execute(stmt)
+    row = result.first()
+    if row is None:
+        return None
+    return row[0], row[1]
+
+
+async def _finalize_review_notification(db, job: MerchantReviewJob) -> None:
+    """Create / update / merge / suppress the merchant_review notification.
+
+    Extracted from `process_merchant_review` so the merging logic can be
+    exercised directly from tests without standing up the full ARQ pipeline.
+
+    Rules:
+    - If the user has an unactioned merchant_review notification with an
+      in-flight job, merge this job into it (re-stamp canonicals, append
+      transaction_ids, bump notification, delete this job).
+    - Else, if this job already owns a notification (re-run path), update
+      its title only when there's something to review.
+    - Else, create a new notification only when there's at least one
+      unverified canonical.
+    """
+    from modules.notifications.service import create_notification
+
+    job_id_uuid = job.id
+    job_user_id = job.user_id
+    job_notification_id = job.notification_id
+    job_tx_ids = job.transaction_ids
+
+    unverified_count = await _count_unverified_for_job(db, job_id_uuid, job_user_id, job_tx_ids)
+
+    merge_target = None
+    if not job_notification_id:
+        merge_target = await _find_mergeable_review_notification(
+            db, job_user_id, exclude_job_id=job_id_uuid
+        )
+
+    if merge_target is not None:
+        existing_notif, existing_job = merge_target
+        # Re-stamp newly created canonicals onto the existing job so the
+        # legacy `review_job_id` fallback in get_review_cards keeps working
+        # for bank-connect-style jobs without transaction_ids.
+        await db.execute(
+            CanonicalMerchant.__table__.update()
+            .where(CanonicalMerchant.review_job_id == job_id_uuid)
+            .values(review_job_id=existing_job.id)
+        )
+        # Merge transaction_ids (de-duped). If either side is None
+        # ("all uncategorized" legacy mode), keep None so the broad scope
+        # continues to apply.
+        if existing_job.transaction_ids is None or job_tx_ids is None:
+            existing_job.transaction_ids = None
+        else:
+            merged_ids = list(dict.fromkeys([*existing_job.transaction_ids, *job_tx_ids]))
+            existing_job.transaction_ids = merged_ids
+        existing_job.updated_at = datetime.now(timezone.utc)
+
+        # Only bump the notification if THIS job actually contributed new
+        # unverified merchants. An empty incoming job leaves the existing
+        # notification — and its timestamp/status — untouched.
+        if unverified_count > 0:
+            merged_unverified = await _count_unverified_for_job(
+                db, existing_job.id, job_user_id, existing_job.transaction_ids
+            )
+            existing_notif.title = f"{merged_unverified} comercios listos para revisar"
+            existing_notif.status = "unread"
+            existing_notif.read_at = None
+            existing_notif.created_at = datetime.now(timezone.utc)
+            existing_notif.updated_at = datetime.now(timezone.utc)
+            payload = dict(existing_notif.payload or {})
+            payload["sync_job_id"] = str(existing_job.id)
+            existing_notif.payload = payload
+
+        await db.delete(job)
+        return
+
+    if not job_notification_id:
+        if unverified_count > 0:
+            notif = await create_notification(
+                db,
+                user_id=job_user_id,
+                type="merchant_review",
+                title=f"{unverified_count} comercios listos para revisar",
+                payload={"sync_job_id": str(job_id_uuid)},
+            )
+            job.notification_id = notif.id
+        # else: suppress empty notifications entirely.
+        return
+
+    notif_result = await db.execute(
+        select(Notification).where(Notification.id == job_notification_id)
+    )
+    notif = notif_result.scalar_one_or_none()
+    if notif and unverified_count > 0:
+        notif.title = f"{unverified_count} comercios listos para revisar"
+        notif.updated_at = datetime.now(timezone.utc)
+
+
 async def process_merchant_review(ctx: dict, job_id: str) -> None:
     """
     ARQ job: Phase 1 (LLM group + name) → Phase 2 (categorize) → finalize.
@@ -809,27 +968,7 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
             job.total_merchants = total_count
             job.updated_at = datetime.now(timezone.utc)
 
-            # Create notification now that processing is complete
-            from modules.notifications.service import create_notification
-
-            if not job_notification_id:
-                notif = await create_notification(
-                    db,
-                    user_id=job_user_id,
-                    type="merchant_review",
-                    title=f"{total_count} comercios listos para revisar",
-                    payload={"sync_job_id": str(job_id_uuid)},
-                )
-                job.notification_id = notif.id
-            else:
-                notif_result = await db.execute(
-                    select(Notification).where(Notification.id == job_notification_id)
-                )
-                notif = notif_result.scalar_one_or_none()
-                if notif:
-                    notif.title = f"{total_count} comercios listos para revisar"
-                    notif.updated_at = datetime.now(timezone.utc)
-
+            await _finalize_review_notification(db, job)
             await db.commit()
             logger.info(
                 "Review job %s complete: %d merchants (%d known, %d new)",
