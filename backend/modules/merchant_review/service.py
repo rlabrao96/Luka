@@ -161,8 +161,10 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 COUNT(*) FILTER (WHERE t.id = ANY(:tx_ids)) AS scoped_cnt,
                 COALESCE(SUM(t.amount) FILTER (WHERE t.id = ANY(:tx_ids)), 0) AS scoped_total,
                 COUNT(*) AS unscoped_cnt,
-                COALESCE(SUM(t.amount), 0) AS unscoped_total
+                COALESCE(SUM(t.amount), 0) AS unscoped_total,
+                bool_or(ba.account_type = 'joint') AS is_joint
             FROM transactions t
+            LEFT JOIN bank_accounts ba ON ba.id = t.bank_account_id
             WHERE t.user_id = :uid
               AND t.raw_merchant_name = ANY(:raw_names)
             GROUP BY t.raw_merchant_name, t.currency
@@ -182,8 +184,10 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 COUNT(*) AS scoped_cnt,
                 COALESCE(SUM(t.amount), 0) AS scoped_total,
                 COUNT(*) AS unscoped_cnt,
-                COALESCE(SUM(t.amount), 0) AS unscoped_total
+                COALESCE(SUM(t.amount), 0) AS unscoped_total,
+                bool_or(ba.account_type = 'joint') AS is_joint
             FROM transactions t
+            LEFT JOIN bank_accounts ba ON ba.id = t.bank_account_id
             WHERE t.user_id = :uid
               AND t.raw_merchant_name = ANY(:raw_names)
             GROUP BY t.raw_merchant_name, t.currency
@@ -207,12 +211,14 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 "unscoped_cnt": 0,
                 "unscoped_total": 0.0,
                 "currency": r.currency or "CLP",
+                "is_joint": False,
             },
         )
         bucket["scoped_cnt"] += int(r.scoped_cnt or 0)
         bucket["scoped_total"] += float(r.scoped_total or 0)
         bucket["unscoped_cnt"] += int(r.unscoped_cnt or 0)
         bucket["unscoped_total"] += float(r.unscoped_total or 0)
+        bucket["is_joint"] = bucket["is_joint"] or bool(r.is_joint)
 
     # ---------- Q4: top-25 transactions per raw_name (window function) --
     # UNION ALL of scoped (priority=1) and unscoped (priority=2) lets us pick
@@ -293,6 +299,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
         scoped_cnt = scoped_total = 0
         unscoped_cnt = unscoped_total = 0
         currency = "CLP"
+        is_joint_account = False
         for name in unique_names:
             s = stats_by_raw.get(name)
             if not s:
@@ -303,6 +310,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
             unscoped_total += s["unscoped_total"]
             # Last non-default wins; matches "currency from first tx" loosely.
             currency = s["currency"]
+            is_joint_account = is_joint_account or s.get("is_joint", False)
 
         use_scope = bool(tx_id_uuids) and scoped_cnt > 0
         count = scoped_cnt if use_scope else unscoped_cnt
@@ -335,6 +343,7 @@ async def get_review_cards(db: AsyncSession, job_id: uuid.UUID, user_id: uuid.UU
                 "total_amount": float(total or 0),
                 "currency": card_currency,
                 "is_verified": row.is_verified,
+                "is_joint_account": is_joint_account,
             }
         )
 

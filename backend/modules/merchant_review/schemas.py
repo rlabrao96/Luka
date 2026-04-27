@@ -20,6 +20,7 @@ class ReviewCardResponse(BaseModel):
     total_amount: float = 0.0
     currency: str = "CLP"
     is_verified: bool = False
+    is_joint_account: bool = False
 
     model_config = {"from_attributes": True}
 

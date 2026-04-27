@@ -180,6 +180,7 @@ async def test_get_review_cards_returns_expected_shape(db):
         "total_amount",
         "currency",
         "is_verified",
+        "is_joint_account",
     }
     valid_currencies = {"CLP", "USD", "COP", "MXN", "PEN", "BRL"}
     for c in cards:
