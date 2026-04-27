@@ -5,6 +5,8 @@ import { usePlaidLink } from "react-plaid-link";
 import { api } from "@/app/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 
+const PLAID_LINK_TOKEN_STORAGE_KEY = "luka.plaid.link_token";
+
 interface PlaidLinkButtonProps {
   onComplete: () => void;
   onError?: (error: string) => void;
@@ -19,6 +21,11 @@ export function usePlaidConnection({ onComplete, onError }: PlaidLinkButtonProps
     setLoading(true);
     try {
       const { link_token } = await api.createPlaidLinkToken();
+      // Persist for the OAuth round-trip — banks like Chase/BofA send the user
+      // back to /plaid-oauth, where we re-instantiate Plaid Link with this token.
+      try {
+        window.localStorage.setItem(PLAID_LINK_TOKEN_STORAGE_KEY, link_token);
+      } catch {}
       setLinkToken(link_token);
     } catch (e) {
       onError?.("Error al conectar con Plaid");
@@ -41,6 +48,9 @@ export function usePlaidConnection({ onComplete, onError }: PlaidLinkButtonProps
       } catch (e) {
         onError?.("Error al vincular cuenta");
       } finally {
+        try {
+          window.localStorage.removeItem(PLAID_LINK_TOKEN_STORAGE_KEY);
+        } catch {}
         setLinkToken(null);
         setLoading(false);
       }
@@ -49,6 +59,9 @@ export function usePlaidConnection({ onComplete, onError }: PlaidLinkButtonProps
   );
 
   const onExit = useCallback(() => {
+    try {
+      window.localStorage.removeItem(PLAID_LINK_TOKEN_STORAGE_KEY);
+    } catch {}
     setLinkToken(null);
     setLoading(false);
   }, []);
@@ -67,3 +80,5 @@ export function usePlaidConnection({ onComplete, onError }: PlaidLinkButtonProps
 
   return { startPlaidLink, loading };
 }
+
+export { PLAID_LINK_TOKEN_STORAGE_KEY };

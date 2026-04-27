@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     plaid_client_id: str = ""
     plaid_secret: str = ""
     plaid_env: str = "sandbox"  # "sandbox" or "production"
+    plaid_redirect_uri: str = (
+        ""  # e.g. https://luka-lovat.vercel.app/plaid-oauth — required for OAuth banks
+    )
 
 
 settings = Settings()
