@@ -1,27 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { api } from "@/app/lib/api";
 import { findDuplicate, toCategoryCase } from "@/app/lib/category-dedup";
+
+const COLLATOR = new Intl.Collator("es", { sensitivity: "base" });
 
 type CatPref = {
   category: string;
@@ -166,51 +150,18 @@ function DeleteConfirmModal({
 }
 
 // ---------------------------------------------------------------------------
-// SortableItem
+// CategoryRow
 // ---------------------------------------------------------------------------
 
-function SortableItem({
+function CategoryRow({
   item,
   onDelete,
 }: {
   item: CatPref;
   onDelete: (cat: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: item.category,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex items-center gap-2 px-2.5 py-2 bg-white rounded-lg border border-slate-100"
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing p-0.5 touch-none"
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 16 16"
-          fill="none"
-          className="text-slate-300"
-        >
-          <circle cx="5" cy="4" r="1.5" fill="currentColor" />
-          <circle cx="11" cy="4" r="1.5" fill="currentColor" />
-          <circle cx="5" cy="8" r="1.5" fill="currentColor" />
-          <circle cx="11" cy="8" r="1.5" fill="currentColor" />
-          <circle cx="5" cy="12" r="1.5" fill="currentColor" />
-          <circle cx="11" cy="12" r="1.5" fill="currentColor" />
-        </svg>
-      </button>
+    <div className="flex items-center gap-2 px-2.5 py-2 bg-white rounded-lg border border-slate-100">
       <span className="flex-1 text-sm text-slate-700 truncate">{item.category}</span>
       {item.is_custom && (
         <span className="text-[10px] text-blue-600 font-medium px-1.5 py-0.5 rounded-full bg-blue-50 shrink-0">
@@ -235,39 +186,22 @@ function SortableItem({
 function CategoryColumn({
   title,
   items,
-  sensors,
-  onDragEnd,
   onDelete,
 }: {
   title: string;
   items: CatPref[];
-  sensors: ReturnType<typeof useSensors>;
-  onDragEnd: (event: DragEndEvent, group: "expense" | "income") => void;
   onDelete: (cat: string) => void;
 }) {
-  const group = title === "Ingresos" ? "income" : "expense";
-
   return (
     <div>
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
         {title}
       </p>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={(e) => onDragEnd(e, group)}
-      >
-        <SortableContext
-          items={items.map((c) => c.category)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="space-y-1.5">
-            {items.map((item) => (
-              <SortableItem key={item.category} item={item} onDelete={onDelete} />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+      <div className="space-y-1.5">
+        {items.map((item) => (
+          <CategoryRow key={item.category} item={item} onDelete={onDelete} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -284,7 +218,6 @@ export function CategoriesSection() {
   const [addError, setAddError] = useState<string | null>(null);
   const [nearMatch, setNearMatch] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CatPref | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const { data, isLoading } = useQuery({
     queryKey: ["category-preferences"],
@@ -297,21 +230,6 @@ export function CategoriesSection() {
       setLocalCats(data.categories);
     }
   }, [data]);
-
-  const reorderMutation = useMutation({
-    mutationFn: (cats: CatPref[]) => {
-      const expense = cats
-        .filter((c) => c.category_type === "expense")
-        .map((c, i) => ({ category: c.category, sort_order: i }));
-      const income = cats
-        .filter((c) => c.category_type === "income")
-        .map((c, i) => ({ category: c.category, sort_order: i }));
-      return api.reorderCategoryPreferences([...expense, ...income]);
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["category-preferences"] });
-    },
-  });
 
   const addMutation = useMutation({
     mutationFn: () => api.addCategory(toCategoryCase(addInput), addType),
@@ -361,42 +279,12 @@ export function CategoriesSection() {
     addMutation.mutate();
   }
 
-  const mutateRef = useRef(reorderMutation.mutate);
-  mutateRef.current = reorderMutation.mutate;
-
-  const debouncedSave = useCallback((cats: CatPref[]) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      mutateRef.current(cats);
-    }, 500);
-  }, []);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(TouchSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  const expenseCats = localCats.filter((c) => c.category_type === "expense");
-  const incomeCats = localCats.filter((c) => c.category_type === "income");
-
-  function handleDragEnd(event: DragEndEvent, group: "expense" | "income") {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const groupCats = group === "expense" ? expenseCats : incomeCats;
-    const oldIndex = groupCats.findIndex((c) => c.category === active.id);
-    const newIndex = groupCats.findIndex((c) => c.category === over.id);
-    const reorderedGroup = arrayMove(groupCats, oldIndex, newIndex);
-
-    const updated =
-      group === "expense"
-        ? [...reorderedGroup, ...incomeCats]
-        : [...expenseCats, ...reorderedGroup];
-
-    setLocalCats(updated);
-    debouncedSave(updated);
-  }
+  const expenseCats = localCats
+    .filter((c) => c.category_type === "expense")
+    .sort((a, b) => COLLATOR.compare(a.category, b.category));
+  const incomeCats = localCats
+    .filter((c) => c.category_type === "income")
+    .sort((a, b) => COLLATOR.compare(a.category, b.category));
 
   const addTypeExpenseCount = expenseCats.length;
   const addTypeIncomeCount = incomeCats.length;
@@ -491,8 +379,6 @@ export function CategoriesSection() {
             <CategoryColumn
               title="Ingresos"
               items={incomeCats}
-              sensors={sensors}
-              onDragEnd={handleDragEnd}
               onDelete={(cat) => {
                 const found = localCats.find((c) => c.category === cat);
                 if (found) setDeleteTarget(found);
@@ -503,8 +389,6 @@ export function CategoriesSection() {
             <CategoryColumn
               title="Gastos"
               items={expenseCats}
-              sensors={sensors}
-              onDragEnd={handleDragEnd}
               onDelete={(cat) => {
                 const found = localCats.find((c) => c.category === cat);
                 if (found) setDeleteTarget(found);
@@ -512,10 +396,6 @@ export function CategoriesSection() {
             />
           </div>
         </div>
-
-        {reorderMutation.isError && (
-          <p className="text-xs text-red-500 mt-2">Error al guardar. Intenta de nuevo.</p>
-        )}
       </div>
 
       {nearMatch && (
