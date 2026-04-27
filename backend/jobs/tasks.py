@@ -709,6 +709,8 @@ async def _find_mergeable_review_notification(
     not been completed yet (`completed_at IS NULL`). Excludes the job we're
     currently processing so we don't merge a job into itself.
     """
+    # Lock the candidate row so two near-simultaneous bank syncs can't both
+    # merge into it and silently drop each other's transaction_ids.
     stmt = (
         select(Notification, MerchantReviewJob)
         .join(MerchantReviewJob, MerchantReviewJob.notification_id == Notification.id)
@@ -721,6 +723,7 @@ async def _find_mergeable_review_notification(
         )
         .order_by(Notification.created_at.desc())
         .limit(1)
+        .with_for_update(of=MerchantReviewJob)
     )
     result = await db.execute(stmt)
     row = result.first()
