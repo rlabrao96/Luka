@@ -54,12 +54,77 @@ export function usePendingTransactions() {
 export function useMatchCandidates(
   pendingId: string | null,
   windowDays: number = 7,
+  intent: "consolidate" | "transfer" = "consolidate",
 ) {
   return useQuery<MatchCandidate[]>({
-    queryKey: ["transactions", "match-candidates", pendingId, windowDays],
-    queryFn: () => api.getMatchCandidates(pendingId!, windowDays),
+    queryKey: ["transactions", "match-candidates", pendingId, windowDays, intent],
+    queryFn: () => api.getMatchCandidates(pendingId!, { windowDays, intent }),
     enabled: !!pendingId,
     staleTime: 30 * 1000,
+  });
+}
+
+export function useUpdateTransactionDate() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { ok: boolean },
+    Error,
+    { transactionId: string; transactionDate: string },
+    { previousByKey: Map<unknown, Transaction[] | undefined> }
+  >({
+    mutationFn: ({ transactionId, transactionDate }) =>
+      api.updateTransactionDate(transactionId, transactionDate),
+    onMutate: async ({ transactionId, transactionDate }) => {
+      // Optimistically patch the date on array-shaped caches (mine/shared).
+      // The backend stores UTC midnight; we mirror that here so re-rendered
+      // dates match what the server will emit.
+      await queryClient.cancelQueries({ queryKey: ["transactions"] });
+      const isoDateTime = `${transactionDate}T00:00:00+00:00`;
+      const filter = {
+        predicate: (q: { queryKey: readonly unknown[] }) => {
+          const [root, bucket] = q.queryKey as unknown as [string, string];
+          return root === "transactions" && (bucket === "mine" || bucket === "shared");
+        },
+      };
+      const snapshot = queryClient.getQueriesData<Transaction[]>(filter);
+      const previousByKey = new Map<unknown, Transaction[] | undefined>();
+      for (const [key, value] of snapshot) previousByKey.set(key, value);
+      queryClient.setQueriesData<Transaction[]>(filter, (old) =>
+        Array.isArray(old)
+          ? old.map((t) =>
+              t.id === transactionId ? { ...t, transaction_date: isoDateTime } : t,
+            )
+          : old,
+      );
+      return { previousByKey };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previousByKey) {
+        for (const [key, value] of ctx.previousByKey.entries()) {
+          queryClient.setQueryData(key as readonly unknown[], value);
+        }
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}
+
+export function useLinkTransfer() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { transfer_pair_id: string; transaction_ids: string[] },
+    Error,
+    { transactionId: string; counterpartId: string }
+  >({
+    mutationFn: ({ transactionId, counterpartId }) =>
+      api.linkTransfer(transactionId, counterpartId),
+    onSettled: () => {
+      // Pairing changes which rows show as a single grouped card and removes
+      // both legs from spend/income totals — invalidate everything.
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
   });
 }
 

@@ -1,7 +1,12 @@
 // frontend/app/(dashboard)/components/LinkMatchDialog.tsx
 "use client";
 
-import { useMatchCandidates, useLinkTransaction, useDismissTransaction } from "@/app/lib/hooks/useTransactions";
+import {
+  useMatchCandidates,
+  useLinkTransaction,
+  useLinkTransfer,
+  useDismissTransaction,
+} from "@/app/lib/hooks/useTransactions";
 import { formatStoredAmount } from "@/app/lib/currency";
 import type { Transaction } from "@/app/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -10,27 +15,55 @@ import { cn } from "@/lib/utils";
 import { AlertCircle, Link2, Check } from "lucide-react";
 import { toTitleCase } from "@/app/lib/strings";
 
+type Intent = "consolidate" | "transfer";
+
 type Props = {
   pendingTransaction: Transaction | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * "consolidate" (default): merge a pending email row into the matching
+   * bank row. "transfer": pair two settled bank rows as a manual transfer
+   * (e.g. CC payment outflow + matching inflow on the other card).
+   */
+  intent?: Intent;
 };
 
-export function LinkMatchDialog({ pendingTransaction, open, onOpenChange }: Props) {
+export function LinkMatchDialog({
+  pendingTransaction,
+  open,
+  onOpenChange,
+  intent = "consolidate",
+}: Props) {
   const pendingId = pendingTransaction?.id ?? null;
   const { data: candidates, isLoading, isError, refetch } = useMatchCandidates(
     open ? pendingId : null,
     7,
+    intent,
   );
   const link = useLinkTransaction();
+  const linkTransfer = useLinkTransfer();
   const dismiss = useDismissTransaction();
+  const isPendingLink = intent === "transfer" ? linkTransfer.isPending : link.isPending;
+  const linkErrored = intent === "transfer" ? linkTransfer.isError : link.isError;
+  const linkingId =
+    intent === "transfer"
+      ? linkTransfer.variables?.counterpartId
+      : link.variables?.bankTransactionId;
 
-  function handleLink(bankTransactionId: string) {
+  function handleLink(counterpartId: string) {
     if (!pendingId) return;
-    link.mutate(
-      { pendingId, bankTransactionId },
-      { onSuccess: () => onOpenChange(false) },
-    );
+    if (intent === "transfer") {
+      linkTransfer.mutate(
+        { transactionId: pendingId, counterpartId },
+        { onSuccess: () => onOpenChange(false) },
+      );
+    } else {
+      link.mutate(
+        { pendingId, bankTransactionId: counterpartId },
+        { onSuccess: () => onOpenChange(false) },
+      );
+    }
   }
 
   function handleDismiss() {
@@ -47,10 +80,19 @@ export function LinkMatchDialog({ pendingTransaction, open, onOpenChange }: Prop
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Vincular con movimiento bancario</DialogTitle>
+          <DialogTitle>
+            {intent === "transfer"
+              ? "Vincular como transferencia"
+              : "Vincular con movimiento bancario"}
+          </DialogTitle>
           {pendingTransaction && (
             <DialogDescription>
               {pendingMerchant} · {pendingAmount}
+              {intent === "transfer" && (
+                <span className="block text-[11px] text-slate-400 mt-0.5">
+                  Mostrando movimientos en otra cuenta con el monto opuesto.
+                </span>
+              )}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -79,13 +121,15 @@ export function LinkMatchDialog({ pendingTransaction, open, onOpenChange }: Prop
         {!isLoading && !isError && candidates && candidates.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <p className="text-sm text-slate-600">No encontramos coincidencias</p>
-            <button
-              onClick={handleDismiss}
-              disabled={dismiss.isPending}
-              className="text-[12px] font-semibold text-slate-600 border border-slate-200 rounded-md px-3 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-50"
-            >
-              {dismiss.isPending ? "Marcando…" : "Marcar como resuelta"}
-            </button>
+            {intent === "consolidate" && pendingTransaction?.source_type === "email" && (
+              <button
+                onClick={handleDismiss}
+                disabled={dismiss.isPending}
+                className="text-[12px] font-semibold text-slate-600 border border-slate-200 rounded-md px-3 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                {dismiss.isPending ? "Marcando…" : "Marcar como resuelta"}
+              </button>
+            )}
           </div>
         )}
 
@@ -101,12 +145,12 @@ export function LinkMatchDialog({ pendingTransaction, open, onOpenChange }: Prop
               const merchant = toTitleCase(c.raw_merchant_name);
               const bank = c.bank_account_name ? toTitleCase(c.bank_account_name) : "—";
               const aria = `Vincular con ${merchant}, ${amount}, ${date}, ${bank}`;
-              const isPending = link.isPending && link.variables?.bankTransactionId === c.id;
+              const isPending = isPendingLink && linkingId === c.id;
               return (
                 <li key={c.id}>
                   <button
                     onClick={() => handleLink(c.id)}
-                    disabled={link.isPending}
+                    disabled={isPendingLink}
                     aria-label={aria}
                     className={cn(
                       "w-full text-left flex items-center gap-3 bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-blue-50 hover:border-luka-primary/40 transition-colors disabled:opacity-60",
@@ -141,7 +185,7 @@ export function LinkMatchDialog({ pendingTransaction, open, onOpenChange }: Prop
           </ul>
         )}
 
-        {link.isError && (
+        {linkErrored && (
           <p className="text-[11px] text-red-500 text-center">No pudimos vincular. Intenta de nuevo.</p>
         )}
       </DialogContent>

@@ -36,6 +36,12 @@ interface TransactionCardProps {
    * Opt-in so existing callers are not affected. Only non-compact mode renders it.
    */
   enableMarkCuota?: boolean;
+  /**
+   * Optional action node rendered at the right edge of the card (after the
+   * split pill). Used by RecentTransactions to surface a kebab menu with
+   * "Editar nombre / Editar fecha / Vincular".
+   */
+  actionsSlot?: ReactNode;
 }
 
 export function TransactionCard({
@@ -48,6 +54,7 @@ export function TransactionCard({
   categorySlot,
   splitSlot,
   enableMarkCuota = false,
+  actionsSlot,
 }: TransactionCardProps) {
   const isOutflow = isNegativeStored(Number(txn.amount));
   const split = SPLIT_STYLES[txn.split_type ?? "personal"] ?? SPLIT_STYLES.personal;
@@ -154,6 +161,7 @@ export function TransactionCard({
                   {split.label}
                 </button>
               )}
+              {actionsSlot}
             </div>
           </div>
         </div>

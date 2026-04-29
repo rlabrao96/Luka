@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from pydantic import BaseModel, Field
@@ -76,6 +76,24 @@ class MatchCandidate(BaseModel):
 
 class LinkRequest(BaseModel):
     bank_transaction_id: uuid.UUID
+
+
+class TransactionDateUpdateRequest(BaseModel):
+    """PATCH body for editing the date of a settled transaction.
+
+    Stored as a `datetime` (UTC midnight) on the row to match the
+    ingestion convention (Plaid + email both write UTC-midnight datetimes).
+    """
+
+    transaction_date: date
+
+
+class LinkTransferRequest(BaseModel):
+    """POST body for manually pairing two own-account bank transactions
+    as a transfer (e.g. CC payment outflow + the matching inflow on the
+    other card)."""
+
+    counterpart_id: uuid.UUID
 
 
 class BulkActionRequest(BaseModel):

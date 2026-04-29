@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { TrendingDown, ChevronDown } from "lucide-react";
+import { TrendingDown, ChevronDown, MoreHorizontal, Pencil, Calendar, Link2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Transaction, api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,27 @@ import { resolveAppLocale } from "@/app/lib/locale";
 import { useBreakpoint } from "@/app/lib/hooks/useBreakpoint";
 import { EmptyState } from "./EmptyState";
 import { PairedTransactionCard, groupPairs } from "./PairedTransactionCard";
+import { LinkMatchDialog } from "./LinkMatchDialog";
+import {
+  useUpdateMerchantName,
+  useUpdateTransactionDate,
+} from "@/app/lib/hooks/useTransactions";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 // Match the user's OS locale for date labels. SSR-safe via resolveAppLocale.
 const RESOLVED_LOCALE = resolveAppLocale();
@@ -161,6 +182,247 @@ function CategoryCell({ txn }: CategoryCellProps) {
   );
 }
 
+/* ─── Settled-row kebab + dialogs ─── */
+
+function SettledRowKebab({
+  txn,
+  onRename,
+  onEditDate,
+  onLink,
+}: {
+  txn: Transaction;
+  onRename: (txn: Transaction) => void;
+  onEditDate: (txn: Transaction) => void;
+  onLink: (txn: Transaction) => void;
+}) {
+  // Manual transfer linking only makes sense for settled, unpaired bank rows.
+  // Paired rows render through PairedTransactionCard so they never reach here,
+  // but we still gate on transfer/refund pair ids defensively.
+  const canLink =
+    (txn.source_type === "plaid" || txn.source_type === "connect") &&
+    !txn.transfer_pair_id &&
+    !txn.refund_pair_id;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Acciones de transacción"
+        className="flex items-center justify-center h-6 w-6 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MoreHorizontal size={14} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[180px]">
+        <DropdownMenuItem onClick={() => onRename(txn)}>
+          <Pencil className="text-slate-500" />
+          Editar nombre
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEditDate(txn)}>
+          <Calendar className="text-slate-500" />
+          Editar fecha
+        </DropdownMenuItem>
+        {canLink && (
+          <DropdownMenuItem onClick={() => onLink(txn)}>
+            <Link2 className="text-slate-500" />
+            Vincular
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function RenameMerchantDialog({
+  txn,
+  open,
+  onOpenChange,
+}: {
+  txn: Transaction | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const update = useUpdateMerchantName();
+
+  useEffect(() => {
+    if (open && txn) {
+      setValue(txn.raw_merchant_name ?? "");
+      setError(null);
+    }
+  }, [open, txn]);
+
+  function handleSave() {
+    if (!txn) return;
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError("El nombre no puede estar vacío.");
+      return;
+    }
+    if (trimmed === txn.raw_merchant_name) {
+      onOpenChange(false);
+      return;
+    }
+    update.mutate(
+      { transactionId: txn.id, rawMerchantName: trimmed },
+      {
+        onSuccess: () => onOpenChange(false),
+        onError: (err) =>
+          setError(
+            err instanceof Error && err.message
+              ? `No pudimos guardar: ${err.message}`
+              : "No pudimos guardar el nuevo nombre.",
+          ),
+      },
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Editar nombre</DialogTitle>
+          <DialogDescription>
+            Cambia cómo se ve este comercio en tu lista. Lo recordaremos para esta transacción.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Input
+            autoFocus
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              if (error) setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSave();
+              }
+            }}
+            placeholder="Nombre del comercio"
+            maxLength={255}
+          />
+          {error && (
+            <p role="alert" className="text-[12px] text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={update.isPending}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={update.isPending}>
+            {update.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditDateDialog({
+  txn,
+  open,
+  onOpenChange,
+}: {
+  txn: Transaction | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const update = useUpdateTransactionDate();
+
+  useEffect(() => {
+    if (open && txn) {
+      // ISO date prefix (YYYY-MM-DD) — `<input type="date">` expects this.
+      setValue((txn.transaction_date ?? "").slice(0, 10));
+      setError(null);
+    }
+  }, [open, txn]);
+
+  function handleSave() {
+    if (!txn) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      setError("Fecha inválida.");
+      return;
+    }
+    const picked = new Date(`${value}T00:00:00Z`);
+    if (Number.isNaN(picked.getTime())) {
+      setError("Fecha inválida.");
+      return;
+    }
+    // Reject future dates more than 30 days out — bank backdates are common
+    // but a real-future entry is almost certainly a typo.
+    const maxFuture = new Date();
+    maxFuture.setUTCDate(maxFuture.getUTCDate() + 30);
+    if (picked.getTime() > maxFuture.getTime()) {
+      setError("La fecha está demasiado lejos en el futuro.");
+      return;
+    }
+    if (value === (txn.transaction_date ?? "").slice(0, 10)) {
+      onOpenChange(false);
+      return;
+    }
+    update.mutate(
+      { transactionId: txn.id, transactionDate: value },
+      {
+        onSuccess: () => onOpenChange(false),
+        onError: (err) =>
+          setError(
+            err instanceof Error && err.message
+              ? `No pudimos guardar: ${err.message}`
+              : "No pudimos guardar la fecha.",
+          ),
+      },
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Editar fecha</DialogTitle>
+          <DialogDescription>
+            Corrige la fecha de esta transacción. La usaremos en tus reportes y resúmenes.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Input
+            autoFocus
+            type="date"
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              if (error) setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSave();
+              }
+            }}
+          />
+          {error && (
+            <p role="alert" className="text-[12px] text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={update.isPending}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={update.isPending}>
+            {update.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ─── RecentTransactions ─── */
 
 interface RecentTransactionsProps {
@@ -175,6 +437,12 @@ export function RecentTransactions({
   const isMobile = useBreakpoint("lg");
   const showCuotaButton = useLukaStore((s) => s.showCuotaButton);
   const [categorySheet, setCategorySheet] = useState<Transaction | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Transaction | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [editDateTarget, setEditDateTarget] = useState<Transaction | null>(null);
+  const [editDateOpen, setEditDateOpen] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<Transaction | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
   const queryClient = useQueryClient();
 
   if (!transactions.length) {
@@ -263,6 +531,23 @@ export function RecentTransactions({
                     categorySlot={!isMobile ? <CategoryCell txn={txn} /> : undefined}
                     splitSlot={<SplitTypeEditor txn={txn} isMobile={isMobile} />}
                     enableMarkCuota={showCuotaButton}
+                    actionsSlot={
+                      <SettledRowKebab
+                        txn={txn}
+                        onRename={(t) => {
+                          setRenameTarget(t);
+                          setRenameOpen(true);
+                        }}
+                        onEditDate={(t) => {
+                          setEditDateTarget(t);
+                          setEditDateOpen(true);
+                        }}
+                        onLink={(t) => {
+                          setLinkTarget(t);
+                          setLinkOpen(true);
+                        }}
+                      />
+                    }
                   />
                 );
               })}
@@ -270,6 +555,32 @@ export function RecentTransactions({
           </div>
         );
       })}
+
+      <RenameMerchantDialog
+        txn={renameTarget}
+        open={renameOpen}
+        onOpenChange={(v) => {
+          setRenameOpen(v);
+          if (!v) setRenameTarget(null);
+        }}
+      />
+      <EditDateDialog
+        txn={editDateTarget}
+        open={editDateOpen}
+        onOpenChange={(v) => {
+          setEditDateOpen(v);
+          if (!v) setEditDateTarget(null);
+        }}
+      />
+      <LinkMatchDialog
+        pendingTransaction={linkTarget}
+        open={linkOpen}
+        onOpenChange={(v) => {
+          setLinkOpen(v);
+          if (!v) setLinkTarget(null);
+        }}
+        intent="transfer"
+      />
 
       {/* Mobile category picker */}
       {categorySheet && (

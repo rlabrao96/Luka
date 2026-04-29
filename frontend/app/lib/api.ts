@@ -390,15 +390,36 @@ export const api = {
 
   // Phase 3 consolidation endpoints --------------------------------------
 
-  getMatchCandidates: (pendingId: string, windowDays = 7) =>
-    apiFetch<MatchCandidate[]>(
-      `/transactions/${pendingId}/match-candidates?window_days=${windowDays}`,
-    ),
+  getMatchCandidates: (
+    pendingId: string,
+    opts: { windowDays?: number; intent?: "consolidate" | "transfer" } = {},
+  ) => {
+    const windowDays = opts.windowDays ?? 7;
+    const intent = opts.intent ?? "consolidate";
+    return apiFetch<MatchCandidate[]>(
+      `/transactions/${pendingId}/match-candidates?window_days=${windowDays}&intent=${intent}`,
+    );
+  },
 
   linkTransaction: (pendingId: string, bankTransactionId: string) =>
     apiFetch<Transaction>(`/transactions/${pendingId}/link`, {
       method: "POST",
       body: JSON.stringify({ bank_transaction_id: bankTransactionId }),
+    }),
+
+  linkTransfer: (transactionId: string, counterpartId: string) =>
+    apiFetch<{ transfer_pair_id: string; transaction_ids: string[] }>(
+      `/transactions/${transactionId}/link-transfer`,
+      {
+        method: "POST",
+        body: JSON.stringify({ counterpart_id: counterpartId }),
+      },
+    ),
+
+  updateTransactionDate: (transactionId: string, transactionDate: string) =>
+    apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/transaction-date`, {
+      method: "PATCH",
+      body: JSON.stringify({ transaction_date: transactionDate }),
     }),
 
   dismissTransaction: (id: string) =>
