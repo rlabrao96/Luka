@@ -301,6 +301,133 @@ async def update_split_type(
     return True
 
 
+def _merchant_name_match_clause(anchor_raw_name: str, anchor_merchant_id: uuid.UUID | None):
+    """Return the SQLAlchemy WHERE clause matching siblings for a vendor rename.
+
+    Match rules: case-insensitive equality on `raw_merchant_name` OR (when
+    the anchor has one) equality on `merchant_id`. Caller adds the household
+    scope and the "exclude self" / "skip user-edited" filters.
+    """
+    from sqlalchemy import or_
+
+    conds = [func.lower(Transaction.raw_merchant_name) == anchor_raw_name.lower()]
+    if anchor_merchant_id is not None:
+        conds.append(Transaction.merchant_id == anchor_merchant_id)
+    return or_(*conds)
+
+
+async def get_merchant_name_matching_count(
+    db: AsyncSession,
+    transaction_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> dict | None:
+    """Count sibling rows in the caller's household sharing the anchor's
+    `raw_merchant_name` (case-insensitive) or `merchant_id`. Excludes the
+    anchor itself and any row with `user_edited_fields["merchant_name"]` true.
+
+    Returns None when the caller is not a member of the anchor's household
+    (or the anchor doesn't exist) so the router can map to 404.
+    """
+    anchor = await db.scalar(
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .where(
+            Transaction.id == transaction_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    if anchor is None:
+        return None
+
+    match_clause = _merchant_name_match_clause(anchor.raw_merchant_name, anchor.merchant_id)
+    count = await db.scalar(
+        select(func.count(Transaction.id)).where(
+            Transaction.household_id == anchor.household_id,
+            Transaction.id != anchor.id,
+            match_clause,
+            # Skip rows the user already edited — JSONB `->>` returns text.
+            func.coalesce(Transaction.user_edited_fields["merchant_name"].astext, "false")
+            != "true",
+        )
+    )
+    return {
+        "count": int(count or 0),
+        "raw_merchant_name": anchor.raw_merchant_name,
+        "merchant_id": anchor.merchant_id,
+    }
+
+
+async def update_merchant_name_bulk(
+    db: AsyncSession,
+    transaction_id: uuid.UUID,
+    user_id: uuid.UUID,
+    raw_merchant_name: str | None = None,
+    merchant_id: uuid.UUID | None = None,
+) -> int | None:
+    """Rename the anchor row AND every household sibling currently matching
+    the anchor's ORIGINAL `raw_merchant_name` (case-insensitive) or
+    `merchant_id`, skipping rows already user-edited.
+
+    Returns the number of rows updated (anchor included), or None when the
+    caller is not a household member / the anchor doesn't exist.
+    """
+    if raw_merchant_name is None and merchant_id is None:
+        # No-op; still validate household membership so callers get a 404
+        # vs 200 distinction.
+        ok = await db.scalar(
+            select(Transaction.id)
+            .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+            .where(
+                Transaction.id == transaction_id,
+                HouseholdMember.user_id == user_id,
+                HouseholdMember.left_at.is_(None),
+            )
+        )
+        return 0 if ok is not None else None
+
+    anchor = await db.scalar(
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .where(
+            Transaction.id == transaction_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    if anchor is None:
+        return None
+
+    # Capture ORIGINAL anchor values BEFORE any mutation — these are the
+    # match keys for sibling discovery. If we used post-update values, the
+    # anchor itself would no longer match its own siblings.
+    original_raw = anchor.raw_merchant_name
+    original_merchant_id = anchor.merchant_id
+
+    match_clause = _merchant_name_match_clause(original_raw, original_merchant_id)
+    siblings_q = await db.execute(
+        select(Transaction).where(
+            Transaction.household_id == anchor.household_id,
+            Transaction.id != anchor.id,
+            match_clause,
+            func.coalesce(Transaction.user_edited_fields["merchant_name"].astext, "false")
+            != "true",
+        )
+    )
+    siblings = siblings_q.scalars().all()
+
+    targets = [anchor, *siblings]
+    for txn in targets:
+        if raw_merchant_name is not None:
+            txn.raw_merchant_name = raw_merchant_name
+        if merchant_id is not None:
+            txn.merchant_id = merchant_id
+        mark_user_edited(txn, "merchant_name")
+
+    await db.commit()
+    return len(targets)
+
+
 async def update_merchant_name(
     db: AsyncSession,
     transaction_id: uuid.UUID,

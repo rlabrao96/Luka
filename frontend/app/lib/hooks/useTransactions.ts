@@ -240,29 +240,44 @@ export function useDeleteTransaction() {
   });
 }
 
+export function useMerchantNameMatchingCount(
+  transactionId: string | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["transactions", "merchant-name-matching-count", transactionId],
+    queryFn: () => api.getMerchantNameMatchingCount(transactionId!),
+    enabled: !!transactionId && enabled,
+    staleTime: 60 * 1000,
+  });
+}
+
 export function useUpdateMerchantName() {
   const queryClient = useQueryClient();
   return useMutation<
-    { ok: boolean },
+    { ok: boolean; updated_count: number },
     Error,
     {
       transactionId: string;
       rawMerchantName?: string | null;
       merchantId?: string | null;
+      applyToAllMatching?: boolean;
     }
   >({
-    mutationFn: ({ transactionId, rawMerchantName, merchantId }) =>
+    mutationFn: ({ transactionId, rawMerchantName, merchantId, applyToAllMatching }) =>
       api.updateMerchantName(transactionId, {
         raw_merchant_name: rawMerchantName,
         merchant_id: merchantId,
+        apply_to_all_matching: applyToAllMatching ?? false,
       }),
-    onMutate: async ({ transactionId, rawMerchantName }) => {
+    onMutate: async ({ transactionId, rawMerchantName, applyToAllMatching }) => {
       const queryKey = ["transactions", "pending"];
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<PendingTransactions>(queryKey);
-      // Optimistic rename: only update raw_merchant_name in the visible cache —
-      // merchant_id isn't surfaced in the pending response shape today.
-      if (rawMerchantName != null) {
+      // Optimistic rename for the anchor row only — bulk updates can touch
+      // many rows and we'd rather refetch than reconcile a sprawling cache
+      // patch. The `onSettled` invalidation handles the rest.
+      if (rawMerchantName != null && !applyToAllMatching) {
         queryClient.setQueryData<PendingTransactions | undefined>(
           queryKey,
           (old) => {
@@ -292,6 +307,9 @@ export function useUpdateMerchantName() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["transactions", "pending"] });
+      queryClient.invalidateQueries({
+        queryKey: ["transactions", "merchant-name-matching-count"],
+      });
     },
   });
 }

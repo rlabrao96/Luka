@@ -48,9 +48,25 @@ class MerchantNameUpdateRequest(BaseModel):
     Either or both fields may be supplied. `raw_merchant_name` is the
     free-text vendor label shown to the user. `merchant_id` is the global
     merchants-table reference selected via the "Asignar" flow.
+
+    When `apply_to_all_matching` is true, the rename also propagates to
+    every other household row sharing the anchor's ORIGINAL `raw_merchant_name`
+    (case-insensitive) — skipping rows the user already edited.
     """
 
     raw_merchant_name: str | None = Field(default=None, min_length=1, max_length=255)
+    merchant_id: uuid.UUID | None = None
+    apply_to_all_matching: bool = False
+
+
+class MerchantNameUpdateResponse(BaseModel):
+    ok: bool = True
+    updated_count: int = 1
+
+
+class MerchantNameMatchingCountResponse(BaseModel):
+    count: int
+    raw_merchant_name: str
     merchant_id: uuid.UUID | None = None
 
 

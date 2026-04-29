@@ -589,12 +589,26 @@ export const api = {
 
   updateMerchantName: (
     transactionId: string,
-    payload: { raw_merchant_name?: string | null; merchant_id?: string | null },
+    payload: {
+      raw_merchant_name?: string | null;
+      merchant_id?: string | null;
+      apply_to_all_matching?: boolean;
+    },
   ) =>
-    apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/merchant-name`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
+    apiFetch<{ ok: boolean; updated_count: number }>(
+      `/transactions/${transactionId}/merchant-name`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+    ),
+
+  getMerchantNameMatchingCount: (transactionId: string) =>
+    apiFetch<{
+      count: number;
+      raw_merchant_name: string;
+      merchant_id: string | null;
+    }>(`/transactions/${transactionId}/merchant-name/matching-count`),
 
   // --- Luka Connect ---
   connectBank: (payload: ConnectBankPayload) =>

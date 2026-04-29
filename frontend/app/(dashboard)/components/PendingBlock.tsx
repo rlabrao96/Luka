@@ -7,6 +7,7 @@ import {
   useDeleteTransaction,
   useBulkAction,
   useUpdateMerchantName,
+  useMerchantNameMatchingCount,
 } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction, type PendingTransactions } from "@/app/lib/api";
@@ -429,18 +430,33 @@ interface RenameDialogProps {
 function RenameMerchantDialog({ txn, open, onOpenChange }: RenameDialogProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [applyToAll, setApplyToAll] = useState(true);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const update = useUpdateMerchantName();
+
+  const trimmed = value.trim();
+  const original = txn?.raw_merchant_name ?? "";
+  // Only fetch the count when the user has typed a different non-trivial
+  // name — avoids hammering the endpoint on every keystroke.
+  const countEnabled =
+    !!txn && open && trimmed.length >= 2 && trimmed !== original;
+  const matchingCountQ = useMerchantNameMatchingCount(
+    txn?.id ?? null,
+    countEnabled,
+  );
+  const matchingCount = matchingCountQ.data?.count ?? 0;
 
   useEffect(() => {
     if (open && txn) {
       setValue(txn.raw_merchant_name ?? "");
       setError(null);
+      setApplyToAll(true);
+      setSuccessMsg(null);
     }
   }, [open, txn]);
 
   async function handleSave() {
     if (!txn) return;
-    const trimmed = value.trim();
     if (!trimmed) {
       setError("El nombre no puede estar vacío.");
       return;
@@ -449,10 +465,23 @@ function RenameMerchantDialog({ txn, open, onOpenChange }: RenameDialogProps) {
       onOpenChange(false);
       return;
     }
+    const useBulk = applyToAll && matchingCount > 0;
     update.mutate(
-      { transactionId: txn.id, rawMerchantName: trimmed },
       {
-        onSuccess: () => onOpenChange(false),
+        transactionId: txn.id,
+        rawMerchantName: trimmed,
+        applyToAllMatching: useBulk,
+      },
+      {
+        onSuccess: (res) => {
+          if (useBulk && res.updated_count > 1) {
+            setSuccessMsg(`Renombramos ${res.updated_count} transacciones.`);
+          } else {
+            setSuccessMsg("Nombre actualizado.");
+          }
+          // Brief confirmation before closing.
+          setTimeout(() => onOpenChange(false), 900);
+        },
         onError: (err) =>
           setError(
             err instanceof Error && err.message
@@ -472,7 +501,7 @@ function RenameMerchantDialog({ txn, open, onOpenChange }: RenameDialogProps) {
             Cambia cómo se ve este comercio en tu lista. Lo recordaremos para esta transacción.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Input
             autoFocus
             value={value}
@@ -489,6 +518,31 @@ function RenameMerchantDialog({ txn, open, onOpenChange }: RenameDialogProps) {
             placeholder="Nombre del comercio"
             maxLength={255}
           />
+          {countEnabled && matchingCount > 0 && !successMsg && (
+            <div className="space-y-1 rounded-md bg-slate-50 p-2.5">
+              <label className="flex cursor-pointer items-start gap-2 text-[13px] text-slate-800">
+                <Checkbox
+                  checked={applyToAll}
+                  onCheckedChange={(v) => setApplyToAll(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Aplicar a las otras {matchingCount} transacciones de{" "}
+                  <span className="font-medium">
+                    &ldquo;{original}&rdquo;
+                  </span>
+                </span>
+              </label>
+              <p className="pl-6 text-[11px] text-slate-500">
+                Solo se aplicará a transacciones que no hayas editado manualmente.
+              </p>
+            </div>
+          )}
+          {successMsg && (
+            <p className="rounded-md bg-emerald-50 px-2.5 py-2 text-[13px] text-emerald-700">
+              {successMsg}
+            </p>
+          )}
           {error && (
             <p role="alert" className="text-[12px] text-red-600">
               {error}
@@ -503,7 +557,7 @@ function RenameMerchantDialog({ txn, open, onOpenChange }: RenameDialogProps) {
           >
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={update.isPending}>
+          <Button onClick={handleSave} disabled={update.isPending || !!successMsg}>
             {update.isPending ? "Guardando…" : "Guardar"}
           </Button>
         </DialogFooter>
