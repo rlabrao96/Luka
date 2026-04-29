@@ -76,6 +76,7 @@ async def test_enqueue_reconciliation_tick_swallows_enqueue_failure(caplog):
     ), warning_messages
 
 
+@pytest.mark.skip(reason="Requires live Supabase DATABASE_URL")
 @pytest.mark.asyncio
 async def test_completed_callback_enqueues_reconciliation_tick(db, mock_user, mock_household):
     """End-to-end: a completed Connect callback enqueues the tick once with
@@ -119,6 +120,7 @@ async def test_completed_callback_enqueues_reconciliation_tick(db, mock_user, mo
     mock_enqueue.assert_awaited_once_with(mock_household.id)
 
 
+@pytest.mark.skip(reason="Requires live Supabase DATABASE_URL")
 @pytest.mark.asyncio
 async def test_failed_callback_does_not_enqueue_reconciliation_tick(db, mock_user, mock_household):
     """Hard errors (status='failed') must NOT trigger reconciliation."""
