@@ -29,10 +29,17 @@ from modules.reconciliation.dedup import (
     apply_match_and_delete_emails,
     find_plaid_match_for_email,
 )
+import logging
+
+from modules.reconciliation.credit_suggestions import (
+    emit_credit_suggestions_for_household,
+)
 from modules.reconciliation.refunds import detect_refunds
 from modules.reconciliation.transfers import detect_transfers
 from modules.reconciliation.wallets import detect_wallet_pairs
 from modules.transactions.models import Transaction
+
+_log = logging.getLogger(__name__)
 
 
 async def reconciliation_tick_for_household(
@@ -116,12 +123,26 @@ async def reconciliation_tick_for_household(
             orphaned += 1
     await session.flush()
 
+    # ---------- 5. Credit-suggestion pass.
+    # Independent of the auto-pairing logic — never pairs without user
+    # confirmation. Failures here must not poison the whole tick.
+    credit_suggestions_created = 0
+    credit_suggestions_auto_resolved = 0
+    try:
+        cs = await emit_credit_suggestions_for_household(session, household_id)
+        credit_suggestions_created = cs["created"]
+        credit_suggestions_auto_resolved = cs["auto_resolved"]
+    except Exception:  # pragma: no cover — defensive
+        _log.exception("credit_suggestions step failed for household %s", household_id)
+
     return {
         "rematched": rematched,
         "transfers": transfers,
         "wallet_pairs": wallet_pairs,
         "refunds": refunds,
         "orphaned": orphaned,
+        "credit_suggestions": credit_suggestions_created,
+        "credit_suggestions_auto_resolved": credit_suggestions_auto_resolved,
     }
 
 
@@ -130,10 +151,18 @@ async def reconciliation_tick_all_households(session: AsyncSession) -> dict[str,
     failure on one doesn't roll back the others' work."""
     household_ids = (await session.execute(select(Household.id))).scalars().all()
 
-    totals = {"rematched": 0, "transfers": 0, "wallet_pairs": 0, "refunds": 0, "orphaned": 0}
+    totals = {
+        "rematched": 0,
+        "transfers": 0,
+        "wallet_pairs": 0,
+        "refunds": 0,
+        "orphaned": 0,
+        "credit_suggestions": 0,
+        "credit_suggestions_auto_resolved": 0,
+    }
     for hid in household_ids:
         result = await reconciliation_tick_for_household(session, hid)
         for k in totals:
-            totals[k] += result[k]
+            totals[k] += result.get(k, 0)
         await session.commit()
     return totals

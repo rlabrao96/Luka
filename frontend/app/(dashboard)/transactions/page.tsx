@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
 import { ProcessingBanner } from "../components/ProcessingBanner";
+import { CreditSuggestionsBanner } from "../components/CreditSuggestionsBanner";
 import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
@@ -327,6 +328,7 @@ export default function TransactionsPage() {
   return (
     <div className="space-y-6">
       <ProcessingBanner />
+      <CreditSuggestionsBanner />
       {(() => {
         const activeCount = [
           selectedBank !== "all" ? 1 : 0,
