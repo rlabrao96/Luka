@@ -54,14 +54,23 @@ export function usePendingTransactions() {
 export function useMatchCandidates(
   pendingId: string | null,
   windowDays: number = 7,
-  intent: "consolidate" | "transfer" = "consolidate",
+  intent: "consolidate" | "transfer" | "reimbursement" = "consolidate",
+  q?: string,
 ) {
   return useQuery<MatchCandidate[]>({
-    queryKey: ["transactions", "match-candidates", pendingId, windowDays, intent],
-    queryFn: () => api.getMatchCandidates(pendingId!, { windowDays, intent }),
+    queryKey: ["transactions", "match-candidates", pendingId, windowDays, intent, q ?? ""],
+    queryFn: () => api.getMatchCandidates(pendingId!, { windowDays, intent, q }),
     enabled: !!pendingId,
     staleTime: 30 * 1000,
   });
+}
+
+export function useReimbursementCandidates(
+  anchorId: string | null,
+  windowDays: number,
+  q?: string,
+) {
+  return useMatchCandidates(anchorId, windowDays, "reimbursement", q);
 }
 
 export function useUpdateTransactionDate() {
@@ -123,6 +132,31 @@ export function useLinkTransfer() {
     onSettled: () => {
       // Pairing changes which rows show as a single grouped card and removes
       // both legs from spend/income totals — invalidate everything.
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}
+
+export function useLinkReimbursement() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { reimbursement_group_id: string; transaction_ids: string[] },
+    Error,
+    { transactionId: string; counterpartIds: string[] }
+  >({
+    mutationFn: ({ transactionId, counterpartIds }) =>
+      api.linkReimbursement(transactionId, counterpartIds),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}
+
+export function useUnlinkReimbursement() {
+  const queryClient = useQueryClient();
+  return useMutation<{ unlinked: number }, Error, { groupId: string }>({
+    mutationFn: ({ groupId }) => api.unlinkReimbursement(groupId),
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
     },
   });

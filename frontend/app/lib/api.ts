@@ -92,6 +92,9 @@ export interface Transaction {
   // them into a single "Pago tarjeta" / "reembolsado" card.
   transfer_pair_id: string | null;
   refund_pair_id: string | null;
+  // User-declared reimbursement grouping (migration 044). N+1 rows sharing
+  // a UUID net to zero in spending totals; the UI groups them as one card.
+  reimbursement_group_id: string | null;
   // Lifecycle timestamps (Task 4.6). ISO8601 strings from the backend.
   // `created_at` drives the PendingBlock age badge (backlog indicator);
   // `orphaned_at` records when a row was dismissed / aged out.
@@ -367,6 +370,10 @@ export interface MatchCandidate {
   raw_merchant_name: string;
   category: string | null;
   status: string | null;
+  // Populated for intent="reimbursement" — used by ReimbursementLinkDialog
+  // to render the source-type chip and bank label without a second query.
+  source_type?: string | null;
+  bank_name?: string | null;
 }
 
 export type BulkActionKind = "dismiss" | "delete";
@@ -392,12 +399,21 @@ export const api = {
 
   getMatchCandidates: (
     pendingId: string,
-    opts: { windowDays?: number; intent?: "consolidate" | "transfer" } = {},
+    opts: {
+      windowDays?: number;
+      intent?: "consolidate" | "transfer" | "reimbursement";
+      q?: string;
+    } = {},
   ) => {
     const windowDays = opts.windowDays ?? 7;
     const intent = opts.intent ?? "consolidate";
+    const params = new URLSearchParams({
+      window_days: String(windowDays),
+      intent,
+    });
+    if (opts.q && opts.q.trim()) params.set("q", opts.q.trim());
     return apiFetch<MatchCandidate[]>(
-      `/transactions/${pendingId}/match-candidates?window_days=${windowDays}&intent=${intent}`,
+      `/transactions/${pendingId}/match-candidates?${params.toString()}`,
     );
   },
 
@@ -414,6 +430,21 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ counterpart_id: counterpartId }),
       },
+    ),
+
+  linkReimbursement: (transactionId: string, counterpartIds: string[]) =>
+    apiFetch<{ reimbursement_group_id: string; transaction_ids: string[] }>(
+      `/transactions/${transactionId}/link-reimbursement`,
+      {
+        method: "POST",
+        body: JSON.stringify({ counterpart_ids: counterpartIds }),
+      },
+    ),
+
+  unlinkReimbursement: (groupId: string) =>
+    apiFetch<{ unlinked: number }>(
+      `/transactions/reimbursement-group/${groupId}`,
+      { method: "DELETE" },
     ),
 
   updateTransactionDate: (transactionId: string, transactionDate: string) =>

@@ -173,6 +173,33 @@ async def test_043_matched_email_at_column_exists(db: AsyncSession):
 
 
 @pytest.mark.asyncio
+async def test_044_reimbursement_group_id_column_exists(db: AsyncSession):
+    """Migration 044 must add a nullable reimbursement_group_id UUID column + index."""
+    result = await db.execute(
+        text(
+            """
+            SELECT is_nullable, data_type
+            FROM information_schema.columns
+            WHERE table_name = 'transactions' AND column_name = 'reimbursement_group_id'
+            """
+        )
+    )
+    row = result.first()
+    assert row is not None, "reimbursement_group_id column not found"
+    is_nullable, data_type = row
+    assert is_nullable == "YES"
+    assert data_type == "uuid"
+
+    idx = await db.execute(
+        text(
+            "SELECT 1 FROM pg_indexes WHERE tablename='transactions' "
+            "AND indexname='ix_transactions_reimbursement_group'"
+        )
+    )
+    assert idx.scalar() == 1
+
+
+@pytest.mark.asyncio
 async def test_043_migration_round_trip(db: AsyncSession):
     """The 043 column must drop and re-add cleanly (matches alembic up/down/up)."""
     await db.execute(text("SAVEPOINT s_043"))

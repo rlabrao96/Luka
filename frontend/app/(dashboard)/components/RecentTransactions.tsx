@@ -14,6 +14,8 @@ import { useBreakpoint } from "@/app/lib/hooks/useBreakpoint";
 import { EmptyState } from "./EmptyState";
 import { PairedTransactionCard, groupPairs } from "./PairedTransactionCard";
 import { LinkMatchDialog } from "./LinkMatchDialog";
+import { VincularTypeDialog, type VincularType } from "./VincularTypeDialog";
+import { ReimbursementLinkDialog } from "./ReimbursementLinkDialog";
 import {
   useUpdateMerchantName,
   useUpdateTransactionDate,
@@ -201,7 +203,8 @@ function SettledRowKebab({
   const canLink =
     (txn.source_type === "plaid" || txn.source_type === "connect") &&
     !txn.transfer_pair_id &&
-    !txn.refund_pair_id;
+    !txn.refund_pair_id &&
+    !txn.reimbursement_group_id;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -442,7 +445,11 @@ export function RecentTransactions({
   const [editDateTarget, setEditDateTarget] = useState<Transaction | null>(null);
   const [editDateOpen, setEditDateOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<Transaction | null>(null);
+  // Type picker stage (Transferencia vs. Reembolso). Once the user picks
+  // we hand off to the proper dialog (LinkMatchDialog or ReimbursementLinkDialog).
+  const [vincularPickerOpen, setVincularPickerOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [reimbursementOpen, setReimbursementOpen] = useState(false);
   const queryClient = useQueryClient();
 
   if (!transactions.length) {
@@ -544,7 +551,7 @@ export function RecentTransactions({
                         }}
                         onLink={(t) => {
                           setLinkTarget(t);
-                          setLinkOpen(true);
+                          setVincularPickerOpen(true);
                         }}
                       />
                     }
@@ -572,6 +579,18 @@ export function RecentTransactions({
           if (!v) setEditDateTarget(null);
         }}
       />
+      <VincularTypeDialog
+        open={vincularPickerOpen}
+        onOpenChange={(v) => {
+          setVincularPickerOpen(v);
+          if (!v && !linkOpen && !reimbursementOpen) setLinkTarget(null);
+        }}
+        onPick={(type: VincularType) => {
+          setVincularPickerOpen(false);
+          if (type === "transfer") setLinkOpen(true);
+          else setReimbursementOpen(true);
+        }}
+      />
       <LinkMatchDialog
         pendingTransaction={linkTarget}
         open={linkOpen}
@@ -580,6 +599,14 @@ export function RecentTransactions({
           if (!v) setLinkTarget(null);
         }}
         intent="transfer"
+      />
+      <ReimbursementLinkDialog
+        anchor={linkTarget}
+        open={reimbursementOpen}
+        onOpenChange={(v) => {
+          setReimbursementOpen(v);
+          if (!v) setLinkTarget(null);
+        }}
       />
 
       {/* Mobile category picker */}

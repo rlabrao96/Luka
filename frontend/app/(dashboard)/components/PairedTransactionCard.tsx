@@ -1,6 +1,6 @@
 "use client";
 import { useId, useMemo, useState } from "react";
-import { ArrowLeftRight, ChevronDown, Undo2 } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, HandCoins, MoreHorizontal, Undo2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type BankAccountRow, type Transaction } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
@@ -9,6 +9,13 @@ import { toTitleCase } from "@/app/lib/strings";
 import { cn } from "@/lib/utils";
 import { TransactionCard } from "./TransactionCard";
 import { DirectionIcon } from "./DirectionIcon";
+import { useUnlinkReimbursement } from "@/app/lib/hooks/useTransactions";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const WALLET_MERCHANT_RE = /\b(venmo|paypal|cash ?app)\b/i;
 
@@ -19,7 +26,7 @@ export type TransactionOrPair =
   | {
       kind: "pair";
       pairId: string;
-      pairType: "transfer" | "refund";
+      pairType: "transfer" | "refund" | "reimbursement";
       legs: Transaction[];
     };
 
@@ -40,7 +47,8 @@ export function groupPairs(txns: Transaction[]): TransactionOrPair[] {
   for (const txn of txns) {
     const transferId = txn.transfer_pair_id;
     const refundId = txn.refund_pair_id;
-    const pairId = transferId ?? refundId ?? null;
+    const reimbursementId = txn.reimbursement_group_id;
+    const pairId = transferId ?? refundId ?? reimbursementId ?? null;
 
     if (!pairId) {
       out.push({ kind: "single", txn });
@@ -54,7 +62,11 @@ export function groupPairs(txns: Transaction[]): TransactionOrPair[] {
       continue;
     }
 
-    const pairType: "transfer" | "refund" = transferId ? "transfer" : "refund";
+    const pairType: "transfer" | "refund" | "reimbursement" = transferId
+      ? "transfer"
+      : refundId
+        ? "refund"
+        : "reimbursement";
     pairIndex.set(pairId, out.length);
     out.push({ kind: "pair", pairId, pairType, legs: [txn] });
   }
@@ -74,7 +86,7 @@ export function groupPairs(txns: Transaction[]): TransactionOrPair[] {
 
 interface PairedTransactionCardProps {
   pairId: string;
-  pairType: "transfer" | "refund";
+  pairType: "transfer" | "refund" | "reimbursement";
   legs: Transaction[];
 }
 
@@ -90,16 +102,14 @@ function looksLikeCCPayment(name: string): boolean {
 }
 
 export function PairedTransactionCard({
-  // `pairId` is kept in the interface for clarity at the call site and so
-  // React tooling can use it as a stable identity when needed, even though
-  // the component itself doesn't read it (React key is set by the parent).
-  pairId: _pairId,
+  pairId,
   pairType,
   legs,
 }: PairedTransactionCardProps) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
   const householdId = useLukaStore((s) => s.householdId);
+  const unlinkReimbursement = useUnlinkReimbursement();
 
   // Reuse TanStack's existing cache key from transactions/page.tsx so we
   // piggyback on any already-fetched accounts list rather than refetch.
@@ -132,12 +142,25 @@ export function PairedTransactionCard({
       : undefined;
   const isWalletPair = !!(walletBankLeg && walletCanonicalLeg);
 
+  // For reimbursement groups the "anchor" is the lone opposite-sign row —
+  // i.e. the side with only one occurrence. Identify it by counting signs.
+  const reimbursementAnchor = useMemo(() => {
+    if (pairType !== "reimbursement") return undefined;
+    const positives = legs.filter((l) => Number(l.amount) > 0);
+    const negatives = legs.filter((l) => Number(l.amount) < 0);
+    if (positives.length === 1) return positives[0];
+    if (negatives.length === 1) return negatives[0];
+    return legs[0];
+  }, [pairType, legs]);
+
   // Pick the leg used for the summary amount/title. Wallet pairs use the
-  // canonical leg (real counterparty); other pairs use the negative leg.
+  // canonical leg (real counterparty); reimbursement uses the anchor; other
+  // pairs use the negative leg.
   const summaryLeg =
     isWalletPair
       ? walletCanonicalLeg!
-      : (legs.find((l) => Number(l.amount) < 0) ?? legs[0]);
+      : reimbursementAnchor ??
+        (legs.find((l) => Number(l.amount) < 0) ?? legs[0]);
   const currency = summaryLeg.currency ?? "CLP";
   const summaryAmount = Number(summaryLeg.amount) || 0;
   const summaryIsOutflow = summaryAmount < 0;
@@ -164,6 +187,10 @@ export function PairedTransactionCard({
     } else {
       subtitle = "Venmo";
     }
+  } else if (pairType === "reimbursement") {
+    const merchant = toTitleCase(summaryLeg.raw_merchant_name);
+    title = `${merchant} · reembolsado`;
+    subtitle = `Reembolso de ${legs.length - 1} ${legs.length - 1 === 1 ? "movimiento" : "movimientos"}`;
   } else if (pairType === "transfer") {
     const isCCPayment = legs.some((l) => looksLikeCCPayment(l.raw_merchant_name));
     title = isCCPayment ? "Pago tarjeta" : "Transferencia";
@@ -197,7 +224,31 @@ export function PairedTransactionCard({
         : `${title} ${formattedAbs}, ${legCount} transacciones`;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] overflow-hidden">
+    <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] overflow-hidden relative">
+      {pairType === "reimbursement" && (
+        <div className="absolute top-2 right-2 z-10">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Acciones de grupo de reembolso"
+              className="flex items-center justify-center h-6 w-6 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal size={14} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[180px]">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  unlinkReimbursement.mutate({ groupId: pairId });
+                }}
+              >
+                <Undo2 className="text-slate-500" />
+                Deshacer reembolso
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -213,12 +264,18 @@ export function PairedTransactionCard({
           <div
             className={cn(
               "hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0",
-              pairType === "transfer" ? "bg-blue-50 text-blue-500" : "bg-slate-100 text-slate-500"
+              pairType === "transfer"
+                ? "bg-blue-50 text-blue-500"
+                : pairType === "reimbursement"
+                  ? "bg-emerald-50 text-emerald-600"
+                  : "bg-slate-100 text-slate-500",
             )}
             aria-hidden="true"
           >
             {pairType === "transfer" ? (
               <ArrowLeftRight size={16} strokeWidth={2.5} />
+            ) : pairType === "reimbursement" ? (
+              <HandCoins size={16} strokeWidth={2.5} />
             ) : (
               <Undo2 size={16} strokeWidth={2.5} />
             )}
@@ -243,6 +300,15 @@ export function PairedTransactionCard({
             ) : pairType === "transfer" ? (
               <span className="text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0 text-slate-500">
                 {formattedAbs}
+              </span>
+            ) : pairType === "reimbursement" ? (
+              <span className="flex items-baseline gap-1.5 shrink-0">
+                <span className="text-[12px] sm:text-[14px] font-semibold tabular-nums line-through text-slate-400">
+                  {formattedAbs}
+                </span>
+                <span className="text-[10px] sm:text-[11px] font-bold tabular-nums text-emerald-600 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 uppercase tracking-wide">
+                  reembolsado
+                </span>
               </span>
             ) : (
               <span className="flex items-baseline gap-1.5 shrink-0">

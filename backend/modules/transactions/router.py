@@ -20,6 +20,7 @@ from modules.transactions.schemas import (
     BulkActionResponse,
     TransactionDateUpdateRequest,
     LinkTransferRequest,
+    LinkReimbursementRequest,
 )
 
 
@@ -175,8 +176,9 @@ async def bulk_action_endpoint(
 @router.get("/{pending_id}/match-candidates", response_model=list[MatchCandidate])
 async def match_candidates(
     pending_id: uuid.UUID,
-    window_days: int = Query(default=7, ge=1, le=30),
-    intent: str = Query(default="consolidate", pattern="^(consolidate|transfer)$"),
+    window_days: int = Query(default=7, ge=1, le=365),
+    intent: str = Query(default="consolidate", pattern="^(consolidate|transfer|reimbursement)$"),
+    q: str | None = Query(default=None, max_length=80),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -187,7 +189,35 @@ async def match_candidates(
             pending_id,
             window_days=window_days,
             intent=intent,
+            q=q,
         )
+    except service.ServiceError as err:
+        _raise_from_service_error(err)
+
+
+@router.post("/{transaction_id}/link-reimbursement")
+async def link_reimbursement_endpoint(
+    transaction_id: uuid.UUID,
+    body: LinkReimbursementRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return await service.link_reimbursement_group(
+            db, transaction_id, body.counterpart_ids, current_user.id
+        )
+    except service.ServiceError as err:
+        _raise_from_service_error(err)
+
+
+@router.delete("/reimbursement-group/{group_id}")
+async def unlink_reimbursement_endpoint(
+    group_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return await service.unlink_reimbursement_group(db, group_id, current_user.id)
     except service.ServiceError as err:
         _raise_from_service_error(err)
 

@@ -77,6 +77,7 @@ def _tx(
     tx_type: str = "expense",
     transfer_pair_id: uuid.UUID | None = None,
     refund_pair_id: uuid.UUID | None = None,
+    reimbursement_group_id: uuid.UUID | None = None,
     orphaned_at: datetime | None = None,
     created_at: datetime | None = None,
 ) -> Transaction:
@@ -96,6 +97,7 @@ def _tx(
         transaction_type=tx_type,
         transfer_pair_id=transfer_pair_id,
         refund_pair_id=refund_pair_id,
+        reimbursement_group_id=reimbursement_group_id,
         orphaned_at=orphaned_at,
         created_at=created_at,
     )
@@ -321,6 +323,68 @@ async def test_exclude_from_totals_filters_refund_pair(db):
 
     total = await _sum_amount_for_user(db, user.id)
     assert total == Decimal("-10")
+
+
+@pytest.mark.asyncio
+async def test_exclude_from_totals_filters_reimbursement_group(db):
+    """Rows sharing a reimbursement_group_id net to zero in spend totals."""
+    user, hh, acc = await _seed_household(db)
+    now = datetime.now(timezone.utc)
+    gid = uuid.uuid4()
+    db.add_all(
+        [
+            _tx(
+                user=user,
+                household=hh,
+                account=acc,
+                amount=Decimal("1500"),
+                when=now,
+                status="settled",
+                tx_type="income",
+                reimbursement_group_id=gid,
+            ),
+            _tx(
+                user=user,
+                household=hh,
+                account=acc,
+                amount=Decimal("-500"),
+                when=now,
+                status="settled",
+                reimbursement_group_id=gid,
+            ),
+            _tx(
+                user=user,
+                household=hh,
+                account=acc,
+                amount=Decimal("-300"),
+                when=now,
+                status="settled",
+                reimbursement_group_id=gid,
+            ),
+            _tx(
+                user=user,
+                household=hh,
+                account=acc,
+                amount=Decimal("-700"),
+                when=now,
+                status="settled",
+                reimbursement_group_id=gid,
+            ),
+            # Untouched expense should still count.
+            _tx(
+                user=user,
+                household=hh,
+                account=acc,
+                amount=Decimal("-42"),
+                when=now,
+                status="settled",
+            ),
+        ]
+    )
+    await db.flush()
+
+    total = await _sum_amount_for_user(db, user.id)
+    assert total == Decimal("-42")
 
 
 @pytest.mark.asyncio
