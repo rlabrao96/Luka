@@ -638,11 +638,35 @@ export const api = {
       method: "POST",
     }),
 
-  updateTransactionCategory: (transactionId: string, category: string | null) =>
-    apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/category`, {
-      method: "PATCH",
-      body: JSON.stringify({ category }),
-    }),
+  updateTransactionCategory: (
+    transactionId: string,
+    category: string | null,
+    options?: { apply_to_all_matching?: boolean },
+  ) =>
+    apiFetch<{ ok: boolean; updated_count: number }>(
+      `/transactions/${transactionId}/category`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          category,
+          apply_to_all_matching: options?.apply_to_all_matching ?? false,
+        }),
+      },
+    ),
+
+  getCategoryMatchingCount: (transactionId: string, category: string | null) => {
+    const params = new URLSearchParams();
+    if (category != null) params.set("category", category);
+    const qs = params.toString();
+    return apiFetch<{
+      count: number;
+      raw_merchant_name: string;
+      merchant_id: string | null;
+      current_category: string | null;
+    }>(
+      `/transactions/${transactionId}/category/matching-count${qs ? `?${qs}` : ""}`,
+    );
+  },
 
   updateTransactionSplitType: (transactionId: string, splitType: string) =>
     apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/split-type`, {

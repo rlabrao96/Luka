@@ -21,6 +21,7 @@ import {
   useUpdateTransactionDate,
   useMerchantNameMatchingCount,
 } from "@/app/lib/hooks/useTransactions";
+import { CategoryBulkApplyToast } from "./CategoryBulkApplyToast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,6 +80,11 @@ const CATEGORY_COLLATOR = new Intl.Collator("es", { sensitivity: "base", numeric
 function CategoryCell({ txn }: CategoryCellProps) {
   const [open, setOpen] = useState(false);
   const [localCategory, setLocalCategory] = useState(txn.category);
+  const [bulkPrompt, setBulkPrompt] = useState<{
+    category: string | null;
+    count: number;
+    merchantName: string;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   // Sync if parent passes updated txn (e.g. after refetch)
@@ -118,6 +124,20 @@ function CategoryCell({ txn }: CategoryCellProps) {
 
     try {
       await api.updateTransactionCategory(txn.id, cat);
+      // After the anchor update, ask the backend whether siblings exist that
+      // would benefit from the same category. Only prompt if there are any.
+      try {
+        const res = await api.getCategoryMatchingCount(txn.id, cat);
+        if (res.count > 0) {
+          setBulkPrompt({
+            category: cat,
+            count: res.count,
+            merchantName: res.raw_merchant_name,
+          });
+        }
+      } catch {
+        // Non-fatal: the anchor update already succeeded.
+      }
     } catch {
       setLocalCategory(txn.category); // revert on error
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -125,7 +145,7 @@ function CategoryCell({ txn }: CategoryCellProps) {
   }
 
   return (
-    <div className="relative">
+    <div className="relative flex flex-col items-end gap-0">
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
@@ -181,6 +201,15 @@ function CategoryCell({ txn }: CategoryCellProps) {
             )}
           </div>
         </>
+      )}
+      {bulkPrompt && (
+        <CategoryBulkApplyToast
+          transactionId={txn.id}
+          category={bulkPrompt.category}
+          merchantName={bulkPrompt.merchantName}
+          matchingCount={bulkPrompt.count}
+          onClose={() => setBulkPrompt(null)}
+        />
       )}
     </div>
   );

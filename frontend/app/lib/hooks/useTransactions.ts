@@ -274,6 +274,40 @@ export function useDeleteTransaction() {
   });
 }
 
+export function useCategoryMatchingCount(
+  transactionId: string | null,
+  category: string | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["transactions", "category-matching-count", transactionId, category],
+    queryFn: () => api.getCategoryMatchingCount(transactionId!, category),
+    enabled: !!transactionId && enabled,
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useUpdateCategoryBulk() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { ok: boolean; updated_count: number },
+    Error,
+    { transactionId: string; category: string | null }
+  >({
+    mutationFn: ({ transactionId, category }) =>
+      api.updateTransactionCategory(transactionId, category, {
+        apply_to_all_matching: true,
+      }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions", "pending"] });
+      queryClient.invalidateQueries({
+        queryKey: ["transactions", "category-matching-count"],
+      });
+    },
+  });
+}
+
 export function useMerchantNameMatchingCount(
   transactionId: string | null,
   enabled: boolean,

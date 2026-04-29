@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
 import { CategoryPicker } from "./CategoryPicker";
+import { CategoryBulkApplyToast } from "./CategoryBulkApplyToast";
 import { SplitTypeEditor } from "./SplitTypeEditor";
 import { formatStoredAmount, isNegativeStored } from "@/app/lib/currency";
 import { toTitleCase } from "@/app/lib/strings";
@@ -121,6 +122,11 @@ interface PendingCategoryCellProps {
 function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
   const [open, setOpen] = useState(false);
   const [localCategory, setLocalCategory] = useState(txn.category);
+  const [bulkPrompt, setBulkPrompt] = useState<{
+    category: string | null;
+    count: number;
+    merchantName: string;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
@@ -154,13 +160,25 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
     });
     try {
       await api.updateTransactionCategory(txn.id, cat);
+      try {
+        const res = await api.getCategoryMatchingCount(txn.id, cat);
+        if (res.count > 0) {
+          setBulkPrompt({
+            category: cat,
+            count: res.count,
+            merchantName: res.raw_merchant_name,
+          });
+        }
+      } catch {
+        // Anchor update succeeded — non-fatal.
+      }
     } catch {
       queryClient.setQueryData(queryKey, previous);
     }
   }
 
   return (
-    <div className="relative">
+    <div className="relative flex flex-col items-start gap-0">
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
@@ -216,6 +234,15 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
             )}
           </div>
         </>
+      )}
+      {bulkPrompt && (
+        <CategoryBulkApplyToast
+          transactionId={txn.id}
+          category={bulkPrompt.category}
+          merchantName={bulkPrompt.merchantName}
+          matchingCount={bulkPrompt.count}
+          onClose={() => setBulkPrompt(null)}
+        />
       )}
     </div>
   );
