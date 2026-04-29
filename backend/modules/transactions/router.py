@@ -12,6 +12,7 @@ from modules.transactions.schemas import (
     TransactionResponse,
     CategoryUpdateRequest,
     SplitTypeUpdateRequest,
+    MerchantNameUpdateRequest,
     PendingTransactionsResponse,
     MatchCandidate,
     LinkRequest,
@@ -100,6 +101,25 @@ async def update_split_type(
     current_user: User = Depends(get_current_user),
 ):
     found = await service.update_split_type(db, transaction_id, current_user.id, body.split_type)
+    if not found:
+        raise HTTPException(404, "Transaction not found")
+    return {"ok": True}
+
+
+@router.patch("/{transaction_id}/merchant-name")
+async def update_merchant_name(
+    transaction_id: uuid.UUID,
+    body: MerchantNameUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    found = await service.update_merchant_name(
+        db,
+        transaction_id,
+        current_user.id,
+        raw_merchant_name=body.raw_merchant_name,
+        merchant_id=body.merchant_id,
+    )
     if not found:
         raise HTTPException(404, "Transaction not found")
     return {"ok": True}

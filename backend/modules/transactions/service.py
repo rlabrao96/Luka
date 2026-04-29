@@ -294,6 +294,59 @@ async def update_split_type(
     return True
 
 
+async def update_merchant_name(
+    db: AsyncSession,
+    transaction_id: uuid.UUID,
+    user_id: uuid.UUID,
+    raw_merchant_name: str | None = None,
+    merchant_id: uuid.UUID | None = None,
+) -> bool:
+    """Rename a transaction's vendor (free-text label and/or global merchants
+    reference). Any active member of the transaction's household may rename —
+    matching the auth model used for category and split_type.
+
+    Stamps ``user_edited_fields["merchant_name"]`` so the auto-reconciliation
+    merge logic never overwrites a user-chosen name. Returns False when the
+    transaction does not exist or the caller is not a household member.
+    """
+    if raw_merchant_name is None and merchant_id is None:
+        # Nothing to do — caller passed an empty body. Treat as 404 only if
+        # the txn doesn't exist; otherwise it's a no-op success.
+        return (
+            await db.scalar(
+                select(Transaction.id)
+                .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+                .where(
+                    Transaction.id == transaction_id,
+                    HouseholdMember.user_id == user_id,
+                    HouseholdMember.left_at.is_(None),
+                )
+            )
+            is not None
+        )
+
+    result = await db.execute(
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .where(
+            Transaction.id == transaction_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    txn = result.scalar_one_or_none()
+    if not txn:
+        return False
+
+    if raw_merchant_name is not None:
+        txn.raw_merchant_name = raw_merchant_name
+    if merchant_id is not None:
+        txn.merchant_id = merchant_id
+    mark_user_edited(txn, "merchant_name")
+    await db.commit()
+    return True
+
+
 async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """
     Return pending transactions grouped into 3 buckets:

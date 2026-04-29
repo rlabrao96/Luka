@@ -566,6 +566,15 @@ export const api = {
       body: JSON.stringify({ split_type: splitType }),
     }),
 
+  updateMerchantName: (
+    transactionId: string,
+    payload: { raw_merchant_name?: string | null; merchant_id?: string | null },
+  ) =>
+    apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/merchant-name`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
   // --- Luka Connect ---
   connectBank: (payload: ConnectBankPayload) =>
     apiFetch("/bank-connect/connect", { method: "POST", body: JSON.stringify(payload) }),

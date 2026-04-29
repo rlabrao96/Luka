@@ -175,6 +175,62 @@ export function useDeleteTransaction() {
   });
 }
 
+export function useUpdateMerchantName() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { ok: boolean },
+    Error,
+    {
+      transactionId: string;
+      rawMerchantName?: string | null;
+      merchantId?: string | null;
+    }
+  >({
+    mutationFn: ({ transactionId, rawMerchantName, merchantId }) =>
+      api.updateMerchantName(transactionId, {
+        raw_merchant_name: rawMerchantName,
+        merchant_id: merchantId,
+      }),
+    onMutate: async ({ transactionId, rawMerchantName }) => {
+      const queryKey = ["transactions", "pending"];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<PendingTransactions>(queryKey);
+      // Optimistic rename: only update raw_merchant_name in the visible cache —
+      // merchant_id isn't surfaced in the pending response shape today.
+      if (rawMerchantName != null) {
+        queryClient.setQueryData<PendingTransactions | undefined>(
+          queryKey,
+          (old) => {
+            if (!old) return old;
+            const patch = (list: Transaction[]) =>
+              list.map((t) =>
+                t.id === transactionId
+                  ? { ...t, raw_merchant_name: rawMerchantName }
+                  : t,
+              );
+            return {
+              awaiting_reconciliation: patch(old.awaiting_reconciliation),
+              needs_classification: patch(old.needs_classification),
+              unmatched_email: patch(old.unmatched_email),
+            };
+          },
+        );
+      }
+      return { previous } as { previous: PendingTransactions | undefined };
+    },
+    onError: (_err, _vars, ctx) => {
+      const context = ctx as { previous?: PendingTransactions } | undefined;
+      if (context?.previous) {
+        queryClient.setQueryData(["transactions", "pending"], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions", "pending"] });
+    },
+  });
+}
+
 export function useBulkAction() {
   const queryClient = useQueryClient();
   return useMutation<
