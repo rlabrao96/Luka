@@ -1067,6 +1067,10 @@ async def get_match_candidates(
         # same currency, same user (single-person scope), unpaired & ungrouped.
         # No amount tolerance — the user balances the sum manually in the UI.
         # Source can be plaid/connect/email (any source).
+        # The default limit (20) is too tight here: a 90d window can easily
+        # contain hundreds of expenses. The dialog is client-paginated with
+        # scroll + search, so cap generously.
+        reimbursement_limit = max(limit, 500)
         conds = [
             Transaction.user_id == user_id,
             Transaction.household_id == pending.household_id,
@@ -1088,7 +1092,7 @@ async def get_match_candidates(
             .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
             .where(*conds)
             .order_by(Transaction.transaction_date.desc())
-            .limit(limit)
+            .limit(reimbursement_limit)
         )
         rows = result.all()
         return [
