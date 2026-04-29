@@ -136,7 +136,7 @@ function CategoryCell({ txn }: CategoryCellProps) {
               items.length === 0 ? null : (
                 <div key={label}>
                   <div className="border-t border-slate-100 my-1" />
-                  <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-900">
                     {label}
                   </div>
                   {items.map((cat) => (
