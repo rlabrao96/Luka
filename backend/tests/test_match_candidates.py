@@ -390,3 +390,97 @@ async def test_link_email_to_pending_plaid_consolidates_and_keeps_pending_status
     with pytest.raises(ServiceError) as exc:
         await link_email_to_bank(db, user.id, email_row.id, bank_row.id)
     assert exc.value.code == "not_found"
+
+
+# ---------------------------------------------------- intent=reimbursement
+
+
+@pytest.mark.asyncio
+async def test_reimbursement_candidates_returns_opposite_sign_rows(db):
+    """intent=reimbursement returns opposite-sign rows in same currency,
+    same household, ungrouped/unpaired."""
+    user, hh, account = await _seed_user_household(db, currency="USD")
+    when = datetime.now(timezone.utc)
+
+    # Anchor: positive (inflow). Candidates must be negative.
+    anchor = _plaid_settled(user=user, hh=hh, account=account, amount=Decimal("1500.00"), when=when)
+    e1 = _plaid_settled(
+        user=user, hh=hh, account=account, amount=Decimal("-500.00"), when=when - timedelta(days=2)
+    )
+    e2 = _plaid_settled(
+        user=user, hh=hh, account=account, amount=Decimal("-300.00"), when=when - timedelta(days=10)
+    )
+    # Same sign as anchor → must be excluded.
+    same_sign = _plaid_settled(
+        user=user, hh=hh, account=account, amount=Decimal("700.00"), when=when - timedelta(days=1)
+    )
+    # Already paired → excluded.
+    paired = _plaid_settled(
+        user=user,
+        hh=hh,
+        account=account,
+        amount=Decimal("-200.00"),
+        when=when,
+        transfer_pair_id=uuid.uuid4(),
+    )
+    db.add_all([anchor, e1, e2, same_sign, paired])
+    await db.flush()
+
+    results = await get_match_candidates(
+        db, user.id, anchor.id, window_days=90, intent="reimbursement"
+    )
+    ids = [r["id"] for r in results]
+    assert e1.id in ids
+    assert e2.id in ids
+    assert same_sign.id not in ids
+    assert paired.id not in ids
+
+
+@pytest.mark.asyncio
+async def test_reimbursement_candidates_filters_by_date_window(db):
+    user, hh, account = await _seed_user_household(db, currency="USD")
+    when = datetime.now(timezone.utc)
+    anchor = _plaid_settled(user=user, hh=hh, account=account, amount=Decimal("100.00"), when=when)
+    in_window = _plaid_settled(
+        user=user, hh=hh, account=account, amount=Decimal("-100.00"), when=when - timedelta(days=20)
+    )
+    out_of_window = _plaid_settled(
+        user=user,
+        hh=hh,
+        account=account,
+        amount=Decimal("-100.00"),
+        when=when - timedelta(days=120),
+    )
+    db.add_all([anchor, in_window, out_of_window])
+    await db.flush()
+
+    results = await get_match_candidates(
+        db, user.id, anchor.id, window_days=30, intent="reimbursement"
+    )
+    ids = [r["id"] for r in results]
+    assert in_window.id in ids
+    assert out_of_window.id not in ids
+
+
+@pytest.mark.asyncio
+async def test_reimbursement_candidates_search_q_filters_merchant(db):
+    user, hh, account = await _seed_user_household(db, currency="USD")
+    when = datetime.now(timezone.utc)
+    anchor = _plaid_settled(user=user, hh=hh, account=account, amount=Decimal("100.00"), when=when)
+    starbucks = _plaid_settled(
+        user=user, hh=hh, account=account, amount=Decimal("-50.00"), when=when - timedelta(days=1)
+    )
+    starbucks.raw_merchant_name = "Starbucks Reserve"
+    other = _plaid_settled(
+        user=user, hh=hh, account=account, amount=Decimal("-60.00"), when=when - timedelta(days=1)
+    )
+    other.raw_merchant_name = "Whole Foods"
+    db.add_all([anchor, starbucks, other])
+    await db.flush()
+
+    results = await get_match_candidates(
+        db, user.id, anchor.id, window_days=30, intent="reimbursement", q="starbucks"
+    )
+    ids = [r["id"] for r in results]
+    assert starbucks.id in ids
+    assert other.id not in ids

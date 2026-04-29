@@ -43,6 +43,7 @@ async def get_budget_status(
         .where(
             Transaction.household_id == household_id,
             Transaction.transaction_type == "expense",
+            Transaction.reimbursement_group_id.is_(None),
             TransactionSplit.split_type == "shared",
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,

@@ -25,6 +25,7 @@ class TransactionResponse(BaseModel):
     # refunds into a single visual row. Null for unpaired transactions.
     transfer_pair_id: uuid.UUID | None = None
     refund_pair_id: uuid.UUID | None = None
+    reimbursement_group_id: uuid.UUID | None = None
     # Lifecycle timestamps (Task 4.6): `created_at` backs the "backlog age"
     # badge on PendingBlock (how long a pending row has been sitting).
     # `orphaned_at` is when a row transitioned into `status='orphan'`.
@@ -86,6 +87,10 @@ class MatchCandidate(BaseModel):
     raw_merchant_name: str
     category: str | None = None
     status: str | None = None
+    # Optional fields populated for reimbursement intent (used by the
+    # ReimbursementLinkDialog list rows). Always nullable.
+    source_type: str | None = None
+    bank_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -110,6 +115,13 @@ class LinkTransferRequest(BaseModel):
     other card)."""
 
     counterpart_id: uuid.UUID
+
+
+class LinkReimbursementRequest(BaseModel):
+    """POST body for grouping N+1 transactions into one user-declared
+    reimbursement (e.g. work pays back several receipts with one inflow)."""
+
+    counterpart_ids: list[uuid.UUID] = Field(..., min_length=1)
 
 
 class BulkActionRequest(BaseModel):

@@ -21,6 +21,7 @@ USER_EDITABLE_FIELDS = frozenset(
         "transaction_type",
         "transfer_to_account_id",
         "transaction_date",
+        "reimbursement_group_id",
     }
 )
 
@@ -154,6 +155,7 @@ async def get_monthly_summary(
               AND t.status NOT IN ('pending', 'orphan')
               AND t.transfer_pair_id IS NULL
               AND t.refund_pair_id IS NULL
+              AND t.reimbursement_group_id IS NULL
               {currency_clause}
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
         ),
@@ -169,6 +171,7 @@ async def get_monthly_summary(
               AND t.status NOT IN ('pending', 'orphan')
               AND t.transfer_pair_id IS NULL
               AND t.refund_pair_id IS NULL
+              AND t.reimbursement_group_id IS NULL
               {currency_clause}
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
         )
@@ -616,6 +619,174 @@ async def link_manual_transfer(
     return {"transfer_pair_id": str(pair_id), "transaction_ids": [str(a.id), str(b.id)]}
 
 
+async def link_reimbursement_group(
+    db: AsyncSession,
+    anchor_id: uuid.UUID,
+    counterpart_ids: list[uuid.UUID],
+    user_id: uuid.UUID,
+) -> dict:
+    """Group N+1 transactions as a single user-declared reimbursement.
+
+    Use case: the user's school/work pays back several receipts with one
+    inflow (or vice-versa), and wants the group to net to zero in spending
+    totals. The anchor is the row the user clicked "Vincular" on; counterparts
+    are the rows they selected.
+
+    Preconditions (all enforced — fail with ServiceError):
+      - at least one counterpart provided; no duplicates; anchor not in counterparts
+      - all rows exist
+      - all rows belong to the caller's household (caller is active member)
+      - all rows belong to the same household
+      - all rows belong to the same user_id (single-person reimbursement)
+      - same currency on all rows
+      - exactly one row has the opposite sign vs all others (the "anchor side"
+        of the reimbursement — single inflow netting N expenses, OR single
+        outflow netting N inflows)
+      - signed sum of all rows equals 0 within 1¢ tolerance
+      - source_type IN ('plaid','connect','email') on all rows
+      - all rows have transfer_pair_id, refund_pair_id, AND
+        reimbursement_group_id all NULL
+
+    On success: assigns one new UUID to all rows, stamps
+    user_edited_fields["reimbursement_group_id"] = True. Does NOT change
+    transaction_type — the rows remain expense/income individually; the
+    grouping makes them net to zero in aggregations.
+    """
+    if not counterpart_ids:
+        raise ServiceError("invalid_action", "At least one counterpart is required")
+    cp_unique = list(dict.fromkeys(counterpart_ids))
+    if len(cp_unique) != len(counterpart_ids):
+        raise ServiceError("invalid_action", "Duplicate counterpart ids")
+    if anchor_id in cp_unique:
+        raise ServiceError("invalid_action", "Anchor cannot also be a counterpart")
+
+    all_ids = [anchor_id, *cp_unique]
+    result = await db.execute(select(Transaction).where(Transaction.id.in_(all_ids)))
+    rows = {r.id: r for r in result.scalars().all()}
+    if len(rows) != len(all_ids):
+        raise ServiceError("not_found", "Transaction not found")
+    anchor = rows[anchor_id]
+    counterparts = [rows[i] for i in cp_unique]
+
+    # All rows must be in a household where the caller is an active member.
+    member_rows = await db.execute(
+        select(HouseholdMember.household_id).where(
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    member_household_ids = {row[0] for row in member_rows.all()}
+    for r in (anchor, *counterparts):
+        if r.household_id not in member_household_ids:
+            raise ServiceError("not_found", "Transaction not found")
+    if any(r.household_id != anchor.household_id for r in counterparts):
+        raise ServiceError("invalid_action", "Transactions belong to different households")
+
+    # Single-user reimbursement (scope: not cross-member).
+    if any(r.user_id != anchor.user_id for r in counterparts):
+        raise ServiceError(
+            "invalid_action",
+            "Reimbursement legs must all belong to the same user",
+        )
+    if anchor.user_id != user_id:
+        raise ServiceError("forbidden", "Caller does not own the anchor transaction")
+
+    # Same currency.
+    cur = (anchor.currency or "").upper()
+    for r in counterparts:
+        if (r.currency or "").upper() != cur:
+            raise ServiceError(
+                "invalid_action", "Currency mismatch — all legs must share a currency"
+            )
+
+    # Source must be one of plaid/connect/email on every leg.
+    for r in (anchor, *counterparts):
+        if r.source_type not in ("plaid", "connect", "email"):
+            raise ServiceError(
+                "invalid_action",
+                "Reimbursement legs must come from a bank or email source",
+            )
+
+    # No leg may already be paired or grouped.
+    for r in (anchor, *counterparts):
+        if r.transfer_pair_id is not None:
+            raise ServiceError("conflict", "One or more legs already paired as a transfer")
+        if r.refund_pair_id is not None:
+            raise ServiceError("conflict", "One or more legs already paired as a refund")
+        if r.reimbursement_group_id is not None:
+            raise ServiceError("conflict", "One or more legs already in a reimbursement group")
+
+    # Sign topology: exactly one row with opposite sign vs all others.
+    amounts = {r.id: Decimal(str(r.amount)) for r in (anchor, *counterparts)}
+    if any(a == 0 for a in amounts.values()):
+        raise ServiceError("invalid_action", "Reimbursement legs cannot have zero amount")
+    positives = [tid for tid, a in amounts.items() if a > 0]
+    negatives = [tid for tid, a in amounts.items() if a < 0]
+    if len(positives) == 0 or len(negatives) == 0:
+        raise ServiceError("invalid_action", "All legs share the same sign")
+    if len(positives) != 1 and len(negatives) != 1:
+        raise ServiceError(
+            "invalid_action",
+            "Exactly one leg must have the opposite sign (the inflow or the outflow)",
+        )
+
+    # Sum to zero within 1¢ tolerance.
+    total = sum(amounts.values(), Decimal("0"))
+    if abs(total) > Decimal("0.01"):
+        raise ServiceError(
+            "invalid_action",
+            f"Legs do not net to zero (off by {total})",
+        )
+
+    group_id = uuid.uuid4()
+    for r in (anchor, *counterparts):
+        r.reimbursement_group_id = group_id
+        mark_user_edited(r, "reimbursement_group_id")
+    await db.commit()
+    return {
+        "reimbursement_group_id": str(group_id),
+        "transaction_ids": [str(r.id) for r in (anchor, *counterparts)],
+    }
+
+
+async def unlink_reimbursement_group(
+    db: AsyncSession,
+    group_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> dict:
+    """Clear ``reimbursement_group_id`` on every row in the group.
+
+    Caller must be an active member of the group's household. Returns
+    the number of rows affected. Idempotent: returns 0 affected if no
+    rows match (group already cleared / never existed).
+    """
+    result = await db.execute(
+        select(Transaction).where(Transaction.reimbursement_group_id == group_id)
+    )
+    rows = list(result.scalars().all())
+    if not rows:
+        raise ServiceError("not_found", "Reimbursement group not found")
+
+    member_rows = await db.execute(
+        select(HouseholdMember.household_id).where(
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    member_household_ids = {row[0] for row in member_rows.all()}
+    if any(r.household_id not in member_household_ids for r in rows):
+        raise ServiceError("not_found", "Reimbursement group not found")
+
+    for r in rows:
+        r.reimbursement_group_id = None
+        # Drop the user-edited stamp so future merges aren't pinned.
+        edited = dict(r.user_edited_fields or {})
+        edited.pop("reimbursement_group_id", None)
+        r.user_edited_fields = edited
+    await db.commit()
+    return {"unlinked": len(rows)}
+
+
 async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """
     Return pending transactions grouped into 3 buckets:
@@ -636,6 +807,7 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
             Transaction.status == "pending",
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),
+            Transaction.reimbursement_group_id.is_(None),
         )
         .order_by(Transaction.transaction_date.desc())
     )
@@ -654,6 +826,7 @@ async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict
             Transaction.category.is_(None),
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),
+            Transaction.reimbursement_group_id.is_(None),
         )
         .order_by(Transaction.transaction_date.desc())
     )
@@ -727,6 +900,15 @@ async def delete_transaction(
                 Transaction.id != transaction_id,
             )
             .values(refund_pair_id=None)
+        )
+    if getattr(txn, "reimbursement_group_id", None) is not None:
+        await db.execute(
+            sql_update(Transaction)
+            .where(
+                Transaction.reimbursement_group_id == txn.reimbursement_group_id,
+                Transaction.id != transaction_id,
+            )
+            .values(reimbursement_group_id=None)
         )
     # Delete associated splits first to avoid FK violation
     await db.execute(
@@ -809,6 +991,7 @@ def exclude_from_totals(query):
         Transaction.status != "orphan",
         Transaction.transfer_pair_id.is_(None),
         Transaction.refund_pair_id.is_(None),
+        Transaction.reimbursement_group_id.is_(None),
     )
 
 
@@ -830,6 +1013,7 @@ async def get_match_candidates(
     window_days: int = 7,
     limit: int = 20,
     intent: str = "consolidate",
+    q: str | None = None,
 ) -> list[dict]:
     """Return ranked candidate bank rows that could match the source row.
 
@@ -878,6 +1062,52 @@ async def get_match_candidates(
     date_min = pending.transaction_date - timedelta(days=window_days)
     date_max = pending.transaction_date + timedelta(days=window_days)
 
+    if intent == "reimbursement":
+        # Reimbursement candidates: opposite-sign rows in the same household,
+        # same currency, same user (single-person scope), unpaired & ungrouped.
+        # No amount tolerance — the user balances the sum manually in the UI.
+        # Source can be plaid/connect/email (any source).
+        conds = [
+            Transaction.user_id == user_id,
+            Transaction.household_id == pending.household_id,
+            Transaction.currency == pending.currency,
+            Transaction.source_type.in_(["plaid", "connect", "email"]),
+            Transaction.transfer_pair_id.is_(None),
+            Transaction.refund_pair_id.is_(None),
+            Transaction.reimbursement_group_id.is_(None),
+            Transaction.id != pending.id,
+            Transaction.transaction_date >= date_min,
+            Transaction.transaction_date <= date_max,
+            # Opposite sign (strict).
+            (Transaction.amount > 0) if pending_amount < 0 else (Transaction.amount < 0),
+        ]
+        if q:
+            conds.append(Transaction.raw_merchant_name.ilike(f"%{q}%"))
+        result = await db.execute(
+            select(Transaction, BankAccount.bank_name, BankAccount.account_name)
+            .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+            .where(*conds)
+            .order_by(Transaction.transaction_date.desc())
+            .limit(limit)
+        )
+        rows = result.all()
+        return [
+            {
+                "id": txn.id,
+                "bank_account_id": txn.bank_account_id,
+                "bank_account_name": account_name or bank_name,
+                "transaction_date": txn.transaction_date,
+                "amount": txn.amount,
+                "currency": txn.currency,
+                "raw_merchant_name": txn.raw_merchant_name,
+                "category": txn.category,
+                "status": txn.status,
+                "source_type": txn.source_type,
+                "bank_name": bank_name,
+            }
+            for txn, bank_name, account_name in rows
+        ]
+
     if intent == "transfer":
         # Manual transfer-pair candidates: opposite sign, different account,
         # same currency, both bank-sourced, both unpaired, own-account.
@@ -895,6 +1125,7 @@ async def get_match_candidates(
                 Transaction.status.in_(["pending", "settled"]),
                 Transaction.transfer_pair_id.is_(None),
                 Transaction.refund_pair_id.is_(None),
+                Transaction.reimbursement_group_id.is_(None),
                 Transaction.bank_account_id != pending.bank_account_id,
                 Transaction.id != pending.id,
                 Transaction.transaction_date >= date_min,
@@ -936,6 +1167,7 @@ async def get_match_candidates(
             Transaction.status.in_(["pending", "settled"]),
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),
+            Transaction.reimbursement_group_id.is_(None),
             Transaction.transaction_date >= date_min,
             Transaction.transaction_date <= date_max,
             func.abs(Transaction.amount - pending_amount) <= tolerance,
@@ -1135,7 +1367,11 @@ async def bulk_action(
         # don't end up orphaned and can be re-paired later. Scope each UPDATE
         # to rows that share a pair_id with one of the to-be-deleted ids,
         # excluding the to-be-deleted ids themselves.
-        for pair_col in (Transaction.transfer_pair_id, Transaction.refund_pair_id):
+        for pair_col in (
+            Transaction.transfer_pair_id,
+            Transaction.refund_pair_id,
+            Transaction.reimbursement_group_id,
+        ):
             pair_ids_subq = (
                 select(pair_col)
                 .where(

@@ -34,6 +34,13 @@ class Transaction(Base):
     raw_email_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     transfer_pair_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     refund_pair_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # User-declared reimbursement grouping (migration 044). N+1 transactions
+    # share the same UUID when one inflow nets out N expenses (e.g. work/school
+    # paying back receipts). Excluded from spending totals like transfer/refund
+    # pairs. Distinct semantics — see service.link_reimbursement_group.
+    reimbursement_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     card_last_four: Mapped[str | None] = mapped_column(String(4), nullable=True)
     orphaned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     dismissed_by_user: Mapped[bool] = mapped_column(
