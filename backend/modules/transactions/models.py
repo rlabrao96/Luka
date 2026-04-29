@@ -47,6 +47,11 @@ class Transaction(Base):
     user_edited_fields: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+    # Idempotency marker — set when this Plaid/bank row has consumed an email
+    # match. Future reconciliation passes skip rows where this is non-null.
+    matched_email_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
