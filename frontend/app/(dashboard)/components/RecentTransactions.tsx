@@ -17,6 +17,7 @@ import { LinkMatchDialog } from "./LinkMatchDialog";
 import {
   useUpdateMerchantName,
   useUpdateTransactionDate,
+  useMerchantNameMatchingCount,
 } from "@/app/lib/hooks/useTransactions";
 import {
   DropdownMenu,
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Match the user's OS locale for date labels. SSR-safe via resolveAppLocale.
 const RESOLVED_LOCALE = resolveAppLocale();
@@ -242,18 +244,31 @@ function RenameMerchantDialog({
 }) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [applyToAll, setApplyToAll] = useState(true);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const update = useUpdateMerchantName();
+
+  const trimmed = value.trim();
+  const original = txn?.raw_merchant_name ?? "";
+  const countEnabled =
+    !!txn && open && trimmed.length >= 2 && trimmed !== original;
+  const matchingCountQ = useMerchantNameMatchingCount(
+    txn?.id ?? null,
+    countEnabled,
+  );
+  const matchingCount = matchingCountQ.data?.count ?? 0;
 
   useEffect(() => {
     if (open && txn) {
       setValue(txn.raw_merchant_name ?? "");
       setError(null);
+      setApplyToAll(true);
+      setSuccessMsg(null);
     }
   }, [open, txn]);
 
   function handleSave() {
     if (!txn) return;
-    const trimmed = value.trim();
     if (!trimmed) {
       setError("El nombre no puede estar vacío.");
       return;
@@ -262,10 +277,22 @@ function RenameMerchantDialog({
       onOpenChange(false);
       return;
     }
+    const useBulk = applyToAll && matchingCount > 0;
     update.mutate(
-      { transactionId: txn.id, rawMerchantName: trimmed },
       {
-        onSuccess: () => onOpenChange(false),
+        transactionId: txn.id,
+        rawMerchantName: trimmed,
+        applyToAllMatching: useBulk,
+      },
+      {
+        onSuccess: (res) => {
+          if (useBulk && res.updated_count > 1) {
+            setSuccessMsg(`Renombramos ${res.updated_count} transacciones.`);
+          } else {
+            setSuccessMsg("Nombre actualizado.");
+          }
+          setTimeout(() => onOpenChange(false), 900);
+        },
         onError: (err) =>
           setError(
             err instanceof Error && err.message
@@ -285,7 +312,7 @@ function RenameMerchantDialog({
             Cambia cómo se ve este comercio en tu lista. Lo recordaremos para esta transacción.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Input
             autoFocus
             value={value}
@@ -302,6 +329,31 @@ function RenameMerchantDialog({
             placeholder="Nombre del comercio"
             maxLength={255}
           />
+          {countEnabled && matchingCount > 0 && !successMsg && (
+            <div className="space-y-1 rounded-md bg-slate-50 p-2.5">
+              <label className="flex cursor-pointer items-start gap-2 text-[13px] text-slate-800">
+                <Checkbox
+                  checked={applyToAll}
+                  onCheckedChange={(v) => setApplyToAll(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Aplicar a las otras {matchingCount} transacciones de{" "}
+                  <span className="font-medium">
+                    &ldquo;{original}&rdquo;
+                  </span>
+                </span>
+              </label>
+              <p className="pl-6 text-[11px] text-slate-500">
+                Solo se aplicará a transacciones que no hayas editado manualmente.
+              </p>
+            </div>
+          )}
+          {successMsg && (
+            <p className="rounded-md bg-emerald-50 px-2.5 py-2 text-[13px] text-emerald-700">
+              {successMsg}
+            </p>
+          )}
           {error && (
             <p role="alert" className="text-[12px] text-red-600">
               {error}
@@ -312,7 +364,7 @@ function RenameMerchantDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={update.isPending}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={update.isPending}>
+          <Button onClick={handleSave} disabled={update.isPending || !!successMsg}>
             {update.isPending ? "Guardando…" : "Guardar"}
           </Button>
         </DialogFooter>

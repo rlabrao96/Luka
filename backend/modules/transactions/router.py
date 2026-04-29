@@ -13,6 +13,8 @@ from modules.transactions.schemas import (
     CategoryUpdateRequest,
     SplitTypeUpdateRequest,
     MerchantNameUpdateRequest,
+    MerchantNameUpdateResponse,
+    MerchantNameMatchingCountResponse,
     PendingTransactionsResponse,
     MatchCandidate,
     LinkRequest,
@@ -138,13 +140,40 @@ async def link_manual_transfer_endpoint(
         _raise_from_service_error(err)
 
 
-@router.patch("/{transaction_id}/merchant-name")
+@router.get(
+    "/{transaction_id}/merchant-name/matching-count",
+    response_model=MerchantNameMatchingCountResponse,
+)
+async def merchant_name_matching_count(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await service.get_merchant_name_matching_count(db, transaction_id, current_user.id)
+    if result is None:
+        raise HTTPException(404, "Transaction not found")
+    return result
+
+
+@router.patch("/{transaction_id}/merchant-name", response_model=MerchantNameUpdateResponse)
 async def update_merchant_name(
     transaction_id: uuid.UUID,
     body: MerchantNameUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if body.apply_to_all_matching:
+        updated = await service.update_merchant_name_bulk(
+            db,
+            transaction_id,
+            current_user.id,
+            raw_merchant_name=body.raw_merchant_name,
+            merchant_id=body.merchant_id,
+        )
+        if updated is None:
+            raise HTTPException(404, "Transaction not found")
+        return {"ok": True, "updated_count": updated}
+
     found = await service.update_merchant_name(
         db,
         transaction_id,
@@ -154,7 +183,7 @@ async def update_merchant_name(
     )
     if not found:
         raise HTTPException(404, "Transaction not found")
-    return {"ok": True}
+    return {"ok": True, "updated_count": 1}
 
 
 @router.post("/bulk-action", response_model=BulkActionResponse)
