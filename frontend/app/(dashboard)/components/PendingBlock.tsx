@@ -109,6 +109,8 @@ function ageInline(txn: Transaction): { label: string; colorClass: string } | nu
   return { label: `hace ${days}d`, colorClass: "text-red-600 font-semibold" };
 }
 
+const CATEGORY_COLLATOR = new Intl.Collator("es", { sensitivity: "base", numeric: true });
+
 /* ─── Inline category dropdown ─── */
 
 interface PendingCategoryCellProps {
@@ -123,8 +125,15 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
 
   const { expense: expenseCats, income: incomeCats } = useCategories();
-  const isIncome = Number(txn.amount) > 0 && txn.transaction_type !== "transfer";
-  const categories = isIncome ? incomeCats : expenseCats;
+  const sortedExpense = useMemo(
+    () => [...expenseCats].sort((a, b) => CATEGORY_COLLATOR.compare(a, b)),
+    [expenseCats]
+  );
+  const sortedIncome = useMemo(
+    () => [...incomeCats].sort((a, b) => CATEGORY_COLLATOR.compare(a, b)),
+    [incomeCats]
+  );
+  const incomeFirst = Number(txn.amount) > 0 && txn.transaction_type !== "transfer";
 
   async function handleSelect(cat: string | null) {
     setOpen(false);
@@ -166,26 +175,44 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[160px]">
+          <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-[160px] max-h-[320px] overflow-y-auto">
             <button
               onClick={() => handleSelect(null)}
               className="w-full text-left px-3 py-1.5 text-[11px] text-slate-400 hover:bg-slate-50"
             >
               Sin categoría
             </button>
-            <div className="border-t border-slate-100 my-1" />
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => handleSelect(cat)}
-                className={cn(
-                  "w-full text-left px-3 py-1.5 text-[11px] hover:bg-blue-50 hover:text-luka-primary transition-colors",
-                  localCategory === cat ? "text-luka-primary font-semibold bg-blue-50" : "text-slate-700"
-                )}
-              >
-                {cat}
-              </button>
-            ))}
+            {(incomeFirst
+              ? [
+                  { label: "Ingresos", items: sortedIncome },
+                  { label: "Gastos", items: sortedExpense },
+                ]
+              : [
+                  { label: "Gastos", items: sortedExpense },
+                  { label: "Ingresos", items: sortedIncome },
+                ]
+            ).map(({ label, items }) =>
+              items.length === 0 ? null : (
+                <div key={label}>
+                  <div className="border-t border-slate-100 my-1" />
+                  <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    {label}
+                  </div>
+                  {items.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => handleSelect(cat)}
+                      className={cn(
+                        "w-full text-left px-3 py-1.5 text-[11px] hover:bg-blue-50 hover:text-luka-primary transition-colors",
+                        localCategory === cat ? "text-luka-primary font-semibold bg-blue-50" : "text-slate-700"
+                      )}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )
+            )}
           </div>
         </>
       )}
