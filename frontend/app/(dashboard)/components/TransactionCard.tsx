@@ -101,6 +101,34 @@ export function TransactionCard({
               const label = isNegativeStored(Number(txn.amount))
                 ? `menos ${formatted}`
                 : formatted;
+              // When this row is part of a group whose partner isn't on the
+              // current page, render with strike-through + a small pill so
+              // the user can tell at a glance it's already reimbursed/paired.
+              const isReimbursed =
+                !!txn.reimbursement_group_id || !!txn.refund_pair_id;
+              const isTransferLeg = !!txn.transfer_pair_id;
+              if (isReimbursed || isTransferLeg) {
+                return (
+                  <span className="flex items-baseline gap-1.5 shrink-0">
+                    <span
+                      aria-label={label}
+                      className="text-[12px] sm:text-[14px] font-semibold tabular-nums line-through text-slate-400"
+                    >
+                      {visible}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[9px] sm:text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5",
+                        isReimbursed
+                          ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                          : "bg-blue-50 text-blue-600 border border-blue-100",
+                      )}
+                    >
+                      {isReimbursed ? "reembolsado" : "transferencia"}
+                    </span>
+                  </span>
+                );
+              }
               return (
                 <span
                   aria-label={label}
