@@ -242,9 +242,52 @@ async def handle_connect_callback(
 
         await invalidate_subscriptions_cache(cred.user_id)
 
+        # Event-driven reconciliation tick: mirrors the Plaid + email-ingest
+        # paths so LATAM users (Luka Connect) get the same automatic
+        # post-sync reconciliation. Runs on the slow worker because a tick
+        # can exceed 60s. Failures here must NOT fail the sync — best effort.
+        hh_result = await db.execute(
+            select(HouseholdMember.household_id).where(HouseholdMember.user_id == cred.user_id)
+        )
+        hh_id = hh_result.scalar_one_or_none()
+        if hh_id is not None:
+            await _enqueue_reconciliation_tick(hh_id)
+
         return {"status": "ok", "created": created, "enriched": enriched, "skipped": skipped}
 
     return {"status": "ack"}
+
+
+async def _enqueue_reconciliation_tick(household_id: uuid.UUID) -> None:
+    """Enqueue a per-household reconciliation tick on the slow worker.
+
+    Best-effort: never raises into the caller. The reconciliation_tick cron
+    still runs every 15 minutes as a safety net, so a missed enqueue here is
+    not data-loss — just slightly delayed reconciliation.
+    """
+    import logging
+
+    from arq import create_pool
+    from arq.connections import RedisSettings
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        try:
+            await redis.enqueue_job(
+                "run_reconciliation_tick_for_household",
+                str(household_id),
+                _queue_name="arq:queue:slow",
+            )
+        finally:
+            await redis.aclose()
+    except Exception as exc:  # noqa: BLE001 — best-effort enqueue
+        logger.warning(
+            "Failed to enqueue run_reconciliation_tick_for_household for household %s: %s",
+            household_id,
+            exc,
+        )
 
 
 def _resolve_account(mov: dict, ba_map: dict[tuple[str, str], uuid.UUID]) -> uuid.UUID | None:
