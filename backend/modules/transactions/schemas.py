@@ -36,7 +36,28 @@ class TransactionResponse(BaseModel):
 
 
 class CategoryUpdateRequest(BaseModel):
+    """PATCH body for changing a transaction's category.
+
+    When `apply_to_all_matching` is true, the new category also propagates to
+    every other household row sharing the anchor's ORIGINAL `raw_merchant_name`
+    (case-insensitive) or `merchant_id` — skipping rows the user already edited
+    and rows already at the target category.
+    """
+
     category: str | None
+    apply_to_all_matching: bool = False
+
+
+class CategoryUpdateResponse(BaseModel):
+    ok: bool = True
+    updated_count: int = 1
+
+
+class CategoryMatchingCountResponse(BaseModel):
+    count: int
+    raw_merchant_name: str
+    merchant_id: uuid.UUID | None = None
+    current_category: str | None = None
 
 
 class SplitTypeUpdateRequest(BaseModel):

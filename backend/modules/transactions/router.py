@@ -11,6 +11,8 @@ from modules.transactions import service
 from modules.transactions.schemas import (
     TransactionResponse,
     CategoryUpdateRequest,
+    CategoryUpdateResponse,
+    CategoryMatchingCountResponse,
     SplitTypeUpdateRequest,
     MerchantNameUpdateRequest,
     MerchantNameUpdateResponse,
@@ -85,17 +87,43 @@ async def pending_transactions(
     return await service.get_pending_transactions(db, current_user.id)
 
 
-@router.patch("/{transaction_id}/category")
+@router.get(
+    "/{transaction_id}/category/matching-count",
+    response_model=CategoryMatchingCountResponse,
+)
+async def category_matching_count(
+    transaction_id: uuid.UUID,
+    category: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await service.get_category_matching_count(
+        db, transaction_id, current_user.id, category
+    )
+    if result is None:
+        raise HTTPException(404, "Transaction not found")
+    return result
+
+
+@router.patch("/{transaction_id}/category", response_model=CategoryUpdateResponse)
 async def update_category(
     transaction_id: uuid.UUID,
     body: CategoryUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if body.apply_to_all_matching:
+        updated = await service.update_category_bulk(
+            db, transaction_id, current_user.id, body.category
+        )
+        if updated is None:
+            raise HTTPException(404, "Transaction not found")
+        return {"ok": True, "updated_count": updated}
+
     found = await service.update_category(db, transaction_id, current_user.id, body.category)
     if not found:
         raise HTTPException(404, "Transaction not found")
-    return {"ok": True}
+    return {"ok": True, "updated_count": 1}
 
 
 @router.patch("/{transaction_id}/split-type")

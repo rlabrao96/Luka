@@ -263,6 +263,118 @@ async def update_category(
     return True
 
 
+async def get_category_matching_count(
+    db: AsyncSession,
+    transaction_id: uuid.UUID,
+    user_id: uuid.UUID,
+    target_category: str | None,
+) -> dict | None:
+    """Count sibling rows in the caller's household sharing the anchor's
+    `raw_merchant_name` (case-insensitive) or `merchant_id`, that are NOT
+    already at `target_category`, and whose `user_edited_fields["category"]`
+    is not true. Excludes the anchor itself.
+
+    Returns None when the caller is not a member of the anchor's household
+    (or the anchor doesn't exist) so the router can map to 404.
+    """
+    anchor = await db.scalar(
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .where(
+            Transaction.id == transaction_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    if anchor is None:
+        return None
+
+    match_clause = _merchant_name_match_clause(anchor.raw_merchant_name, anchor.merchant_id)
+    count = await db.scalar(
+        select(func.count(Transaction.id)).where(
+            Transaction.household_id == anchor.household_id,
+            Transaction.id != anchor.id,
+            match_clause,
+            Transaction.category.is_distinct_from(target_category),
+            func.coalesce(Transaction.user_edited_fields["category"].astext, "false") != "true",
+        )
+    )
+    return {
+        "count": int(count or 0),
+        "raw_merchant_name": anchor.raw_merchant_name,
+        "merchant_id": anchor.merchant_id,
+        "current_category": anchor.category,
+    }
+
+
+async def update_category_bulk(
+    db: AsyncSession,
+    transaction_id: uuid.UUID,
+    user_id: uuid.UUID,
+    category: str | None,
+) -> int | None:
+    """Set `category` on the anchor row AND every household sibling currently
+    matching the anchor's ORIGINAL `raw_merchant_name` (case-insensitive) or
+    `merchant_id`, skipping rows already user-edited on category and rows
+    already at the target category.
+
+    Returns the number of rows updated (anchor included), or None when the
+    caller is not a household member / the anchor doesn't exist.
+    """
+    anchor = await db.scalar(
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .where(
+            Transaction.id == transaction_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    if anchor is None:
+        return None
+
+    # Capture ORIGINAL match keys BEFORE mutation so the anchor's siblings are
+    # found by their pre-update merchant identity (mirrors update_merchant_name_bulk).
+    original_raw = anchor.raw_merchant_name
+    original_merchant_id = anchor.merchant_id
+
+    match_clause = _merchant_name_match_clause(original_raw, original_merchant_id)
+    siblings_q = await db.execute(
+        select(Transaction).where(
+            Transaction.household_id == anchor.household_id,
+            Transaction.id != anchor.id,
+            match_clause,
+            Transaction.category.is_distinct_from(category),
+            func.coalesce(Transaction.user_edited_fields["category"].astext, "false") != "true",
+        )
+    )
+    siblings = siblings_q.scalars().all()
+
+    targets: list[Transaction] = []
+    # Anchor: only update if not already at target.
+    if anchor.category != category:
+        anchor.category = category
+    mark_user_edited(anchor, "category")
+    targets.append(anchor)
+
+    for txn in siblings:
+        txn.category = category
+        mark_user_edited(txn, "category")
+        targets.append(txn)
+
+    await db.commit()
+
+    if category:
+        try:
+            await record_category_selection(
+                original_raw, category, db, _get_redis(), user_id=user_id
+            )
+        except Exception:
+            pass
+
+    return len(targets)
+
+
 async def update_split_type(
     db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID, split_type: str
 ) -> bool:
