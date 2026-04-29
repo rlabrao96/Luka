@@ -366,6 +366,7 @@ export interface MatchCandidate {
   currency: string;
   raw_merchant_name: string;
   category: string | null;
+  status: string | null;
 }
 
 export type BulkActionKind = "dismiss" | "delete";
