@@ -6,6 +6,7 @@ import { PendingBlock } from "../components/PendingBlock";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecentTransactions } from "../components/RecentTransactions";
 import { useMyTransactions, useSharedTransactions } from "@/app/lib/hooks/useTransactions";
+import { useCategories } from "@/app/lib/hooks/useCategories";
 import { ProcessingBanner } from "../components/ProcessingBanner";
 import { CreditSuggestionsBanner } from "../components/CreditSuggestionsBanner";
 import { useQuery } from "@tanstack/react-query";
@@ -267,6 +268,28 @@ export default function TransactionsPage() {
     return Array.from(cats).sort();
   }, [myTxns, sharedTxns]);
 
+  // Split the visible categories into Gastos / Ingresos using the user's
+  // category-type preferences so the filter dropdown can render two
+  // <optgroup> sections instead of one mixed alphabetical list.
+  const { expense: expenseCatPrefs, income: incomeCatPrefs } = useCategories();
+  const { categoryGastos, categoryIngresos } = useMemo(() => {
+    const expenseSet = new Set(expenseCatPrefs);
+    const incomeSet = new Set(incomeCatPrefs);
+    const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
+    const gastos: string[] = [];
+    const ingresos: string[] = [];
+    const unknown: string[] = [];
+    for (const c of categoryOptions) {
+      if (incomeSet.has(c)) ingresos.push(c);
+      else if (expenseSet.has(c)) gastos.push(c);
+      else unknown.push(c);
+    }
+    return {
+      categoryGastos: [...gastos, ...unknown].sort((a, b) => collator.compare(a, b)),
+      categoryIngresos: ingresos.sort((a, b) => collator.compare(a, b)),
+    };
+  }, [categoryOptions, expenseCatPrefs, incomeCatPrefs]);
+
   const applyFilters = (txns: Transaction[]) => {
     let result = txns;
     if (selectedCurrency) {
@@ -422,7 +445,16 @@ export default function TransactionsPage() {
           <div className="relative">
             <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className={selectClass}>
               <option value="all">Todas las categorías</option>
-              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              {categoryGastos.length > 0 && (
+                <optgroup label="Gastos">
+                  {categoryGastos.map((c) => <option key={c} value={c}>{c}</option>)}
+                </optgroup>
+              )}
+              {categoryIngresos.length > 0 && (
+                <optgroup label="Ingresos">
+                  {categoryIngresos.map((c) => <option key={c} value={c}>{c}</option>)}
+                </optgroup>
+              )}
             </select>
             <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
