@@ -17,7 +17,7 @@ import modules.merchants.models  # noqa: F401
 import modules.plaid.models  # noqa: F401
 from modules.auth.models import User
 from modules.households.models import BankAccount, Household, HouseholdMember
-from modules.reconciliation.transfers import detect_transfers
+from modules.reconciliation.transfers import detect_transfers, pair_transfer_twin
 from modules.transactions.models import Transaction
 
 
@@ -74,6 +74,8 @@ def _txn(
     amount: Decimal,
     currency: str = "USD",
     date: datetime,
+    source_type: str = "plaid",
+    source: str | None = None,
 ) -> Transaction:
     return Transaction(
         id=uuid.uuid4(),
@@ -86,8 +88,10 @@ def _txn(
         transaction_date=date,
         transaction_type="expense" if amount < 0 else "income",
         status="settled",
-        source="plaid",
-        source_type="plaid",
+        source=source
+        if source is not None
+        else (source_type if source_type != "email" else "gmail"),
+        source_type=source_type,
     )
 
 
@@ -174,3 +178,229 @@ async def test_transfer_does_not_pair_different_currencies(db):
     await db.refresh(inc)
     assert out.transfer_pair_id is None
     assert inc.transfer_pair_id is None
+
+
+# ---------------------------------------------------------------------------
+# Bank-only restriction + orphan healing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_detect_transfers_skips_email_rows(db):
+    """An email-sourced row must never pair with a Plaid row as a transfer."""
+    user = await _seed_user(db)
+    hh = await _seed_household(db, user)
+    checking = await _seed_account(db, hh, user, bank_name="BofA Checking")
+    savings = await _seed_account(db, hh, user, bank_name="BofA Savings")
+
+    today = datetime.now(timezone.utc)
+    email_out = _txn(
+        user=user,
+        household=hh,
+        account=checking,
+        amount=Decimal("-2000"),
+        date=today,
+        source_type="email",
+    )
+    plaid_in = _txn(user=user, household=hh, account=savings, amount=Decimal("2000"), date=today)
+    db.add_all([email_out, plaid_in])
+    await db.flush()
+
+    pairs = await detect_transfers(db, hh.id, lookback_days=5)
+    assert pairs == 0
+
+    await db.refresh(email_out)
+    await db.refresh(plaid_in)
+    assert email_out.transfer_pair_id is None
+    assert plaid_in.transfer_pair_id is None
+
+
+@pytest.mark.asyncio
+async def test_detect_transfers_pairs_two_bank_rows(db):
+    """Two Plaid rows with opposite signs and matching amount/currency pair."""
+    user = await _seed_user(db)
+    hh = await _seed_household(db, user)
+    checking = await _seed_account(db, hh, user, bank_name="BofA Checking")
+    savings = await _seed_account(db, hh, user, bank_name="BofA Savings")
+
+    today = datetime.now(timezone.utc)
+    out = _txn(user=user, household=hh, account=checking, amount=Decimal("-2000"), date=today)
+    inc = _txn(user=user, household=hh, account=savings, amount=Decimal("2000"), date=today)
+    db.add_all([out, inc])
+    await db.flush()
+
+    pairs = await detect_transfers(db, hh.id, lookback_days=5)
+    assert pairs == 1
+
+    await db.refresh(out)
+    await db.refresh(inc)
+    assert out.transfer_pair_id is not None
+    assert out.transfer_pair_id == inc.transfer_pair_id
+
+
+@pytest.mark.asyncio
+async def test_detect_transfers_heals_orphan_transfer_pair_id(db):
+    """Plaid row with orphan pair_id is healed and becomes eligible to re-pair."""
+    user = await _seed_user(db)
+    hh = await _seed_household(db, user)
+    checking = await _seed_account(db, hh, user, bank_name="BofA Checking")
+    savings = await _seed_account(db, hh, user, bank_name="BofA Savings")
+
+    today = datetime.now(timezone.utc)
+    orphan_pair_id = uuid.uuid4()
+    stuck = _txn(user=user, household=hh, account=checking, amount=Decimal("-2000"), date=today)
+    stuck.transfer_pair_id = orphan_pair_id
+    db.add(stuck)
+    await db.flush()
+
+    pairs = await detect_transfers(db, hh.id, lookback_days=5)
+    assert pairs == 0
+    await db.refresh(stuck)
+    assert stuck.transfer_pair_id is None
+
+    twin = _txn(user=user, household=hh, account=savings, amount=Decimal("2000"), date=today)
+    db.add(twin)
+    await db.flush()
+
+    pairs = await detect_transfers(db, hh.id, lookback_days=5)
+    assert pairs == 1
+    await db.refresh(stuck)
+    await db.refresh(twin)
+    assert stuck.transfer_pair_id is not None
+    assert stuck.transfer_pair_id == twin.transfer_pair_id
+
+
+@pytest.mark.asyncio
+async def test_pair_transfer_twin_rejects_email_source(db):
+    """pair_transfer_twin called on an email row returns None."""
+    user = await _seed_user(db)
+    hh = await _seed_household(db, user)
+    checking = await _seed_account(db, hh, user, bank_name="BofA Checking")
+    savings = await _seed_account(db, hh, user, bank_name="BofA Savings")
+
+    today = datetime.now(timezone.utc)
+    email_row = _txn(
+        user=user,
+        household=hh,
+        account=checking,
+        amount=Decimal("-2000"),
+        date=today,
+        source_type="email",
+    )
+    plaid_in = _txn(user=user, household=hh, account=savings, amount=Decimal("2000"), date=today)
+    db.add_all([email_row, plaid_in])
+    await db.flush()
+
+    result = await pair_transfer_twin(db, email_row.id)
+    assert result is None
+    await db.refresh(email_row)
+    await db.refresh(plaid_in)
+    assert email_row.transfer_pair_id is None
+    assert plaid_in.transfer_pair_id is None
+
+
+@pytest.mark.asyncio
+async def test_delete_transaction_clears_partner_pair_id(db):
+    """Deleting one leg of a paired pair clears the partner's pair_id."""
+    from modules.transactions.service import delete_transaction
+
+    user = await _seed_user(db)
+    hh = await _seed_household(db, user)
+    acc1 = await _seed_account(db, hh, user, bank_name="A")
+    acc2 = await _seed_account(db, hh, user, bank_name="B")
+
+    today = datetime.now(timezone.utc)
+    pair_id = uuid.uuid4()
+    a = _txn(
+        user=user,
+        household=hh,
+        account=acc1,
+        amount=Decimal("-2000"),
+        date=today,
+        source_type="email",
+    )
+    a.status = "pending"
+    a.transfer_pair_id = pair_id
+    b = _txn(
+        user=user,
+        household=hh,
+        account=acc2,
+        amount=Decimal("2000"),
+        date=today,
+        source_type="email",
+    )
+    b.status = "pending"
+    b.transfer_pair_id = pair_id
+    db.add_all([a, b])
+    await db.flush()
+
+    result = await delete_transaction(db, a.id, user.id)
+    assert result == "deleted"
+
+    await db.refresh(b)
+    assert b.transfer_pair_id is None
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_clears_partner_pair_ids(db):
+    """Bulk-deleting one leg of a paired pair clears the partner's pair_id."""
+    from modules.transactions.service import bulk_action
+
+    user = await _seed_user(db)
+    hh = await _seed_household(db, user)
+    acc1 = await _seed_account(db, hh, user, bank_name="A")
+    acc2 = await _seed_account(db, hh, user, bank_name="B")
+
+    today = datetime.now(timezone.utc)
+    pair_id = uuid.uuid4()
+    a = _txn(
+        user=user,
+        household=hh,
+        account=acc1,
+        amount=Decimal("-2000"),
+        date=today,
+        source_type="email",
+    )
+    a.status = "pending"
+    a.transfer_pair_id = pair_id
+    b = _txn(
+        user=user,
+        household=hh,
+        account=acc2,
+        amount=Decimal("2000"),
+        date=today,
+        source_type="email",
+    )
+    b.status = "pending"
+    b.transfer_pair_id = pair_id
+    db.add_all([a, b])
+    await db.flush()
+
+    deleted = await bulk_action(db, user.id, [a.id], "delete")
+    assert deleted == 1
+
+    await db.refresh(b)
+    assert b.transfer_pair_id is None
+
+
+@pytest.mark.asyncio
+async def test_repair_orphan_pair_ids_idempotent(db):
+    """Healing pass clears orphans on first run; second run is a no-op."""
+    user = await _seed_user(db)
+    hh = await _seed_household(db, user)
+    acc = await _seed_account(db, hh, user, bank_name="BofA Checking")
+
+    today = datetime.now(timezone.utc)
+    orphan_pair = uuid.uuid4()
+    row = _txn(user=user, household=hh, account=acc, amount=Decimal("-1234"), date=today)
+    row.transfer_pair_id = orphan_pair
+    db.add(row)
+    await db.flush()
+
+    await detect_transfers(db, hh.id, lookback_days=5)
+    await db.refresh(row)
+    assert row.transfer_pair_id is None
+
+    await detect_transfers(db, hh.id, lookback_days=5)
+    await db.refresh(row)
+    assert row.transfer_pair_id is None

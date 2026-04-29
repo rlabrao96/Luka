@@ -438,6 +438,27 @@ async def delete_transaction(
         return "not_found"
     if txn.source_type != "email" or txn.status not in ("pending", "orphan"):
         return "invalid"
+    # If this row is paired (transfer or refund), null the pair_id on any
+    # surviving partner rows so they are not left orphaned and can be
+    # re-paired by a future detect_transfers / detect_refunds tick.
+    if getattr(txn, "transfer_pair_id", None) is not None:
+        await db.execute(
+            sql_update(Transaction)
+            .where(
+                Transaction.transfer_pair_id == txn.transfer_pair_id,
+                Transaction.id != transaction_id,
+            )
+            .values(transfer_pair_id=None)
+        )
+    if getattr(txn, "refund_pair_id", None) is not None:
+        await db.execute(
+            sql_update(Transaction)
+            .where(
+                Transaction.refund_pair_id == txn.refund_pair_id,
+                Transaction.id != transaction_id,
+            )
+            .values(refund_pair_id=None)
+        )
     # Delete associated splits first to avoid FK violation
     await db.execute(
         sql_delete(TransactionSplit).where(TransactionSplit.transaction_id == transaction_id)
@@ -783,6 +804,27 @@ async def bulk_action(
             )
         )
     else:  # delete
+        # Null pair_ids on surviving partner rows BEFORE deletion so they
+        # don't end up orphaned and can be re-paired later. Scope each UPDATE
+        # to rows that share a pair_id with one of the to-be-deleted ids,
+        # excluding the to-be-deleted ids themselves.
+        for pair_col in (Transaction.transfer_pair_id, Transaction.refund_pair_id):
+            pair_ids_subq = (
+                select(pair_col)
+                .where(
+                    Transaction.id.in_(transaction_ids),
+                    pair_col.is_not(None),
+                )
+                .scalar_subquery()
+            )
+            await db.execute(
+                sql_update(Transaction)
+                .where(
+                    pair_col.in_(pair_ids_subq),
+                    Transaction.id.not_in(transaction_ids),
+                )
+                .values({pair_col: None})
+            )
         # Clear child splits first to respect FK.
         await db.execute(
             sql_delete(TransactionSplit).where(TransactionSplit.transaction_id.in_(transaction_ids))

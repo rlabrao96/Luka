@@ -4,17 +4,96 @@ Detection methods (in order):
 1. Plaid category tags (TRANSFER_IN, TRANSFER_OUT, LOAN_PAYMENTS)
 2. Cross-account amount matching (same amount, ±2 days, opposite signs, same household)
 
-When detected, both transactions get transaction_type="transfer" and a shared transfer_pair_id.
+Bank-only rule
+--------------
+A transfer pair is a real money movement between two bank accounts. Email rows
+are bank-notification echoes — they describe the same movement but are not the
+movement itself. Pairing an email row with a Plaid/Connect row as a "transfer"
+double-classifies a single side, so we restrict candidates strictly to
+``source_type IN ('plaid', 'connect')``.
+
+Orphan healing
+--------------
+When one leg of a paired row is deleted (manually, via cleanup script, or via
+``delete_transaction``), the partner can end up holding a ``transfer_pair_id``
+or ``refund_pair_id`` that no other row holds — orphaned. ``detect_transfers``
+runs a healing pass at the start of every tick that nulls those orphan ids so
+the row becomes eligible for re-pairing on the same scan.
+
+When detected, both transactions get transaction_type="transfer" and a shared
+transfer_pair_id.
 """
 
 import uuid
 from collections import defaultdict
 from datetime import timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.transactions.models import Transaction
+
+
+# Source types that represent actual money movement (vs. email notifications).
+# Only these are eligible to form transfer/refund pairs.
+BANK_SOURCE_TYPES = ("plaid", "connect")
+
+
+async def _heal_orphan_pair_ids(session: AsyncSession, household_id: uuid.UUID) -> tuple[int, int]:
+    """Null out transfer_pair_id / refund_pair_id values that are held by
+    exactly one row globally for this household.
+
+    Globally scoped (no date filter) on the count side so we don't accidentally
+    clear a pair_id whose twin sits outside the lookback window. Clear is then
+    applied to the surviving single rows. Returns (transfers_healed,
+    refunds_healed).
+    """
+    healed_transfers = 0
+    healed_refunds = 0
+
+    for column in (Transaction.transfer_pair_id, Transaction.refund_pair_id):
+        # Find pair_ids that exist on exactly one row in this household.
+        orphan_rows = (
+            (
+                await session.execute(
+                    select(column)
+                    .where(
+                        Transaction.household_id == household_id,
+                        column.is_not(None),
+                    )
+                    .group_by(column)
+                    .having(func.count() == 1)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        if not orphan_rows:
+            continue
+
+        result = await session.execute(
+            update(Transaction)
+            .where(
+                Transaction.household_id == household_id,
+                column.in_(orphan_rows),
+            )
+            .values({column: None})
+        )
+        if column is Transaction.transfer_pair_id:
+            healed_transfers = result.rowcount or len(orphan_rows)
+        else:
+            healed_refunds = result.rowcount or len(orphan_rows)
+
+    if healed_transfers or healed_refunds:
+        print(
+            f"[transfers] healed orphan pair_ids: "
+            f"transfers={healed_transfers} refunds={healed_refunds} "
+            f"household={household_id}",
+            flush=True,
+        )
+
+    return healed_transfers, healed_refunds
 
 
 async def detect_transfers(
@@ -22,15 +101,28 @@ async def detect_transfers(
     household_id: uuid.UUID,
     lookback_days: int = 5,
 ) -> int:
-    """Scan recent transactions for transfer pairs. Returns number of pairs detected."""
+    """Scan recent bank transactions for transfer pairs.
+
+    Only ``source_type IN ('plaid','connect')`` rows are candidates — email
+    rows are notifications, never the actual movement, and pairing them would
+    double-classify one side of a transfer.
+
+    Heals orphan ``transfer_pair_id`` / ``refund_pair_id`` values (held by
+    exactly one row) before scanning, so previously-paired rows whose twin
+    was deleted become eligible to re-pair.
+
+    Returns the number of pairs detected.
+    """
     from datetime import datetime, timezone
+
+    # ---------- 0. Heal orphan pair_ids first so freshly-unpaired rows are eligible.
+    await _heal_orphan_pair_ids(session, household_id)
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     pairs_found = 0
 
-    # Get all recent non-paired transactions for this household.
-    # Previously, we excluded rows already typed 'transfer', but this resulted
-    # in pre-tagged transfers (e.g. from Plaid) missing out on being paired with their twin.
+    # Get all recent non-paired bank-sourced transactions for this household.
+    # Email rows are excluded — they are notifications, not the money movement.
     result = await session.execute(
         select(Transaction)
         .where(
@@ -38,6 +130,7 @@ async def detect_transfers(
             Transaction.transaction_date >= cutoff,
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),
+            Transaction.source_type.in_(BANK_SOURCE_TYPES),
         )
         .order_by(Transaction.transaction_date)
     )
@@ -113,12 +206,21 @@ async def pair_transfer_twin(
     'transfer') gets paired with its twin on another account. Scoped to one
     bank_tx — avoids the broad rescan that could mis-pair unrelated rows.
 
-    Returns the new transfer_pair_id on success, or None if no twin exists.
+    Bank-only: both ``bank_tx`` and any candidate twin must have
+    ``source_type IN ('plaid','connect')``. Email rows are echoes of the
+    movement, never the movement itself, and must never form a transfer pair.
+    Called on an email-sourced row, this returns ``None`` immediately.
+
+    Returns the new transfer_pair_id on success, or None if no twin exists or
+    the input row is not bank-sourced.
     """
     bank_tx = (
         await session.execute(select(Transaction).where(Transaction.id == bank_tx_id))
     ).scalar_one_or_none()
     if bank_tx is None or bank_tx.bank_account_id is None:
+        return None
+    # Bank-only guard: refuse to pair email rows.
+    if bank_tx.source_type not in BANK_SOURCE_TYPES:
         return None
     if bank_tx.transfer_pair_id is not None:
         return bank_tx.transfer_pair_id
@@ -139,6 +241,7 @@ async def pair_transfer_twin(
                     Transaction.bank_account_id != bank_tx.bank_account_id,
                     Transaction.transfer_pair_id.is_(None),
                     Transaction.refund_pair_id.is_(None),
+                    Transaction.source_type.in_(BANK_SOURCE_TYPES),
                     Transaction.transaction_date.between(window_start, window_end),
                 )
             )
