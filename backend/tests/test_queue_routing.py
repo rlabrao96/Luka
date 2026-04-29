@@ -13,6 +13,7 @@ def test_slow_jobs_set_contains_expected_jobs():
         "run_plaid_sync_job",
         "process_merchant_review",
         "run_reconciliation_job",
+        "run_reconciliation_tick_for_household",
     }
 
 

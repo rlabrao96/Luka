@@ -1,26 +1,28 @@
-"""Registration tests for the reconciliation_tick cron on the slow worker.
+"""Registration tests for the reconciliation tick on the slow worker.
 
-Verifies wiring only — the orchestrator's behavior is covered in
-`test_reconciliation_tick.py`.
+The every-15-minute cron was removed in favor of event-driven enqueues
+from email ingest and Plaid sync completion. The daily 6am safety-net
+cron (`run_reconciliation_job`) remains.
 """
 
-from jobs.reconciliation_tick import reconciliation_tick_cron, run_reconciliation_tick
+from jobs.reconciliation_tick import run_reconciliation_tick_for_household
 from worker import SlowWorkerSettings
 
 
-def test_cron_registered_on_slow_worker_settings():
-    """The reconciliation_tick cron must be registered on the slow worker."""
+def test_per_household_tick_function_registered_on_slow_worker():
+    """The per-household tick must be registered as a callable function."""
+    func_names = {f.__name__ for f in SlowWorkerSettings.functions}
+    assert "run_reconciliation_tick_for_household" in func_names
+    assert run_reconciliation_tick_for_household in SlowWorkerSettings.functions
+
+
+def test_no_15min_reconciliation_cron_registered():
+    """The every-15-minute cron must no longer be on the slow worker."""
     cron_funcs = {c.coroutine.__name__ for c in SlowWorkerSettings.cron_jobs}
-    assert "run_reconciliation_tick" in cron_funcs
-
-    # And the exact cron object we export should be the one registered.
-    assert reconciliation_tick_cron in SlowWorkerSettings.cron_jobs
+    assert "run_reconciliation_tick" not in cron_funcs
 
 
-def test_cron_schedule_every_15_minutes():
-    """Cron must fire at minutes 0, 15, 30, 45."""
-    assert reconciliation_tick_cron.minute == {0, 15, 30, 45}
-    # Should not run eagerly on worker boot.
-    assert reconciliation_tick_cron.run_at_startup is False
-    # And the cron must wrap the wrapper task, not some other function.
-    assert reconciliation_tick_cron.coroutine is run_reconciliation_tick
+def test_daily_reconciliation_cron_still_registered():
+    """The daily 6am safety-net cron is preserved."""
+    cron_funcs = {c.coroutine.__name__ for c in SlowWorkerSettings.cron_jobs}
+    assert "run_reconciliation_job" in cron_funcs

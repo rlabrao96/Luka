@@ -7,6 +7,7 @@ SLOW_JOBS = {
     "run_plaid_sync_job",
     "process_merchant_review",
     "run_reconciliation_job",
+    "run_reconciliation_tick_for_household",
 }
 
 

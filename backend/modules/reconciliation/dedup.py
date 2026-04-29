@@ -330,7 +330,7 @@ async def find_plaid_match_for_email(
 
     Filters:
       - same owner (user_id)
-      - source_type='plaid', status='settled'
+      - source_type='plaid', status in ('pending','settled')
       - currency equality
       - signed amount equality (expenses stay negative, income positive)
       - transaction_date within ±3 days of the email date
@@ -339,6 +339,12 @@ async def find_plaid_match_for_email(
         transfer_to_account_id when the email is a CC-payment transfer
       - merchant ILIKE filter skipped for transfers (CC payment strings
         diverge from Plaid's institution label)
+
+    Status note: we deliberately match against pending Plaid rows too so a
+    Plaid pending arriving before the email gets consolidated immediately,
+    instead of having both rows coexist in "Pendientes" until Plaid settles
+    days later. The match remains valid through the pending → settled
+    transition (Plaid `modified` keeps the same row id).
     """
     date_min = email_tx.transaction_date - timedelta(days=3)
     date_max = email_tx.transaction_date + timedelta(days=3)
@@ -346,7 +352,7 @@ async def find_plaid_match_for_email(
     conditions = [
         Transaction.user_id == email_tx.user_id,
         Transaction.source_type == "plaid",
-        Transaction.status == "settled",
+        Transaction.status.in_(["pending", "settled"]),
         Transaction.currency == email_tx.currency,
         Transaction.amount == email_tx.amount,
         Transaction.transaction_date >= date_min,
@@ -391,6 +397,100 @@ async def find_plaid_match_for_email(
         candidates,
         key=lambda c: abs((c.transaction_date - email_tx.transaction_date).total_seconds()),
     )
+
+
+async def find_plaid_match_for_email_values(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    raw_merchant_name: str | None,
+    amount,
+    currency: str,
+    transaction_date,
+    transaction_type: str | None,
+    bank_account_id: uuid.UUID | None,
+    transfer_to_account_id: uuid.UUID | None,
+) -> Transaction | None:
+    """Same logic as `find_plaid_match_for_email` but accepts prospective
+    email values rather than a persisted email row.
+
+    Used at email-ingest time to detect "Plaid pending arrived first" before
+    we insert the email row, so we can skip the insert entirely and copy the
+    email's would-be enrichment onto the existing Plaid row.
+    """
+    date_min = transaction_date - timedelta(days=3)
+    date_max = transaction_date + timedelta(days=3)
+
+    conditions = [
+        Transaction.user_id == user_id,
+        Transaction.source_type == "plaid",
+        Transaction.status.in_(["pending", "settled"]),
+        Transaction.currency == currency,
+        Transaction.amount == amount,
+        Transaction.transaction_date >= date_min,
+        Transaction.transaction_date <= date_max,
+        Transaction.transfer_pair_id.is_(None),
+        Transaction.refund_pair_id.is_(None),
+    ]
+
+    is_transfer = transaction_type == "transfer"
+
+    if not is_transfer and raw_merchant_name:
+        safe = raw_merchant_name.replace("%", r"\%").replace("_", r"\_")
+        conditions.append(Transaction.raw_merchant_name.ilike(f"%{safe}%"))
+
+    preferred_account_id = None
+    if is_transfer and transfer_to_account_id is not None:
+        preferred_account_id = transfer_to_account_id
+    elif bank_account_id is not None:
+        preferred_account_id = bank_account_id
+
+    if preferred_account_id is not None:
+        conditions.append(
+            (Transaction.bank_account_id == preferred_account_id)
+            | (Transaction.bank_account_id.is_(None))
+        )
+
+    result = await session.execute(
+        select(Transaction).where(and_(*conditions)).order_by(Transaction.transaction_date)
+    )
+    candidates = result.scalars().all()
+    if not candidates:
+        return None
+
+    return min(
+        candidates,
+        key=lambda c: abs((c.transaction_date - transaction_date).total_seconds()),
+    )
+
+
+async def consolidate_email_values_into_plaid(
+    session: AsyncSession,
+    plaid_tx: Transaction,
+    *,
+    transaction_type: str | None,
+    transfer_to_account_id: uuid.UUID | None,
+) -> None:
+    """Copy enrichment from a prospective email tx onto an existing Plaid row.
+
+    This is the no-insert branch of email ingest: when a Plaid pending
+    counterpart already exists, we skip the email INSERT and instead enrich
+    the Plaid row with whatever the email parser gleaned (transfer typing,
+    transfer destination). Splits/categories are not copied here because at
+    ingest time the email row hasn't been classified yet — only the
+    transaction_type and transfer link are known.
+    """
+    update_fields: dict = {}
+    if transaction_type == "transfer":
+        update_fields["transaction_type"] = "transfer"
+        update_fields["category"] = None
+        if transfer_to_account_id is not None and plaid_tx.transfer_to_account_id is None:
+            update_fields["transfer_to_account_id"] = transfer_to_account_id
+
+    if update_fields:
+        await session.execute(
+            update(Transaction).where(Transaction.id == plaid_tx.id).values(**update_fields)
+        )
 
 
 async def _extract_enrichment(session: AsyncSession, email_tx_id: uuid.UUID) -> dict:
