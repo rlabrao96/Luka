@@ -129,3 +129,25 @@ async def test_039_expected_indexes_exist(db: AsyncSession):
         "ix_transactions_refund_pair",
         "ix_transactions_raw_merchant_trgm",
     }
+
+
+@pytest.mark.asyncio
+async def test_042_user_edited_fields_column(db: AsyncSession):
+    """Migration 042 must add user_edited_fields JSONB NOT NULL DEFAULT '{}'."""
+    result = await db.execute(
+        text(
+            """
+            SELECT column_name, is_nullable, data_type, column_default
+            FROM information_schema.columns
+            WHERE table_name = 'transactions'
+              AND column_name = 'user_edited_fields'
+            """
+        )
+    )
+    row = result.first()
+    assert row is not None, "user_edited_fields column must exist"
+    assert row[1] == "NO", "user_edited_fields must be NOT NULL"
+    assert row[2] == "jsonb", "user_edited_fields must be JSONB"
+    assert (
+        row[3] is not None and "jsonb" in row[3]
+    ), "user_edited_fields must default to '{}'::jsonb"

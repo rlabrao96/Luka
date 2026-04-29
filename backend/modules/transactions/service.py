@@ -11,6 +11,27 @@ from modules.merchants.service import record_category_selection
 from core.cache import _get_redis
 
 
+# Fields a user can touch via web/whatsapp UI. Keep this list in lockstep with the
+# `user_edited_fields` JSONB map on `transactions` (see migration 042).
+USER_EDITABLE_FIELDS = frozenset(
+    {"merchant_name", "category", "split_type", "transaction_type", "transfer_to_account_id"}
+)
+
+
+def mark_user_edited(txn: Transaction, *fields: str) -> None:
+    """Set ``user_edited_fields[field] = True`` for each user-edited field on ``txn``.
+
+    Centralized so every PATCH/update site goes through one path — drift here
+    silently breaks the user-edit-wins invariant in the merge pipeline.
+    """
+    current = dict(txn.user_edited_fields or {})
+    for field in fields:
+        if field not in USER_EDITABLE_FIELDS:
+            raise ValueError(f"Unknown user-editable field: {field}")
+        current[field] = True
+    txn.user_edited_fields = current
+
+
 async def ensure_default_split(
     db: AsyncSession,
     txn: Transaction,
@@ -219,6 +240,7 @@ async def update_category(
     if not txn:
         return False
     txn.category = category
+    mark_user_edited(txn, "category")
     await db.commit()
     # Train merchant data: record this user correction for future suggestions
     if category:
@@ -267,6 +289,7 @@ async def update_split_type(
                 decided_at=datetime.now(timezone.utc),
             )
         )
+    mark_user_edited(txn, "split_type")
     await db.commit()
     return True
 
@@ -568,6 +591,21 @@ async def link_email_to_bank(
         raise ServiceError("forbidden", "Not owner of transaction")
     if bank.transfer_pair_id is not None or bank.refund_pair_id is not None:
         raise ServiceError("conflict", "Bank transaction already paired")
+
+    # User explicitly chose to link this email to this bank row — that's a user
+    # decision on every populated field. Stamp markers on the email row so the
+    # merge pipeline carries them onto the bank row (and any future re-merge of
+    # the bank row respects them).
+    edited_fields: list[str] = []
+    if pending.category:
+        edited_fields.append("category")
+    if pending.transaction_type and pending.transaction_type != "expense":
+        edited_fields.append("transaction_type")
+    if pending.transfer_to_account_id:
+        edited_fields.append("transfer_to_account_id")
+    if edited_fields:
+        mark_user_edited(pending, *edited_fields)
+        await db.flush()
 
     enrichment = await _extract_enrichment(db, pending.id)
     await apply_match_and_delete_emails(
