@@ -812,6 +812,34 @@ export const api = {
     );
   },
 
+  // --- Household partner categories (read-only with respect to partner data) ---
+  async getHouseholdPartnerCategories() {
+    return apiFetch<{
+      categories: Array<{
+        category: string;
+        category_type: "expense" | "income";
+        member_ids: string[];
+        count: number;
+      }>;
+    }>("/settings/household-categories");
+  },
+
+  async adoptHouseholdCategory(
+    category: string,
+    category_type: "expense" | "income"
+  ) {
+    return apiFetch<{
+      already_present: boolean;
+      category?: string;
+      sort_order?: number;
+      category_type?: "expense" | "income";
+      is_custom?: boolean;
+    }>("/settings/household-categories/adopt", {
+      method: "POST",
+      body: JSON.stringify({ category, category_type }),
+    });
+  },
+
   // --- WhatsApp PIN ---
   sendWhatsAppPin: (phone: string) =>
     apiFetch<{ status: string }>("/auth/send-whatsapp-pin", {

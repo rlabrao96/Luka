@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/app/lib/api";
 import { findDuplicate, toCategoryCase } from "@/app/lib/category-dedup";
+import {
+  useAdoptHouseholdCategory,
+  useHouseholdPartnerCategories,
+} from "@/app/lib/hooks/useHouseholdCategories";
 
 const COLLATOR = new Intl.Collator("es", { sensitivity: "base" });
 
@@ -207,6 +211,80 @@ function CategoryColumn({
 }
 
 // ---------------------------------------------------------------------------
+// HouseholdPartnerCategoriesSection
+// ---------------------------------------------------------------------------
+
+function HouseholdPartnerCategoriesSection() {
+  const { data, isLoading } = useHouseholdPartnerCategories();
+  const adopt = useAdoptHouseholdCategory();
+  const [pending, setPending] = useState<string | null>(null);
+
+  const items = data?.categories ?? [];
+  if (isLoading || items.length === 0) return null;
+
+  const sorted = [...items].sort((a, b) => {
+    if (a.category_type !== b.category_type) {
+      return a.category_type === "expense" ? -1 : 1;
+    }
+    return COLLATOR.compare(a.category, b.category);
+  });
+
+  // Plural-aware copy: a single distinct partner → singular, else plural.
+  const distinctPartners = new Set(items.flatMap((i) => i.member_ids));
+  const title =
+    distinctPartners.size <= 1
+      ? "Categorías de tu pareja"
+      : "Categorías de tu hogar";
+
+  function handleAdd(category: string, categoryType: "expense" | "income") {
+    const key = `${categoryType}::${category}`;
+    setPending(key);
+    adopt.mutate(
+      { category, categoryType },
+      { onSettled: () => setPending(null) }
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.03)] p-5">
+      <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">
+        {title}
+      </h3>
+      <p className="text-xs text-slate-400 mb-4">
+        Usadas por otros miembros de tu hogar. Añádelas a tu lista para usarlas tú también.
+      </p>
+      <div className="space-y-1.5">
+        {sorted.map((item) => {
+          const key = `${item.category_type}::${item.category}`;
+          const isPending = pending === key;
+          return (
+            <div
+              key={key}
+              className="flex items-center gap-2 px-2.5 py-2 bg-emerald-50 rounded-lg border border-emerald-100"
+            >
+              <span className="flex-1 text-sm text-emerald-700 truncate">
+                {item.category}
+              </span>
+              <span className="text-[10px] text-emerald-600 font-medium px-1.5 py-0.5 rounded-full bg-emerald-100/70 shrink-0 uppercase tracking-wide">
+                {item.category_type === "expense" ? "Gasto" : "Ingreso"}
+              </span>
+              <button
+                onClick={() => handleAdd(item.category, item.category_type)}
+                disabled={isPending}
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 min-h-[28px] shrink-0"
+                aria-label={`Añadir ${item.category}`}
+              >
+                {isPending ? "…" : "+ Añadir"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // CategoriesSection
 // ---------------------------------------------------------------------------
 
@@ -307,6 +385,7 @@ export function CategoriesSection() {
 
   return (
     <>
+      <div className="space-y-4">
       <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.03)] p-5">
         <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">
           Categorías
@@ -396,6 +475,9 @@ export function CategoriesSection() {
             />
           </div>
         </div>
+      </div>
+
+      <HouseholdPartnerCategoriesSection />
       </div>
 
       {nearMatch && (

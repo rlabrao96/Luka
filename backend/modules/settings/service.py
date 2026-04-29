@@ -247,6 +247,156 @@ async def delete_category(
     await db.commit()
 
 
+async def get_household_partner_categories(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """Return categories that exist in OTHER active household members'
+    preference lists but NOT in the caller's. Aggregated by
+    (category, category_type) with the count of partner-members and their ids.
+
+    NEVER mutates partner data — read-only.
+    """
+    from modules.households.models import HouseholdMember
+
+    # Households the caller is an active member of.
+    caller_household_ids = (
+        select(HouseholdMember.household_id)
+        .where(
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+        .subquery()
+    )
+
+    # Other active members of those households.
+    partner_user_ids = (
+        select(HouseholdMember.user_id)
+        .where(
+            HouseholdMember.household_id.in_(select(caller_household_ids)),
+            HouseholdMember.left_at.is_(None),
+            HouseholdMember.user_id != user_id,
+        )
+        .subquery()
+    )
+
+    # Caller's existing (category, category_type) pairs.
+    own_result = await db.execute(
+        select(UserCategoryPreference.category, UserCategoryPreference.category_type).where(
+            UserCategoryPreference.user_id == user_id
+        )
+    )
+    own_pairs = {(r[0], r[1]) for r in own_result.all()}
+
+    # Partner prefs.
+    partner_result = await db.execute(
+        select(
+            UserCategoryPreference.category,
+            UserCategoryPreference.category_type,
+            UserCategoryPreference.user_id,
+        ).where(UserCategoryPreference.user_id.in_(select(partner_user_ids)))
+    )
+    rows = partner_result.all()
+
+    # Aggregate.
+    agg: dict[tuple[str, str], dict] = {}
+    for category, category_type, member_id in rows:
+        if (category, category_type) in own_pairs:
+            continue
+        key = (category, category_type)
+        bucket = agg.setdefault(
+            key,
+            {
+                "category": category,
+                "category_type": category_type,
+                "member_ids": [],
+                "count": 0,
+            },
+        )
+        if member_id not in bucket["member_ids"]:
+            bucket["member_ids"].append(member_id)
+            bucket["count"] += 1
+
+    out = list(agg.values())
+    out.sort(key=lambda r: (r["category_type"], r["category"].lower()))
+    return out
+
+
+async def adopt_household_category(
+    db: AsyncSession, user_id: uuid.UUID, category: str, category_type: str
+) -> dict:
+    """Adopt a partner's category into the caller's preferences.
+
+    - Validates the (category, category_type) pair really exists in some active
+      partner's prefs (prevents arbitrary creation through this endpoint).
+    - Idempotent: if caller already has it, returns {"already_present": True}.
+    - On insert, sets sort_order = max + 1 for that type.
+    NEVER mutates partner rows.
+    """
+    from modules.households.models import HouseholdMember
+
+    category = category.strip()
+    if not category:
+        raise ValueError("Category name cannot be empty")
+
+    # Idempotency check.
+    existing = await db.execute(
+        select(UserCategoryPreference).where(
+            UserCategoryPreference.user_id == user_id,
+            UserCategoryPreference.category == category,
+            UserCategoryPreference.category_type == category_type,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return {"already_present": True}
+
+    # Validate it exists in some partner's prefs.
+    caller_household_ids = (
+        select(HouseholdMember.household_id)
+        .where(
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+        .subquery()
+    )
+    partner_user_ids = (
+        select(HouseholdMember.user_id)
+        .where(
+            HouseholdMember.household_id.in_(select(caller_household_ids)),
+            HouseholdMember.left_at.is_(None),
+            HouseholdMember.user_id != user_id,
+        )
+        .subquery()
+    )
+    valid = await db.execute(
+        select(UserCategoryPreference.id).where(
+            UserCategoryPreference.user_id.in_(select(partner_user_ids)),
+            UserCategoryPreference.category == category,
+            UserCategoryPreference.category_type == category_type,
+        )
+    )
+    if valid.scalar_one_or_none() is None:
+        raise ValueError("Category not found in any household member's preferences")
+
+    max_result = await db.execute(
+        select(func.max(UserCategoryPreference.sort_order)).where(
+            UserCategoryPreference.user_id == user_id,
+            UserCategoryPreference.category_type == category_type,
+        )
+    )
+    max_order = max_result.scalar()
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    pref = UserCategoryPreference(
+        user_id=user_id,
+        category=category,
+        category_type=category_type,
+        is_custom=True,
+        sort_order=next_order,
+    )
+    db.add(pref)
+    await db.commit()
+    await db.refresh(pref)
+    return {"already_present": False, **_pref_to_dict(pref)}
+
+
 async def delete_user_account(db: AsyncSession, user_id: uuid.UUID) -> None:
     from modules.transactions.models import Transaction, TransactionSplit
     from modules.households.models import (

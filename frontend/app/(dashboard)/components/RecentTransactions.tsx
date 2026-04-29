@@ -90,7 +90,12 @@ function CategoryCell({ txn }: CategoryCellProps) {
   // Sync if parent passes updated txn (e.g. after refetch)
   useEffect(() => { setLocalCategory(txn.category); }, [txn.category]);
 
-  const { expense: expenseCats, income: incomeCats } = useCategories();
+  const {
+    expense: expenseCats,
+    income: incomeCats,
+    partnerExpense,
+    partnerIncome,
+  } = useCategories();
   const sortedExpense = useMemo(
     () => [...expenseCats].sort((a, b) => CATEGORY_COLLATOR.compare(a, b)),
     [expenseCats]
@@ -98,6 +103,13 @@ function CategoryCell({ txn }: CategoryCellProps) {
   const sortedIncome = useMemo(
     () => [...incomeCats].sort((a, b) => CATEGORY_COLLATOR.compare(a, b)),
     [incomeCats]
+  );
+  const sortedPartner = useMemo(
+    () =>
+      [...partnerExpense, ...partnerIncome].sort((a, b) =>
+        CATEGORY_COLLATOR.compare(a, b)
+      ),
+    [partnerExpense, partnerIncome]
   );
   const incomeFirst = Number(txn.amount) > 0 && txn.transaction_type !== "transfer";
 
@@ -170,18 +182,23 @@ function CategoryCell({ txn }: CategoryCellProps) {
             </button>
             {(incomeFirst
               ? [
-                  { label: "Ingresos", items: sortedIncome },
-                  { label: "Gastos", items: sortedExpense },
+                  { label: "Ingresos", items: sortedIncome, partner: false },
+                  { label: "Gastos", items: sortedExpense, partner: false },
+                  { label: "Otras (de mi hogar)", items: sortedPartner, partner: true },
                 ]
               : [
-                  { label: "Gastos", items: sortedExpense },
-                  { label: "Ingresos", items: sortedIncome },
+                  { label: "Gastos", items: sortedExpense, partner: false },
+                  { label: "Ingresos", items: sortedIncome, partner: false },
+                  { label: "Otras (de mi hogar)", items: sortedPartner, partner: true },
                 ]
-            ).map(({ label, items }) =>
+            ).map(({ label, items, partner }) =>
               items.length === 0 ? null : (
                 <div key={label}>
                   <div className="border-t border-slate-100 my-1" />
-                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-900">
+                  <div className={cn(
+                    "px-3 py-1 text-[10px] font-bold uppercase tracking-wide",
+                    partner ? "text-emerald-700" : "text-slate-900"
+                  )}>
                     {label}
                   </div>
                   {items.map((cat) => (
@@ -189,8 +206,12 @@ function CategoryCell({ txn }: CategoryCellProps) {
                       key={cat}
                       onClick={() => handleSelect(cat)}
                       className={cn(
-                        "w-full text-left px-3 py-1.5 text-[11px] hover:bg-blue-50 hover:text-luka-primary transition-colors",
-                        localCategory === cat ? "text-luka-primary font-semibold bg-blue-50" : "text-slate-700"
+                        "w-full text-left px-3 py-1.5 text-[11px] transition-colors",
+                        partner
+                          ? "text-emerald-700 hover:bg-emerald-50"
+                          : "hover:bg-blue-50 hover:text-luka-primary",
+                        !partner && localCategory === cat ? "text-luka-primary font-semibold bg-blue-50" : !partner ? "text-slate-700" : "",
+                        partner && localCategory === cat ? "font-semibold bg-emerald-50" : ""
                       )}
                     >
                       {cat}

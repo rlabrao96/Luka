@@ -66,16 +66,23 @@ function CategorySection({
   categories,
   currentCategory,
   onPick,
+  variant = "default",
 }: {
   label: string;
   categories: string[];
   currentCategory: string | null;
   onPick: (cat: string) => void;
+  variant?: "default" | "partner";
 }) {
   if (categories.length === 0) return null;
   return (
     <div className="mb-3">
-      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+      <div
+        className={cn(
+          "text-[10px] font-bold uppercase tracking-wider mb-2",
+          variant === "partner" ? "text-emerald-700" : "text-slate-500"
+        )}
+      >
         {label}
       </div>
       <div className="grid grid-cols-3 gap-1.5">
@@ -105,7 +112,7 @@ function PickerBody({
   suggestions?: string[];
   dominantSign?: "positive" | "negative";
 }) {
-  const { expense, income } = useCategories();
+  const { expense, income, partnerExpense, partnerIncome } = useCategories();
 
   const sortedExpense = useMemo(
     () => [...expense].sort((a, b) => collator.compare(a, b)),
@@ -114,6 +121,11 @@ function PickerBody({
   const sortedIncome = useMemo(
     () => [...income].sort((a, b) => collator.compare(a, b)),
     [income]
+  );
+  const sortedPartner = useMemo(
+    () =>
+      [...partnerExpense, ...partnerIncome].sort((a, b) => collator.compare(a, b)),
+    [partnerExpense, partnerIncome]
   );
 
   const filteredSuggestions = useMemo(
@@ -200,6 +212,14 @@ function PickerBody({
           />
         </>
       )}
+
+      <CategorySection
+        label="Otras (de mi hogar)"
+        categories={sortedPartner}
+        currentCategory={currentCategory}
+        onPick={(c) => handlePick(c)}
+        variant="partner"
+      />
     </div>
   );
 }

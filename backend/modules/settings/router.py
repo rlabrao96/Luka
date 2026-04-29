@@ -12,6 +12,9 @@ from modules.settings.schemas import (
     CategoryPreferencesResponse,
     CategoryReorderRequest,
     CategoryUsageResponse,
+    HouseholdCategoryAdoptRequest,
+    HouseholdCategoryAdoptResponse,
+    HouseholdPartnerCategoriesResponse,
     NotificationPreferencesResponse,
     NotificationPreferencesUpdate,
 )
@@ -85,6 +88,33 @@ async def get_category_usage(
 ):
     count = await service.get_category_usage(db, current_user.id, category)
     return CategoryUsageResponse(count=count)
+
+
+@router.get("/settings/household-categories", response_model=HouseholdPartnerCategoriesResponse)
+async def get_household_partner_categories(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    cats = await service.get_household_partner_categories(db, current_user.id)
+    return HouseholdPartnerCategoriesResponse(categories=cats)
+
+
+@router.post(
+    "/settings/household-categories/adopt",
+    response_model=HouseholdCategoryAdoptResponse,
+)
+async def adopt_household_category(
+    body: HouseholdCategoryAdoptRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await service.adopt_household_category(
+            db, current_user.id, body.category, body.category_type
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return result
 
 
 @router.post("/categories/preferences/{category}/delete", status_code=200)
