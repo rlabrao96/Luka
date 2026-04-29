@@ -188,8 +188,25 @@ export function PairedTransactionCard({
       subtitle = "Venmo";
     }
   } else if (pairType === "reimbursement") {
-    const merchant = toTitleCase(summaryLeg.raw_merchant_name);
-    title = `${merchant} · reembolsado`;
+    // Title shows what the user actually SPENT money on (the counterpart legs),
+    // not the credit/inflow row. The credit's name (e.g. "Platinum Resy Credit")
+    // is the offset, not the purchase — showing it as the title makes the card
+    // impossible to scan in the transactions list.
+    const counterpartLegs = legs.filter((l) => l.id !== summaryLeg.id);
+    let merchantTitle: string;
+    if (counterpartLegs.length === 1) {
+      merchantTitle = toTitleCase(counterpartLegs[0].raw_merchant_name);
+    } else if (counterpartLegs.length > 1) {
+      const allSame = counterpartLegs.every(
+        (l) => l.raw_merchant_name === counterpartLegs[0].raw_merchant_name,
+      );
+      merchantTitle = allSame
+        ? toTitleCase(counterpartLegs[0].raw_merchant_name)
+        : `${counterpartLegs.length} gastos`;
+    } else {
+      merchantTitle = toTitleCase(summaryLeg.raw_merchant_name);
+    }
+    title = `${merchantTitle} · reembolsado`;
     // If every leg sits on the same bank account, use the refund-pair-style
     // "en {account}" subtitle for visual parity. Otherwise fall back to a
     // count-based subtitle since the legs span multiple accounts.
