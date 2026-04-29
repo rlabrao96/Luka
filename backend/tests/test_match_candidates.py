@@ -271,6 +271,84 @@ async def test_includes_pending_plaid_rows_alongside_settled(db):
 
 
 @pytest.mark.asyncio
+async def test_intent_transfer_returns_opposite_sign_different_account(db):
+    """intent='transfer' surfaces only candidates that pass manual-transfer
+    preconditions: opposite sign, different account, same currency, bank-only,
+    unpaired, ±window_days."""
+    user, hh, acct_a = await _seed_user_household(db, currency="USD")
+    # Second account in same household
+    acct_b = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=user.id,
+        bank_name="AmEx",
+        account_name="Card",
+        account_type="personal",
+        currency="USD",
+        is_active=True,
+    )
+    db.add(acct_b)
+    await db.flush()
+
+    when = datetime.now(timezone.utc)
+    # Source row (settled bank tx, outflow on acct_a)
+    source = _plaid_settled(user=user, hh=hh, account=acct_a, amount=Decimal("-200.00"), when=when)
+    # Valid transfer counterpart (inflow on acct_b)
+    counterpart = _plaid_settled(
+        user=user, hh=hh, account=acct_b, amount=Decimal("200.00"), when=when
+    )
+    # Same-account row → excluded
+    same_acct = _plaid_settled(
+        user=user, hh=hh, account=acct_a, amount=Decimal("200.00"), when=when
+    )
+    # Same-sign row → excluded
+    same_sign = _plaid_settled(
+        user=user, hh=hh, account=acct_b, amount=Decimal("-200.00"), when=when
+    )
+    db.add_all([source, counterpart, same_acct, same_sign])
+    await db.flush()
+
+    results = await get_match_candidates(db, user.id, source.id, window_days=7, intent="transfer")
+    ids = {r["id"] for r in results}
+    assert counterpart.id in ids
+    assert same_acct.id not in ids
+    assert same_sign.id not in ids
+
+
+@pytest.mark.asyncio
+async def test_intent_transfer_excludes_already_paired(db):
+    user, hh, acct_a = await _seed_user_household(db, currency="USD")
+    acct_b = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=user.id,
+        bank_name="AmEx",
+        account_name="Card",
+        account_type="personal",
+        currency="USD",
+        is_active=True,
+    )
+    db.add(acct_b)
+    await db.flush()
+
+    when = datetime.now(timezone.utc)
+    source = _plaid_settled(user=user, hh=hh, account=acct_a, amount=Decimal("-50.00"), when=when)
+    paired = _plaid_settled(
+        user=user,
+        hh=hh,
+        account=acct_b,
+        amount=Decimal("50.00"),
+        when=when,
+        transfer_pair_id=uuid.uuid4(),
+    )
+    db.add_all([source, paired])
+    await db.flush()
+
+    results = await get_match_candidates(db, user.id, source.id, window_days=7, intent="transfer")
+    assert paired.id not in [r["id"] for r in results]
+
+
+@pytest.mark.asyncio
 async def test_link_email_to_pending_plaid_consolidates_and_keeps_pending_status(db):
     """Pending email + pending Plaid: link should keep the Plaid row (still pending),
     apply email enrichment (category), and delete the email row."""

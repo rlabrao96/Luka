@@ -18,6 +18,8 @@ from modules.transactions.schemas import (
     LinkRequest,
     BulkActionRequest,
     BulkActionResponse,
+    TransactionDateUpdateRequest,
+    LinkTransferRequest,
 )
 
 
@@ -106,6 +108,36 @@ async def update_split_type(
     return {"ok": True}
 
 
+@router.patch("/{transaction_id}/transaction-date")
+async def update_transaction_date(
+    transaction_id: uuid.UUID,
+    body: TransactionDateUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    found = await service.update_transaction_date(
+        db, transaction_id, current_user.id, body.transaction_date
+    )
+    if not found:
+        raise HTTPException(404, "Transaction not found")
+    return {"ok": True}
+
+
+@router.post("/{transaction_id}/link-transfer")
+async def link_manual_transfer_endpoint(
+    transaction_id: uuid.UUID,
+    body: LinkTransferRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return await service.link_manual_transfer(
+            db, transaction_id, body.counterpart_id, current_user.id
+        )
+    except service.ServiceError as err:
+        _raise_from_service_error(err)
+
+
 @router.patch("/{transaction_id}/merchant-name")
 async def update_merchant_name(
     transaction_id: uuid.UUID,
@@ -144,12 +176,17 @@ async def bulk_action_endpoint(
 async def match_candidates(
     pending_id: uuid.UUID,
     window_days: int = Query(default=7, ge=1, le=30),
+    intent: str = Query(default="consolidate", pattern="^(consolidate|transfer)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     try:
         return await service.get_match_candidates(
-            db, current_user.id, pending_id, window_days=window_days
+            db,
+            current_user.id,
+            pending_id,
+            window_days=window_days,
+            intent=intent,
         )
     except service.ServiceError as err:
         _raise_from_service_error(err)

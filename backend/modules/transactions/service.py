@@ -14,7 +14,14 @@ from core.cache import _get_redis
 # Fields a user can touch via web/whatsapp UI. Keep this list in lockstep with the
 # `user_edited_fields` JSONB map on `transactions` (see migration 042).
 USER_EDITABLE_FIELDS = frozenset(
-    {"merchant_name", "category", "split_type", "transaction_type", "transfer_to_account_id"}
+    {
+        "merchant_name",
+        "category",
+        "split_type",
+        "transaction_type",
+        "transfer_to_account_id",
+        "transaction_date",
+    }
 )
 
 
@@ -347,6 +354,141 @@ async def update_merchant_name(
     return True
 
 
+async def update_transaction_date(
+    db: AsyncSession,
+    transaction_id: uuid.UUID,
+    user_id: uuid.UUID,
+    transaction_date: date,
+) -> bool:
+    """Update transaction date. Any active member of the transaction's household
+    can edit. The input is a calendar date; we store it as a UTC-midnight
+    datetime to match the Plaid/email ingestion convention.
+
+    Stamps ``user_edited_fields["transaction_date"]`` so future re-merges from
+    the bank source don't overwrite the user's correction.
+    """
+    result = await db.execute(
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .where(
+            Transaction.id == transaction_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    txn = result.scalar_one_or_none()
+    if not txn:
+        return False
+    txn.transaction_date = datetime.combine(transaction_date, datetime.min.time()).replace(
+        tzinfo=timezone.utc
+    )
+    mark_user_edited(txn, "transaction_date")
+    await db.commit()
+    return True
+
+
+async def link_manual_transfer(
+    db: AsyncSession,
+    txn_id_a: uuid.UUID,
+    txn_id_b: uuid.UUID,
+    user_id: uuid.UUID,
+) -> dict:
+    """Manually pair two settled own-account bank transactions as a transfer.
+
+    Use case: the auto-detector missed pairing two own-account legs (e.g. a CC
+    bill payment outflow on BoA + the matching inflow on Amex). The user picks
+    a counterpart by hand.
+
+    Preconditions (all enforced — fail with ServiceError):
+      - both rows exist
+      - same household as the caller (caller is an active member)
+      - both ``source_type IN ('plaid','connect')`` (bank-only)
+      - different ``bank_account_id``
+      - opposite signs (sum != one-side absolute value)
+      - same currency
+      - same user_id (own-account)
+      - both have ``transfer_pair_id IS NULL`` AND ``refund_pair_id IS NULL``
+      - the two ids must be different
+
+    On success, generates a new ``transfer_pair_id``, sets
+    ``transaction_type='transfer'`` on both rows, and stamps
+    ``user_edited_fields["transaction_type"]`` so detect_transfers won't try
+    to re-pair the legs with anyone else.
+    """
+    if txn_id_a == txn_id_b:
+        raise ServiceError("invalid_action", "A transaction cannot be paired with itself")
+
+    # Verify caller is a member of at least one household; we re-check
+    # below that BOTH rows belong to the caller's household.
+    result = await db.execute(select(Transaction).where(Transaction.id.in_([txn_id_a, txn_id_b])))
+    rows = {r.id: r for r in result.scalars().all()}
+    a = rows.get(txn_id_a)
+    b = rows.get(txn_id_b)
+    if not a or not b:
+        raise ServiceError("not_found", "Transaction not found")
+
+    # Both rows must be in a household where the caller is an active member.
+    # We do this in one SQL query: both household_ids must be present in the
+    # caller's active memberships.
+    member_rows = await db.execute(
+        select(HouseholdMember.household_id).where(
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+        )
+    )
+    member_household_ids = {row[0] for row in member_rows.all()}
+    if a.household_id not in member_household_ids or b.household_id not in member_household_ids:
+        raise ServiceError("not_found", "Transaction not found")
+    if a.household_id != b.household_id:
+        raise ServiceError("invalid_action", "Transactions belong to different households")
+
+    # Both rows must be own-account (same user_id) — transfers represent
+    # money the user moves between their own accounts.
+    if a.user_id != user_id or b.user_id != user_id:
+        raise ServiceError("forbidden", "Manual transfer linking only supports own-account moves")
+
+    # Source must be a bank source on both sides.
+    if a.source_type not in ("plaid", "connect") or b.source_type not in ("plaid", "connect"):
+        raise ServiceError(
+            "invalid_action",
+            "Only bank-sourced transactions (Plaid or Connect) can be paired as transfers",
+        )
+
+    # Different accounts.
+    if a.bank_account_id is None or b.bank_account_id is None:
+        raise ServiceError("invalid_action", "Both transactions must have a bank account")
+    if a.bank_account_id == b.bank_account_id:
+        raise ServiceError("invalid_action", "Both transactions are on the same account")
+
+    # Same currency.
+    if (a.currency or "").upper() != (b.currency or "").upper():
+        raise ServiceError("invalid_action", "Currency mismatch — cannot pair as transfer")
+
+    # Opposite signs (one positive, one negative; neither zero).
+    amt_a = Decimal(str(a.amount))
+    amt_b = Decimal(str(b.amount))
+    if amt_a == 0 or amt_b == 0:
+        raise ServiceError("invalid_action", "Transfer legs cannot have zero amount")
+    if (amt_a > 0) == (amt_b > 0):
+        raise ServiceError("invalid_action", "Both transactions have the same sign")
+
+    # Neither already paired.
+    if a.transfer_pair_id is not None or b.transfer_pair_id is not None:
+        raise ServiceError("conflict", "One or both transactions are already paired as transfers")
+    if a.refund_pair_id is not None or b.refund_pair_id is not None:
+        raise ServiceError("conflict", "One or both transactions are already paired as refunds")
+
+    pair_id = uuid.uuid4()
+    a.transfer_pair_id = pair_id
+    b.transfer_pair_id = pair_id
+    a.transaction_type = "transfer"
+    b.transaction_type = "transfer"
+    mark_user_edited(a, "transaction_type")
+    mark_user_edited(b, "transaction_type")
+    await db.commit()
+    return {"transfer_pair_id": str(pair_id), "transaction_ids": [str(a.id), str(b.id)]}
+
+
 async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """
     Return pending transactions grouped into 3 buckets:
@@ -560,16 +702,26 @@ async def get_match_candidates(
     pending_id: uuid.UUID,
     window_days: int = 7,
     limit: int = 20,
+    intent: str = "consolidate",
 ) -> list[dict]:
-    """Return ranked candidate bank rows (Plaid or Connect) that could match a pending email row.
+    """Return ranked candidate bank rows that could match the source row.
 
-    Authorization: pending row must be owned by `user_id`. Candidates are
-    filtered by household membership, same currency, 2% amount tolerance,
-    ±window_days, unpaired, status in ('pending','settled'). Pending bank-side
-    rows are included so the manual "Vincular…" escape hatch can resolve the
-    most common duplicate case (email row + still-pending Plaid/Connect row).
-    Raises ServiceError('not_found') if the pending row doesn't exist or isn't
-    owned by the caller.
+    `intent` controls which preconditions apply:
+
+    - ``"consolidate"`` (default): the source row is typically a pending
+      email; candidates are bank rows (Plaid or Connect) on the same
+      currency, ±2% amount tolerance, same sign, ±window_days, unpaired.
+      Used by PendingBlock's "Vincular…" flow to consolidate an email row
+      into the matching bank row.
+
+    - ``"transfer"``: the source row is a settled bank tx; candidates are
+      bank rows (Plaid or Connect) on a DIFFERENT account, OPPOSITE sign,
+      same currency, ±window_days, unpaired, same user (own-account).
+      Used by RecentTransactions' "Vincular" flow to manually pair two
+      transfer legs the auto-detector missed.
+
+    Authorization: source row must be owned by ``user_id``. Raises
+    ServiceError('not_found') otherwise.
     """
     # Load & authorize the pending email row (ownership enforced in SQL).
     pending_result = await db.execute(
@@ -598,6 +750,54 @@ async def get_match_candidates(
     tolerance = pending_abs * Decimal("0.02")
     date_min = pending.transaction_date - timedelta(days=window_days)
     date_max = pending.transaction_date + timedelta(days=window_days)
+
+    if intent == "transfer":
+        # Manual transfer-pair candidates: opposite sign, different account,
+        # same currency, both bank-sourced, both unpaired, own-account.
+        # The amount-similarity tolerance is computed against the OPPOSITE
+        # sign value (we expect the counterpart leg to ~negate this row).
+        target_amount = -pending_amount
+        result = await db.execute(
+            select(Transaction, BankAccount.bank_name, BankAccount.account_name)
+            .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.household_id == pending.household_id,
+                Transaction.currency == pending.currency,
+                Transaction.source_type.in_(["plaid", "connect"]),
+                Transaction.status.in_(["pending", "settled"]),
+                Transaction.transfer_pair_id.is_(None),
+                Transaction.refund_pair_id.is_(None),
+                Transaction.bank_account_id != pending.bank_account_id,
+                Transaction.id != pending.id,
+                Transaction.transaction_date >= date_min,
+                Transaction.transaction_date <= date_max,
+                func.abs(Transaction.amount - target_amount) <= tolerance,
+            )
+        )
+        rows = result.all()
+
+        def _rank_transfer(row):
+            txn = row[0]
+            date_delta = abs((txn.transaction_date - pending.transaction_date).total_seconds())
+            amount_delta = abs(Decimal(str(txn.amount)) - target_amount)
+            return (date_delta, amount_delta)
+
+        ranked = sorted(rows, key=_rank_transfer)[:limit]
+        return [
+            {
+                "id": txn.id,
+                "bank_account_id": txn.bank_account_id,
+                "bank_account_name": account_name or bank_name,
+                "transaction_date": txn.transaction_date,
+                "amount": txn.amount,
+                "currency": txn.currency,
+                "raw_merchant_name": txn.raw_merchant_name,
+                "category": txn.category,
+                "status": txn.status,
+            }
+            for txn, bank_name, account_name in ranked
+        ]
 
     result = await db.execute(
         select(Transaction, BankAccount.bank_name, BankAccount.account_name)
