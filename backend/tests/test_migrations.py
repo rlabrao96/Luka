@@ -151,3 +151,47 @@ async def test_042_user_edited_fields_column(db: AsyncSession):
     assert (
         row[3] is not None and "jsonb" in row[3]
     ), "user_edited_fields must default to '{}'::jsonb"
+
+
+@pytest.mark.asyncio
+async def test_043_matched_email_at_column_exists(db: AsyncSession):
+    """Migration 043 must add a nullable matched_email_at timestamp column."""
+    result = await db.execute(
+        text(
+            """
+            SELECT is_nullable, data_type
+            FROM information_schema.columns
+            WHERE table_name = 'transactions' AND column_name = 'matched_email_at'
+            """
+        )
+    )
+    row = result.first()
+    assert row is not None, "matched_email_at column not found"
+    is_nullable, data_type = row
+    assert is_nullable == "YES"
+    assert data_type == "timestamp with time zone"
+
+
+@pytest.mark.asyncio
+async def test_043_migration_round_trip(db: AsyncSession):
+    """The 043 column must drop and re-add cleanly (matches alembic up/down/up)."""
+    await db.execute(text("SAVEPOINT s_043"))
+    await db.execute(text("ALTER TABLE transactions DROP COLUMN matched_email_at"))
+    res = await db.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='transactions' AND column_name='matched_email_at'"
+        )
+    )
+    assert res.first() is None
+    await db.execute(
+        text("ALTER TABLE transactions ADD COLUMN matched_email_at TIMESTAMP WITH TIME ZONE NULL")
+    )
+    res = await db.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='transactions' AND column_name='matched_email_at'"
+        )
+    )
+    assert res.scalar() == 1
+    await db.execute(text("ROLLBACK TO SAVEPOINT s_043"))

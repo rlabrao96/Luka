@@ -583,3 +583,296 @@ async def test_joint_account_overrides_personal_split_marker(db):
     split = split_row.scalar_one_or_none()
     assert split is not None
     assert split.split_type == "shared"
+
+
+# ---------------------------------------------------------------- merchant normalization tests
+
+
+def test_normalize_idempotent_and_handles_none():
+    from modules.reconciliation.dedup import normalize_merchant
+
+    assert normalize_merchant(None) == ""
+    assert normalize_merchant("") == ""
+    assert normalize_merchant("   ") == ""
+    once = normalize_merchant("AMZN Mktp US*A1B2C3")
+    twice = normalize_merchant(once)
+    assert once == twice  # idempotent
+    assert "amzn" not in once  # processor prefix stripped
+    # TLD strip — bestbuy.com loses the .com suffix
+    assert "com" not in normalize_merchant("Bestbuy.com").split()
+    # Trailing reference numbers stripped
+    assert normalize_merchant("Joe Coffee #12345") == "joe coffee"
+    assert normalize_merchant("Joe Coffee *12345") == "joe coffee"
+
+
+@pytest.mark.asyncio
+async def test_matches_bestbuy_dotcom_to_best_buy(db):
+    from modules.reconciliation.dedup import find_email_match
+
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-134.61"),
+        when=when,
+        merchant="Bestbuy.com",
+    )
+    db.add(email)
+    await db.flush()
+
+    match = await find_email_match(
+        db,
+        user.id,
+        "Best Buy",  # Plaid-style canonical name
+        -134.61,
+        when,
+        currency="USD",
+        incoming_transaction_type="expense",
+        bank_account_id=acc.id,
+    )
+    assert match is not None
+    assert match["email_tx_ids"] == [email.id]
+
+
+@pytest.mark.asyncio
+async def test_matches_amzn_mktp_to_amazon(db):
+    from modules.reconciliation.dedup import find_email_match
+
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-19.99"),
+        when=when,
+        merchant="AMZN Mktp US*A1B2C3",
+    )
+    db.add(email)
+    await db.flush()
+
+    match = await find_email_match(
+        db,
+        user.id,
+        "Amazon",
+        -19.99,
+        when,
+        currency="USD",
+        incoming_transaction_type="expense",
+        bank_account_id=acc.id,
+    )
+    assert match is not None
+    assert match["email_tx_ids"] == [email.id]
+
+
+@pytest.mark.asyncio
+async def test_matches_sq_prefix_strip(db):
+    from modules.reconciliation.dedup import find_email_match
+
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-7.50"),
+        when=when,
+        merchant="SQ *Joe Coffee",
+    )
+    db.add(email)
+    await db.flush()
+
+    match = await find_email_match(
+        db,
+        user.id,
+        "Joe Coffee",
+        -7.50,
+        when,
+        currency="USD",
+        incoming_transaction_type="expense",
+        bank_account_id=acc.id,
+    )
+    assert match is not None
+    assert match["email_tx_ids"] == [email.id]
+
+
+# ---------------------------------------------------------------- deterministic candidate selection
+
+
+@pytest.mark.asyncio
+async def test_find_single_match_picks_closest_when_two_candidates(db):
+    user, hh, acc = await _seed_household(db, currency="USD")
+    base = datetime.now(timezone.utc) - timedelta(days=5)
+
+    far = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-25.00"),
+        when=base - timedelta(days=2),  # D-2
+        merchant="Amazon",
+    )
+    near = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-25.00"),
+        when=base,  # D
+        merchant="Amazon",
+    )
+    db.add_all([far, near])
+    await db.flush()
+
+    # Lookup at D-1 — `near` is 1 day away, `far` is 1 day away too. Make
+    # asymmetric: lookup exactly at D so `near` is closest.
+    match = await _find_single_match(
+        db,
+        user.id,
+        "Amazon",
+        -25.00,
+        base,
+        day_window=3,
+        amount_tolerance=0.0,
+        currency="USD",
+        incoming_transaction_type="expense",
+        bank_account_id=acc.id,
+    )
+    assert match is not None
+    assert match.id == near.id
+
+
+# ---------------------------------------------------------------- matched_email_at idempotency
+
+
+@pytest.mark.asyncio
+async def test_plaid_row_matched_once_is_excluded_from_future_matches(db):
+    from modules.reconciliation.dedup import find_plaid_match_for_email
+
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    plaid = _bank_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-30.00"),
+        when=when,
+        merchant="Netflix",
+    )
+    email1 = _email_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-30.00"),
+        when=when,
+        merchant="Netflix",
+    )
+    db.add_all([plaid, email1])
+    await db.flush()
+
+    # First consolidation stamps matched_email_at.
+    enrichment = await _enrichment_from_email(db, email1.id)
+    await apply_match_and_delete_emails(db, plaid.id, [email1.id], enrichment, user_id=user.id)
+    await db.flush()
+
+    reloaded_plaid = await _reload(db, plaid.id)
+    assert reloaded_plaid is not None
+    assert reloaded_plaid.matched_email_at is not None
+
+    # Second email arrives same amount/account/date.
+    email2 = _email_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-30.00"),
+        when=when,
+        merchant="Netflix",
+    )
+    db.add(email2)
+    await db.flush()
+
+    found = await find_plaid_match_for_email(db, email2)
+    assert found is None, "already-consumed Plaid row must be excluded"
+
+
+# ---------------------------------------------------------------- cross-account guard
+
+
+@pytest.mark.asyncio
+async def test_email_with_known_bank_does_not_match_account_at_different_bank(db):
+    from modules.reconciliation.dedup import find_plaid_match_for_email
+
+    user, hh, bcp_acc = await _seed_household(db, currency="USD")
+    bcp_acc.bank_name = "BCP"
+    banamex = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=user.id,
+        bank_name="Banamex",
+        account_type="personal",
+        currency="USD",
+        is_active=True,
+    )
+    db.add(banamex)
+    await db.flush()
+
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+    plaid_bcp = _bank_tx(
+        user=user, household=hh, account=bcp_acc, amount=Decimal("-50.00"), when=when, merchant="X"
+    )
+    plaid_banamex = _bank_tx(
+        user=user, household=hh, account=banamex, amount=Decimal("-50.00"), when=when, merchant="X"
+    )
+    db.add_all([plaid_bcp, plaid_banamex])
+    await db.flush()
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-50.00"),
+        when=when,
+        merchant="X",
+    )
+    email.source_bank_name = "BCP"
+    db.add(email)
+    await db.flush()
+
+    found = await find_plaid_match_for_email(db, email)
+    assert found is not None
+    assert found.id == plaid_bcp.id
+
+
+@pytest.mark.asyncio
+async def test_email_with_unknown_bank_falls_through(db):
+    from modules.reconciliation.dedup import find_plaid_match_for_email
+
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    plaid = _bank_tx(
+        user=user, household=hh, account=acc, amount=Decimal("-77.00"), when=when, merchant="Y"
+    )
+    db.add(plaid)
+    await db.flush()
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-77.00"),
+        when=when,
+        merchant="Y",
+    )
+    # source_bank_name left NULL
+    db.add(email)
+    await db.flush()
+
+    found = await find_plaid_match_for_email(db, email)
+    assert found is not None
+    assert found.id == plaid.id

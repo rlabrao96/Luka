@@ -11,14 +11,101 @@ Matching priority:
 3. Sum: same merchant, ±3 days, sum of N email txs within 5%
 """
 
+import re
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, delete, select, update
+from rapidfuzz import fuzz
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.households.models import BankAccount
 from modules.transactions.models import Transaction, TransactionSplit
+
+
+# ----------------------------------------------------------------- merchant normalization
+
+_TLD_RE = re.compile(r"\.(com|cl|mx|co|pe|br|net|org)\b", re.IGNORECASE)
+_PROCESSOR_PREFIXES = (
+    "sq *",
+    "paypal *",
+    "tst*",
+    "sp *",
+    "cke*",
+)
+# Recognized merchant abbreviations — applied after prefix-stripping so the
+# canonical name survives normalization.
+_MERCHANT_ABBREV = {
+    "amzn mktp": "amazon",
+    "amzn mkt": "amazon",
+    "amzn": "amazon",
+}
+# Strip trailing payment-processor reference tokens (anything after the last
+# `#`/`*`, alphanumeric — e.g., `#12345`, `*A1B2C3`, `*PAYMENT`).
+_TRAILING_REF_RE = re.compile(r"[\s]*[#*]\s*[A-Za-z0-9]+\s*$")
+_NON_WORD_RE = re.compile(r"[^a-z0-9\s]+")
+_WS_RE = re.compile(r"\s+")
+
+
+def normalize_merchant(s: str | None) -> str:
+    """Normalize a raw merchant string for fuzzy comparison.
+
+    Lowercase, strip TLDs (.com/.cl/.mx/.co/.pe/.br/.net/.org), strip common
+    payment-processor prefixes (SQ *, PAYPAL *, TST*, AMZN MKTP, etc.), strip
+    trailing reference numbers (#12345 / *12345), collapse non-alphanumeric
+    runs to single spaces, and strip. Returns "" for None/empty input.
+    """
+    if not s:
+        return ""
+    out = s.lower().strip()
+    # Strip processor prefixes (case-insensitive — already lowercased).
+    changed = True
+    while changed:
+        changed = False
+        for prefix in _PROCESSOR_PREFIXES:
+            if out.startswith(prefix):
+                out = out[len(prefix) :].lstrip()
+                changed = True
+    # Strip trailing reference numbers / processor refs (apply repeatedly).
+    while True:
+        new = _TRAILING_REF_RE.sub("", out).rstrip()
+        if new == out:
+            break
+        out = new
+    # Strip TLDs.
+    out = _TLD_RE.sub(" ", out)
+    # Collapse punctuation to space.
+    out = _NON_WORD_RE.sub(" ", out)
+    # Collapse whitespace.
+    out = _WS_RE.sub(" ", out).strip()
+    # Map known merchant abbreviations to their canonical names.
+    for abbrev, canonical in _MERCHANT_ABBREV.items():
+        if out == abbrev or out.startswith(abbrev + " "):
+            out = canonical + out[len(abbrev) :]
+            break
+    return out
+
+
+def _merchant_token_match(query_norm: str, candidate_raw: str | None) -> bool:
+    """Token-overlap / fuzzy comparison of two merchant strings.
+
+    Accepts candidate when token-Jaccard >= 0.5 OR rapidfuzz WRatio >= 80.
+    Empty inputs match (caller should gate by whether a merchant filter is
+    desired at all).
+    """
+    if not query_norm:
+        return True
+    cand_norm = normalize_merchant(candidate_raw)
+    if not cand_norm:
+        return False
+    q_tokens = set(query_norm.split())
+    c_tokens = set(cand_norm.split())
+    if q_tokens and c_tokens:
+        inter = len(q_tokens & c_tokens)
+        union = len(q_tokens | c_tokens)
+        if union and (inter / union) >= 0.5:
+            return True
+    return fuzz.WRatio(query_norm, cand_norm) >= 80
 
 
 def _resolve_vendor_name(
@@ -47,6 +134,14 @@ def _resolve_vendor_name(
     if email_name:
         return email_name, False
     return bank.raw_merchant_name, False
+
+
+def _bank_name_matches(known: str | None, candidate: str | None) -> bool:
+    """Case/spacing-insensitive equality between an email's `source_bank_name`
+    and a `BankAccount.bank_name`. Returns True when either side is empty."""
+    if not known or not candidate:
+        return True
+    return known.strip().lower() == candidate.strip().lower()
 
 
 async def find_email_match(
@@ -82,6 +177,7 @@ async def find_email_match(
         currency=currency,
         incoming_transaction_type=incoming_transaction_type,
         bank_account_id=bank_account_id,
+        source_bank_name=source_bank_name,
     )
     if exact_match:
         enrichment = await _extract_enrichment(session, exact_match.id)
@@ -99,6 +195,7 @@ async def find_email_match(
         currency=currency,
         incoming_transaction_type=incoming_transaction_type,
         bank_account_id=bank_account_id,
+        source_bank_name=source_bank_name,
     )
     if fuzzy_match:
         enrichment = await _extract_enrichment(session, fuzzy_match.id)
@@ -210,6 +307,10 @@ async def apply_match_and_delete_emails(
     if new_marks != bank_marks:
         update_fields["user_edited_fields"] = new_marks
 
+    # Idempotency marker — stamp the surviving Plaid/bank row so subsequent
+    # match passes skip it as already-consumed.
+    update_fields["matched_email_at"] = datetime.now(timezone.utc)
+
     if update_fields:
         await session.execute(
             update(Transaction).where(Transaction.id == bank_tx_id).values(**update_fields)
@@ -306,6 +407,7 @@ async def _find_single_match(
     currency: str | None = None,
     incoming_transaction_type: str | None = None,
     bank_account_id: uuid.UUID | None = None,
+    source_bank_name: str | None = None,
 ) -> Transaction | None:
     """Find a single email transaction matching by merchant, date window, and amount tolerance.
 
@@ -332,19 +434,24 @@ async def _find_single_match(
     if currency is not None:
         conditions.append(Transaction.currency == currency)
 
-    # Merchant ILIKE — skip entirely for transfers (divergent strings)
-    if incoming_transaction_type != "transfer" and raw_merchant_name:
-        conditions.append(
-            Transaction.raw_merchant_name.ilike(
-                f"%{raw_merchant_name.replace('%', r'\%').replace('_', r'\_')}%"
-            )
-        )
-
     # bank_account_id parity when both are set
     if bank_account_id is not None:
         conditions.append(
             (Transaction.bank_account_id == bank_account_id)
             | (Transaction.bank_account_id.is_(None))
+        )
+
+    # Cross-account guard: if the incoming bank tx maps to a known bank
+    # (resolved either from `source_bank_name` or via the bank_account row),
+    # require the email candidate's source_bank_name to match (or be NULL).
+    known_bank = source_bank_name
+    if not known_bank and bank_account_id is not None:
+        known_bank = await session.scalar(
+            select(BankAccount.bank_name).where(BankAccount.id == bank_account_id)
+        )
+    if known_bank:
+        conditions.append(
+            Transaction.source_bank_name.is_(None) | Transaction.source_bank_name.ilike(known_bank)
         )
 
     # Signed amount equality (not abs) — same sign convention on both sides
@@ -362,8 +469,31 @@ async def _find_single_match(
         conditions.append(Transaction.amount >= lower)
         conditions.append(Transaction.amount <= upper)
 
-    result = await session.execute(select(Transaction).where(and_(*conditions)).limit(1))
-    return result.scalar_one_or_none()
+    # Deterministic candidate selection — closest date, closest amount, then id.
+    date_distance = func.abs(func.extract("epoch", Transaction.transaction_date - tx_date))
+    amount_distance = func.abs(Transaction.amount - amount)
+    stmt = (
+        select(Transaction)
+        .where(and_(*conditions))
+        .order_by(date_distance.asc(), amount_distance.asc(), Transaction.id.asc())
+    )
+
+    # Merchant filter is applied in Python on the (small) candidate set so we
+    # match canonical-vs-raw strings ("Best Buy" ↔ "Bestbuy.com"). We skip the
+    # filter entirely for transfers — CC-payment emails carry strings like
+    # "Pago Tarjeta ****3100" while Plaid has "American Express".
+    apply_merchant_filter = incoming_transaction_type != "transfer" and bool(raw_merchant_name)
+    if not apply_merchant_filter:
+        stmt = stmt.limit(1)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    query_norm = normalize_merchant(raw_merchant_name)
+    result = await session.execute(stmt)
+    for cand in result.scalars():
+        if _merchant_token_match(query_norm, cand.raw_merchant_name):
+            return cand
+    return None
 
 
 async def _find_sum_match(
@@ -390,12 +520,6 @@ async def _find_sum_match(
     ]
     if currency is not None:
         conditions.append(Transaction.currency == currency)
-    if raw_merchant_name:
-        conditions.append(
-            Transaction.raw_merchant_name.ilike(
-                f"%{raw_merchant_name.replace('%', r'\%').replace('_', r'\_')}%"
-            )
-        )
     if bank_account_id is not None:
         conditions.append(
             (Transaction.bank_account_id == bank_account_id)
@@ -410,7 +534,14 @@ async def _find_sum_match(
     result = await session.execute(
         select(Transaction).where(and_(*conditions)).order_by(Transaction.amount.desc())
     )
-    candidates = result.scalars().all()
+    candidates = list(result.scalars().all())
+
+    # Python-side merchant filter (normalized comparison).
+    if raw_merchant_name:
+        query_norm = normalize_merchant(raw_merchant_name)
+        candidates = [
+            c for c in candidates if _merchant_token_match(query_norm, c.raw_merchant_name)
+        ]
 
     if len(candidates) < 2:
         return None
@@ -472,14 +603,10 @@ async def find_plaid_match_for_email(
         Transaction.transaction_date <= date_max,
         Transaction.transfer_pair_id.is_(None),
         Transaction.refund_pair_id.is_(None),
+        Transaction.matched_email_at.is_(None),
     ]
 
     is_transfer = email_tx.transaction_type == "transfer"
-
-    # Merchant filter — skip for transfers where the strings diverge.
-    if not is_transfer and email_tx.raw_merchant_name:
-        safe = email_tx.raw_merchant_name.replace("%", r"\%").replace("_", r"\_")
-        conditions.append(Transaction.raw_merchant_name.ilike(f"%{safe}%"))
 
     # Bank account parity.
     preferred_account_id = None
@@ -495,21 +622,36 @@ async def find_plaid_match_for_email(
             | (Transaction.bank_account_id.is_(None))
         )
 
-    # Order by date proximity (closest first). Simple ABS trick via two-sided ordering
-    # isn't trivial in SQL; ordering by date ascending then picking the first within
-    # the symmetric window is good-enough for a first pass.
-    result = await session.execute(
-        select(Transaction).where(and_(*conditions)).order_by(Transaction.transaction_date)
+    # Cross-account guard: when the email row carries a known source_bank_name,
+    # require the candidate's BankAccount.bank_name to match.
+    known_bank = email_tx.source_bank_name
+    join_bank = bool(known_bank)
+
+    base = select(Transaction)
+    if join_bank:
+        base = base.join(
+            BankAccount, Transaction.bank_account_id == BankAccount.id, isouter=True
+        ).where((BankAccount.bank_name.is_(None)) | (BankAccount.bank_name.ilike(known_bank)))
+
+    # Order by date proximity in SQL: ABS(epoch diff) asc, then id for stability.
+    date_distance = func.abs(
+        func.extract("epoch", Transaction.transaction_date - email_tx.transaction_date)
     )
-    candidates = result.scalars().all()
+    result = await session.execute(
+        base.where(and_(*conditions)).order_by(date_distance.asc(), Transaction.id.asc())
+    )
+    candidates = list(result.scalars().all())
+
+    # Python-side merchant filter (normalized) — skip for transfers.
+    if not is_transfer and email_tx.raw_merchant_name:
+        query_norm = normalize_merchant(email_tx.raw_merchant_name)
+        candidates = [
+            c for c in candidates if _merchant_token_match(query_norm, c.raw_merchant_name)
+        ]
+
     if not candidates:
         return None
-
-    # Pick the candidate whose date is closest to the email date.
-    return min(
-        candidates,
-        key=lambda c: abs((c.transaction_date - email_tx.transaction_date).total_seconds()),
-    )
+    return candidates[0]
 
 
 async def find_plaid_match_for_email_values(
@@ -544,13 +686,10 @@ async def find_plaid_match_for_email_values(
         Transaction.transaction_date <= date_max,
         Transaction.transfer_pair_id.is_(None),
         Transaction.refund_pair_id.is_(None),
+        Transaction.matched_email_at.is_(None),
     ]
 
     is_transfer = transaction_type == "transfer"
-
-    if not is_transfer and raw_merchant_name:
-        safe = raw_merchant_name.replace("%", r"\%").replace("_", r"\_")
-        conditions.append(Transaction.raw_merchant_name.ilike(f"%{safe}%"))
 
     preferred_account_id = None
     if is_transfer and transfer_to_account_id is not None:
@@ -564,17 +703,23 @@ async def find_plaid_match_for_email_values(
             | (Transaction.bank_account_id.is_(None))
         )
 
+    date_distance = func.abs(func.extract("epoch", Transaction.transaction_date - transaction_date))
     result = await session.execute(
-        select(Transaction).where(and_(*conditions)).order_by(Transaction.transaction_date)
+        select(Transaction)
+        .where(and_(*conditions))
+        .order_by(date_distance.asc(), Transaction.id.asc())
     )
-    candidates = result.scalars().all()
+    candidates = list(result.scalars().all())
+
+    if not is_transfer and raw_merchant_name:
+        query_norm = normalize_merchant(raw_merchant_name)
+        candidates = [
+            c for c in candidates if _merchant_token_match(query_norm, c.raw_merchant_name)
+        ]
+
     if not candidates:
         return None
-
-    return min(
-        candidates,
-        key=lambda c: abs((c.transaction_date - transaction_date).total_seconds()),
-    )
+    return candidates[0]
 
 
 async def consolidate_email_values_into_plaid(
