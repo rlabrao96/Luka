@@ -59,18 +59,28 @@ export function ReimbursementLinkDialog({ anchor, open, onOpenChange }: Props) {
     useReimbursementCandidates(open ? anchorId : null, windowDays);
   const linkMutation = useLinkReimbursement();
 
-  // Client-side merchant search (live filter, no extra round-trips).
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return candidates;
-    return candidates.filter((c) =>
-      c.raw_merchant_name.toLowerCase().includes(q),
-    );
-  }, [candidates, search]);
-
   const anchorAmount = anchor ? Number(anchor.amount) : 0;
   const anchorCurrency = anchor?.currency ?? "CLP";
   const anchorIsInflow = anchorAmount > 0;
+  const anchorMagnitude = Math.abs(anchorAmount);
+
+  // Client-side merchant search + smart sort: exact-amount matches bubble
+  // to the top so the obvious counterpart is always visible immediately.
+  // Within each group (exact / rest), sort by date desc.
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const base = q
+      ? candidates.filter((c) =>
+          c.raw_merchant_name.toLowerCase().includes(q),
+        )
+      : candidates;
+    return [...base].sort((a, b) => {
+      const aExact = Math.abs(Math.abs(Number(a.amount)) - anchorMagnitude) < 0.005 ? 1 : 0;
+      const bExact = Math.abs(Math.abs(Number(b.amount)) - anchorMagnitude) < 0.005 ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+      return b.transaction_date.localeCompare(a.transaction_date);
+    });
+  }, [candidates, search, anchorMagnitude]);
 
   const selectedSum = useMemo(() => {
     let s = 0;
@@ -234,6 +244,8 @@ export function ReimbursementLinkDialog({ anchor, open, onOpenChange }: Props) {
             <ul className="flex flex-col gap-1.5">
               {filtered.map((c) => {
                 const checked = selected.has(c.id);
+                const isExactMatch =
+                  Math.abs(Math.abs(Number(c.amount)) - anchorMagnitude) < 0.005;
                 const date = new Date(c.transaction_date).toLocaleDateString(
                   "es-CL",
                   { day: "2-digit", month: "short", year: "numeric" },
@@ -261,7 +273,9 @@ export function ReimbursementLinkDialog({ anchor, open, onOpenChange }: Props) {
                         "flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors",
                         checked
                           ? "border-luka-primary bg-blue-50/50"
-                          : "border-slate-200 bg-white hover:bg-slate-50",
+                          : isExactMatch
+                            ? "border-emerald-300 bg-emerald-50/40 hover:bg-emerald-50"
+                            : "border-slate-200 bg-white hover:bg-slate-50",
                       )}
                     >
                       <Checkbox
@@ -271,9 +285,16 @@ export function ReimbursementLinkDialog({ anchor, open, onOpenChange }: Props) {
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline gap-2">
-                          <p className="text-[13px] font-semibold text-luka-dark truncate">
-                            {merchant}
-                          </p>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="text-[13px] font-semibold text-luka-dark truncate">
+                              {merchant}
+                            </p>
+                            {isExactMatch && (
+                              <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
+                                Match
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[13px] font-bold tabular-nums text-slate-700 shrink-0">
                             {amount}
                           </span>
