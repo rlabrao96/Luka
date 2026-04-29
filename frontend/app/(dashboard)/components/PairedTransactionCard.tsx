@@ -236,37 +236,20 @@ export function PairedTransactionCard({
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] overflow-hidden relative">
-      {pairType === "reimbursement" && (
-        <div className="absolute top-2 right-2 z-10">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="Acciones de grupo de reembolso"
-              className="flex items-center justify-center h-6 w-6 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal size={14} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[180px]">
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  unlinkReimbursement.mutate({ groupId: pairId });
-                }}
-              >
-                <Undo2 className="text-slate-500" />
-                Deshacer reembolso
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
         aria-expanded={expanded}
         aria-controls={panelId}
         aria-label={ariaLabel}
-        className="w-full text-left p-3 sm:p-3.5 flex items-center gap-2 sm:gap-3 hover:bg-slate-50/50 transition-colors"
+        className="w-full text-left p-3 sm:p-3.5 flex items-center gap-2 sm:gap-3 hover:bg-slate-50/50 transition-colors cursor-pointer"
       >
         {/* Icon */}
         {isWalletPair ? (
@@ -320,23 +303,47 @@ export function PairedTransactionCard({
             )}
           </div>
 
-          {/* Line 2: subtitle + chevron */}
+          {/* Line 2: subtitle + (kebab) + chevron */}
           <div className="flex justify-between items-center mt-1">
             <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
               {subtitle}
               <span className="ml-1.5 text-slate-300">· {legCount} transacciones</span>
             </p>
-            <ChevronDown
-              size={14}
-              className={cn(
-                "shrink-0 text-slate-400 transition-transform duration-200",
-                expanded ? "rotate-180" : "",
+            <div className="flex items-center gap-1 shrink-0">
+              {pairType === "reimbursement" && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label="Acciones de grupo de reembolso"
+                    className="flex items-center justify-center h-6 w-6 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreHorizontal size={14} />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[180px]">
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        unlinkReimbursement.mutate({ groupId: pairId });
+                      }}
+                    >
+                      <Undo2 className="text-slate-500" />
+                      Deshacer reembolso
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
-              aria-hidden="true"
-            />
+              <ChevronDown
+                size={14}
+                className={cn(
+                  "text-slate-400 transition-transform duration-200",
+                  expanded ? "rotate-180" : "",
+                )}
+                aria-hidden="true"
+              />
+            </div>
           </div>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div id={panelId} className="border-t border-slate-100 bg-slate-50/60 p-2 sm:p-3 space-y-1.5">
