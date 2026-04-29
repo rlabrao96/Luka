@@ -1,6 +1,6 @@
 "use client";
 import { useId, useMemo, useState } from "react";
-import { ArrowLeftRight, ChevronDown, HandCoins, MoreHorizontal, Undo2 } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, MoreHorizontal, Undo2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type BankAccountRow, type Transaction } from "@/app/lib/api";
 import { useLukaStore } from "@/app/lib/store";
@@ -190,7 +190,18 @@ export function PairedTransactionCard({
   } else if (pairType === "reimbursement") {
     const merchant = toTitleCase(summaryLeg.raw_merchant_name);
     title = `${merchant} · reembolsado`;
-    subtitle = `Reembolso de ${legs.length - 1} ${legs.length - 1 === 1 ? "movimiento" : "movimientos"}`;
+    // If every leg sits on the same bank account, use the refund-pair-style
+    // "en {account}" subtitle for visual parity. Otherwise fall back to a
+    // count-based subtitle since the legs span multiple accounts.
+    const firstAccountId = legs[0]?.bank_account_id ?? null;
+    const allSameAccount =
+      firstAccountId !== null && legs.every((l) => l.bank_account_id === firstAccountId);
+    if (allSameAccount && firstAccountId) {
+      const accountName = accountNameById.get(firstAccountId);
+      subtitle = accountName ? `en ${toTitleCase(accountName)}` : "Reembolso aplicado";
+    } else {
+      subtitle = `Reembolso de ${legs.length - 1} ${legs.length - 1 === 1 ? "movimiento" : "movimientos"}`;
+    }
   } else if (pairType === "transfer") {
     const isCCPayment = legs.some((l) => looksLikeCCPayment(l.raw_merchant_name));
     title = isCCPayment ? "Pago tarjeta" : "Transferencia";
@@ -266,16 +277,12 @@ export function PairedTransactionCard({
               "hidden sm:flex w-[38px] h-[38px] rounded-[10px] items-center justify-center shrink-0",
               pairType === "transfer"
                 ? "bg-blue-50 text-blue-500"
-                : pairType === "reimbursement"
-                  ? "bg-emerald-50 text-emerald-600"
-                  : "bg-slate-100 text-slate-500",
+                : "bg-slate-100 text-slate-500",
             )}
             aria-hidden="true"
           >
             {pairType === "transfer" ? (
               <ArrowLeftRight size={16} strokeWidth={2.5} />
-            ) : pairType === "reimbursement" ? (
-              <HandCoins size={16} strokeWidth={2.5} />
             ) : (
               <Undo2 size={16} strokeWidth={2.5} />
             )}
@@ -300,15 +307,6 @@ export function PairedTransactionCard({
             ) : pairType === "transfer" ? (
               <span className="text-[13px] sm:text-[15px] font-bold tabular-nums shrink-0 text-slate-500">
                 {formattedAbs}
-              </span>
-            ) : pairType === "reimbursement" ? (
-              <span className="flex items-baseline gap-1.5 shrink-0">
-                <span className="text-[12px] sm:text-[14px] font-semibold tabular-nums line-through text-slate-400">
-                  {formattedAbs}
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-bold tabular-nums text-emerald-600 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 uppercase tracking-wide">
-                  reembolsado
-                </span>
               </span>
             ) : (
               <span className="flex items-baseline gap-1.5 shrink-0">
