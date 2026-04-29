@@ -57,6 +57,7 @@ class MatchCandidate(BaseModel):
     currency: str
     raw_merchant_name: str
     category: str | None = None
+    status: str | None = None
 
     model_config = {"from_attributes": True}
 

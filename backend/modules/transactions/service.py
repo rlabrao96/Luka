@@ -487,12 +487,15 @@ async def get_match_candidates(
     window_days: int = 7,
     limit: int = 20,
 ) -> list[dict]:
-    """Return ranked candidate Plaid bank rows that could match a pending email row.
+    """Return ranked candidate bank rows (Plaid or Connect) that could match a pending email row.
 
     Authorization: pending row must be owned by `user_id`. Candidates are
     filtered by household membership, same currency, 2% amount tolerance,
-    ±window_days, unpaired, settled. Raises ServiceError('not_found') if the
-    pending row doesn't exist or isn't owned by the caller.
+    ±window_days, unpaired, status in ('pending','settled'). Pending bank-side
+    rows are included so the manual "Vincular…" escape hatch can resolve the
+    most common duplicate case (email row + still-pending Plaid/Connect row).
+    Raises ServiceError('not_found') if the pending row doesn't exist or isn't
+    owned by the caller.
     """
     # Load & authorize the pending email row (ownership enforced in SQL).
     pending_result = await db.execute(
@@ -528,8 +531,8 @@ async def get_match_candidates(
         .where(
             Transaction.household_id == pending.household_id,
             Transaction.currency == pending.currency,
-            Transaction.source == "plaid",
-            Transaction.status == "settled",
+            Transaction.source.in_(["plaid", "connect"]),
+            Transaction.status.in_(["pending", "settled"]),
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),
             Transaction.transaction_date >= date_min,
@@ -557,6 +560,7 @@ async def get_match_candidates(
             "currency": txn.currency,
             "raw_merchant_name": txn.raw_merchant_name,
             "category": txn.category,
+            "status": txn.status,
         }
         for txn, bank_name, account_name in ranked
     ]
@@ -568,7 +572,7 @@ async def link_email_to_bank(
     pending_id: uuid.UUID,
     bank_tx_id: uuid.UUID,
 ) -> dict:
-    """Manually link a pending email row to a settled bank row.
+    """Manually link a pending email row to a bank row (pending or settled).
 
     Enforces user_id ownership on BOTH rows in SQL. Returns the enriched bank
     transaction as a dict. Raises ServiceError with code:

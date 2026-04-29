@@ -114,7 +114,14 @@ export function LinkMatchDialog({ pendingTransaction, open, onOpenChange }: Prop
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-baseline gap-2">
-                        <p className="text-[13px] font-semibold text-luka-dark truncate">{merchant}</p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="text-[13px] font-semibold text-luka-dark truncate">{merchant}</p>
+                          {c.status === "pending" && (
+                            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5">
+                              pendiente
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[13px] font-bold tabular-nums text-slate-700 shrink-0">{amount}</span>
                       </div>
                       <div className="flex justify-between items-center mt-0.5">
