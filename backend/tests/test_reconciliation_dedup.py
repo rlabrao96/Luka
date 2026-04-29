@@ -24,7 +24,7 @@ from modules.reconciliation.dedup import (
     _find_single_match,
     apply_match_and_delete_emails,
 )
-from modules.transactions.models import Transaction
+from modules.transactions.models import Transaction, TransactionSplit
 
 
 # ---------------------------------------------------------------- helpers
@@ -368,3 +368,218 @@ async def test_apply_match_propagates_transfer_type_and_nulls_category(db):
     assert reloaded is not None
     assert reloaded.transaction_type == "transfer"
     assert reloaded.category is None
+
+
+# ---------------------------------------------------------------- user-edit-wins tests
+
+
+async def _enrichment_from_email(db, tx_id: uuid.UUID) -> dict:
+    from modules.reconciliation.dedup import _extract_enrichment
+
+    return await _extract_enrichment(db, tx_id)
+
+
+@pytest.mark.asyncio
+async def test_user_edit_on_email_preserved_after_consolidation(db):
+    """User sets category on email pending → Plaid arrives → category preserved
+    AND the marker propagates onto the bank row."""
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-42.00"),
+        when=when,
+        merchant="Amazon",
+        category="Comida",
+    )
+    # Simulate user PATCH /category by stamping the marker.
+    email.user_edited_fields = {"category": True}
+    bank = _bank_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-42.00"),
+        when=when,
+        merchant="Amazon",
+    )
+    db.add_all([email, bank])
+    await db.flush()
+
+    enrichment = await _enrichment_from_email(db, email.id)
+    await apply_match_and_delete_emails(db, bank.id, [email.id], enrichment, user_id=user.id)
+    await db.flush()
+
+    reloaded = await _reload(db, bank.id)
+    assert reloaded is not None
+    assert reloaded.category == "Comida"
+    assert reloaded.user_edited_fields.get("category") is True
+
+
+@pytest.mark.asyncio
+async def test_user_edit_on_bank_not_overwritten_by_late_email(db):
+    """Plaid pending edited by user → email pending arrives later via reconciliation
+    → bank's user-set category survives even if the email row carries another value."""
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-42.00"),
+        when=when,
+        merchant="Amazon",
+        category="Servicios",  # email-side category — must NOT win
+    )
+    bank = _bank_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-42.00"),
+        when=when,
+        merchant="Amazon",
+    )
+    bank.category = "Comida"
+    bank.user_edited_fields = {"category": True}
+    db.add_all([email, bank])
+    await db.flush()
+
+    enrichment = await _enrichment_from_email(db, email.id)
+    await apply_match_and_delete_emails(db, bank.id, [email.id], enrichment, user_id=user.id)
+    await db.flush()
+
+    reloaded = await _reload(db, bank.id)
+    assert reloaded is not None
+    assert reloaded.category == "Comida"
+    assert reloaded.user_edited_fields.get("category") is True
+
+
+@pytest.mark.asyncio
+async def test_vendor_name_prefers_plaid_enriched_when_no_user_edits(db):
+    """Bank row has 'Best Buy' (Plaid enriched), email has 'Bestbuy.com',
+    no user edits anywhere — consolidated bank row keeps 'Best Buy'."""
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-99.00"),
+        when=when,
+        merchant="Bestbuy.com",
+    )
+    bank = _bank_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-99.00"),
+        when=when,
+        merchant="Best Buy",
+    )
+    db.add_all([email, bank])
+    await db.flush()
+
+    enrichment = await _enrichment_from_email(db, email.id)
+    await apply_match_and_delete_emails(db, bank.id, [email.id], enrichment, user_id=user.id)
+    await db.flush()
+
+    reloaded = await _reload(db, bank.id)
+    assert reloaded is not None
+    assert reloaded.raw_merchant_name == "Best Buy"
+
+
+@pytest.mark.asyncio
+async def test_vendor_name_user_edit_on_email_wins_over_plaid(db):
+    """User renamed email row to 'My Best Buy' — that wins over Plaid's enriched name."""
+    user, hh, acc = await _seed_household(db, currency="USD")
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-99.00"),
+        when=when,
+        merchant="My Best Buy",
+    )
+    email.user_edited_fields = {"merchant_name": True}
+    bank = _bank_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-99.00"),
+        when=when,
+        merchant="Best Buy",
+    )
+    db.add_all([email, bank])
+    await db.flush()
+
+    enrichment = await _enrichment_from_email(db, email.id)
+    await apply_match_and_delete_emails(db, bank.id, [email.id], enrichment, user_id=user.id)
+    await db.flush()
+
+    reloaded = await _reload(db, bank.id)
+    assert reloaded is not None
+    assert reloaded.raw_merchant_name == "My Best Buy"
+    assert reloaded.user_edited_fields.get("merchant_name") is True
+
+
+@pytest.mark.asyncio
+async def test_joint_account_overrides_personal_split_marker(db):
+    """Even if the user marked split_type=personal, a joint-account merge target
+    must end up with split_type=shared. Joint always wins."""
+    user, hh, _ = await _seed_household(db, currency="USD")
+    joint = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=user.id,
+        bank_name="Joint Bank",
+        account_type="joint",
+        currency="USD",
+        is_active=True,
+    )
+    db.add(joint)
+    await db.flush()
+
+    when = datetime.now(timezone.utc) - timedelta(days=1)
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=None,
+        amount=Decimal("-25.00"),
+        when=when,
+        merchant="Costco",
+    )
+    bank = _bank_tx(
+        user=user,
+        household=hh,
+        account=joint,
+        amount=Decimal("-25.00"),
+        when=when,
+        merchant="Costco",
+    )
+    bank.user_edited_fields = {"split_type": True}
+    db.add_all([email, bank])
+    await db.flush()
+    # Pre-existing personal split on the bank row.
+    db.add(
+        TransactionSplit(  # type: ignore[name-defined]
+            id=uuid.uuid4(), transaction_id=bank.id, split_type="personal"
+        )
+    )
+    await db.flush()
+
+    enrichment = await _enrichment_from_email(db, email.id)
+    await apply_match_and_delete_emails(db, bank.id, [email.id], enrichment, user_id=user.id)
+    await db.flush()
+
+    split_row = await db.execute(
+        select(TransactionSplit).where(TransactionSplit.transaction_id == bank.id)  # type: ignore[name-defined]
+    )
+    split = split_row.scalar_one_or_none()
+    assert split is not None
+    assert split.split_type == "shared"

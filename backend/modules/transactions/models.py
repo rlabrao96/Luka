@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from core.database import Base
 
@@ -40,6 +40,13 @@ class Transaction(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     plaid_transaction_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=False)
+    # User-edit-wins invariant: per-field boolean flags marking fields the user has
+    # touched. Consolidation/dedup must never overwrite a field whose flag is True.
+    # Keys: "merchant_name" | "category" | "split_type" | "transaction_type"
+    #       | "transfer_to_account_id". Absent key == not user-edited.
+    user_edited_fields: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

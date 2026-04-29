@@ -17,7 +17,36 @@ from datetime import timedelta
 from sqlalchemy import and_, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.households.models import BankAccount
 from modules.transactions.models import Transaction, TransactionSplit
+
+
+def _resolve_vendor_name(
+    *,
+    bank: Transaction,
+    email_name: str | None,
+    bank_marker: bool,
+    email_marker: bool,
+) -> tuple[str | None, bool]:
+    """Pick the canonical raw_merchant_name when consolidating email + bank rows.
+
+    User-edit-wins: whichever side has the merchant_name marker wins. If both
+    sides claim it, the bank row's marker wins (it's the survivor of the merge).
+    Otherwise prefer Plaid's enriched name (already on `bank.raw_merchant_name`
+    via `mapper.map_plaid_transaction`, which prefers `merchant_name` over
+    `name`). Falls back to the email's parsed merchant when Plaid has nothing.
+
+    Returns (resolved_name, propagate_marker_to_bank).
+    """
+    if bank_marker:
+        return bank.raw_merchant_name, True
+    if email_marker and email_name:
+        return email_name, True
+    if bank.raw_merchant_name and bank.raw_merchant_name.strip().lower() not in ("", "unknown"):
+        return bank.raw_merchant_name, False
+    if email_name:
+        return email_name, False
+    return bank.raw_merchant_name, False
 
 
 async def find_email_match(
@@ -109,35 +138,104 @@ async def apply_match_and_delete_emails(
     `user_id` scopes the split re-link and email delete to the owner of the bank
     tx — defense in depth even though the sole caller is already user-scoped.
     """
-    # Apply enrichment fields to bank transaction.
-    # Transfers always propagate: transaction_type='transfer' and category=NULL
-    # (CC-payment emails often carry a stale category from heuristics).
+    # Load the bank row so we can compare its user_edited_fields against the
+    # email's. User-edit-wins: a field marked on the bank row is never
+    # overwritten; a field marked on the email row wins and propagates its
+    # marker forward.
+    bank_row = await session.scalar(select(Transaction).where(Transaction.id == bank_tx_id))
+    if bank_row is None:
+        return
+    bank_marks = dict(bank_row.user_edited_fields or {})
+    email_marks = dict(enrichment.get("user_edited_fields") or {})
+
+    def _bank_owns(field: str) -> bool:
+        return bool(bank_marks.get(field))
+
+    def _email_owns(field: str) -> bool:
+        return bool(email_marks.get(field))
+
+    new_marks = dict(bank_marks)
     update_fields: dict = {}
     incoming_type = enrichment.get("transaction_type")
-    if enrichment.get("merchant_id"):
+
+    # --- merchant_id: piggy-backs on merchant_name ownership.
+    if enrichment.get("merchant_id") and not _bank_owns("merchant_name"):
         update_fields["merchant_id"] = enrichment["merchant_id"]
-    if enrichment.get("transfer_to_account_id"):
-        update_fields["transfer_to_account_id"] = enrichment["transfer_to_account_id"]
-    if incoming_type == "transfer":
-        # Transfers always propagate: type=transfer and null out stale category
+
+    # --- transfer_to_account_id
+    if not _bank_owns("transfer_to_account_id"):
+        if _email_owns("transfer_to_account_id"):
+            update_fields["transfer_to_account_id"] = enrichment.get("transfer_to_account_id")
+            new_marks["transfer_to_account_id"] = True
+        elif enrichment.get("transfer_to_account_id"):
+            update_fields["transfer_to_account_id"] = enrichment["transfer_to_account_id"]
+
+    # --- transaction_type / category
+    if incoming_type == "transfer" and not _bank_owns("transaction_type"):
+        # Transfers always propagate type=transfer and null out stale category
+        # (CC-payment emails often carry a heuristic category that's wrong),
+        # UNLESS the user has explicitly edited those fields on the bank row.
         update_fields["transaction_type"] = "transfer"
-        update_fields["category"] = None
+        if not _bank_owns("category"):
+            update_fields["category"] = None
     else:
-        if enrichment.get("category"):
-            update_fields["category"] = enrichment["category"]
-        if incoming_type and incoming_type != "expense":
-            update_fields["transaction_type"] = incoming_type
+        if not _bank_owns("category"):
+            if _email_owns("category"):
+                # User explicitly set (or cleared) category on email row — copy
+                # even if NULL.
+                update_fields["category"] = enrichment.get("category")
+                new_marks["category"] = True
+            elif enrichment.get("category"):
+                update_fields["category"] = enrichment["category"]
+        if not _bank_owns("transaction_type"):
+            if _email_owns("transaction_type"):
+                update_fields["transaction_type"] = incoming_type
+                new_marks["transaction_type"] = True
+            elif incoming_type and incoming_type != "expense":
+                update_fields["transaction_type"] = incoming_type
+
+    # --- raw_merchant_name (Plaid-enriched usually wins; user edits always win)
+    resolved_name, propagate_name_mark = _resolve_vendor_name(
+        bank=bank_row,
+        email_name=enrichment.get("raw_merchant_name"),
+        bank_marker=_bank_owns("merchant_name"),
+        email_marker=_email_owns("merchant_name"),
+    )
+    if resolved_name and resolved_name != bank_row.raw_merchant_name:
+        update_fields["raw_merchant_name"] = resolved_name
+    if propagate_name_mark:
+        new_marks["merchant_name"] = True
+
+    # Persist marker map if it grew.
+    if new_marks != bank_marks:
+        update_fields["user_edited_fields"] = new_marks
 
     if update_fields:
         await session.execute(
             update(Transaction).where(Transaction.id == bank_tx_id).values(**update_fields)
         )
 
-    # Propagate the email's split_type onto the bank row's existing split so the
-    # user's personal/shared decision is preserved. If the bank row has no split,
-    # create one; if it already has one, update it in place.
+    # --- split_type (joint-account override is non-negotiable)
+    is_joint = False
+    if bank_row.bank_account_id is not None:
+        account_type = await session.scalar(
+            select(BankAccount.account_type).where(BankAccount.id == bank_row.bank_account_id)
+        )
+        is_joint = account_type == "joint"
+
     incoming_split = enrichment.get("split_type")
-    if incoming_split:
+    if is_joint:
+        target_split: str | None = "shared"
+    elif _bank_owns("split_type"):
+        target_split = None  # leave bank row's split untouched
+    elif _email_owns("split_type") and incoming_split:
+        target_split = incoming_split
+    elif incoming_split:
+        target_split = incoming_split
+    else:
+        target_split = None
+
+    if target_split is not None:
         existing_split = await session.execute(
             select(TransactionSplit.id)
             .where(TransactionSplit.transaction_id == bank_tx_id)
@@ -148,16 +246,31 @@ async def apply_match_and_delete_emails(
             await session.execute(
                 update(TransactionSplit)
                 .where(TransactionSplit.id == split_id)
-                .values(split_type=incoming_split)
+                .values(split_type=target_split)
             )
         else:
             session.add(
                 TransactionSplit(
                     id=uuid.uuid4(),
                     transaction_id=bank_tx_id,
-                    split_type=incoming_split,
+                    split_type=target_split,
                 )
             )
+        # If the email-row owned the split_type marker, propagate it now that
+        # we've written the value. (Joint override does NOT carry the marker —
+        # it's a system rule, not a user decision.)
+        if not is_joint and _email_owns("split_type") and not _bank_owns("split_type"):
+            current = await session.scalar(
+                select(Transaction.user_edited_fields).where(Transaction.id == bank_tx_id)
+            )
+            current = dict(current or {})
+            if not current.get("split_type"):
+                current["split_type"] = True
+                await session.execute(
+                    update(Transaction)
+                    .where(Transaction.id == bank_tx_id)
+                    .values(user_edited_fields=current)
+                )
 
     # Delete the email rows (and their splits via FK or explicit delete).
     if email_tx_ids:
@@ -520,4 +633,6 @@ async def _extract_enrichment(session: AsyncSession, email_tx_id: uuid.UUID) -> 
         "transaction_type": tx.transaction_type,
         "split_type": split_type,
         "transfer_to_account_id": tx.transfer_to_account_id,
+        "raw_merchant_name": tx.raw_merchant_name,
+        "user_edited_fields": dict(tx.user_edited_fields or {}),
     }
