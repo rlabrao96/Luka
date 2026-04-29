@@ -324,6 +324,22 @@ export interface NotificationItem {
   read_at: string | null;
 }
 
+export interface CreditSuggestionItem {
+  id: string;
+  status: string;
+  title: string;
+  credit_txn_id: string;
+  counterpart_txn_id: string;
+  amount: number;
+  currency: string;
+  merchant_credit_name: string;
+  merchant_counterpart_name: string;
+  credit_date: string;
+  counterpart_date: string;
+  bank_account_id: string | null;
+  created_at: string;
+}
+
 export interface ReviewTransactionInfo {
   raw_name: string;
   date: string | null;
@@ -445,6 +461,22 @@ export const api = {
     apiFetch<{ unlinked: number }>(
       `/transactions/reimbursement-group/${groupId}`,
       { method: "DELETE" },
+    ),
+
+  // --- Credit suggestions (auto-detected reimbursements) ---
+  getCreditSuggestions: () =>
+    apiFetch<CreditSuggestionItem[]>("/transactions/credit-suggestions"),
+
+  confirmCreditSuggestion: (notificationId: string) =>
+    apiFetch<{ reimbursement_group_id: string; transaction_ids: string[] }>(
+      `/transactions/credit-suggestions/${notificationId}/confirm`,
+      { method: "POST" },
+    ),
+
+  dismissCreditSuggestion: (notificationId: string) =>
+    apiFetch<{ ok: boolean }>(
+      `/transactions/credit-suggestions/${notificationId}/dismiss`,
+      { method: "POST" },
     ),
 
   updateTransactionDate: (transactionId: string, transactionDate: string) =>

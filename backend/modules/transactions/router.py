@@ -290,3 +290,125 @@ async def delete_transaction(
         raise HTTPException(404, "Transaction not found")
     if result == "invalid":
         raise HTTPException(400, "Only pending email transactions can be deleted")
+
+
+# --------------------------------------------------------------- credit-suggestions
+# Auto-detected reimbursement candidates from card-issuer credit programs.
+# Stored as Notification rows of type "credit_suggestion".
+
+
+def _credit_suggestion_dto(notif) -> dict:
+    p = notif.payload or {}
+    return {
+        "id": str(notif.id),
+        "status": notif.status,
+        "title": notif.title,
+        "credit_txn_id": p.get("credit_txn_id"),
+        "counterpart_txn_id": p.get("counterpart_txn_id"),
+        "amount": p.get("amount"),
+        "currency": p.get("currency"),
+        "merchant_credit_name": p.get("merchant_credit_name"),
+        "merchant_counterpart_name": p.get("merchant_counterpart_name"),
+        "credit_date": p.get("credit_date"),
+        "counterpart_date": p.get("counterpart_date"),
+        "bank_account_id": p.get("bank_account_id"),
+        "created_at": notif.created_at.isoformat() if notif.created_at else None,
+    }
+
+
+@router.get("/credit-suggestions")
+async def list_credit_suggestions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from sqlalchemy import select
+    from modules.notifications.models import Notification
+    from modules.reconciliation.credit_suggestions import NOTIFICATION_TYPE
+
+    res = await db.execute(
+        select(Notification)
+        .where(
+            Notification.user_id == current_user.id,
+            Notification.type == NOTIFICATION_TYPE,
+            Notification.status.in_(("unread", "read")),
+        )
+        .order_by(Notification.created_at.desc())
+    )
+    return [_credit_suggestion_dto(n) for n in res.scalars().all()]
+
+
+@router.post("/credit-suggestions/{notification_id}/confirm")
+async def confirm_credit_suggestion(
+    notification_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+    from modules.notifications.models import Notification
+    from modules.reconciliation.credit_suggestions import NOTIFICATION_TYPE
+
+    res = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == current_user.id,
+            Notification.type == NOTIFICATION_TYPE,
+        )
+    )
+    notif = res.scalar_one_or_none()
+    if notif is None:
+        raise HTTPException(404, "Suggestion not found")
+    if notif.status in ("actioned", "dismissed"):
+        raise HTTPException(409, "Suggestion already resolved")
+
+    payload = notif.payload or {}
+    credit_id = payload.get("credit_txn_id")
+    cp_id = payload.get("counterpart_txn_id")
+    if not credit_id or not cp_id:
+        raise HTTPException(400, "Suggestion payload is malformed")
+
+    try:
+        result = await service.link_reimbursement_group(
+            db,
+            uuid.UUID(credit_id),
+            [uuid.UUID(cp_id)],
+            current_user.id,
+        )
+    except service.ServiceError as err:
+        _raise_from_service_error(err)
+
+    notif.status = "actioned"
+    notif.read_at = datetime.now(timezone.utc)
+    notif.updated_at = datetime.now(timezone.utc)
+    payload["confirmed_at"] = notif.read_at.isoformat()
+    notif.payload = payload
+    await db.commit()
+    return result
+
+
+@router.post("/credit-suggestions/{notification_id}/dismiss")
+async def dismiss_credit_suggestion(
+    notification_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+    from modules.notifications.models import Notification
+    from modules.reconciliation.credit_suggestions import NOTIFICATION_TYPE
+
+    res = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == current_user.id,
+            Notification.type == NOTIFICATION_TYPE,
+        )
+    )
+    notif = res.scalar_one_or_none()
+    if notif is None:
+        raise HTTPException(404, "Suggestion not found")
+
+    notif.status = "dismissed"
+    notif.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"ok": True}
