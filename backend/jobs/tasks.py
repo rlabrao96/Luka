@@ -358,6 +358,65 @@ async def process_email(
                     db, household_id, card_last_four
                 )
 
+                # Reverse match: did a Plaid pending/settled counterpart land
+                # before us? If so, skip the email INSERT and enrich the
+                # existing Plaid row in place. Falls back to the original
+                # insert path on any lookup failure so ingest never breaks.
+                plaid_counterpart = None
+                try:
+                    from modules.reconciliation.dedup import (
+                        consolidate_email_values_into_plaid,
+                        find_plaid_match_for_email_values,
+                    )
+
+                    plaid_counterpart = await find_plaid_match_for_email_values(
+                        db,
+                        user_id=user.id,
+                        raw_merchant_name=parsed.raw_merchant,
+                        amount=stored_amount,
+                        currency=parsed.currency,
+                        transaction_date=parsed.transaction_date,
+                        transaction_type=tx_type,
+                        bank_account_id=bank_account.id if bank_account else None,
+                        transfer_to_account_id=transfer_to_account_id,
+                    )
+                except Exception:
+                    logger.warning(
+                        "process_email: reverse-match lookup failed, falling back to insert",
+                        exc_info=True,
+                    )
+                    plaid_counterpart = None
+
+                if plaid_counterpart is not None:
+                    try:
+                        await consolidate_email_values_into_plaid(
+                            db,
+                            plaid_counterpart,
+                            transaction_type=tx_type,
+                            transfer_to_account_id=transfer_to_account_id,
+                        )
+                        await db.commit()
+                    except Exception:
+                        logger.warning(
+                            "process_email: consolidate into Plaid failed, falling back to insert",
+                            exc_info=True,
+                        )
+                        plaid_counterpart = None
+
+                if plaid_counterpart is not None:
+                    # Enqueue a per-household tick so transfer/refund/wallet
+                    # passes pick up the freshly enriched row.
+                    try:
+                        await enqueue_job(
+                            "run_reconciliation_tick_for_household", str(household_id)
+                        )
+                    except Exception:
+                        logger.warning(
+                            "process_email: failed to enqueue reconciliation tick",
+                            exc_info=True,
+                        )
+                    continue
+
                 # Create pending transaction
                 txn = Transaction(
                     user_id=user.id,
@@ -379,6 +438,17 @@ async def process_email(
                 db.add(txn)
                 await db.commit()
                 await db.refresh(txn)
+
+                # Event-driven tick: nudge reconciliation for this household
+                # so any matching Plaid row syncs up promptly without waiting
+                # for the daily cron.
+                try:
+                    await enqueue_job("run_reconciliation_tick_for_household", str(household_id))
+                except Exception:
+                    logger.warning(
+                        "process_email: failed to enqueue reconciliation tick",
+                        exc_info=True,
+                    )
 
                 # Log parsing result for template training
                 log_entry = ParsedEmailLog(
@@ -1011,22 +1081,33 @@ async def run_plaid_sync_job(ctx: dict, plaid_item_id: str, initial: bool = Fals
     async with AsyncSessionLocal() as db:
         stats = await run_plaid_sync(db, uuid.UUID(plaid_item_id), initial=initial)
 
-        # Trigger merchant review if new transactions were added
-        if stats.get("added", 0) > 0:
-            # Get the PlaidItem to find user_id
-            item_result = await db.execute(
-                select(PlaidItem).where(PlaidItem.id == uuid.UUID(plaid_item_id))
-            )
-            item = item_result.scalar_one_or_none()
-            if item:
-                review_job = MerchantReviewJob(
-                    user_id=item.user_id,
-                    transaction_ids=stats.get("new_tx_ids"),
-                )
-                db.add(review_job)
-                await db.commit()
+        # Get the PlaidItem to find user/household for downstream enqueues
+        item_result = await db.execute(
+            select(PlaidItem).where(PlaidItem.id == uuid.UUID(plaid_item_id))
+        )
+        item = item_result.scalar_one_or_none()
 
-                await enqueue_job("process_merchant_review", str(review_job.id))
+        # Trigger merchant review if new transactions were added
+        if stats.get("added", 0) > 0 and item:
+            review_job = MerchantReviewJob(
+                user_id=item.user_id,
+                transaction_ids=stats.get("new_tx_ids"),
+            )
+            db.add(review_job)
+            await db.commit()
+
+            await enqueue_job("process_merchant_review", str(review_job.id))
+
+        # Event-driven reconciliation: nudge the per-household tick now that
+        # this sync added/modified rows. Replaces the old every-15-min cron.
+        if item and (stats.get("added", 0) > 0 or stats.get("modified", 0) > 0):
+            try:
+                await enqueue_job("run_reconciliation_tick_for_household", str(item.household_id))
+            except Exception:
+                logger.warning(
+                    "run_plaid_sync_job: failed to enqueue reconciliation tick",
+                    exc_info=True,
+                )
 
         return stats
 

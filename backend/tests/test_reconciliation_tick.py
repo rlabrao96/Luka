@@ -403,6 +403,46 @@ async def test_tick_all_households_aggregates(db):
 
 
 @pytest.mark.asyncio
+async def test_tick_rematches_email_pending_against_plaid_pending(db):
+    """Bug fix: when Plaid lands a pending row before the email,
+    the tick must consolidate the email pending onto the Plaid pending row
+    instead of leaving both in the Pendientes UI for days.
+    """
+    user, hh, acc = await _seed_household(db)
+    tx_date = datetime.now(timezone.utc) - timedelta(days=1)
+
+    plaid_pending = _plaid_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-27.43"),
+        when=tx_date,
+        merchant="Uber Eats",
+        status="pending",
+    )
+    email = _email_tx(
+        user=user,
+        household=hh,
+        account=acc,
+        amount=Decimal("-27.43"),
+        when=tx_date,
+        merchant="Uber Eats",
+    )
+    db.add_all([plaid_pending, email])
+    await db.flush()
+    await _backdate_created_at(db, email.id, datetime.now(timezone.utc) - timedelta(minutes=30))
+
+    result = await reconciliation_tick_for_household(db, hh.id)
+    assert result["rematched"] == 1
+
+    # Email row gone, Plaid pending survives.
+    assert await _reload(db, email.id) is None
+    surviving = await _reload(db, plaid_pending.id)
+    assert surviving is not None
+    assert surviving.status == "pending"
+
+
+@pytest.mark.asyncio
 async def test_tick_detects_wallet_pairs(db):
     """The tick runs the wallet pass and reports pairs in its return dict."""
     user, hh, bofa = await _seed_household(db)
