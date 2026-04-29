@@ -6,6 +6,7 @@ import {
   useDismissTransaction,
   useDeleteTransaction,
   useBulkAction,
+  useUpdateMerchantName,
 } from "@/app/lib/hooks/useTransactions";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Transaction, type PendingTransactions } from "@/app/lib/api";
@@ -19,6 +20,7 @@ import {
   Link2,
   Check,
   AlertCircle,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCategories } from "@/app/lib/hooks/useCategories";
@@ -46,6 +48,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 const BULK_SELECTION_CAP = 100;
 
@@ -325,9 +337,10 @@ interface RowActionMenuProps {
   bucket: BucketKind;
   onLink: (txn: Transaction) => void;
   onRequestDelete: (id: string) => void;
+  onRename: (txn: Transaction) => void;
 }
 
-function RowActionMenu({ txn, bucket, onLink, onRequestDelete }: RowActionMenuProps) {
+function RowActionMenu({ txn, bucket, onLink, onRequestDelete, onRename }: RowActionMenuProps) {
   const dismiss = useDismissTransaction();
   const canLink = bucket === "awaiting_reconciliation" || bucket === "unmatched_email";
   // Dismiss + delete are email-only: the backend rejects non-email rows because
@@ -344,6 +357,10 @@ function RowActionMenu({ txn, bucket, onLink, onRequestDelete }: RowActionMenuPr
         <MoreHorizontal size={14} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[180px]">
+        <DropdownMenuItem onClick={() => onRename(txn)}>
+          <Pencil className="text-slate-500" />
+          Editar nombre
+        </DropdownMenuItem>
         {canLink && (
           <DropdownMenuItem onClick={() => onLink(txn)}>
             <Link2 className="text-slate-500" />
@@ -374,6 +391,100 @@ function RowActionMenu({ txn, bucket, onLink, onRequestDelete }: RowActionMenuPr
   );
 }
 
+/* ─── Rename dialog ─── */
+
+interface RenameDialogProps {
+  txn: Transaction | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function RenameMerchantDialog({ txn, open, onOpenChange }: RenameDialogProps) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const update = useUpdateMerchantName();
+
+  useEffect(() => {
+    if (open && txn) {
+      setValue(txn.raw_merchant_name ?? "");
+      setError(null);
+    }
+  }, [open, txn]);
+
+  async function handleSave() {
+    if (!txn) return;
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError("El nombre no puede estar vacío.");
+      return;
+    }
+    if (trimmed === txn.raw_merchant_name) {
+      onOpenChange(false);
+      return;
+    }
+    update.mutate(
+      { transactionId: txn.id, rawMerchantName: trimmed },
+      {
+        onSuccess: () => onOpenChange(false),
+        onError: (err) =>
+          setError(
+            err instanceof Error && err.message
+              ? `No pudimos guardar: ${err.message}`
+              : "No pudimos guardar el nuevo nombre.",
+          ),
+      },
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Editar nombre</DialogTitle>
+          <DialogDescription>
+            Cambia cómo se ve este comercio en tu lista. Lo recordaremos para esta transacción.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Input
+            autoFocus
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              if (error) setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSave();
+              }
+            }}
+            placeholder="Nombre del comercio"
+            maxLength={255}
+          />
+          {error && (
+            <p role="alert" className="text-[12px] text-red-600">
+              {error}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={update.isPending}
+          >
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={update.isPending}>
+            {update.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ─── PendingSection ─── */
 
 interface PendingSectionProps {
@@ -387,6 +498,7 @@ interface PendingSectionProps {
   onToggleSelect: (id: string) => void;
   onLink: (txn: Transaction) => void;
   onRequestDelete: (id: string) => void;
+  onRename: (txn: Transaction) => void;
 }
 
 function PendingSection({
@@ -400,6 +512,7 @@ function PendingSection({
   onToggleSelect,
   onLink,
   onRequestDelete,
+  onRename,
 }: PendingSectionProps) {
   if (transactions.length === 0) return null;
   return (
@@ -463,6 +576,7 @@ function PendingSection({
               bucket={bucket}
               onLink={onLink}
               onRequestDelete={onRequestDelete}
+              onRename={onRename}
             />
           ) : null;
 
@@ -612,6 +726,10 @@ export function PendingBlock() {
   const [linkTarget, setLinkTarget] = useState<Transaction | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
 
+  // Rename dialog state
+  const [renameTarget, setRenameTarget] = useState<Transaction | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+
   // Delete confirmation state (single row)
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -692,6 +810,11 @@ export function PendingBlock() {
   function handleOpenLink(txn: Transaction) {
     setLinkTarget(txn);
     setLinkOpen(true);
+  }
+
+  function handleOpenRename(txn: Transaction) {
+    setRenameTarget(txn);
+    setRenameOpen(true);
   }
 
   function handleConfirmDelete() {
@@ -782,6 +905,7 @@ export function PendingBlock() {
             onToggleSelect={handleToggleSelect}
             onLink={handleOpenLink}
             onRequestDelete={setDeleteId}
+            onRename={handleOpenRename}
           />
           <PendingSection
             title="Falta categoría o división"
@@ -793,6 +917,7 @@ export function PendingBlock() {
             onToggleSelect={handleToggleSelect}
             onLink={handleOpenLink}
             onRequestDelete={setDeleteId}
+            onRename={handleOpenRename}
           />
           <PendingSection
             title="Sin match bancario"
@@ -805,6 +930,7 @@ export function PendingBlock() {
             onToggleSelect={handleToggleSelect}
             onLink={handleOpenLink}
             onRequestDelete={setDeleteId}
+            onRename={handleOpenRename}
           />
         </div>
       )}
@@ -861,6 +987,16 @@ export function PendingBlock() {
         onOpenChange={(v) => {
           setLinkOpen(v);
           if (!v) setLinkTarget(null);
+        }}
+      />
+
+      {/* Rename merchant dialog */}
+      <RenameMerchantDialog
+        txn={renameTarget}
+        open={renameOpen}
+        onOpenChange={(v) => {
+          setRenameOpen(v);
+          if (!v) setRenameTarget(null);
         }}
       />
 

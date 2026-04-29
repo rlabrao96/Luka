@@ -42,6 +42,18 @@ class SplitTypeUpdateRequest(BaseModel):
     split_type: Literal["personal", "shared", "partner"]
 
 
+class MerchantNameUpdateRequest(BaseModel):
+    """PATCH body for renaming a transaction's vendor.
+
+    Either or both fields may be supplied. `raw_merchant_name` is the
+    free-text vendor label shown to the user. `merchant_id` is the global
+    merchants-table reference selected via the "Asignar" flow.
+    """
+
+    raw_merchant_name: str | None = Field(default=None, min_length=1, max_length=255)
+    merchant_id: uuid.UUID | None = None
+
+
 class PendingTransactionsResponse(BaseModel):
     awaiting_reconciliation: list[TransactionResponse] = []
     needs_classification: list[TransactionResponse] = []
