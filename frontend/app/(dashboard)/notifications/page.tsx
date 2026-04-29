@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Store, CheckCircle, AlertTriangle, Trash2, CheckCheck } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -7,6 +7,16 @@ import { useNotifications, useUpdateNotification, useDeleteNotification } from "
 import { api } from "@/app/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "../components/PageHeader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -29,6 +39,7 @@ export default function NotificationsPage() {
   const updateNotification = useUpdateNotification();
   const deleteNotification = useDeleteNotification();
   const queryClient = useQueryClient();
+  const [pendingDelete, setPendingDelete] = useState<(typeof notifications)[0] | null>(null);
 
   // Prefetch review cards for all merchant_review notifications
   useEffect(() => {
@@ -52,6 +63,16 @@ export default function NotificationsPage() {
   });
 
   const handleDelete = (notif: (typeof notifications)[0]) => {
+    // Warn if the user is deleting a merchant_review notification that still
+    // has pending merchants to review (i.e. not yet actioned/dismissed).
+    const needsConfirm =
+      notif.type === "merchant_review" &&
+      notif.status !== "actioned" &&
+      notif.status !== "dismissed";
+    if (needsConfirm) {
+      setPendingDelete(notif);
+      return;
+    }
     deleteNotification.mutate(notif.id);
   };
 
@@ -187,6 +208,29 @@ export default function NotificationsPage() {
           })}
         </div>
       )}
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(v) => { if (!v) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar sin revisar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Aún tienes comercios por revisar en esta notificación. Si la eliminas, perderás acceso rápido a esa revisión. Puedes usar &quot;Omitir&quot; para descartarla correctamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDelete) deleteNotification.mutate(pendingDelete.id);
+                setPendingDelete(null);
+              }}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
