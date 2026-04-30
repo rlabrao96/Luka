@@ -145,7 +145,7 @@ PK `(user_id, trip_id, transaction_id)`. Suppresses an in-window transaction fro
 | user_id, transaction_id, dismissed_at |
 PK `(user_id, transaction_id)`. Suppresses an auto-detected settlement suggestion from re-firing.
 
-### 3.7b `trip_base_currency_changes`
+### 3.8 `trip_base_currency_changes`
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
@@ -158,26 +158,26 @@ PK `(user_id, transaction_id)`. Suppresses an auto-detected settlement suggestio
 
 Append-only audit. Used to verify the re-anchor math after the fact and to support a future "show base-currency history" UI.
 
-### 3.8 Reused tables — additive constraint (mutual exclusivity)
+### 3.9 Reused tables — additive constraint (mutual exclusivity)
 
 - **`transactions`** — no schema change.
 - **`transaction_splits`** — a `BEFORE INSERT/UPDATE` trigger on `transaction_splits` rejects rows whose `transaction_id` is already linked to a non-deleted `trip_expenses` row. Symmetric trigger on `trip_expenses` rejects creating a trip-expense link for a transaction that already has `transaction_splits`.
 - **Joint-account interaction (v1):** Luka auto-creates `transaction_splits` rows for joint-account transactions. Tagging such a transaction to a trip therefore returns **409 `joint_account_dual_split_not_supported`** with a user-facing message: *"Esta transacción está en una cuenta conjunta. La división conjunta + viaje aún no está disponible."* Dual-split (household + trip on the same transaction) is explicitly v2.
 - **Settlement linkage:** a `transactions` row linked to a `trip_settlements` row is *not* a "trip expense" — settlements never enter `trip_expenses` and therefore do not trigger mutual exclusivity. Their amount is also excluded from any user's category/budget totals (settlement transactions are flagged on the user's side via `trip_settlements.transaction_id`; the budget aggregator filters them out).
 
-### 3.9 Invariants (app-enforced, validated at write)
+### 3.10 Invariants (app-enforced, validated at write)
 
 - **Split sum equals expense amount, exactly.** When the user picks `equal` mode, the server divides `amount` by `n` attendees and assigns `floor(amount / n)` to each, with the **payer absorbing the remainder cents** (deterministic, single-rule). The persisted `share_amount` values therefore sum to `amount` to the cent — no ε tolerance for the sum (validation rejects mismatches outright). For `custom_amount` and `custom_percent` modes, the server normalizes percentages to amounts and again forces the payer to absorb any residual.
 - The expense's `payer_attendee_id` must belong to the same `trip_id`.
 - All split `attendee_id`s must belong to the expense's `trip_id`. Splits **may** include attendees with `left_at IS NOT NULL` *only* for historical edits — new expenses can only split among currently active attendees (`left_at IS NULL`). Historical splits referencing left attendees remain valid forever.
-- An expense with `transaction_id` set: the caller must have RLS read access to the transaction (covers solo-owned and joint-account-shared transactions); the transaction must not already have a non-deleted `trip_expenses` link; if the transaction has any `transaction_splits` rows, the create is rejected (see §3.8 joint-account handling).
+- An expense with `transaction_id` set: the caller must have RLS read access to the transaction (covers both solo-owned and joint-account-shared transactions). The transaction must not already have a non-deleted `trip_expenses` link. **If the transaction has any `transaction_splits` rows, the create is rejected with the 409 from §3.9.** Joint-account transactions are therefore *readable* but *not taggable* in v1 — read-access is required to see the transaction in the picker, the rejection happens at the exclusivity check.
 - **Removing an attendee with unsettled balances:** blocked by default (returns 409). Two escapes:
   1. Settle (any direction) until net is within ±$0.50 in trip base currency, then remove succeeds (small FX-drift tolerance).
   2. Creator-only **"force-remove with write-off"** action: discards their outstanding balance via an automatic `trip_settlements` zeroing entry tagged `write_off=true`. Logged for audit.
 - **Settlement amount > 0 and `from ≠ to`** (DB CHECKs).
 - **Sign conventions:** `trip_expenses.amount`, `trip_expense_splits.share_amount`, and `trip_settlements.amount` are all **positive numerics**. Luka's negative-expense convention applies only to `transactions`. The trip ledger uses positive amounts uniformly because directionality is conveyed by `payer_attendee_id` / `from_attendee_id`+`to_attendee_id`.
 
-### 3.10 RLS
+### 3.11 RLS
 
 - Enable RLS on all six new tables (`trip_*`).
 - **Membership predicate:** `is_trip_member(trip_id, user_id)` is a `SECURITY DEFINER` SQL function returning true when there is a `trip_attendees` row with the given `(trip_id, user_id)` regardless of `left_at`. **Left members retain read access to history** (they were part of it). Write paths additionally check `left_at IS NULL` at the application layer — RLS does not need to enforce this since writes are gated by application invariants and the unique constraint on attendees prevents re-insert collisions.
@@ -187,7 +187,7 @@ Append-only audit. Used to verify the re-anchor math after the fact and to suppo
 - `trip_suggestion_dismissals` / `trip_settlement_dismissals`: per-user — only the row owner can read/write.
 - Externals (no `user_id`) are invisible to RLS; they exist as data only.
 
-### 3.11 Wording reconciliation
+### 3.12 Wording reconciliation
 
 §4.1 `GET /trips` returns trips where the caller is **currently active** (`left_at IS NULL`) for the list view. The detail endpoint `GET /trips/{id}` is accessible to any member including left ones, so they can audit their historical involvement. This makes "active attendee" (list) and "member" (detail) two distinct concepts; the API uses the former, RLS uses the latter.
 
@@ -208,18 +208,18 @@ All endpoints under `/api/trips`, FastAPI router, async SQLAlchemy. Auth via exi
 ### 4.2 Attendees
 
 - `POST /trips/{id}/attendees` — body: `{email?, phone?, display_name?}`. If email/phone matches a Luka user, adds them as Luka attendee. Otherwise creates external stub.
-- `DELETE /trips/{id}/attendees/{attendee_id}` — sets `left_at`. **Creator-only**, *unless* `attendee_id` resolves to the caller (self-leave). Blocked with 409 if net balance > $0.50 in base currency. To bypass, creator can call `POST /trips/{id}/attendees/{attendee_id}/force-remove` which writes a zeroing `trip_settlements` row tagged `write_off=true` and then sets `left_at`.
+- `DELETE /trips/{id}/attendees/{attendee_id}` — sets `left_at`. **Creator-only**, *unless* `attendee_id` resolves to the caller (self-leave). Blocked with 409 if net balance > $0.50 in trip base currency (the FX-drift tolerance defined in §3.10). To bypass, creator can call `POST /trips/{id}/attendees/{attendee_id}/force-remove` which writes a zeroing `trip_settlements` row tagged `write_off=true` (audit-only flag, see §3.5) and then sets `left_at`.
 
 ### 4.3 Invite link
 
-- `POST /trips/{id}/invite-link` — generate or rotate. Returns `{token, url, expires_at}` exactly once (token never readable again). Tokens are ≥128-bit (`secrets.token_urlsafe(32)` → 256 bits). Any Luka attendee can call (rotation invalidates the previous token by overwriting the hash).
-- `DELETE /trips/{id}/invite-link` — revoke (sets `invite_token_hash` NULL).
+- `POST /trips/{id}/invite-link` — generate or rotate. Returns `{token, url, expires_at}` exactly once (token never readable again). Tokens are ≥128-bit (`secrets.token_urlsafe(32)` → 256 bits). **Creator-only** (rotation/revoke is destructive — it kills any in-flight invites a creator may have shared. Day-to-day use of the link doesn't require regenerating, so creator-only is the safe default).
+- `DELETE /trips/{id}/invite-link` — revoke (sets `invite_token_hash` NULL). **Creator-only.**
 - `POST /trips/join/{token}` — accept invite. Server hashes the supplied token and looks up the trip. Adds caller as Luka attendee if not already. Refreshes expiry. **Rate-limited:** 10 attempts/min/IP, 30 attempts/hour/user, with exponential backoff on misses to defeat token guessing.
 - `GET /trips/preview/{token}` — auth-required preview returning trip name, dates, attendee count. Same rate-limit envelope as join.
 
 ### 4.4 Expenses
 
-- `POST /trips/{id}/expenses` — body: `{payer_attendee_id, description, amount, currency, expense_date, transaction_id?, splits: [{attendee_id, share_amount, share_type}]}`. Server validates: sum of shares = amount (±0.01); transaction ownership; mutual exclusivity with `transaction_splits`; FX rate fetched/stored if currency ≠ base.
+- `POST /trips/{id}/expenses` — body: `{payer_attendee_id, description, amount, currency, expense_date, transaction_id?, splits: [{attendee_id, share_amount, share_type}]}`. Server validates: sum of shares **must equal amount exactly** (per §3.9 — server normalizes equal/percent modes before persisting; custom-amount mode rejects on mismatch outright); transaction read-access; mutual exclusivity with `transaction_splits`; FX rate fetched/stored if currency ≠ base.
 - `PATCH /trips/{id}/expenses/{expense_id}` — partial update of any field (any active Luka attendee). Requires `If-Match: <version>` header; server compares against the row's current `version`, increments on success, returns 409 on mismatch with the conflicting state. Re-validates all invariants on every PATCH.
 - `DELETE /trips/{id}/expenses/{expense_id}` — soft-delete (sets `deleted_at`). Recomputes balances on read.
 
@@ -246,7 +246,7 @@ Hooked into existing post-insert pipeline on `transactions`. A transaction is a 
 - `type ∈ {expense, income}`.
 - Counterparty (cleaned merchant name + person-detection) matches a Luka attendee on a trip the user is on, with non-zero net balance with that attendee.
 - `transaction_date BETWEEN trip.start_date AND (trip.end_date + 30 days)`.
-- `|amount − outstanding_balance|` ≤ **`min(5%, $5 in trip base currency)`** (after FX conversion to transaction currency). Tighter than the original 10% to avoid silent over/under-payments. Anything outside this window is shown as a "possible settlement, please confirm amount" rather than an auto-suggest.
+- The transaction's amount is converted to trip base currency (using the transaction's stored FX rate, falling back to live rate at match time). Then `|converted_amount − outstanding_balance_in_base|` ≤ **`min(5% of outstanding, $5 in trip base currency)`**. Tighter than the original 10% to avoid silent over/under-payments. Anything outside this window is surfaced as a "possible settlement, please confirm amount" rather than an auto-suggest.
 - Not in `trip_settlement_dismissals` for that `(user, transaction)`.
 
 Match action: writes a `notification` row of type `trip_settlement_suggestion` with trip + attendee + transaction context. UI surfaces it on the trip's Saldos tab and the global notifications inbox.
@@ -408,7 +408,7 @@ See §4.6 (suggestions inbox) and §4.7 (settlement auto-detect). Both reuse exi
 
 ### 8.1 Alembic migrations
 
-1. `create_trips_tables` — seven new tables (`trips`, `trip_attendees`, `trip_expenses`, `trip_expense_splits`, `trip_settlements`, `trip_suggestion_dismissals`, `trip_settlement_dismissals`, `trip_base_currency_changes`), indexes, RLS enable, `is_trip_member` + `is_active_trip_member` SECURITY DEFINER functions, RLS policies, mutual-exclusivity triggers (both directions).
+1. `create_trips_tables` — eight new tables (`trips`, `trip_attendees`, `trip_expenses`, `trip_expense_splits`, `trip_settlements`, `trip_suggestion_dismissals`, `trip_settlement_dismissals`, `trip_base_currency_changes`), indexes, RLS enable, `is_trip_member` + `is_active_trip_member` SECURITY DEFINER functions, RLS policies, mutual-exclusivity triggers (both directions).
 2. (Bundled in #1) — `invite_token_hash` unique index, `transaction_id` unique partial index on `trip_expenses` (where `deleted_at IS NULL`), attendee `(trip_id, user_id)` partial unique, all CHECKs.
 
 ### 8.2 Feature flag
