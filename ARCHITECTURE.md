@@ -73,7 +73,7 @@ Fast worker does NOT run reconciliation — the 15-min `reconciliation_tick` cro
 | `households` | Shared financial unit (individual/couple) | -> household_members, bank_accounts, budgets |
 | `household_members` | User<->household junction (role: owner/member) | -> users, households |
 | `household_invites` | Invitation tokens with expiry | -> households |
-| `transactions` | Core financial records. Canonical status vocabulary: `pending \| settled \| orphan` (enforced by CHECK constraint; legacy `confirmed` removed). Columns include `transfer_pair_id`, `refund_pair_id` (both exclude row from totals), `card_last_four` (VARCHAR(4)), `orphaned_at` (TIMESTAMPTZ), `dismissed_by_user` (BOOLEAN). Indexed by `(household_id, transaction_date DESC)`, partial `(user_id) WHERE status='pending'`, partials on both pair_id columns, GIN trigram on `raw_merchant_name` (requires `pg_trgm`). | -> users, households, bank_accounts, merchants |
+| `transactions` | Core financial records. Canonical status vocabulary: `pending \| settled \| orphan` (enforced by CHECK constraint; legacy `confirmed` removed). Columns include `transfer_pair_id`, `refund_pair_id`, `reimbursement_group_id` (all three exclude row from totals), `card_last_four` (VARCHAR(4)), `orphaned_at` (TIMESTAMPTZ), `dismissed_by_user` (BOOLEAN), `matched_email_at` (TIMESTAMPTZ — idempotency marker so the matcher never double-merges), `user_edited_fields` (JSONB — set of field names the user has manually edited; the reconciliation pipeline refuses to overwrite any field listed here). Indexed by `(household_id, transaction_date DESC)`, partial `(user_id) WHERE status='pending'`, partials on all three pair-id columns, GIN trigram on `raw_merchant_name` (requires `pg_trgm`). | -> users, households, bank_accounts, merchants |
 | `transaction_splits` | Per-tx split info (`personal` / `partner` / `shared`). Created at every transaction-creation site by `ensure_default_split` (idempotent, no-op on transfers; defaults to `shared` for joint accounts, `personal` otherwise). The legacy `category` column was dropped in migration 041 — `transactions.category` is the single source of truth. | -> transactions |
 | `bank_accounts` | Connected accounts with sync state | -> households, users |
 | `merchants` | Raw merchant names -> canonical mapping | -> canonical_merchants |
@@ -108,6 +108,11 @@ Fast worker does NOT run reconciliation — the 15-min `reconciliation_tick` cro
 - Bank accounts belong to a household, linked to a user
 - Budget hierarchy: household -> household_budgets -> category_budgets
 - Bank registry links to active email templates; parsed email log tracks which parser handled each email
+
+### User-edit invariant + idempotency markers + reimbursement groups (migrations 042-044)
+- **042** adds `transactions.user_edited_fields` (JSONB, default `[]`). A centralized `mark_user_edited()` helper records `category`, `split_type`, `raw_merchant_name`, etc. whenever the user mutates them via the API. Reconciliation (`apply_match_and_delete_emails`, dedup propagation, transfer detection) consults this set and skips any field already marked — user edits are sticky across future bank-side updates.
+- **043** adds `transactions.matched_email_at` (TIMESTAMPTZ). Stamped on the bank row when an email row is consolidated into it; the matcher refuses to re-match a row that already carries a stamp, so retries / cron + event-driven double-fires can't double-merge.
+- **044** adds `transactions.reimbursement_group_id` (UUID, indexed via partial). Shared across N expenses + 1 refund linked through the new reimbursement vincular flow. Excluded from spend/income totals via the same `exclude_from_totals` predicate that already covers `transfer_pair_id` and `refund_pair_id`.
 
 ### Per-category currency caps (migration 040)
 Migration 040 added `category_budgets.currency` (NOT NULL, backfill `'CLP'`) and replaced the old unique constraint with `uq_category_budgets_household_cat_month_ccy` on `(household_id, category, month, currency)`. `v2_service._category_caps` now filters by the view's currency, so a USD cap is ignored by the CLP Sankey and vice versa. The "Configurar presupuesto" modal UI exposes a per-row currency select on every cap, with the full LATAM set validated both client-side and in the `CategoryBudgetItem` pydantic schema.
@@ -181,9 +186,9 @@ Partial btree indexes applied live on 2026-04-20 so the auth hot path stays O(1)
 7. CC counterpart resolution (`_resolve_cc_counterpart`, `backend/modules/plaid/sync.py`): (a) last-4 match against `BankAccount.account_number`, (b) bank_name substring match in the corrected direction. Household accounts are loaded once per sync and reused across the loop. The modify branch now flows through `mapper.luka_amount_from_plaid(plaid_amount, currency)` — a sign-and-decimals-aware helper — which fixes a CLP 100× scaling bug. Plaid rows land with canonical `status='settled'`.
 
 ### Reconciliation Flow
-Reconciliation runs in three places: inline during Plaid/Connect sync (immediate), via `run_reconciliation_job` cron (6am daily, catches stragglers), and via `reconciliation_tick` on the slow worker (every 15 min at `{0,15,30,45}`).
+Reconciliation runs in four places: **(a) event-driven** via `enqueue_job("run_reconciliation_tick_for_household")` on the slow queue from email ingest, Plaid sync completion, and Connect sync callback (the dominant path — fires within seconds of new data arriving); (b) inline during Plaid/Connect sync (immediate dedup before the row is committed); (c) via `run_reconciliation_job` cron (6am daily, catches stragglers); (d) via `reconciliation_tick` cron on the slow worker (every 15 min at `{0,15,30,45}`, safety net).
 
-Dedup (`backend/modules/reconciliation/dedup.py`) requires currency equality, signed-amount equality, and `bank_account_id` parity, and skips the merchant filter for transfer-typed emails. `apply_match_and_delete_emails` is user-scoped and propagates `transaction_type='transfer'` (+ nulls category) when the email was transfer-typed. `find_plaid_match_for_email` provides the symmetric lookup used by the tick's rematch pass.
+Dedup (`backend/modules/reconciliation/dedup.py`) requires currency equality, signed-amount equality, and `bank_account_id` parity; normalizes merchants via `normalize_merchant`; orders ties deterministically in `_find_single_match`; stamps `matched_email_at` on the bank row as an idempotency marker; and **respects `user_edited_fields`** — any field the user has manually edited (category, split_type, raw_merchant_name) is preserved when the email row's data is propagated. Pending↔pending matching is enabled (the prior `status='settled'` filter that caused the duplicate-pending bug is gone). `apply_match_and_delete_emails` is user-scoped and propagates `transaction_type='transfer'` (+ nulls category) when the email was transfer-typed. `find_plaid_match_for_email` provides the symmetric lookup used by the tick's rematch pass.
 
 1. For each bank tx, `find_email_match()` uses 3-tier priority matching:
    - **Exact:** same merchant (ilike), +/-2 days, exact absolute amount
@@ -203,6 +208,7 @@ Every 15 minutes, for every household, the tick runs five passes in order:
 3. **Wallet-pair detection** — `detect_wallet_pairs(lookback_days=30)`; same- or opposite-sign, ±5 days, gated on a connected wallet account + bank-side merchant token match. Bank leg re-typed to `transfer`; wallet leg keeps counterparty name.
 4. **Refund detection** — `detect_refunds(lookback_days=90)`; same-account opposite-sign pairs get a shared `refund_pair_id`.
 5. **Aging pass** — email pendings older than 14 days that have had a Plaid sync since `created_at` get promoted to `status='orphan'` (surfaces in `unmatched_email` pending bucket).
+6. **Credit-pattern suggestions** — `reconciliation/credit_suggestions.py` scans the last 30 days for credit-program rows (`Platinum Resy Credit`, `Statement Credit`, `cashback`, `rebate`, `reward`, `redemption`, `adjustment`, `reembolso`) and ranks counterpart expense candidates by `(merchant similarity, |amount delta|, date proximity)`. A user-actionable notification surfaces in `CreditSuggestionsBanner` with **Confirmar** (writes a `reimbursement_group_id`) / **Ignorar** affordances. Decoupled from the deterministic auto-pair path — credit programs frequently bill on a delayed cycle that breaks the ±2/±5 day windows used by transfer/refund detection.
 
 An email row can also become an orphan via explicit user dismiss (`POST /transactions/{id}/dismiss`). Matched rows follow the legacy path: email row deleted, bank row enriched with email-sourced category/type. Transfer rows, refund pairs, and orphans are excluded from spend/income totals by `exclude_from_totals()` applied to all aggregation queries in `backend/modules/transactions/service.py`.
 
@@ -319,14 +325,21 @@ Routing logic in `backend/jobs/queue.py`: jobs listed in `SLOW_JOBS` set are enq
 | PATCH | `/transactions/{id}/split-type` | Change split type. Same household-membership auth as category. |
 | DELETE | `/transactions/{id}` | Delete transaction (pending email rows only). User-scoped — partner cannot dismiss the other's pending alerts. |
 
-#### Transactions — consolidation actions
+#### Transactions — consolidation + linking + bulk actions
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/transactions/{id}/match-candidates?window_days=7` | Up to 20 ranked bank-tx candidates for a pending email row (same currency/account/user scope) |
-| POST | `/transactions/{id}/link` | Manual match: body `{bank_transaction_id}` — deletes the email row, propagates category/type to the bank row |
-| POST | `/transactions/{id}/dismiss` | Mark a pending row as `status='orphan'` (user-dismissed, stamps `dismissed_by_user=true` + `orphaned_at`) |
-| POST | `/transactions/bulk-action` | Body `{transaction_ids, action: "dismiss"\|"delete"}`; capped at 100 IDs per call |
+| GET | `/transactions/{id}/match-candidates?intent=consolidate\|transfer\|reimbursement&window_days=&q=` | Ranked candidates for the chosen flow. `intent=reimbursement` raises the internal cap to `max(limit, 500)` so a 90-day window actually returns 90 days. Optional `q` filters by merchant substring. |
+| POST | `/transactions/{id}/link` | Manual consolidate: body `{bank_transaction_id}` — deletes the email row, propagates non-user-edited category/type to the bank row, stamps `matched_email_at`. |
+| POST | `/transactions/link-transfer` | Manual transfer pair from the settled-row Vincular flow (own-account moves not auto-detected). |
+| POST | `/transactions/link-reimbursement` | N-to-1 reimbursement: body `{anchor_transaction_id, member_transaction_ids}` — writes a shared `reimbursement_group_id` across all rows, excluded from totals. |
+| DELETE | `/transactions/link-reimbursement/{group_id}` | Unlink a reimbursement group (clears `reimbursement_group_id` on every row in the group). |
+| PATCH | `/transactions/{id}/merchant-name` | Edit `raw_merchant_name`; optional `apply_to_matching=true` triggers `update_merchant_name_bulk` which renames every transaction with the same normalized merchant in scope. Marks `raw_merchant_name` in `user_edited_fields`. |
+| PATCH | `/transactions/{id}/category` (bulk variant) | Same row mutation; with `apply_to_matching=true`, `update_category_bulk` propagates the new category to every transaction sharing the merchant. |
+| PATCH | `/transactions/{id}/transaction-date` | Edit a settled row's date (Editar fecha kebab action). |
+| POST | `/transactions/{id}/dismiss` | Mark a pending row as `status='orphan'` (user-dismissed, stamps `dismissed_by_user=true` + `orphaned_at`). |
+| POST | `/transactions/bulk-action` | Body `{transaction_ids, action: "dismiss"\|"delete"}`; capped at 100 IDs per call. |
+| GET | `/transactions/credit-suggestions` | Pending credit-pattern reimbursement suggestions (Platinum Resy Credit, cashback, rebate, statement credit, …) within the last 30 days. Returns the credit row + ranked counterpart expense candidates. |
 
 The four consolidation endpoints (match-candidates / link / dismiss / bulk-action) act on the user's own pending alerts and intentionally enforce `user_id` scope. The two settled-row mutations (`update_category` + `update_split_type`) authorize via active household membership instead, so a partner can correct shared transactions owned by the other partner. `TransactionResponse` exposes `created_at`, `orphaned_at`, `transfer_pair_id`, `refund_pair_id`, `source_type` for frontend grouping / age display.
 
@@ -404,6 +417,8 @@ The four consolidation endpoints (match-candidates / link / dismiss / bulk-actio
 | GET/PUT/POST | `/categories/preferences` | Category ordering + visibility |
 | GET | `/categories/preferences/{cat}/usage` | Category usage stats |
 | POST | `/categories/preferences/{cat}/delete` | Delete custom category |
+| GET | `/settings/household-categories` | Categories owned by other active members of the caller's household, excluding (category, category_type) pairs the caller already has — drives the "Otras (de mi hogar)" optgroup and the green adopt panel in `/settings`. |
+| POST | `/settings/household-categories/adopt` | Idempotently copy one (category, category_type) into the caller's `user_category_preferences` (sort_order = max+1). Never mutates the partner's prefs or transactions. |
 
 ### Merchant Review (`/merchant-review`)
 | Method | Path | Description |
