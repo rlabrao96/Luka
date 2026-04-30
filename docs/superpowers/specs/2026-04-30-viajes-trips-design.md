@@ -300,7 +300,7 @@ A user's category totals already pull split shares for household-shared transact
 
 - When a transaction has a linked `trip_expenses`, the user's contribution to category totals = the `share_amount` from `trip_expense_splits` for the row where the split's `attendee_id` resolves to that user's Luka identity on the trip.
 - If a user has no split row on the linked trip expense (e.g., they paid for someone else and were excluded from the split), their personal category contribution is zero — the receivable is the entirety.
-- Mutual exclusivity (Section 3.8): a transaction with a trip-expense link cannot have `transaction_splits` rows. Database trigger enforces.
+- Mutual exclusivity (§3.9): a transaction with a trip-expense link cannot have `transaction_splits` rows. Database trigger enforces.
 
 ---
 
