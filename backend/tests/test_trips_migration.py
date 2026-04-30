@@ -42,3 +42,40 @@ async def test_trip_settlements_has_write_off_column(db):
         )
     )
     assert result.scalar() == "write_off"
+
+
+@pytest.mark.asyncio
+async def test_rls_enabled_on_trip_tables(db):
+    for t in TRIP_TABLES:
+        result = await db.execute(
+            text("SELECT relrowsecurity FROM pg_class WHERE relname = :n").bindparams(n=t)
+        )
+        assert result.scalar() is True, f"RLS not enabled on {t}"
+
+
+@pytest.mark.asyncio
+async def test_is_trip_member_function_exists(db):
+    result = await db.execute(text("SELECT proname FROM pg_proc WHERE proname = 'is_trip_member'"))
+    assert result.scalar() == "is_trip_member"
+
+
+@pytest.mark.asyncio
+async def test_is_active_trip_member_function_exists(db):
+    result = await db.execute(
+        text("SELECT proname FROM pg_proc WHERE proname = 'is_active_trip_member'")
+    )
+    assert result.scalar() == "is_active_trip_member"
+
+
+@pytest.mark.asyncio
+async def test_mutual_exclusivity_triggers_exist(db):
+    rows = (
+        await db.execute(
+            text(
+                "SELECT tgname FROM pg_trigger "
+                "WHERE tgname IN ('trg_reject_split_if_trip_linked', "
+                "'trg_reject_trip_link_if_split_exists')"
+            )
+        )
+    ).all()
+    assert len(rows) == 2
