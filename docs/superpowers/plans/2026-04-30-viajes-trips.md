@@ -10,6 +10,10 @@
 
 **Spec:** `docs/superpowers/specs/2026-04-30-viajes-trips-design.md` (commit `75e3263`).
 
+**TDD note:** every task uses red-green-refactor: write the failing test first, run it to confirm it fails, implement, run again, commit. The only exception is **schema/migration tasks** (1.1, 1.2, 1.3, 1.4): there the "test" is a metadata smoke check (does the table/column/policy exist?) — write the test first, run it red, then add the migration code, run green. Same discipline, mechanically a little different because the unit under test is a DDL artifact.
+
+**Discovery tasks** (lookups that must happen before certain phases): clearly marked at phase entry. Don't skip them; many concrete decisions in later tasks depend on what the discovery uncovers.
+
 **Phases (each independently mergeable behind the feature flag):**
 1. Feature flag + DB migration (tables, indexes, RLS, triggers, functions)
 2. Trip + attendee CRUD (models, schemas, service, router, RLS tests)
@@ -125,6 +129,10 @@ For `trips` use `invite_token_hash TEXT` (not the raw token). Add all CHECK cons
 - `trip_settlements.amount > 0`
 - `trip_settlements.from_attendee_id <> to_attendee_id`
 - `trips.end_date >= trips.start_date`
+
+**Critical columns the reviewer flagged — do not omit:**
+- `trip_expenses.version int NOT NULL DEFAULT 1` (powers `If-Match` optimistic concurrency in Task 3.3 — spec §3.3).
+- `trip_settlements.write_off boolean NOT NULL DEFAULT false` (force-remove audit flag in Task 4.6 — spec §3.5).
 
 Indexes:
 - Unique partial: `trip_expenses(transaction_id) WHERE transaction_id IS NOT NULL AND deleted_at IS NULL`
@@ -356,46 +364,47 @@ def upgrade() -> None:
     """)
 ```
 
-- [ ] **Step 3: Write a smoke test using a service-role connection**
-
-This test runs with `SET LOCAL row_security = OFF` (or service-role JWT) so RLS doesn't shadow trigger behavior.
+- [ ] **Step 3: Write a *trigger-existence* smoke test** (cheap, doesn't depend on `make_trip` fixtures from Phase 2):
 
 ```python
+# backend/tests/test_trips_migration.py
 @pytest.mark.asyncio
-async def test_cannot_link_trip_expense_when_transaction_split_exists(
-    db_session, make_user, make_transaction, make_trip
-):
-    user = await make_user()
-    txn = await make_transaction(user_id=user.id, amount=-100)
-    # Insert a transaction_splits row
-    await db_session.execute(text(
-        "INSERT INTO transaction_splits (transaction_id, user_id, share_amount) "
-        "VALUES (:t, :u, 50)"
-    ), {"t": txn.id, "u": user.id})
-    await db_session.commit()
-
-    trip = await make_trip(creator=user)
-    with pytest.raises(Exception, match="household splits"):
-        await db_session.execute(text(
-            "INSERT INTO trip_expenses (id, trip_id, payer_attendee_id, "
-            "description, amount, currency, expense_date, transaction_id, "
-            "created_by_user_id) VALUES (gen_random_uuid(), :tr, :p, 'd', "
-            "100, 'USD', current_date, :tx, :u)"
-        ), {"tr": trip.id, "p": <attendee_id>, "tx": txn.id, "u": user.id})
+async def test_mutual_exclusivity_triggers_exist(db_session):
+    rows = (await db_session.execute(text(
+        "SELECT tgname FROM pg_trigger "
+        "WHERE tgname IN ('trg_reject_split_if_trip_linked', "
+        "'trg_reject_trip_link_if_split_exists')"
+    ))).all()
+    assert len(rows) == 2
 ```
 
-(Plan note: `make_trip` and related fixtures are added in Phase 2 — this test ships *with* Phase 2.)
+The full behavior test (insert + expect raise) ships in **Phase 3 Task 3.2** because it needs `make_trip` and `make_attendee` fixtures from Phase 2.
 
-- [ ] **Step 4: Commit migration alone**
+- [ ] **Step 4: Run + commit**
 
 ```bash
-git add backend/alembic/versions/*mutual_exclusivity*
+cd backend && uv run alembic upgrade head && uv run pytest tests/test_trips_migration.py -v
+git add backend/alembic/versions/*mutual_exclusivity* backend/tests/test_trips_migration.py
 git commit -m "feat(trips): mutual-exclusivity triggers between trip_expenses and transaction_splits"
 ```
 
 ---
 
 ## Phase 2 — Trip + attendee CRUD
+
+### Task 2.0 (DISCOVERY): RLS test mechanism
+
+Before writing any RLS test, find how the existing test suite authenticates as a specific user. RLS uses `auth.uid()`, which is NULL on a raw service-role `db_session` — silently denying everything.
+
+- [ ] **Step 1:** Inspect `backend/tests/conftest.py` and any `backend/tests/helpers/` modules for an existing pattern:
+  - Search: `grep -rn "auth.uid\|set_config.*auth\|jwt\|rls_client\|user_client" backend/tests/`
+  - Look for fixtures that return an HTTP client or DB session bound to a specific user (likely setting `request.jwt.claims` via `SET LOCAL` or hitting endpoints with a real JWT).
+- [ ] **Step 2:** Document the chosen mechanism in a short comment at the top of the new `backend/tests/test_trips_rls.py` file (e.g., "RLS scoping uses `<existing_fixture>` from `conftest.py:LXX`").
+- [ ] **Step 3:** If no existing mechanism, add a fixture that issues a `SET LOCAL request.jwt.claims = '{"sub":"<user_id>"}'` on the session. Commit it as part of `backend/tests/conftest.py` (or `helpers/`).
+
+This task is documentation/discovery only — no application code changes.
+
+---
 
 ### Task 2.1: Module skeleton + SQLAlchemy models
 
@@ -507,6 +516,8 @@ git commit -m "test(trips): add make_trip and make_attendee fixtures"
 - [ ] **Step 1: Write schemas**
 
 Match spec §4 endpoint bodies exactly. Key types:
+
+Imports: `from pydantic import BaseModel, EmailStr, Field, model_validator` and `from datetime import date` and `from uuid import UUID`.
 
 ```python
 class CreateAttendeeInput(BaseModel):
@@ -787,6 +798,16 @@ git commit -m "feat(trips): PATCH/DELETE expense with optimistic concurrency"
 
 ## Phase 4 — Balance computation + settlements
 
+### Task 4.0 (DISCOVERY): FX service interface
+
+- [ ] **Step 1:** Locate the FX service used by Plaid + email parser:
+  - `grep -rn "fx_rate\|exchange_rate\|to_base_currency\|currency.*conversion" backend/modules/`
+  - Likely under `backend/modules/currencies/` (per project memory). Identify the function signature for "given currency A → currency B at date D, return rate."
+- [ ] **Step 2:** Document the exact import path and signature at the top of `backend/modules/trips/balances.py` (write a docstring comment) before writing the FX integration code in Task 4.1.
+- [ ] **Step 3:** If the existing service exposes only a synchronous interface or only "today's rate" without historical, flag it back to the user — the spec assumes "rate at expense date" is available. Don't proceed without resolution.
+
+---
+
 ### Task 4.1: FX service integration for `fx_rate_to_base`
 
 **Files:**
@@ -938,6 +959,18 @@ git commit -m "feat(trips): force-remove attendee with write-off settlement"
 
 ## Phase 5 — Invite link
 
+### Task 5.0 (DISCOVERY): Rate-limit middleware
+
+- [ ] **Step 1:** Check for existing rate-limit infrastructure:
+  - `grep -rn "rate.?limit\|slowapi\|RateLimiter" backend/`
+  - Inspect FastAPI middleware setup in `backend/main.py`.
+- [ ] **Step 2:** Spec §4.3 requires **two scopes**: per-IP (10/min) and per-user (30/hour).
+  - If `slowapi` is already wired, confirm it supports user-scoped keys (it does via custom `key_func`). Use it.
+  - If nothing is wired, install `slowapi` and add it as middleware in `backend/main.py`. Define two limiters: `Limiter(key_func=get_remote_address)` for IP, and `Limiter(key_func=lambda req: req.state.user.id)` for user.
+- [ ] **Step 3:** Document the chosen approach at the top of `backend/modules/trips/router.py` (single line comment) so Task 5.2 has a concrete reference.
+
+---
+
 ### Task 5.1: Token generation + hashed storage
 
 **Files:**
@@ -1004,6 +1037,20 @@ git commit -m "feat(trips): preview endpoint for invite landing"
 
 ## Phase 6 — Suggestions inbox + settlement auto-detect
 
+### Task 6.0 (DISCOVERY): Post-insert hook surface + notifications module
+
+Two integrations to locate before any code:
+
+- [ ] **Step 1: Find the transactions post-insert hook surface.** Spec §4.7 says "hooked into existing post-insert pipeline" but doesn't name a file. Search:
+  - `grep -rn "after_insert\|on_transaction_inserted\|post_insert\|transaction_created" backend/modules/transactions/ backend/jobs/`
+  - Likely candidates: a SQLAlchemy event listener on `Transaction`, an ARQ job dispatched after transaction commits, or an explicit "post-process transaction" function called by the email parser + Plaid sync. Document the exact file:line where new transactions are emitted.
+- [ ] **Step 2: Find the notifications module.**
+  - `grep -rn "notification\|Notification" backend/modules/notifications/`
+  - Identify the function for "create notification of type X for user Y with payload P" and the schema for `notifications` rows. Confirm a new type `trip_settlement_suggestion` is just a string value (not an enum that needs a migration). If it's an enum, add a migration to extend it as a substep of Task 6.2.
+- [ ] **Step 3:** Document both findings at the top of `backend/modules/trips/auto_detect.py` (file created in Task 6.2). Don't proceed without resolution.
+
+---
+
 ### Task 6.1: Suggestions inbox query + endpoint
 
 **Files:**
@@ -1018,6 +1065,7 @@ git commit -m "feat(trips): preview endpoint for invite landing"
 - Already-linked transaction excluded.
 - Dismissed transaction excluded.
 - Per-user isolation (other Luka attendee sees their own).
+- **Undismiss restores visibility:** `DELETE /trips/{id}/suggested-transactions/{txn_id}/dismiss` removes the dismissal row; subsequent GET includes the transaction again.
 
 - [ ] **Step 2: Implement `GET /trips/{id}/suggested-transactions`**, `POST/DELETE …/dismiss`.
 
@@ -1113,6 +1161,8 @@ git commit -m "feat(trips): nav entry behind feature flag"
 **Files:**
 - Create: `frontend/lib/api/trips.ts`
 - Create: `frontend/lib/hooks/useTrips.ts`, `useTrip.ts`
+
+- [ ] **Step 0: 403 handling.** All `useTrips*` hooks must treat 403 from the backend (feature flag off) as "not enabled" — render the section as if the user has no access rather than crashing. Centralize this in the fetch wrapper.
 
 - [ ] **Step 1: Write typed fetch wrappers and React Query hooks for every endpoint** (`useTrips`, `useTrip(id)`, `useCreateTrip`, `useUpdateTrip`, `useArchiveTrip`, `useAddAttendee`, `useRemoveAttendee`, `useCreateExpense`, `useUpdateExpense`, `useDeleteExpense`, `useCreateSettlement`, `useSettleSuggestions`, `useSuggestedTransactions`, `useDismissSuggestion`, `useGenerateInviteLink`, `useJoinTrip`).**
 
@@ -1248,7 +1298,7 @@ git commit -m "docs(trips): update README, ARCHITECTURE, NEXT-STEPS, CLAUDE.md"
 ## Verification checklist before flipping flag for beta
 
 - [ ] All backend tests pass (`uv run pytest backend/tests/ -v`).
-- [ ] Coverage on `backend/modules/trips/` ≥ 90% (`uv run pytest --cov=modules/trips`).
+- [ ] Coverage on `backend/modules/trips/` ≥ 90% (`uv run pytest --cov=modules/trips`). If `pytest-cov` isn't installed, add it: `uv add --dev pytest-cov`.
 - [ ] Property-based balance test runs ≥ 200 examples without failure.
 - [ ] RLS test confirms non-member 403/404.
 - [ ] Joint-account 409 surfaces in browser as friendly Spanish copy.
