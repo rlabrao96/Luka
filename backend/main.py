@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.config import settings
+from core.rate_limit import limiter, rate_limit_exceeded_handler
 
 # Import all models so SQLAlchemy metadata is complete for FK resolution
 import modules.auth.models  # noqa: F401
@@ -60,6 +62,10 @@ class CacheHeaderMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Luka API", version="0.1.0")
+
+    # Wire slowapi rate-limiter (used by trip invite-link endpoints).
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     # Build CORS origins from config (no hardcoded URLs)
     origins = {settings.frontend_url, "http://localhost:3000"}

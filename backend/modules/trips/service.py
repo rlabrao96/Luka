@@ -9,7 +9,9 @@ See ``docs/superpowers/specs/2026-04-30-viajes-trips-design.md`` §4.1, §4.2.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import hashlib
+import secrets
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_FLOOR, Decimal
 from typing import Optional
 from uuid import UUID
@@ -1004,3 +1006,110 @@ async def force_remove_attendee(
 
     attendee.left_at = datetime.now(timezone.utc)
     await db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Invite links (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+INVITE_TOKEN_TTL_DAYS = 30
+
+
+def _hash_token(raw_token: str) -> str:
+    """SHA-256 hex digest of the raw token (only the hash is persisted)."""
+    return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+async def generate_invite_link(db: AsyncSession, trip_id: UUID, user: User) -> tuple[str, datetime]:
+    """Creator-only. Generate a fresh invite token, store its hash, and
+    return ``(raw_token, expires_at)``.
+
+    Rotation = same endpoint: any prior hash is overwritten so old links
+    immediately stop redeeming. The raw token is returned exactly once —
+    callers MUST surface it to the user immediately.
+    """
+    trip = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
+    if trip is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if trip.creator_user_id != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the trip creator can manage the invite link"
+        )
+    raw = secrets.token_urlsafe(32)  # 256 bits of entropy
+    trip.invite_token_hash = _hash_token(raw)
+    trip.invite_token_expires_at = datetime.now(timezone.utc) + timedelta(
+        days=INVITE_TOKEN_TTL_DAYS
+    )
+    await db.flush()
+    return raw, trip.invite_token_expires_at
+
+
+async def revoke_invite_link(db: AsyncSession, trip_id: UUID, user: User) -> None:
+    """Creator-only. Clears the invite token hash + expiry (link dies)."""
+    trip = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
+    if trip is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if trip.creator_user_id != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the trip creator can manage the invite link"
+        )
+    trip.invite_token_hash = None
+    trip.invite_token_expires_at = None
+    await db.flush()
+
+
+async def lookup_trip_by_token(db: AsyncSession, raw_token: str) -> Trip:
+    """Resolve a raw invite token to its Trip if non-expired. Read-only.
+
+    Raises 404 if no live invite matches (covers wrong token, revoked
+    invite, and expired invite indistinguishably — we don't want to leak
+    which case applies).
+    """
+    h = _hash_token(raw_token)
+    trip = (
+        await db.execute(
+            select(Trip).where(
+                Trip.invite_token_hash == h,
+                Trip.invite_token_expires_at > datetime.now(timezone.utc),
+            )
+        )
+    ).scalar_one_or_none()
+    if trip is None:
+        raise HTTPException(status_code=404, detail="invite link not found or expired")
+    return trip
+
+
+async def accept_invite(db: AsyncSession, raw_token: str, user: User) -> Trip:
+    """Idempotent: add caller as a Luka attendee if not already, and
+    refresh the invite expiry (sliding 30-day window on use).
+
+    - Already-active member: no-op (returns the same trip).
+    - Previously left member: clear ``left_at`` instead of inserting a
+      duplicate row (avoids breaking historical balance attribution).
+    """
+    trip = await lookup_trip_by_token(db, raw_token)
+    existing = (
+        await db.execute(
+            select(TripAttendee).where(
+                TripAttendee.trip_id == trip.id,
+                TripAttendee.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        db.add(
+            TripAttendee(
+                trip_id=trip.id,
+                user_id=user.id,
+                display_name=user.full_name,
+            )
+        )
+    elif existing.left_at is not None:
+        existing.left_at = None
+    # Sliding-window refresh: every successful join extends the link.
+    trip.invite_token_expires_at = datetime.now(timezone.utc) + timedelta(
+        days=INVITE_TOKEN_TTL_DAYS
+    )
+    await db.flush()
+    return trip

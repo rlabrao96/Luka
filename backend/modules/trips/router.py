@@ -23,15 +23,17 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.database import get_db
+from core.rate_limit import limiter
 from core.security import get_current_user
 from modules.auth.models import User
 from modules.trips import service
 from modules.trips.balances import compute_balances, smart_settle_plan
-from modules.trips.models import Trip, TripExpense, TripSettlement
+from modules.trips.models import Trip, TripAttendee, TripExpense, TripSettlement
 from modules.trips.schemas import (
     AttendeeResponse,
     CreateAttendeeInput,
@@ -39,15 +41,17 @@ from modules.trips.schemas import (
     CreateSettlementRequest,
     CreateTripRequest,
     ExpenseResponse,
+    InviteLinkResponse,
     SettlementResponse,
     SplitResponse,
     TripDetailResponse,
     TripListResponse,
+    TripPreviewResponse,
     TripResponse,
     UpdateExpenseRequest,
     UpdateTripRequest,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 
@@ -210,6 +214,70 @@ async def create_trip(
     return _to_trip_response(trip, your_net_balance=Decimal("0"))
 
 
+# ---------------------------------------------------------------------------
+# Invite links (Phase 5)
+#
+# These two routes (``/preview/{token}`` and ``/join/{token}``) MUST be
+# declared before any ``/{trip_id}/...`` routes so FastAPI's path matcher
+# doesn't try to coerce the token into a UUID. Tokens are URL-safe base64
+# (43 chars), so a strict UUID match would 422 — but declaring these first
+# is the bullet-proof guarantee.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/preview/{token}", response_model=TripPreviewResponse)
+@limiter.limit("10/minute")
+async def preview_invite(
+    request: Request,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> TripPreviewResponse:
+    """Return name + dates + attendee count for a valid invite token.
+
+    Auth-required (anti-spam). Read-only — does NOT refresh expiry, does
+    NOT add the caller as an attendee. Rate-limited per IP.
+    """
+    trip = await service.lookup_trip_by_token(db, token)
+    attendee_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(TripAttendee)
+            .where(
+                TripAttendee.trip_id == trip.id,
+                TripAttendee.left_at.is_(None),
+            )
+        )
+    ).scalar()
+    return TripPreviewResponse(
+        name=trip.name,
+        start_date=trip.start_date,
+        end_date=trip.end_date,
+        attendee_count=attendee_count or 0,
+        base_currency=trip.base_currency,
+    )
+
+
+@router.post("/join/{token}", response_model=TripDetailResponse)
+@limiter.limit("10/minute")
+async def join_via_invite(
+    request: Request,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> TripDetailResponse:
+    """Add the caller to the trip behind ``token`` and return full detail.
+
+    Idempotent: re-joining is a no-op for already-active members. The
+    invite expiry slides forward by 30 days on every successful join.
+    Rate-limited per IP.
+    """
+    trip = await service.accept_invite(db, token, user)
+    # Re-fetch with eager-loaded attendees so ``_to_trip_detail`` can use them.
+    full_trip = await service.get_trip(db, trip.id, user)
+    return await _to_trip_detail(full_trip, user, db)
+
+
 @router.get("/{trip_id}", response_model=TripDetailResponse)
 async def get_trip(
     trip_id: UUID,
@@ -218,6 +286,34 @@ async def get_trip(
 ) -> TripDetailResponse:
     trip = await service.get_trip(db, trip_id, user)
     return await _to_trip_detail(trip, user, db)
+
+
+@router.post("/{trip_id}/invite-link", response_model=InviteLinkResponse)
+async def create_invite_link(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> InviteLinkResponse:
+    """Creator-only. Generate (or rotate) the trip's invite link.
+
+    The raw token is shown exactly once in the response — only its sha256
+    hash is persisted. Rotation overwrites the prior hash, immediately
+    killing any previously-distributed link.
+    """
+    raw_token, expires_at = await service.generate_invite_link(db, trip_id, user)
+    url = f"{settings.frontend_url}/viajes/join/{raw_token}"
+    return InviteLinkResponse(token=raw_token, url=url, expires_at=expires_at)
+
+
+@router.delete("/{trip_id}/invite-link", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_invite_link(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> None:
+    """Creator-only. Clear the invite hash + expiry (kills the live link)."""
+    await service.revoke_invite_link(db, trip_id, user)
+    return None
 
 
 @router.patch("/{trip_id}", response_model=TripResponse)
