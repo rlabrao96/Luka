@@ -35,9 +35,17 @@ from modules.merchant_review.router import router as merchant_review_router
 from modules.merchant_review.train_router import router as train_router
 from modules.plaid.router import router as plaid_router
 from modules.currencies.router import router as currencies_router
+from modules.trips.router import router as trips_router
 
 # Paths that benefit from short private caching (browser-only, per-user data)
-_CACHEABLE_PREFIXES = ("/auth/me", "/transactions/", "/budgets/", "/households/", "/subscriptions/", "/currencies")
+_CACHEABLE_PREFIXES = (
+    "/auth/me",
+    "/transactions/",
+    "/budgets/",
+    "/households/",
+    "/subscriptions/",
+    "/currencies",
+)
 
 
 class CacheHeaderMiddleware(BaseHTTPMiddleware):
@@ -89,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(train_router)
     app.include_router(plaid_router)
     app.include_router(currencies_router)
+    app.include_router(trips_router)
 
     return app
 
