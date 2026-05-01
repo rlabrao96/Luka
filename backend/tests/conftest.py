@@ -122,3 +122,103 @@ def override_db(app, mock_db_session):
     app.dependency_overrides[get_db] = _mock_db
     yield mock_db_session
     app.dependency_overrides.pop(get_db, None)
+
+
+# ---------------------------------------------------------------------------
+# Trip factories
+# ---------------------------------------------------------------------------
+import uuid as _uuid  # noqa: E402
+from datetime import date as _date  # noqa: E402
+
+
+@pytest.fixture
+def make_user(db):
+    """Factory: persist a User with sensible defaults; override via kwargs."""
+
+    async def _factory(**overrides):
+        from modules.auth.models import User
+
+        defaults = dict(
+            id=_uuid.uuid4(),
+            email=f"user_{_uuid.uuid4().hex[:8]}@test.cl",
+            full_name="Test User",
+            email_provider="gmail",
+            whatsapp_verified=False,
+            feature_trips_enabled=True,
+        )
+        defaults.update(overrides)
+        user = User(**defaults)
+        db.add(user)
+        await db.flush()
+        return user
+
+    return _factory
+
+
+@pytest.fixture
+def make_trip(db, make_user):
+    """Factory: persist a Trip with creator auto-added as Luka attendee.
+
+    Returns the Trip instance with a `creator_attendee` attribute set
+    on the returned object for convenience.
+    """
+
+    async def _factory(
+        creator=None,
+        name="Test Trip",
+        base_currency="USD",
+        start_date=None,
+        end_date=None,
+        **overrides,
+    ):
+        from modules.trips.models import Trip, TripAttendee
+
+        if creator is None:
+            creator = await make_user()
+        if start_date is None:
+            start_date = _date(2026, 5, 1)
+        if end_date is None:
+            end_date = _date(2026, 5, 7)
+        trip = Trip(
+            creator_user_id=creator.id,
+            name=name,
+            start_date=start_date,
+            end_date=end_date,
+            base_currency=base_currency,
+            **overrides,
+        )
+        db.add(trip)
+        await db.flush()
+        attendee = TripAttendee(
+            trip_id=trip.id,
+            user_id=creator.id,
+            display_name=creator.full_name,
+        )
+        db.add(attendee)
+        await db.flush()
+        trip.creator_attendee = attendee  # convenience
+        trip.creator_user = creator
+        return trip
+
+    return _factory
+
+
+@pytest.fixture
+def make_attendee(db):
+    """Factory: add an attendee to a trip. Either Luka (user=) or external (display_name=)."""
+
+    async def _factory(trip, user=None, display_name=None):
+        from modules.trips.models import TripAttendee
+
+        if user is None and display_name is None:
+            raise ValueError("provide user or display_name")
+        attendee = TripAttendee(
+            trip_id=trip.id,
+            user_id=user.id if user else None,
+            display_name=display_name or user.full_name,
+        )
+        db.add(attendee)
+        await db.flush()
+        return attendee
+
+    return _factory
