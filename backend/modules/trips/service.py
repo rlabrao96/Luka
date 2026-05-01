@@ -10,20 +10,23 @@ See ``docs/superpowers/specs/2026-04-30-viajes-trips-design.md`` §4.1, §4.2.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from modules.auth.models import User
-from modules.trips.models import Trip, TripAttendee
+from modules.trips.models import Trip, TripAttendee, TripExpense, TripExpenseSplit
 from modules.trips.schemas import (
     CreateAttendeeInput,
+    CreateExpenseRequest,
     CreateTripRequest,
+    SplitInput,
     UpdateTripRequest,
 )
 
@@ -339,3 +342,235 @@ async def remove_attendee(db: AsyncSession, trip_id: UUID, attendee_id: UUID, us
     if attendee.left_at is None:
         attendee.left_at = datetime.now(timezone.utc)
         await db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Expenses
+# ---------------------------------------------------------------------------
+
+
+_CENT = Decimal("0.01")
+
+
+def _floor_cents(value: Decimal) -> Decimal:
+    """Quantize to two decimals, rounding toward negative infinity (== floor for positives)."""
+    return value.quantize(_CENT, rounding=ROUND_FLOOR)
+
+
+def _normalize_splits(
+    splits: list[SplitInput], amount: Decimal, payer_attendee_id: UUID
+) -> list[dict]:
+    """Compute per-attendee share_amounts so they sum exactly to ``amount``.
+
+    Modes (must be consistent across all splits):
+      - ``equal``           : amount / n, payer absorbs floor remainder.
+      - ``custom_amount``   : caller supplies share_amount; sum must == amount.
+      - ``custom_percent``  : caller supplies share_percent; server computes
+                              floor(amount * pct / 100); payer absorbs residual.
+    """
+    if not splits:
+        raise HTTPException(status_code=422, detail="at least one split required")
+
+    types = {s.share_type for s in splits}
+    if len(types) > 1:
+        raise HTTPException(status_code=422, detail="all splits must use the same share_type")
+    mode = next(iter(types))
+    n = len(splits)
+
+    if mode == "equal":
+        per = _floor_cents(amount / Decimal(n))
+        result = [
+            {
+                "attendee_id": s.attendee_id,
+                "share_amount": per,
+                "share_type": "equal",
+            }
+            for s in splits
+        ]
+    elif mode == "custom_amount":
+        for s in splits:
+            if s.share_amount is None:
+                raise HTTPException(
+                    status_code=422, detail="share_amount required for custom_amount"
+                )
+        result = [
+            {
+                "attendee_id": s.attendee_id,
+                "share_amount": Decimal(s.share_amount),
+                "share_type": "custom_amount",
+            }
+            for s in splits
+        ]
+    elif mode == "custom_percent":
+        for s in splits:
+            if s.share_percent is None:
+                raise HTTPException(
+                    status_code=422, detail="share_percent required for custom_percent"
+                )
+        total_pct = sum((s.share_percent for s in splits), Decimal("0"))
+        if total_pct != Decimal("100"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"share_percent values must sum to 100, got {total_pct}",
+            )
+        result = [
+            {
+                "attendee_id": s.attendee_id,
+                "share_amount": _floor_cents(amount * s.share_percent / Decimal("100")),
+                "share_type": "custom_percent",
+            }
+            for s in splits
+        ]
+    else:  # pragma: no cover — Pydantic Literal blocks other values upstream
+        raise HTTPException(status_code=422, detail=f"unknown share_type {mode}")
+
+    current_sum = sum((r["share_amount"] for r in result), Decimal("0"))
+    residual = amount - current_sum
+    if residual != Decimal("0"):
+        if mode == "custom_amount":
+            raise HTTPException(
+                status_code=422,
+                detail=f"share_amounts sum to {current_sum}, expected {amount}",
+            )
+        # equal / custom_percent: payer absorbs the floor remainder.
+        for r in result:
+            if r["attendee_id"] == payer_attendee_id:
+                r["share_amount"] = r["share_amount"] + residual
+                break
+        else:
+            # Payer not present in splits — shouldn't generally happen, but
+            # spec says payer absorbs remainder; fall back to first split.
+            result[0]["share_amount"] = result[0]["share_amount"] + residual
+
+    return result
+
+
+async def create_expense(
+    db: AsyncSession,
+    trip: Trip,
+    user: User,
+    payload: CreateExpenseRequest,
+) -> TripExpense:
+    """Create a trip expense with normalized splits.
+
+    Sign convention: ``trip_expenses.amount`` is always positive. If a
+    ``transaction_id`` is supplied, ``payload.amount`` must equal
+    ``abs(transaction.amount)`` and the caller must own that transaction.
+
+    Returns the persisted expense with ``splits`` eager-loaded. Raises:
+      - 403 if the linked transaction is not owned by the caller.
+      - 404 if the payer/split attendees aren't on this trip.
+      - 409 if the linked transaction already has household splits (joint
+        account) or is already linked to another trip expense.
+      - 422 on share-type, sum, or "attendee left" mismatches.
+    """
+    # 1. Payer must belong to this trip.
+    payer = (
+        await db.execute(
+            select(TripAttendee).where(
+                TripAttendee.id == payload.payer_attendee_id,
+                TripAttendee.trip_id == trip.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if payer is None:
+        raise HTTPException(status_code=404, detail="payer_attendee_id not on this trip")
+
+    # 2. Every split attendee must belong to this trip and still be active.
+    split_attendee_ids = [s.attendee_id for s in payload.splits]
+    rows = (
+        (
+            await db.execute(
+                select(TripAttendee).where(
+                    TripAttendee.id.in_(split_attendee_ids),
+                    TripAttendee.trip_id == trip.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(rows) != len(set(split_attendee_ids)):
+        raise HTTPException(status_code=404, detail="one or more split attendees not on this trip")
+    for row in rows:
+        if row.left_at is not None:
+            raise HTTPException(status_code=422, detail=f"attendee {row.id} has left the trip")
+
+    amount = Decimal(payload.amount)
+
+    # 3. If linked to a transaction: caller-ownership + sign-convention check.
+    if payload.transaction_id is not None:
+        from modules.transactions.models import Transaction  # local to avoid cycles
+
+        txn = (
+            await db.execute(select(Transaction).where(Transaction.id == payload.transaction_id))
+        ).scalar_one_or_none()
+        if txn is None:
+            raise HTTPException(status_code=404, detail="transaction not found")
+        if txn.user_id != user.id:
+            raise HTTPException(status_code=403, detail="transaction not owned by caller")
+        expected = abs(Decimal(txn.amount))
+        if amount != expected:
+            raise HTTPException(
+                status_code=422,
+                detail=f"amount {amount} does not match abs(transaction.amount) {expected}",
+            )
+
+    # 4. Compute splits (raises 422 on mismatch).
+    splits_to_create = _normalize_splits(payload.splits, amount, payer.id)
+
+    # 5. Insert expense; the BEFORE trigger raises 23514 if the transaction
+    #    already has household splits, and the partial unique index raises
+    #    23505 if another live trip_expense already links the same txn.
+    exp = TripExpense(
+        trip_id=trip.id,
+        payer_attendee_id=payer.id,
+        description=payload.description,
+        amount=amount,
+        currency=payload.currency.upper(),
+        expense_date=payload.expense_date,
+        transaction_id=payload.transaction_id,
+        fx_rate_to_base=None,
+        created_by_user_id=user.id,
+    )
+    sp = await db.begin_nested()
+    try:
+        db.add(exp)
+        await db.flush()
+    except IntegrityError as exc:
+        await sp.rollback()
+        msg = str(getattr(exc, "orig", exc))
+        sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None) or ""
+        if "household splits" in msg or sqlstate == "23514":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "joint_account_dual_split_not_supported",
+                    "message": (
+                        "Esta transacción está en una cuenta conjunta. "
+                        "La división conjunta + viaje aún no está disponible."
+                    ),
+                },
+            )
+        if sqlstate == "23505" or "ux_trip_expenses_transaction" in msg:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "transaction_already_linked",
+                    "message": "Esta transacción ya está vinculada a otro viaje.",
+                },
+            )
+        raise
+
+    for split_data in splits_to_create:
+        db.add(TripExpenseSplit(trip_expense_id=exp.id, **split_data))
+    await db.flush()
+
+    fetched = (
+        await db.execute(
+            select(TripExpense)
+            .options(selectinload(TripExpense.splits))
+            .where(TripExpense.id == exp.id)
+        )
+    ).scalar_one()
+    return fetched

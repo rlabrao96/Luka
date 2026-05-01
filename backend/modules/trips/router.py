@@ -34,7 +34,10 @@ from modules.trips.models import Trip
 from modules.trips.schemas import (
     AttendeeResponse,
     CreateAttendeeInput,
+    CreateExpenseRequest,
     CreateTripRequest,
+    ExpenseResponse,
+    SplitResponse,
     TripDetailResponse,
     TripListResponse,
     TripResponse,
@@ -175,3 +178,43 @@ async def remove_attendee(
 ) -> None:
     await service.remove_attendee(db, trip_id, attendee_id, user)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Expenses
+# ---------------------------------------------------------------------------
+
+
+def _to_expense_response(exp) -> ExpenseResponse:
+    return ExpenseResponse(
+        id=exp.id,
+        trip_id=exp.trip_id,
+        payer_attendee_id=exp.payer_attendee_id,
+        description=exp.description,
+        amount=exp.amount,
+        currency=exp.currency,
+        expense_date=exp.expense_date,
+        transaction_id=exp.transaction_id,
+        fx_rate_to_base=exp.fx_rate_to_base,
+        version=exp.version,
+        created_at=exp.created_at,
+        updated_at=exp.updated_at,
+        splits=[SplitResponse.model_validate(s) for s in exp.splits],
+    )
+
+
+@router.post(
+    "/{trip_id}/expenses",
+    response_model=ExpenseResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_expense(
+    trip_id: UUID,
+    payload: CreateExpenseRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> ExpenseResponse:
+    # ``get_trip`` enforces membership (404 otherwise).
+    trip = await service.get_trip(db, trip_id, user)
+    expense = await service.create_expense(db, trip, user, payload)
+    return _to_expense_response(expense)
