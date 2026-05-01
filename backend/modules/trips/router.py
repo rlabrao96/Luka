@@ -23,7 +23,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -41,6 +41,7 @@ from modules.trips.schemas import (
     TripDetailResponse,
     TripListResponse,
     TripResponse,
+    UpdateExpenseRequest,
     UpdateTripRequest,
 )
 
@@ -218,3 +219,33 @@ async def create_expense(
     trip = await service.get_trip(db, trip_id, user)
     expense = await service.create_expense(db, trip, user, payload)
     return _to_expense_response(expense)
+
+
+@router.patch("/{trip_id}/expenses/{expense_id}", response_model=ExpenseResponse)
+async def patch_expense(
+    trip_id: UUID,
+    expense_id: UUID,
+    payload: UpdateExpenseRequest,
+    if_match: int = Header(..., alias="If-Match"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> ExpenseResponse:
+    # ``get_trip`` enforces membership (404 otherwise).
+    await service.get_trip(db, trip_id, user)
+    expense = await service.update_expense(db, trip_id, expense_id, user, payload, if_match)
+    return _to_expense_response(expense)
+
+
+@router.delete(
+    "/{trip_id}/expenses/{expense_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_expense(
+    trip_id: UUID,
+    expense_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> None:
+    await service.get_trip(db, trip_id, user)
+    await service.delete_expense(db, trip_id, expense_id, user)
+    return None

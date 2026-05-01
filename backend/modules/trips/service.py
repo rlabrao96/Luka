@@ -26,7 +26,9 @@ from modules.trips.schemas import (
     CreateAttendeeInput,
     CreateExpenseRequest,
     CreateTripRequest,
+    ExpenseResponse,
     SplitInput,
+    UpdateExpenseRequest,
     UpdateTripRequest,
 )
 
@@ -574,3 +576,231 @@ async def create_expense(
         )
     ).scalar_one()
     return fetched
+
+
+# ---------------------------------------------------------------------------
+# Update / delete expense
+# ---------------------------------------------------------------------------
+
+
+async def _validate_payer_on_trip(
+    db: AsyncSession, trip_id: UUID, payer_attendee_id: UUID
+) -> TripAttendee:
+    payer = (
+        await db.execute(
+            select(TripAttendee).where(
+                TripAttendee.id == payer_attendee_id,
+                TripAttendee.trip_id == trip_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if payer is None:
+        raise HTTPException(status_code=404, detail="payer_attendee_id not on this trip")
+    return payer
+
+
+async def _validate_split_attendees(
+    db: AsyncSession, trip_id: UUID, splits: list[SplitInput]
+) -> None:
+    split_attendee_ids = [s.attendee_id for s in splits]
+    rows = (
+        (
+            await db.execute(
+                select(TripAttendee).where(
+                    TripAttendee.id.in_(split_attendee_ids),
+                    TripAttendee.trip_id == trip_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(rows) != len(set(split_attendee_ids)):
+        raise HTTPException(status_code=404, detail="one or more split attendees not on this trip")
+    for row in rows:
+        if row.left_at is not None:
+            raise HTTPException(status_code=422, detail=f"attendee {row.id} has left the trip")
+
+
+async def _validate_transaction_link(
+    db: AsyncSession, user: User, transaction_id: UUID, amount: Decimal
+) -> None:
+    from modules.transactions.models import Transaction  # local to avoid cycles
+
+    txn = (
+        await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    ).scalar_one_or_none()
+    if txn is None:
+        raise HTTPException(status_code=404, detail="transaction not found")
+    if txn.user_id != user.id:
+        raise HTTPException(status_code=403, detail="transaction not owned by caller")
+    expected = abs(Decimal(txn.amount))
+    if amount != expected:
+        raise HTTPException(
+            status_code=422,
+            detail=f"amount {amount} does not match abs(transaction.amount) {expected}",
+        )
+
+
+async def update_expense(
+    db: AsyncSession,
+    trip_id: UUID,
+    expense_id: UUID,
+    user: User,
+    payload: UpdateExpenseRequest,
+    if_match: int,
+) -> TripExpense:
+    """Update a trip expense with optimistic concurrency.
+
+    On version mismatch returns 409 with the current state so the caller can
+    show a conflict dialog. If ``amount`` or ``payer_attendee_id`` change, the
+    caller MUST also supply ``splits`` — we don't try to re-balance silently.
+    Splits, when supplied, replace the existing set wholesale.
+    """
+    res = await db.execute(
+        select(TripExpense)
+        .options(selectinload(TripExpense.splits))
+        .where(
+            TripExpense.id == expense_id,
+            TripExpense.trip_id == trip_id,
+            TripExpense.deleted_at.is_(None),
+        )
+    )
+    expense = res.scalar_one_or_none()
+    if expense is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    if expense.version != if_match:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "version_conflict",
+                "current_version": expense.version,
+                "expense": ExpenseResponse.model_validate(expense).model_dump(mode="json"),
+            },
+        )
+
+    changes = payload.model_dump(exclude_unset=True)
+    splits_provided = "splits" in changes and payload.splits is not None
+    amount_changed = "amount" in changes and payload.amount is not None
+    payer_changed = (
+        "payer_attendee_id" in changes
+        and payload.payer_attendee_id is not None
+        and payload.payer_attendee_id != expense.payer_attendee_id
+    )
+
+    if (amount_changed or payer_changed) and not splits_provided:
+        raise HTTPException(
+            status_code=422,
+            detail="splits must be provided when amount or payer_attendee_id changes",
+        )
+
+    # Determine new field values.
+    new_amount = Decimal(payload.amount) if amount_changed else Decimal(expense.amount)
+    new_payer_id: UUID = payload.payer_attendee_id if payer_changed else expense.payer_attendee_id
+
+    # Validate the (potentially new) payer is on the trip.
+    if payer_changed:
+        await _validate_payer_on_trip(db, trip_id, new_payer_id)
+
+    # Validate transaction linkage if it's being added/changed.
+    new_transaction_id = expense.transaction_id
+    if "transaction_id" in changes:
+        new_transaction_id = payload.transaction_id
+        if new_transaction_id is not None and new_transaction_id != expense.transaction_id:
+            await _validate_transaction_link(db, user, new_transaction_id, new_amount)
+    elif amount_changed and expense.transaction_id is not None:
+        # Amount changed but txn link unchanged — re-validate the link still matches.
+        await _validate_transaction_link(db, user, expense.transaction_id, new_amount)
+
+    # Apply scalar field updates.
+    if "description" in changes and payload.description is not None:
+        expense.description = payload.description
+    if amount_changed:
+        expense.amount = new_amount
+    if "currency" in changes and payload.currency is not None:
+        expense.currency = payload.currency.upper()
+    if "expense_date" in changes and payload.expense_date is not None:
+        expense.expense_date = payload.expense_date
+    if payer_changed:
+        expense.payer_attendee_id = new_payer_id
+    if "transaction_id" in changes:
+        expense.transaction_id = new_transaction_id
+
+    # Replace splits if provided.
+    if splits_provided:
+        await _validate_split_attendees(db, trip_id, payload.splits)
+        splits_to_create = _normalize_splits(payload.splits, new_amount, new_payer_id)
+        # Delete existing splits via the relationship collection so cascade
+        # delete-orphan handles them cleanly, then add the new ones.
+        expense.splits.clear()
+        await db.flush()
+        for split_data in splits_to_create:
+            expense.splits.append(TripExpenseSplit(**split_data))
+
+    expense.version = expense.version + 1
+    expense.updated_at = datetime.now(timezone.utc)
+
+    sp = await db.begin_nested()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await sp.rollback()
+        msg = str(getattr(exc, "orig", exc))
+        sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None) or ""
+        if "household splits" in msg or sqlstate == "23514":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "joint_account_dual_split_not_supported",
+                    "message": (
+                        "Esta transacción está en una cuenta conjunta. "
+                        "La división conjunta + viaje aún no está disponible."
+                    ),
+                },
+            )
+        if sqlstate == "23505" or "ux_trip_expenses_transaction" in msg:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "transaction_already_linked",
+                    "message": "Esta transacción ya está vinculada a otro viaje.",
+                },
+            )
+        raise
+
+    fetched = (
+        await db.execute(
+            select(TripExpense)
+            .options(selectinload(TripExpense.splits))
+            .where(TripExpense.id == expense.id)
+        )
+    ).scalar_one()
+    return fetched
+
+
+async def delete_expense(
+    db: AsyncSession,
+    trip_id: UUID,
+    expense_id: UUID,
+    user: User,
+) -> None:
+    """Soft-delete a trip expense.
+
+    Sets ``deleted_at = now()``. The partial unique index on transaction_id
+    excludes soft-deleted rows, so the linked transaction becomes available
+    for re-linking immediately after.
+    """
+    res = await db.execute(
+        select(TripExpense).where(
+            TripExpense.id == expense_id,
+            TripExpense.trip_id == trip_id,
+            TripExpense.deleted_at.is_(None),
+        )
+    )
+    expense = res.scalar_one_or_none()
+    if expense is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    expense.deleted_at = datetime.now(timezone.utc)
+    await db.flush()

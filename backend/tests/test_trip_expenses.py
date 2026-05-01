@@ -454,3 +454,255 @@ async def test_create_expense_409_when_transaction_has_household_splits(
         )
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "joint_account_dual_split_not_supported"
+
+
+# ---------------------------------------------------------------------------
+# PATCH /trips/{trip_id}/expenses/{expense_id} — optimistic concurrency
+# ---------------------------------------------------------------------------
+
+
+async def _create_basic_expense(c, trip, payer, others, amount="100.00"):
+    splits = [_split(payer.id)] + [_split(a.id) for a in others]
+    r = await c.post(
+        f"/trips/{trip.id}/expenses",
+        json=_payload(payer.id, splits, amount=amount),
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+@pytest.mark.asyncio
+async def test_patch_expense_with_matching_version_increments(
+    app, db, make_user, make_trip, make_attendee
+):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        assert exp["version"] == 1
+        r = await c.patch(
+            f"/trips/{trip.id}/expenses/{exp['id']}",
+            headers={"If-Match": "1"},
+            json={"description": "Updated hotel"},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["version"] == 2
+    assert body["description"] == "Updated hotel"
+
+
+@pytest.mark.asyncio
+async def test_patch_expense_with_stale_version_returns_409(
+    app, db, make_user, make_trip, make_attendee
+):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        r1 = await c.patch(
+            f"/trips/{trip.id}/expenses/{exp['id']}",
+            headers={"If-Match": "1"},
+            json={"description": "First"},
+        )
+        assert r1.status_code == 200
+        r2 = await c.patch(
+            f"/trips/{trip.id}/expenses/{exp['id']}",
+            headers={"If-Match": "1"},
+            json={"description": "Second"},
+        )
+    assert r2.status_code == 409
+    detail = r2.json()["detail"]
+    assert detail["code"] == "version_conflict"
+    assert detail["current_version"] == 2
+    assert detail["expense"]["description"] == "First"
+
+
+@pytest.mark.asyncio
+async def test_patch_expense_amount_change_requires_splits(
+    app, db, make_user, make_trip, make_attendee
+):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        r = await c.patch(
+            f"/trips/{trip.id}/expenses/{exp['id']}",
+            headers={"If-Match": "1"},
+            json={"amount": "200.00"},
+        )
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_expense_amount_and_splits_succeeds(
+    app, db, make_user, make_trip, make_attendee
+):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        new_splits = [_split(payer.id), _split(a2.id)]
+        r = await c.patch(
+            f"/trips/{trip.id}/expenses/{exp['id']}",
+            headers={"If-Match": "1"},
+            json={"amount": "200.00", "splits": new_splits},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["version"] == 2
+    assert Decimal(body["amount"]) == Decimal("200.00")
+    amounts = sorted(Decimal(s["share_amount"]) for s in body["splits"])
+    assert amounts == [Decimal("100.00"), Decimal("100.00")]
+
+
+@pytest.mark.asyncio
+async def test_patch_expense_split_sum_validated(app, db, make_user, make_trip, make_attendee):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        bad_splits = [
+            _split(payer.id, share_type="custom_amount", share_amount="40.00"),
+            _split(a2.id, share_type="custom_amount", share_amount="50.00"),
+        ]
+        r = await c.patch(
+            f"/trips/{trip.id}/expenses/{exp['id']}",
+            headers={"If-Match": "1"},
+            json={"splits": bad_splits},
+        )
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_expense_change_payer_requires_splits(
+    app, db, make_user, make_trip, make_attendee
+):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        r = await c.patch(
+            f"/trips/{trip.id}/expenses/{exp['id']}",
+            headers={"If-Match": "1"},
+            json={"payer_attendee_id": str(a2.id)},
+        )
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_already_deleted_expense_404(app, db, make_user, make_trip, make_attendee):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        d = await c.delete(f"/trips/{trip.id}/expenses/{exp['id']}")
+        assert d.status_code == 204
+        r = await c.patch(
+            f"/trips/{trip.id}/expenses/{exp['id']}",
+            headers={"If-Match": "1"},
+            json={"description": "x"},
+        )
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /trips/{trip_id}/expenses/{expense_id} — soft delete
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_expense_soft_deletes(app, db, make_user, make_trip, make_attendee):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        r = await c.delete(f"/trips/{trip.id}/expenses/{exp['id']}")
+    assert r.status_code == 204
+
+    from sqlalchemy import select
+
+    from modules.trips.models import TripExpense
+
+    row = (
+        await db.execute(select(TripExpense).where(TripExpense.id == uuid.UUID(exp["id"])))
+    ).scalar_one()
+    assert row.deleted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_expense_frees_transaction_for_relink(
+    app, db, make_user, make_trip, make_attendee
+):
+    creator = await make_user()
+    trip1 = await make_trip(creator=creator, name="Trip 1")
+    trip2 = await make_trip(creator=creator, name="Trip 2")
+    payer1 = trip1.creator_attendee
+    payer2 = trip2.creator_attendee
+
+    h = await _make_household(db)
+    txn = await _make_transaction(db, creator, h, "-100.00")
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        r1 = await c.post(
+            f"/trips/{trip1.id}/expenses",
+            json=_payload(payer1.id, [_split(payer1.id)], amount="100.00", transaction_id=txn.id),
+        )
+        assert r1.status_code == 201, r1.text
+        exp1_id = r1.json()["id"]
+        d = await c.delete(f"/trips/{trip1.id}/expenses/{exp1_id}")
+        assert d.status_code == 204
+        # Now the same transaction can be linked to trip2.
+        r2 = await c.post(
+            f"/trips/{trip2.id}/expenses",
+            json=_payload(payer2.id, [_split(payer2.id)], amount="100.00", transaction_id=txn.id),
+        )
+    assert r2.status_code == 201, r2.text
+
+
+@pytest.mark.asyncio
+async def test_delete_already_deleted_expense_404(app, db, make_user, make_trip, make_attendee):
+    creator = await make_user()
+    trip = await make_trip(creator=creator)
+    a2 = await make_attendee(trip, display_name="B")
+    payer = trip.creator_attendee
+
+    _override(app, creator, db)
+    async with await _client(app) as c:
+        exp = await _create_basic_expense(c, trip, payer, [a2])
+        d1 = await c.delete(f"/trips/{trip.id}/expenses/{exp['id']}")
+        assert d1.status_code == 204
+        d2 = await c.delete(f"/trips/{trip.id}/expenses/{exp['id']}")
+    assert d2.status_code == 404
