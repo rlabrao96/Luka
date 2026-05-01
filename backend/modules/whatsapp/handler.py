@@ -371,6 +371,20 @@ async def _handle_manual_expense_trigger(
     await ensure_default_split(db, txn)
     await db.commit()
 
+    # Phase 6: trip settlement auto-detect. Non-blocking — trip-detect failure
+    # must never break manual WhatsApp expense entry.
+    try:
+        from modules.trips.auto_detect import try_match_settlement
+
+        await try_match_settlement(db, txn)
+        await db.commit()
+    except Exception:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "trip auto-detect failed for whatsapp txn %s; ignoring", txn.id
+        )
+
     categories = (await get_user_ranked_categories(user_id, merchant, db, category_type="expense"))[
         :10
     ]

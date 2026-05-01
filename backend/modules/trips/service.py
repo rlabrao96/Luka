@@ -29,6 +29,8 @@ from modules.trips.models import (
     TripExpense,
     TripExpenseSplit,
     TripSettlement,
+    TripSettlementDismissal,
+    TripSuggestionDismissal,
 )
 from modules.trips.schemas import (
     CreateAttendeeInput,
@@ -1113,3 +1115,178 @@ async def accept_invite(db: AsyncSession, raw_token: str, user: User) -> Trip:
     )
     await db.flush()
     return trip
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — Suggestions inbox + dismissals
+#
+# See spec ``docs/superpowers/specs/2026-04-30-viajes-trips-design.md`` §4.6.
+# ---------------------------------------------------------------------------
+
+
+async def _detected_subscription_merchant_keys(db: AsyncSession, user_id: UUID) -> set[str]:
+    """Return lowercase merchant keys flagged as subscriptions for this user.
+
+    Reads ``detected_subscriptions_cache.result_json`` (see
+    ``modules.subscriptions.service``). Each item carries a ``merchant_name``
+    field which is matched against
+    ``COALESCE(merchants.normalized_name, transactions.raw_merchant_name)``.
+
+    Falls back to an empty set if the cache row is missing or malformed —
+    meaning the user has never opened the Subscriptions page. That's fine
+    for v1: the user simply dismisses any subscription-shaped suggestions
+    manually until they refresh detection.
+    """
+    from sqlalchemy import text
+
+    res = await db.execute(
+        text("SELECT result_json FROM detected_subscriptions_cache WHERE user_id = :uid"),
+        {"uid": str(user_id)},
+    )
+    row = res.scalar_one_or_none()
+    if not row:
+        return set()
+    try:
+        items = row if isinstance(row, list) else []
+        return {
+            (item.get("merchant_name") or "").strip().lower()
+            for item in items
+            if isinstance(item, dict)
+            and item.get("merchant_name")
+            and item.get("status") == "active"
+        }
+    except Exception:
+        return set()
+
+
+async def get_suggested_transactions(db: AsyncSession, trip_id: UUID, user: User) -> list[dict]:
+    """Caller's expense transactions in the trip's date window that are not
+    already linked, dismissed, a subscription, or a transfer.
+
+    Returns dicts shaped like ``SuggestedTransaction`` (transaction_id,
+    merchant, amount, currency, transaction_date, category) for the router
+    to wrap. Only the caller's own ``user_id`` is queried — each Luka
+    attendee on the trip has their own personal inbox.
+    """
+
+    from modules.merchants.models import Merchant
+    from modules.transactions.models import Transaction
+
+    trip = await get_trip(db, trip_id, user)
+
+    # Already-linked transaction_ids (active links only).
+    linked_q = select(TripExpense.transaction_id).where(
+        TripExpense.transaction_id.isnot(None),
+        TripExpense.deleted_at.is_(None),
+    )
+    linked_rows = (await db.execute(linked_q)).all()
+    linked_ids = {row[0] for row in linked_rows if row[0] is not None}
+
+    # Dismissed transaction_ids for this (user, trip).
+    dismissed_q = select(TripSuggestionDismissal.transaction_id).where(
+        TripSuggestionDismissal.user_id == user.id,
+        TripSuggestionDismissal.trip_id == trip.id,
+    )
+    dismissed_ids = {row[0] for row in (await db.execute(dismissed_q)).all()}
+
+    sub_keys = await _detected_subscription_merchant_keys(db, user.id)
+
+    q = (
+        select(Transaction, Merchant.normalized_name)
+        .outerjoin(Merchant, Transaction.merchant_id == Merchant.id)
+        .where(
+            Transaction.user_id == user.id,
+            Transaction.transaction_type == "expense",
+            Transaction.transfer_pair_id.is_(None),
+            Transaction.refund_pair_id.is_(None),
+            Transaction.reimbursement_group_id.is_(None),
+            Transaction.transaction_date >= trip.start_date,
+            Transaction.transaction_date < trip.end_date + timedelta(days=1),
+        )
+        .order_by(Transaction.transaction_date.desc())
+    )
+    rows = (await db.execute(q)).all()
+
+    out: list[dict] = []
+    for txn, normalized in rows:
+        if txn.id in linked_ids:
+            continue
+        if txn.id in dismissed_ids:
+            continue
+        merchant_key = (normalized or txn.raw_merchant_name or "").strip().lower()
+        if merchant_key and merchant_key in sub_keys:
+            continue
+        out.append(
+            {
+                "transaction_id": txn.id,
+                "merchant": normalized or txn.raw_merchant_name,
+                "amount": Decimal(txn.amount),
+                "currency": txn.currency,
+                "transaction_date": (
+                    txn.transaction_date.date()
+                    if hasattr(txn.transaction_date, "date")
+                    else txn.transaction_date
+                ),
+                "category": txn.category,
+            }
+        )
+    return out
+
+
+async def dismiss_suggestion(
+    db: AsyncSession, trip_id: UUID, transaction_id: UUID, user: User
+) -> None:
+    """Insert a ``TripSuggestionDismissal`` for ``(user, trip, transaction)``.
+
+    Idempotent: a duplicate dismissal is a no-op (composite PK guarantees
+    uniqueness; we swallow IntegrityError so repeated calls don't 500).
+    Membership is enforced via ``get_trip`` (404 for non-members).
+    """
+    await get_trip(db, trip_id, user)
+    db.add(
+        TripSuggestionDismissal(
+            user_id=user.id,
+            trip_id=trip_id,
+            transaction_id=transaction_id,
+        )
+    )
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+
+
+async def undismiss_suggestion(
+    db: AsyncSession, trip_id: UUID, transaction_id: UUID, user: User
+) -> None:
+    """Remove the ``TripSuggestionDismissal`` row, restoring inbox visibility."""
+    from sqlalchemy import delete as sql_delete
+
+    await get_trip(db, trip_id, user)
+    await db.execute(
+        sql_delete(TripSuggestionDismissal).where(
+            TripSuggestionDismissal.user_id == user.id,
+            TripSuggestionDismissal.trip_id == trip_id,
+            TripSuggestionDismissal.transaction_id == transaction_id,
+        )
+    )
+    await db.flush()
+
+
+async def dismiss_settlement_suggestion(db: AsyncSession, transaction_id: UUID, user: User) -> None:
+    """Insert a ``TripSettlementDismissal`` for ``(user, transaction)``.
+
+    Idempotent. Note: not gated by trip — settlement suggestions are a
+    per-user signal across all the user's trips (the same Zelle won't fire
+    twice for the same trip anyway).
+    """
+    db.add(
+        TripSettlementDismissal(
+            user_id=user.id,
+            transaction_id=transaction_id,
+        )
+    )
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()

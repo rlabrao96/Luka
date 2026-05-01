@@ -44,6 +44,7 @@ from modules.trips.schemas import (
     InviteLinkResponse,
     SettlementResponse,
     SplitResponse,
+    SuggestedTransaction,
     TripDetailResponse,
     TripListResponse,
     TripPreviewResponse,
@@ -51,6 +52,7 @@ from modules.trips.schemas import (
     UpdateExpenseRequest,
     UpdateTripRequest,
 )
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -476,4 +478,112 @@ async def force_remove_attendee(
     user: User = Depends(require_trips_feature),
 ) -> None:
     await service.force_remove_attendee(db, trip_id, attendee_id, user)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — Suggestions inbox (Task 6.1)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{trip_id}/suggested-transactions",
+    response_model=list[SuggestedTransaction],
+)
+async def list_suggested_transactions(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> list[SuggestedTransaction]:
+    rows = await service.get_suggested_transactions(db, trip_id, user)
+    return [SuggestedTransaction(**r) for r in rows]
+
+
+@router.post(
+    "/{trip_id}/suggested-transactions/{transaction_id}/dismiss",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def dismiss_suggested_transaction(
+    trip_id: UUID,
+    transaction_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> None:
+    await service.dismiss_suggestion(db, trip_id, transaction_id, user)
+    return None
+
+
+@router.delete(
+    "/{trip_id}/suggested-transactions/{transaction_id}/dismiss",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def undismiss_suggested_transaction(
+    trip_id: UUID,
+    transaction_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> None:
+    await service.undismiss_suggestion(db, trip_id, transaction_id, user)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — Settlement-suggestion confirm/dismiss (Tasks 6.2 + 6.3)
+# ---------------------------------------------------------------------------
+
+
+class _ConfirmSettlementRequest(BaseModel):
+    trip_id: UUID
+    from_attendee_id: UUID
+    to_attendee_id: UUID
+    amount: Decimal = Field(gt=0)
+    currency: str = Field(min_length=3, max_length=3)
+    transaction_id: UUID
+
+
+class _DismissSettlementRequest(BaseModel):
+    transaction_id: UUID
+
+
+@router.post(
+    "/settlement-suggestions/confirm",
+    response_model=SettlementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def confirm_settlement_suggestion(
+    payload: _ConfirmSettlementRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> SettlementResponse:
+    """Promote an auto-detect suggestion into a real ``trip_settlements`` row.
+
+    Membership is enforced by ``service.get_trip``; ``service.create_settlement``
+    handles attendee + currency validation and links ``transaction_id``.
+    """
+    trip = await service.get_trip(db, payload.trip_id, user)
+    settlement = await service.create_settlement(
+        db,
+        trip,
+        user,
+        CreateSettlementRequest(
+            from_attendee_id=payload.from_attendee_id,
+            to_attendee_id=payload.to_attendee_id,
+            amount=payload.amount,
+            currency=payload.currency,
+            transaction_id=payload.transaction_id,
+        ),
+    )
+    return _to_settlement_response(settlement)
+
+
+@router.post(
+    "/settlement-suggestions/dismiss",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def dismiss_settlement_suggestion(
+    payload: _DismissSettlementRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+) -> None:
+    await service.dismiss_settlement_suggestion(db, payload.transaction_id, user)
     return None

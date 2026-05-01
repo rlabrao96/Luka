@@ -250,6 +250,19 @@ async def run_plaid_sync(
             )
             stats["deduped"] += 1
 
+        # Phase 6: trip settlement auto-detect. Wrapped in try/except so a
+        # failure here NEVER blocks Plaid sync (spec §4.7, plan Task 6.2).
+        try:
+            from modules.trips.auto_detect import try_match_settlement
+
+            await try_match_settlement(session, new_tx)
+        except Exception:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "trip auto-detect failed for plaid txn %s; ignoring", new_tx.id
+            )
+
         stats["added"] += 1
         stats["new_tx_ids"].append(str(new_tx.id))
 
