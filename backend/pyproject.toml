@@ -48,3 +48,8 @@ include = ["core*", "modules*"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.152.4",
+]

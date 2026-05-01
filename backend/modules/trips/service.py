@@ -21,10 +21,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from modules.auth.models import User
-from modules.trips.models import Trip, TripAttendee, TripExpense, TripExpenseSplit
+from modules.trips.models import (
+    Trip,
+    TripAttendee,
+    TripExpense,
+    TripExpenseSplit,
+    TripSettlement,
+)
 from modules.trips.schemas import (
     CreateAttendeeInput,
     CreateExpenseRequest,
+    CreateSettlementRequest,
     CreateTripRequest,
     ExpenseResponse,
     SplitInput,
@@ -498,6 +505,20 @@ async def create_expense(
         if row.left_at is not None:
             raise HTTPException(status_code=422, detail=f"attendee {row.id} has left the trip")
 
+    # v1 single-currency cut: every expense must be in the trip's base currency.
+    # Multi-currency + FX is deferred to v2 (see FX_INTEGRATION.md).
+    if payload.currency.upper() != trip.base_currency.upper():
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "currency_must_match_trip_base",
+                "message": (
+                    f"expense currency {payload.currency.upper()} must match "
+                    f"trip base currency {trip.base_currency.upper()} (v1 single-currency)."
+                ),
+            },
+        )
+
     amount = Decimal(payload.amount)
 
     # 3. If linked to a transaction: caller-ownership + sign-convention check.
@@ -803,4 +824,183 @@ async def delete_expense(
         raise HTTPException(status_code=404, detail="Expense not found")
 
     expense.deleted_at = datetime.now(timezone.utc)
+    await db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Settlements (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+async def create_settlement(
+    db: AsyncSession,
+    trip: Trip,
+    user: User,
+    payload: CreateSettlementRequest,
+) -> TripSettlement:
+    """Insert a settlement transferring ``amount`` from one attendee to another.
+
+    v1 single-currency cut: ``payload.currency`` must equal ``trip.base_currency``;
+    ``fx_rate_to_base`` stays NULL. The schema already enforces
+    ``from_attendee_id != to_attendee_id`` and ``amount > 0`` (Pydantic + DB CHECK).
+
+    Settlements intentionally bypass the ``transaction_splits`` mutual-exclusivity
+    trigger — those triggers only fire on ``trip_expenses``.
+    """
+    if payload.currency.upper() != trip.base_currency.upper():
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "currency_must_match_trip_base",
+                "message": (
+                    f"settlement currency {payload.currency.upper()} must match "
+                    f"trip base currency {trip.base_currency.upper()} (v1 single-currency)."
+                ),
+            },
+        )
+
+    # from + to must both belong to this trip.
+    rows = (
+        (
+            await db.execute(
+                select(TripAttendee).where(
+                    TripAttendee.trip_id == trip.id,
+                    TripAttendee.id.in_([payload.from_attendee_id, payload.to_attendee_id]),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found_ids = {r.id for r in rows}
+    if payload.from_attendee_id not in found_ids or payload.to_attendee_id not in found_ids:
+        raise HTTPException(status_code=404, detail="one or both attendees not on this trip")
+
+    # Optional transaction link must be owned by the caller.
+    if payload.transaction_id is not None:
+        from modules.transactions.models import Transaction  # local import
+
+        txn = (
+            await db.execute(select(Transaction).where(Transaction.id == payload.transaction_id))
+        ).scalar_one_or_none()
+        if txn is None:
+            raise HTTPException(status_code=404, detail="transaction not found")
+        if txn.user_id != user.id:
+            raise HTTPException(status_code=403, detail="transaction not owned by caller")
+
+    settlement = TripSettlement(
+        trip_id=trip.id,
+        from_attendee_id=payload.from_attendee_id,
+        to_attendee_id=payload.to_attendee_id,
+        amount=Decimal(payload.amount),
+        currency=payload.currency.upper(),
+        fx_rate_to_base=None,
+        transaction_id=payload.transaction_id,
+        created_by_user_id=user.id,
+    )
+    db.add(settlement)
+    await db.flush()
+    await db.refresh(settlement)
+    return settlement
+
+
+# ---------------------------------------------------------------------------
+# Force-remove attendee with write-off (Phase 4 Task 4.6)
+# ---------------------------------------------------------------------------
+
+
+async def force_remove_attendee(
+    db: AsyncSession,
+    trip_id: UUID,
+    attendee_id: UUID,
+    user: User,
+) -> None:
+    """Creator-only. Zero out the attendee's outstanding balance via a
+    write-off settlement, then set ``left_at``.
+
+    If the attendee's net is positive (creditor), the write-off goes
+    *from* a creator surrogate counterparty *to* them — wait, simpler:
+    we model the write-off as a settlement whose **other side is the trip
+    creator's attendee**. The plan is:
+      - net > 0 (attendee is owed): settlement from=attendee, to=creator,
+        amount=net  → attendee.net -= net (zeroed); creator absorbs the loss.
+      - net < 0 (attendee owes): settlement from=creator, to=attendee,
+        amount=|net| → attendee.net += |net| (zeroed); creator absorbs again.
+    Either way the creator's attendee row eats the write-off; the field
+    ``write_off=true`` flags it for audit.
+    """
+    # Fetch the trip + verify creator.
+    trip = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
+    if trip is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if trip.creator_user_id != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the trip creator can force-remove an attendee"
+        )
+
+    attendee = (
+        await db.execute(
+            select(TripAttendee).where(
+                TripAttendee.id == attendee_id,
+                TripAttendee.trip_id == trip_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if attendee is None:
+        raise HTTPException(status_code=404, detail="Attendee not on this trip")
+    if attendee.left_at is not None:
+        raise HTTPException(status_code=404, detail="Attendee already left this trip")
+
+    # Find the creator's attendee row to be the write-off counterparty.
+    creator_attendee = (
+        await db.execute(
+            select(TripAttendee).where(
+                TripAttendee.trip_id == trip_id,
+                TripAttendee.user_id == trip.creator_user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if creator_attendee is None:
+        raise HTTPException(
+            status_code=500, detail="trip creator missing attendee row (data corruption)"
+        )
+
+    # Compute current balance for this attendee.
+    from modules.trips.balances import compute_balances  # local import to avoid cycles
+
+    balances = await compute_balances(trip_id, db)
+    target = next((b for b in balances if b.attendee_id == attendee.id), None)
+    net = Decimal(target.net_in_base) if target is not None else Decimal("0")
+
+    if net > Decimal("0.01"):
+        # Attendee is a creditor — emit attendee → creator for ``net``.
+        db.add(
+            TripSettlement(
+                trip_id=trip_id,
+                from_attendee_id=attendee.id,
+                to_attendee_id=creator_attendee.id,
+                amount=net,
+                currency=trip.base_currency,
+                fx_rate_to_base=None,
+                created_by_user_id=user.id,
+                write_off=True,
+            )
+        )
+    elif net < Decimal("-0.01"):
+        # Attendee is a debtor — emit creator → attendee for ``|net|``.
+        db.add(
+            TripSettlement(
+                trip_id=trip_id,
+                from_attendee_id=creator_attendee.id,
+                to_attendee_id=attendee.id,
+                amount=-net,
+                currency=trip.base_currency,
+                fx_rate_to_base=None,
+                created_by_user_id=user.id,
+                write_off=True,
+            )
+        )
+    # else: net within ±0.01 — no write-off needed.
+
+    attendee.left_at = datetime.now(timezone.utc)
     await db.flush()

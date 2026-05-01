@@ -92,6 +92,26 @@ These items were caught by code-quality reviewers during the Plan 1 + Plan 2 spr
 - **Hogar Sankey allocation-node `if` blocks repetition** (Plan 2 Task 7 review): the 5 `if X > _ZERO: nodes.append(SankeyNode(...))` stanzas could be DRY'd via a list-of-tuples loop. Cosmetic.
 - **Missing `otras_fuentes` synthetic-source unit test** (Plan 2 Task 7 review): `test_budget_v3_sankey.py` doesn't directly test the overspent-month `otras_fuentes` emission path. The logic is correct by inspection and integration-tested via the flow conservation matrix, but a focused unit test would harden coverage.
 
+### Trips (Viajes) v2 Backlog
+
+Deferred from v1 (single-currency, backend + frontend dark-launch behind `feature_trips_enabled`). Spec: `docs/superpowers/specs/2026-04-30-viajes-trips-design.md`. Plan: `docs/superpowers/plans/2026-04-30-viajes-trips.md`.
+
+- **Multi-currency trips** — v1 enforces `expense.currency == trip.base_currency` (422 otherwise). For v2: build the FX service from scratch (no existing FX infra in repo — see `backend/modules/trips/FX_INTEGRATION.md`). Recommended path: Frankfurter API (ECB, free, supports historical dates) + new `fx_rates(base, quote, date)` cache table. Then populate `trip_expenses.fx_rate_to_base` + `trip_settlements.fx_rate_to_base` at write time, recompute balances via stored rates, and add the `PATCH /trips/{id}` `base_currency` change endpoint with cross-rate re-anchor (spec §4.1). ~½ day for FX service + ~½ day for trip integration.
+- **Trips RLS integration tests** — existing test infra connects as a service-role / `BYPASSRLS` superuser, so the trip RLS policies (commit `bf5c183`) are not exercised end-to-end. To close: (a) add an `as_user(user_id)` fixture that calls `set_config('request.jwt.claim.sub', ..., true)` + `SET LOCAL ROLE authenticated`; (b) `GRANT SELECT, INSERT, UPDATE, DELETE` on every `trip_*` table to `authenticated`; (c) `ALTER TABLE ... FORCE ROW LEVEL SECURITY` so the local DB role can't bypass. Doc: `backend/modules/trips/RLS_TESTING.md`. Without these, RLS still defends in production (where Supabase issues real JWTs) — the gap is *test* coverage of those policies, not production safety. Userland `service.get_trip` already returns 404 to non-members as a defense-in-depth layer.
+- **Frontend test infrastructure** — Vitest + React Testing Library (+ Playwright for E2E) is currently absent project-wide. Plan §9.3 estimates ~2 days as a project-wide initiative; once it lands, backfill tests for `AddExpenseSheet` split-sum validation, `BalanceGrid`, the suggestions banner, and optimistic-mutation rollback flows.
+- **Trips frontend section** — Phase 7 of the plan (list, detail with Resumen / Gastos / Saldos / Asistentes tabs, AddExpenseSheet, suggestions banner, invite share dialog, join landing). Backend is feature-flag-ready; frontend ships next.
+- **Trips suggestions inbox + settlement auto-detect** — Phase 6 of the plan (`GET /trips/{id}/suggested-transactions` + post-insert hook for Zelle/Venmo settlement auto-match). Bypassed in v1 to keep scope tight; depends on hooking into the existing post-insert pipeline.
+- **Invite link** — Phase 5 of the plan (hashed token, `POST /trips/{id}/invite-link`, `POST /trips/join/{token}`, rate-limited). Not yet implemented.
+- **WhatsApp invites + actions** — entirely v2 per spec §10. Reuses existing WhatsApp infrastructure once it ships.
+- **Native mobile contact-picker integration** — defer to native app phase.
+- **Itemized splits within a single transaction** — defer; spec §11 lists this.
+- **Recurring trips** — defer.
+- **Receipt photo attachments** — defer.
+- **CSV / PDF export of trip ledger** — defer.
+- **External-attendee → real Luka user merge** — when an external (name-only) attendee later signs up, merge their stub into the real user account and surface trip history.
+- **Dual-split: household + trip on the same transaction** — v1 enforces mutual exclusivity via DB triggers (commit `c233665`). v2 will need a unified split table or a clear precedence rule.
+- **Per-user currency display preference inside a trip** — v1 always shows the trip base currency. v2 lets each Luka attendee flip to their home currency for display.
+
 ### Email Pipeline
 
 - **WhatsApp message templates** — Need to create Meta-approved WhatsApp message templates (`verification_code`, `transaction_alert`) for 24-hour window bypass. Currently limited to 24h response window.

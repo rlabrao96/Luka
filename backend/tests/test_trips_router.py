@@ -125,8 +125,9 @@ async def test_get_trip_returns_detail(app, db, make_user, make_trip, make_atten
     body = r.json()
     assert body["id"] == str(trip.id)
     assert len(body["attendees"]) == 2
-    # Phase 4 fields exist (empty for Phase 2)
-    assert body["balances"] == []
+    # Phase 4: balances populated (one entry per attendee, all zero with no expenses)
+    assert len(body["balances"]) == 2
+    assert all(b["net_in_base"] == "0" for b in body["balances"])
     assert body["settle_suggestions"] == []
     assert body["settlements"] == []
 
