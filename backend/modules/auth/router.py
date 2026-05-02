@@ -53,6 +53,7 @@ def _user_response(current_user: User, membership: dict | None) -> UserResponse:
         fixed_contribution_currency=(
             membership.get("fixed_contribution_currency") if membership else None
         ),
+        feature_trips_enabled=current_user.feature_trips_enabled,
     )
 
 
