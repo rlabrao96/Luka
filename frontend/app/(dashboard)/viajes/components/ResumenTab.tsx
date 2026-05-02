@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { TripDetail } from "@/app/lib/api";
+import type { TripDetail, TripSettleSuggestion } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 import { formatMajorAmount } from "@/app/lib/currency";
+import MarkSettledDialog, {
+  type MarkSettledPrefill,
+} from "./MarkSettledDialog";
 
 interface ResumenTabProps {
   trip: TripDetail;
@@ -72,6 +75,19 @@ export default function ResumenTab({ trip }: ResumenTabProps) {
 
   const topSuggestions = trip.settle_suggestions.slice(0, 3);
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [prefill, setPrefill] = useState<MarkSettledPrefill | undefined>();
+
+  function openFromSuggestion(s: TripSettleSuggestion) {
+    setPrefill({
+      from_attendee_id: s.from_attendee_id,
+      to_attendee_id: s.to_attendee_id,
+      amount: Number(s.amount).toFixed(2),
+      currency: s.currency,
+    });
+    setDialogOpen(true);
+  }
+
   return (
     <div className="space-y-4">
       {/* Stat cards */}
@@ -116,7 +132,7 @@ export default function ResumenTab({ trip }: ResumenTabProps) {
                 </p>
                 <button
                   type="button"
-                  onClick={() => alert("Próximamente — Phase 7.5")}
+                  onClick={() => openFromSuggestion(s)}
                   className="text-[11px] font-semibold text-luka-primary hover:underline shrink-0"
                 >
                   Marcar como pagado
@@ -126,6 +142,14 @@ export default function ResumenTab({ trip }: ResumenTabProps) {
           </ul>
         )}
       </section>
+
+      <MarkSettledDialog
+        tripId={trip.id}
+        trip={trip}
+        prefill={prefill}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { ApiError } from "@/app/lib/api";
 import TripHeader from "../components/TripHeader";
 import ResumenTab from "../components/ResumenTab";
 import GastosTab from "../components/GastosTab";
+import SaldosTab from "../components/SaldosTab";
 import AddExpenseSheet from "../components/AddExpenseSheet";
 
 interface TripDetailPageProps {
@@ -122,7 +123,7 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
           <GastosTab trip={trip} onAddExpense={() => setSheetOpen(true)} />
         </TabsContent>
         <TabsContent value="saldos" className="mt-4">
-          <ComingSoon label="Saldos" phase="7.5" />
+          <SaldosTab trip={trip} />
         </TabsContent>
         <TabsContent value="asistentes" className="mt-4">
           <ComingSoon label="Asistentes" phase="7.6" />
