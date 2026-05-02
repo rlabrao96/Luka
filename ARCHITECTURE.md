@@ -129,6 +129,41 @@ Partial btree indexes applied live on 2026-04-20 so the auth hot path stays O(1)
 - `ix_household_members_household_active` on `household_members(household_id) WHERE left_at IS NULL` — hit by member listing + invite capacity checks
 - `ix_household_invites_pending` on `household_invites(household_id, LOWER(invited_email)) WHERE accepted_at IS NULL` — covers the revoke-prior-pending query in `create_invite`
 
+### Trips (Viajes) tables (migrations 045-048)
+
+Splitwise-style trip ledger gated behind a per-user feature flag. Full design spec: `docs/superpowers/specs/2026-04-30-viajes-trips-design.md`.
+
+| Table | Purpose | Key Relationships |
+|-------|---------|-------------------|
+| `trips` | Trip metadata: name, base_currency, start_date, end_date, status (`active`/`archived`), creator_user_id. Attendee roster + expenses + settlements all hang off here. | -> users (creator) |
+| `trip_attendees` | Junction row per attendee: real Luka users (`user_id` set) or external name-only stubs (`display_name` set, `user_id` NULL). `is_creator` flag used by force-remove auth. | -> trips, users |
+| `trip_expenses` | The trip-side ledger entry. `amount` is **always positive** (direction is conveyed by `payer_attendee_id`). Optional `transaction_id` links to the Luka transaction; when NULL the expense is a "trip-only stub" that never appears in any user's personal ledger / budget / category totals. `currency`, `paid_at`, `note`, `version` (optimistic concurrency token). | -> trips, trip_attendees (payer), transactions (optional) |
+| `trip_expense_splits` | Per-attendee share of a trip expense. `share_amount` is positive; sum across splits equals `expenses.amount` (validated at write). Drives balance calculation. | -> trip_expenses, trip_attendees |
+| `trip_settlements` | Cash-transfer (or write-off) entries that zero out balances. `from_attendee_id` → `to_attendee_id`, positive `amount`. Force-remove writes a write-off settlement that zeros the removed attendee's net. | -> trips, trip_attendees |
+| `trip_suggestion_dismissals` | Per-user "don't suggest this transaction for this trip again" markers on the suggestions inbox. | -> trips, users, transactions |
+| `trip_settlement_dismissals` | Per-user dismissals on auto-detected settlement suggestions (notification-driven flow). | -> trips, users, transactions |
+| `trip_base_currency_changes` | Audit log of base-currency changes. v1 enforces single-currency, so this table only fills up once the v2 multi-currency endpoint ships. | -> trips, users |
+
+**Mutual exclusivity invariant (migration 048):** A transaction cannot simultaneously carry a household split (`transaction_splits` row) and a trip-expense link (`trip_expenses.transaction_id`). Two BEFORE INSERT/UPDATE triggers on `transaction_splits` and `trip_expenses` enforce this; violators raise a SQL exception that surfaces as HTTP 409 `joint_account_dual_split_not_supported` from the trip router. v1 keeps trips and household splits cleanly disjoint — dual-split (one transaction tagged to both surfaces) is deferred to v2.
+
+**Row Level Security (migration 047):** Every `trip_*` table has RLS policies driven by two SECURITY DEFINER helpers — `is_trip_member(trip_id, user_id)` (user is currently in `trip_attendees`) and `is_active_trip_member(trip_id, user_id)` (active membership only, used for write paths). Read policies use `is_trip_member` so members who left a trip retain read access to historical state; write policies use the active variant so they cannot mutate after leaving. Test infrastructure runs as the service-role / `BYPASSRLS` user, so end-to-end RLS coverage is a v2 follow-up — see `backend/modules/trips/RLS_TESTING.md`. Userland `service.get_trip` returns 404 to non-members as defense-in-depth.
+
+**Sign convention.** The Luka core convention (expenses negative, income positive) applies only to the `transactions` table. Inside the trip ledger, `trip_expenses.amount`, `trip_expense_splits.share_amount`, and `trip_settlements.amount` are all stored as **positive numerics** — direction is encoded structurally via `payer_attendee_id` / `from_attendee_id` + `to_attendee_id`. When linking a Luka transaction into a trip expense, `amount = abs(transaction.amount)`.
+
+**Smart-settle algorithm (`backend/modules/trips/balances.py`).** Per attendee, balance = `Σ(share_amount on splits owed to me)` − `Σ(share_amount on splits I owe)` + `Σ(settlements where I am to_attendee)` − `Σ(settlements where I am from_attendee)`. The settle planner is a greedy pair-largest-creditor-with-largest-debtor: sort attendees by net balance, pair the most-positive with the most-negative, transfer `min(|debtor|, creditor)`, repeat. Worst case ≤ n−1 transfers; tested at every n from 2..8.
+
+**Single-currency v1 cut.** `expense.currency == trip.base_currency` is enforced at write (422 otherwise). FX rate fields (`trip_expenses.fx_rate_to_base`, `trip_settlements.fx_rate_to_base`) exist on the schema but are always NULL in v1. v2 will populate them from a Frankfurter-backed FX cache and freeze rates at expense-creation time (never re-fetched, except during a base-currency re-anchor). See `backend/modules/trips/FX_INTEGRATION.md`.
+
+**Force-remove with write-off.** Removing an attendee with non-zero net is creator-only and writes a `trip_settlements` row (`amount = |net|`, direction inverted to zero the leaver). The leaver's row stays in `trip_attendees` (so historical splits resolve) but is marked inactive — RLS keeps their read access via `is_trip_member`, write access via `is_active_trip_member` is revoked.
+
+**Optimistic concurrency.** `trip_expenses.version` increments on every PATCH; clients submit the version they last saw, and the service raises 409 `expense_version_conflict` on mismatch. Prevents lost updates when two attendees edit the same expense from different devices.
+
+**Invite link (Phase 5).** `POST /trips/{id}/invite-link` mints a 256-bit URL-safe token via `secrets.token_urlsafe(32)`, stores **only its SHA-256 hash**, returns the plaintext exactly once. 30-day TTL refreshed on each successful join. `POST /trips/join/{token}` looks up by hash, validates expiry, attaches the joining user as a `trip_attendees` row, and refreshes the TTL. slowapi rate-limits both endpoints to 10/min/IP.
+
+**Suggestions inbox (Phase 6).** `GET /trips/{id}/suggested-transactions` lists the caller's recent transactions that overlap the trip date window and could plausibly be a trip expense. Excludes subscriptions, transfers, transactions already linked to any trip, and transactions the caller previously dismissed for this trip via `trip_suggestion_dismissals`. The frontend renders these inline as a banner on the trip detail page, with a one-tap "+ Agregar" that prefills `AddExpenseSheet`. The inverse view — inline `+ Agregar a [trip]` chips on the global `/transactions` page — is deferred to v2 because adding the chip to the shared `TransactionCard` component would ripple into unrelated screens.
+
+**Settlement auto-detect (Phase 6).** A post-insert hook fires on Plaid sync and WhatsApp manual entry: for every new transaction whose `(amount, currency, counterparty)` matches a pending settle suggestion within a `min(5%, $5)` tolerance, the backend writes a `trip_settlement_suggestion` notification. The notification is in-DB only in v1 — the trip detail Saldos tab does not yet consume it as a one-tap "Auto-detectado" chip on the relevant settle row (deferred to v2). Per-user dismissals tracked in `trip_settlement_dismissals`.
+
 ## Key Flows
 
 ### Email Transaction Flow (Three-Layer Parser)
@@ -438,6 +473,30 @@ The four consolidation endpoints (match-candidates / link / dismiss / bulk-actio
 | POST | `/train/merchants/{id}/merge` | Merge duplicates |
 | DELETE | `/train/merchants/{id}` | Delete merchant |
 | GET | `/train/stats` | Merchant DB stats |
+
+### Trips (`/trips`)
+
+All endpoints gated on `users.feature_trips_enabled` (403 `feature_disabled` otherwise). Backend is a thin authorize-then-delegate layer over `backend/modules/trips/service.py` + `balances.py`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/trips` | List trips the caller is an attendee of (filterable by `status`). |
+| POST | `/trips` | Create a trip. Body: `name`, `base_currency`, `start_date`, `end_date`. Caller is auto-added as the first attendee + `is_creator=true`. |
+| GET | `/trips/{id}` | Trip detail (members, attendee list). 404 to non-members (defense-in-depth alongside RLS). |
+| PATCH | `/trips/{id}` | Update name / dates / status. Base-currency change is v2. |
+| POST | `/trips/{id}/attendees` | Add attendee (real Luka user via email match, or external `display_name` stub). |
+| DELETE | `/trips/{id}/attendees/{attendee_id}` | Remove attendee. Force-remove with non-zero net is creator-only and writes a write-off settlement. |
+| GET | `/trips/{id}/expenses` | List trip expenses with splits. |
+| POST | `/trips/{id}/expenses` | Create expense. `currency` must equal `trip.base_currency` (422 otherwise in v1). 409 `joint_account_dual_split_not_supported` if the linked transaction already has a `transaction_splits` row. |
+| PATCH | `/trips/expenses/{expense_id}` | Edit expense. Optimistic concurrency via `version`; 409 `expense_version_conflict` on mismatch. |
+| DELETE | `/trips/expenses/{expense_id}` | Delete expense (cascades to splits). |
+| GET | `/trips/{id}/balances` | Per-attendee net + smart-settle plan (≤ n−1 transfers). |
+| POST | `/trips/{id}/settlements` | Record a manual settlement transfer. |
+| DELETE | `/trips/settlements/{settlement_id}` | Reverse a settlement (creator-only). |
+| POST | `/trips/{id}/invite-link` | Mint a hashed-token invite link (256-bit entropy, 30-day TTL, returns plaintext once). slowapi 10/min/IP. |
+| POST | `/trips/join/{token}` | Join via invite token. Looks up by SHA-256 hash; refreshes TTL. slowapi 10/min/IP. |
+| GET | `/trips/{id}/suggested-transactions` | Caller's recent transactions in the trip window not already linked / dismissed / subscription / transfer. Drives the Phase 7.7 banner. |
+| POST | `/trips/{id}/suggested-transactions/{transaction_id}/dismiss` | Per-user dismissal in `trip_suggestion_dismissals`. |
 
 ### Webhooks
 | Method | Path | Description |

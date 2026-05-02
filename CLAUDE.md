@@ -115,6 +115,11 @@ Two Wharton MBAs (mechanical engineer + industrial engineer). We can code and re
 - **Worker routing:** fast worker (email, cron, ≤60s) vs. slow worker (bank syncs, LLM review, ≤600s).
 - **Categories:** fetched dynamically via API. All dropdowns reflect user preferences in real time.
 - **Testing:** backend uses pytest with `asyncio_mode = auto`. No DB mocks — tests hit a real database. Frontend has no test infrastructure yet.
+- **Trips visibility:** the entire Trips (Viajes) feature is gated by `users.feature_trips_enabled` (default false). Backend 403s with `feature_disabled` on every `/trips/*` route; frontend nav-filters the entry.
+- **Trip ledger sign convention:** `trip_expenses.amount`, `trip_expense_splits.share_amount`, and `trip_settlements.amount` are all stored as **positive numerics**. Direction is conveyed structurally via `payer_attendee_id` / `from_attendee_id` + `to_attendee_id`. Luka's negative-expense convention applies only to the `transactions` table — when linking a Luka transaction into a trip expense, `amount = abs(transaction.amount)`.
+- **Trip-only stubs** (`trip_expenses` rows with `transaction_id IS NULL`) never appear in any user's personal ledger, budget, or category totals. They live entirely inside the trip ledger.
+- **Trip ↔ household split mutual exclusivity:** a transaction with a `trip_expenses` link cannot have `transaction_splits` rows, and vice versa; enforced via two BEFORE triggers in migration 048. Joint-account transactions return HTTP 409 `joint_account_dual_split_not_supported` when tagged to a trip in v1. Dual-split is a v2 feature.
+- **Trip FX rates** are frozen at expense-creation time and never re-fetched (except during a base-currency change re-anchor — itself a v2 feature). v1 enforces `expense.currency == trip.base_currency` at write (422 otherwise) so FX fields stay NULL.
 
 ---
 
