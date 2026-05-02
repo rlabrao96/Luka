@@ -10,6 +10,7 @@ import TripHeader from "../components/TripHeader";
 import ResumenTab from "../components/ResumenTab";
 import GastosTab from "../components/GastosTab";
 import SaldosTab from "../components/SaldosTab";
+import AsistentesTab from "../components/AsistentesTab";
 import AddExpenseSheet from "../components/AddExpenseSheet";
 
 interface TripDetailPageProps {
@@ -126,7 +127,7 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
           <SaldosTab trip={trip} />
         </TabsContent>
         <TabsContent value="asistentes" className="mt-4">
-          <ComingSoon label="Asistentes" phase="7.6" />
+          <AsistentesTab trip={trip} />
         </TabsContent>
       </Tabs>
 
@@ -148,15 +149,6 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
       />
-    </div>
-  );
-}
-
-function ComingSoon({ label, phase }: { label: string; phase: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center">
-      <p className="text-sm font-semibold text-luka-dark">{label}</p>
-      <p className="text-xs text-slate-500 mt-1">Próximamente — Phase {phase}</p>
     </div>
   );
 }

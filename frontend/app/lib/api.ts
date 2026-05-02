@@ -1192,6 +1192,7 @@ export interface Trip {
   end_date: string;
   base_currency: string;
   status: "active" | "archived";
+  creator_user_id: string;
   created_at: string;
   your_net_balance: string;
 }
