@@ -116,6 +116,7 @@ def _trip_to_summary(trip: Trip) -> dict:
         "end_date": trip.end_date,
         "base_currency": trip.base_currency,
         "status": _classify_status(trip.start_date, trip.end_date),
+        "creator_user_id": trip.creator_user_id,
         "created_at": trip.created_at,
         # TODO Phase 4: real balance computation per spec §3.4.
         "your_net_balance": Decimal("0"),

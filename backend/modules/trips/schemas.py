@@ -210,6 +210,7 @@ class TripResponse(BaseModel):
     end_date: date
     base_currency: str
     status: Literal["upcoming", "active", "past"]
+    creator_user_id: UUID
     created_at: datetime
     your_net_balance: Decimal
 
