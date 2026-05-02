@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import type { TripDetail } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 import ExpenseRow from "./ExpenseRow";
+import TripSuggestionsBanner from "./TripSuggestionsBanner";
 
 interface GastosTabProps {
   trip: TripDetail;
@@ -47,7 +48,9 @@ export default function GastosTab({ trip, onAddExpense }: GastosTabProps) {
 
   if (trip.expenses.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center space-y-4">
+      <div className="space-y-3">
+        <TripSuggestionsBanner trip={trip} />
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center space-y-4">
         <p className="text-sm text-luka-dark font-semibold">
           Aún no hay gastos en este viaje.
         </p>
@@ -62,12 +65,14 @@ export default function GastosTab({ trip, onAddExpense }: GastosTabProps) {
           <Plus size={16} />
           Agregar gasto
         </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      <TripSuggestionsBanner trip={trip} />
       <div className="flex items-center gap-2">
         <FilterChip
           label="Todos"

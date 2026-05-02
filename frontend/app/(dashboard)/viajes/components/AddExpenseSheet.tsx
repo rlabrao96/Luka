@@ -20,11 +20,25 @@ import {
   type CreateExpenseInput,
 } from "@/app/lib/api";
 
+export interface AddExpensePrefill {
+  description?: string;
+  amount?: string;
+  currency?: string;
+  expense_date?: string;
+  transaction_id?: string;
+  payer_attendee_id?: string;
+  /** When true, default-select all active attendees with `share_type: "equal"`. */
+  all_split_equal?: boolean;
+  /** Optional caption shown above the form, e.g. "Vinculado a tu transacción del ... · Merchant". */
+  source_caption?: string;
+}
+
 interface AddExpenseSheetProps {
   tripId: string;
   trip: TripDetail;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  prefill?: AddExpensePrefill;
 }
 
 type ShareMode = "equal" | "custom_amount" | "custom_percent";
@@ -43,14 +57,16 @@ function todayISO(): string {
  * mounted only when `open` is true, so its initial-state factories own
  * "reset on open" — no effect needed.
  *
- * v1 scope: single currency (locked to trip.base_currency); no "Vincular
- * transacción" picker (deferred to Phase 7.7); no edit (Phase 7.5+).
+ * v1 scope: single currency (locked to trip.base_currency). Optional
+ * `prefill` (Phase 7.7) lets callers pre-populate fields and link a Luka
+ * transaction to the new expense via `transaction_id`. No edit yet (7.5+).
  */
 export default function AddExpenseSheet({
   tripId,
   trip,
   open,
   onOpenChange,
+  prefill,
 }: AddExpenseSheetProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -62,6 +78,7 @@ export default function AddExpenseSheet({
           <ExpenseForm
             tripId={tripId}
             trip={trip}
+            prefill={prefill}
             onClose={() => onOpenChange(false)}
           />
         )}
@@ -73,10 +90,11 @@ export default function AddExpenseSheet({
 interface ExpenseFormProps {
   tripId: string;
   trip: TripDetail;
+  prefill?: AddExpensePrefill;
   onClose: () => void;
 }
 
-function ExpenseForm({ tripId, trip, onClose }: ExpenseFormProps) {
+function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
   const createMutation = useCreateExpense(tripId);
   const { data: me } = useQuery({
     queryKey: ["me"],
@@ -93,15 +111,24 @@ function ExpenseForm({ tripId, trip, onClose }: ExpenseFormProps) {
     ? activeAttendees.find((a) => a.user_id === me.id)?.id ?? null
     : null;
 
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [expenseDate, setExpenseDate] = useState<string>(() => todayISO());
+  const [description, setDescription] = useState(() => prefill?.description ?? "");
+  const [amount, setAmount] = useState(() => prefill?.amount ?? "");
+  const [expenseDate, setExpenseDate] = useState<string>(
+    () => prefill?.expense_date ?? todayISO(),
+  );
   const [payerId, setPayerId] = useState<string>(
-    () => myAttendeeId ?? activeAttendees[0]?.id ?? "",
+    () =>
+      prefill?.payer_attendee_id ??
+      myAttendeeId ??
+      activeAttendees[0]?.id ??
+      "",
   );
   const [shareMode, setShareMode] = useState<ShareMode>("equal");
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(activeAttendees.map((a) => a.id)),
+    () =>
+      prefill && prefill.all_split_equal === false
+        ? new Set()
+        : new Set(activeAttendees.map((a) => a.id)),
   );
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
   const [customPercents, setCustomPercents] = useState<Record<string, string>>({});
@@ -191,6 +218,9 @@ function ExpenseForm({ tripId, trip, onClose }: ExpenseFormProps) {
       expense_date: expenseDate,
       splits: buildSplits(),
     };
+    if (prefill?.transaction_id) {
+      body.transaction_id = prefill.transaction_id;
+    }
     try {
       await createMutation.mutateAsync(body);
       onClose();
@@ -207,6 +237,11 @@ function ExpenseForm({ tripId, trip, onClose }: ExpenseFormProps) {
 
   return (
     <div className="space-y-4 pt-1">
+      {prefill?.source_caption && (
+        <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          {prefill.source_caption}
+        </p>
+      )}
       <Field label="Descripción">
         <Input
           type="text"

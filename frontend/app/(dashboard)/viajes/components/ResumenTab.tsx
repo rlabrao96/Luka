@@ -8,6 +8,7 @@ import { formatMajorAmount } from "@/app/lib/currency";
 import MarkSettledDialog, {
   type MarkSettledPrefill,
 } from "./MarkSettledDialog";
+import TripSuggestionsBanner from "./TripSuggestionsBanner";
 
 interface ResumenTabProps {
   trip: TripDetail;
@@ -90,6 +91,7 @@ export default function ResumenTab({ trip }: ResumenTabProps) {
 
   return (
     <div className="space-y-4">
+      <TripSuggestionsBanner trip={trip} />
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard
