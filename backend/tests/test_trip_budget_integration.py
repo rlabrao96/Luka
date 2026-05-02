@@ -84,13 +84,14 @@ async def test_trip_split_reflected_in_personal_category_total(
     )
 
     # Transaction: $100 expense in Restaurantes, paid by user.
+    # USD transactions store cents per Plaid + email-parser convention.
     txn = Transaction(
         id=uuid.uuid4(),
         user_id=user.id,
         household_id=h.id,
         bank_account_id=None,
         raw_merchant_name="Restaurant",
-        amount=Decimal("-100.00"),
+        amount=Decimal("-10000"),
         currency="USD",
         transaction_date=datetime(2026, 5, 3, tzinfo=timezone.utc),
         source="manual",

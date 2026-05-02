@@ -274,7 +274,9 @@ async def test_create_expense_with_transaction_uses_abs(
     payer = trip.creator_attendee
 
     h = await _make_household(db)
-    txn = await _make_transaction(db, creator, h, "-400.00")
+    # transactions store USD as integer cents (Plaid + email parser convention),
+    # so $400.00 is stored as -40000.
+    txn = await _make_transaction(db, creator, h, "-40000")
 
     splits = [_split(payer.id), _split(a2.id)]
     _override(app, creator, db)
@@ -299,7 +301,7 @@ async def test_create_expense_amount_must_match_transaction_abs(
     payer = trip.creator_attendee
 
     h = await _make_household(db)
-    txn = await _make_transaction(db, creator, h, "-400.00")
+    txn = await _make_transaction(db, creator, h, "-40000")  # cents
 
     splits = [_split(payer.id), _split(a2.id)]
     _override(app, creator, db)
@@ -322,7 +324,7 @@ async def test_create_expense_other_users_transaction_403(
     payer = trip.creator_attendee
 
     h = await _make_household(db)
-    txn = await _make_transaction(db, other, h, "-400.00")
+    txn = await _make_transaction(db, other, h, "-40000")  # cents
 
     splits = [_split(payer.id), _split(a2.id)]
     _override(app, creator, db)
@@ -412,7 +414,7 @@ async def test_create_expense_double_link_409(app, db, make_user, make_trip, mak
     payer2 = trip2.creator_attendee
 
     h = await _make_household(db)
-    txn = await _make_transaction(db, creator, h, "-100.00")
+    txn = await _make_transaction(db, creator, h, "-10000")
 
     _override(app, creator, db)
     async with await _client(app) as c:
@@ -440,7 +442,7 @@ async def test_create_expense_409_when_transaction_has_household_splits(
     payer = trip.creator_attendee
 
     h = await _make_household(db)
-    txn = await _make_transaction(db, creator, h, "-100.00")
+    txn = await _make_transaction(db, creator, h, "-10000")
 
     # Pre-existing household split → 409 from BEFORE trigger.
     db.add(TransactionSplit(id=uuid.uuid4(), transaction_id=txn.id, split_type="shared"))
@@ -672,7 +674,7 @@ async def test_delete_expense_frees_transaction_for_relink(
     payer2 = trip2.creator_attendee
 
     h = await _make_household(db)
-    txn = await _make_transaction(db, creator, h, "-100.00")
+    txn = await _make_transaction(db, creator, h, "-10000")
 
     _override(app, creator, db)
     async with await _client(app) as c:

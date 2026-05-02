@@ -209,7 +209,12 @@ async def try_match_settlement(
     )
     rows = (await db.execute(user_trips_q)).all()
 
-    abs_amount = abs(Decimal(transaction.amount))
+    # Transactions store non-zero-decimal currencies in cents, but the trip
+    # ledger (compute_balances + trip_settlements) is in major units. Convert
+    # at the boundary so the tolerance check + suggested amount line up.
+    from modules.trips.service import _txn_amount_to_major
+
+    abs_amount = _txn_amount_to_major(abs(Decimal(transaction.amount)), transaction.currency or "")
 
     for trip, my_attendee in rows:
         # Filter 3: date window check (start_date..end_date+30d).

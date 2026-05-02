@@ -364,6 +364,23 @@ async def remove_attendee(db: AsyncSession, trip_id: UUID, attendee_id: UUID, us
 
 
 _CENT = Decimal("0.01")
+_HUNDRED = Decimal("100")
+# Currencies whose `transactions.amount` is stored as integer major units
+# (no cents). Mirrors ``modules.plaid.mapper._ZERO_DECIMAL_CURRENCIES``.
+_ZERO_DECIMAL_CURRENCIES = {"CLP", "COP", "JPY", "KRW", "PYG", "VND", "CLF"}
+
+
+def _txn_amount_to_major(amount: Decimal, currency: str) -> Decimal:
+    """Convert ``transactions.amount`` storage units → trip-ledger major units.
+
+    Transactions store non-zero-decimal currencies in cents (Plaid +
+    email-parser convention). Trip expenses store everything in major units
+    (``Numeric(14, 2)``), so divide by 100 unless the currency has no
+    sub-unit.
+    """
+    if currency.upper() in _ZERO_DECIMAL_CURRENCIES:
+        return Decimal(amount)
+    return (Decimal(amount) / _HUNDRED).quantize(_CENT)
 
 
 def _floor_cents(value: Decimal) -> Decimal:
@@ -537,7 +554,7 @@ async def create_expense(
             raise HTTPException(status_code=404, detail="transaction not found")
         if txn.user_id != user.id:
             raise HTTPException(status_code=403, detail="transaction not owned by caller")
-        expected = abs(Decimal(txn.amount))
+        expected = _txn_amount_to_major(abs(Decimal(txn.amount)), txn.currency)
         if amount != expected:
             raise HTTPException(
                 status_code=422,
@@ -660,7 +677,7 @@ async def _validate_transaction_link(
         raise HTTPException(status_code=404, detail="transaction not found")
     if txn.user_id != user.id:
         raise HTTPException(status_code=403, detail="transaction not owned by caller")
-    expected = abs(Decimal(txn.amount))
+    expected = _txn_amount_to_major(abs(Decimal(txn.amount)), txn.currency)
     if amount != expected:
         raise HTTPException(
             status_code=422,

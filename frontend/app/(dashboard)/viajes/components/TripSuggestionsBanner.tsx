@@ -12,7 +12,10 @@ import {
   type SuggestedTransaction,
   type TripDetail,
 } from "@/app/lib/api";
-import { formatMajorAmount } from "@/app/lib/currency";
+import {
+  formatStoredAmount,
+  isZeroDecimalCurrency,
+} from "@/app/lib/currency";
 import AddExpenseSheet, { type AddExpensePrefill } from "./AddExpenseSheet";
 
 interface TripSuggestionsBannerProps {
@@ -62,10 +65,14 @@ export default function TripSuggestionsBanner({
     s: SuggestedTransaction,
     splitEqual: boolean,
   ): AddExpensePrefill {
-    const absAmount = Math.abs(Number(s.amount));
+    // Transactions store non-zero-decimal currencies in cents; trip expenses
+    // use major units. Convert before seeding the form.
+    const stored = Math.abs(Number(s.amount));
+    const major = isZeroDecimalCurrency(s.currency) ? stored : stored / 100;
+    const decimals = isZeroDecimalCurrency(s.currency) ? 0 : 2;
     return {
       description: s.merchant ?? "",
-      amount: Number.isFinite(absAmount) ? absAmount.toFixed(2) : "",
+      amount: Number.isFinite(major) ? major.toFixed(decimals) : "",
       currency: s.currency,
       expense_date: s.transaction_date.split("T")[0],
       transaction_id: s.transaction_id,
@@ -132,7 +139,7 @@ export default function TripSuggestionsBanner({
                       </p>
                     </div>
                     <p className="text-sm font-semibold tabular-nums text-red-600 shrink-0">
-                      {formatMajorAmount(
+                      {formatStoredAmount(
                         Math.abs(Number(s.amount)),
                         s.currency,
                       )}

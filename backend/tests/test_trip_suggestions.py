@@ -61,6 +61,9 @@ async def _make_household(db):
     return h
 
 
+_ZERO_DECIMAL = {"CLP", "COP", "JPY", "KRW", "PYG", "VND", "CLF"}
+
+
 async def _make_transaction(
     db,
     user,
@@ -75,17 +78,21 @@ async def _make_transaction(
     refund_pair_id=None,
     reimbursement_group_id=None,
 ):
+    """Insert a transaction. ``amount`` is in major units; this helper scales
+    to the production storage convention (integer cents for non-zero-decimal
+    currencies)."""
     from modules.transactions.models import Transaction
 
     if transaction_date is None:
         transaction_date = datetime(2026, 5, 3, tzinfo=timezone.utc)
+    stored_amount = amount if currency.upper() in _ZERO_DECIMAL else Decimal(amount) * 100
     txn = Transaction(
         id=uuid.uuid4(),
         user_id=user.id,
         household_id=household.id,
         bank_account_id=None,
         raw_merchant_name=raw_merchant,
-        amount=amount,
+        amount=stored_amount,
         currency=currency,
         transaction_date=transaction_date,
         source="manual",
