@@ -17,6 +17,7 @@ class UserResponse(BaseModel):
     contribution_mode: str | None = None
     fixed_contribution_amount: Decimal | None = None
     fixed_contribution_currency: str | None = None
+    feature_trips_enabled: bool = False
     model_config = {"from_attributes": True}
 
     @field_serializer("fixed_contribution_amount")
