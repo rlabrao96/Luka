@@ -3,17 +3,30 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { LogOut } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useLukaStore } from "@/app/lib/store";
 import { createClient } from "@/app/lib/supabase/client";
+import { api } from "@/app/lib/api";
 import { NotificationBadge } from "./NotificationBadge";
-import { NAV_ITEMS } from "./nav-items";
+import { visibleNavItems } from "./nav-items";
 
 export function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
   const name     = useLukaStore((s) => s.userFullName) ?? "";
   const reset    = useLukaStore((s) => s.reset);
+
+  // Read feature flags off the cached /auth/me payload — same query key as the
+  // rest of the app so this piggybacks on the existing fetch (no waterfall).
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.getMe(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const navItems = visibleNavItems({
+    featureTripsEnabled: me?.feature_trips_enabled ?? false,
+  });
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -53,7 +66,7 @@ export function Sidebar() {
         <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
           Menú
         </p>
-        {NAV_ITEMS.filter((i) => i.showInSidebar).map(({ href, label, icon: Icon }) => {
+        {navItems.filter((i) => i.showInSidebar).map(({ href, label, icon: Icon }) => {
           const active = isActive(href);
           return (
             <Link

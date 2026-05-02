@@ -69,6 +69,7 @@ export interface UserMe {
   // must convert with Number(...) before doing arithmetic or comparisons.
   fixed_contribution_amount: string | null;
   fixed_contribution_currency: string | null;
+  feature_trips_enabled: boolean;
 }
 
 export interface Transaction {
@@ -1116,3 +1117,273 @@ export interface BudgetV2Response {
   cuotas: BudgetV2CuotasBlock;
   savings_target: BudgetV2SavingsTargetBlock;
 }
+
+// =========================================================================
+// Trips (Viajes) — backend behind users.feature_trips_enabled flag.
+// Endpoints return 403 when the flag is off; the nav-gate keeps users out
+// of trip pages, but mid-session flips surface naturally via TanStack Query
+// error states.
+//
+// Decimal fields cross the wire as strings (Pydantic field_serializer) — read
+// sites must Number(...) before doing arithmetic / comparisons.
+// =========================================================================
+
+export interface TripAttendee {
+  id: string;
+  user_id: string | null;
+  display_name: string;
+  left_at: string | null;
+  created_at: string;
+}
+
+export interface TripSplit {
+  attendee_id: string;
+  share_amount: string;
+  share_type: "equal" | "custom_amount" | "custom_percent";
+}
+
+export interface TripExpense {
+  id: string;
+  trip_id: string;
+  payer_attendee_id: string;
+  description: string;
+  amount: string;
+  currency: string;
+  expense_date: string;
+  transaction_id: string | null;
+  fx_rate_to_base: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  splits: TripSplit[];
+}
+
+export interface TripSettlement {
+  id: string;
+  trip_id: string;
+  from_attendee_id: string;
+  to_attendee_id: string;
+  amount: string;
+  currency: string;
+  fx_rate_to_base: string | null;
+  settled_at: string;
+  transaction_id: string | null;
+  write_off: boolean;
+  created_at: string;
+}
+
+export interface TripBalance {
+  attendee_id: string;
+  attendee_display_name: string | null;
+  net_in_base: string;
+}
+
+export interface TripSettleSuggestion {
+  from_attendee_id: string;
+  to_attendee_id: string;
+  amount: string;
+  currency: string;
+}
+
+export interface Trip {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  base_currency: string;
+  status: "active" | "archived";
+  created_at: string;
+  your_net_balance: string;
+}
+
+export interface TripDetail extends Trip {
+  attendees: TripAttendee[];
+  expenses: TripExpense[];
+  settlements: TripSettlement[];
+  balances: TripBalance[];
+  settle_suggestions: TripSettleSuggestion[];
+}
+
+export interface TripList {
+  active: Trip[];
+  upcoming: Trip[];
+  past: Trip[];
+}
+
+export interface CreateAttendeeInput {
+  email?: string | null;
+  phone?: string | null;
+  display_name?: string | null;
+}
+
+export interface CreateTripInput {
+  name: string;
+  start_date: string;
+  end_date: string;
+  base_currency: string;
+  attendees?: CreateAttendeeInput[];
+}
+
+export interface UpdateTripInput {
+  name?: string;
+  start_date?: string;
+  end_date?: string;
+  base_currency?: string;
+}
+
+export interface SplitInput {
+  attendee_id: string;
+  share_amount?: string | null;
+  share_percent?: string | null;
+  share_type?: "equal" | "custom_amount" | "custom_percent";
+}
+
+export interface CreateExpenseInput {
+  payer_attendee_id: string;
+  description: string;
+  amount: string;
+  currency: string;
+  expense_date: string;
+  transaction_id?: string | null;
+  splits: SplitInput[];
+}
+
+export interface UpdateExpenseInput {
+  payer_attendee_id?: string;
+  description?: string;
+  amount?: string;
+  currency?: string;
+  expense_date?: string;
+  transaction_id?: string | null;
+  splits?: SplitInput[];
+}
+
+export interface CreateSettlementInput {
+  from_attendee_id: string;
+  to_attendee_id: string;
+  amount: string;
+  currency: string;
+  transaction_id?: string | null;
+}
+
+export interface InviteLink {
+  token: string;
+  url: string;
+  expires_at: string;
+}
+
+export interface TripPreview {
+  name: string;
+  start_date: string;
+  end_date: string;
+  attendee_count: number;
+  base_currency: string;
+}
+
+export interface SuggestedTransaction {
+  transaction_id: string;
+  merchant: string | null;
+  amount: string;
+  currency: string;
+  transaction_date: string;
+  category: string | null;
+}
+
+export interface ConfirmSettlementSuggestionInput {
+  trip_id: string;
+  transaction_id: string;
+  from_attendee_id: string;
+  to_attendee_id: string;
+  amount: string;
+  currency: string;
+}
+
+export const tripsApi = {
+  list: () => apiFetch<TripList>("/trips"),
+  get: (id: string) => apiFetch<TripDetail>(`/trips/${id}`),
+  create: (body: CreateTripInput) =>
+    apiFetch<Trip>("/trips", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: UpdateTripInput) =>
+    apiFetch<Trip>(`/trips/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  archive: (id: string) =>
+    apiFetch<void>(`/trips/${id}`, { method: "DELETE" }),
+
+  addAttendee: (tripId: string, body: CreateAttendeeInput) =>
+    apiFetch<TripAttendee>(`/trips/${tripId}/attendees`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  removeAttendee: (tripId: string, attendeeId: string) =>
+    apiFetch<void>(`/trips/${tripId}/attendees/${attendeeId}`, {
+      method: "DELETE",
+    }),
+  forceRemoveAttendee: (tripId: string, attendeeId: string) =>
+    apiFetch<void>(`/trips/${tripId}/attendees/${attendeeId}/force-remove`, {
+      method: "POST",
+    }),
+
+  createExpense: (tripId: string, body: CreateExpenseInput) =>
+    apiFetch<TripExpense>(`/trips/${tripId}/expenses`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateExpense: (
+    tripId: string,
+    expenseId: string,
+    version: number,
+    body: UpdateExpenseInput,
+  ) =>
+    apiFetch<TripExpense>(`/trips/${tripId}/expenses/${expenseId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers: { "If-Match": String(version) },
+    }),
+  deleteExpense: (tripId: string, expenseId: string) =>
+    apiFetch<void>(`/trips/${tripId}/expenses/${expenseId}`, {
+      method: "DELETE",
+    }),
+
+  createSettlement: (tripId: string, body: CreateSettlementInput) =>
+    apiFetch<TripSettlement>(`/trips/${tripId}/settlements`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  generateInviteLink: (tripId: string) =>
+    apiFetch<InviteLink>(`/trips/${tripId}/invite-link`, { method: "POST" }),
+  revokeInviteLink: (tripId: string) =>
+    apiFetch<void>(`/trips/${tripId}/invite-link`, { method: "DELETE" }),
+  joinViaToken: (token: string) =>
+    apiFetch<TripDetail>(`/trips/join/${token}`, { method: "POST" }),
+  previewByToken: (token: string) =>
+    apiFetch<TripPreview>(`/trips/preview/${token}`),
+
+  suggestedTransactions: (tripId: string) =>
+    apiFetch<SuggestedTransaction[]>(
+      `/trips/${tripId}/suggested-transactions`,
+    ),
+  dismissSuggestion: (tripId: string, transactionId: string) =>
+    apiFetch<void>(
+      `/trips/${tripId}/suggested-transactions/${transactionId}/dismiss`,
+      { method: "POST" },
+    ),
+  undismissSuggestion: (tripId: string, transactionId: string) =>
+    apiFetch<void>(
+      `/trips/${tripId}/suggested-transactions/${transactionId}/dismiss`,
+      { method: "DELETE" },
+    ),
+
+  confirmSettlementSuggestion: (body: ConfirmSettlementSuggestionInput) =>
+    apiFetch<TripSettlement>(`/trips/settlement-suggestions/confirm`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  dismissSettlementSuggestion: (transaction_id: string) =>
+    apiFetch<void>(`/trips/settlement-suggestions/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({ transaction_id }),
+    }),
+};

@@ -3,10 +3,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { useUnreadCount } from "@/app/lib/hooks/useNotifications";
-import { NAV_ITEMS, type NavItem } from "./nav-items";
+import { api } from "@/app/lib/api";
+import { visibleNavItems, type NavItem } from "./nav-items";
 
 function isActiveHref(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -18,8 +20,19 @@ export function BottomNav() {
   const unreadCount = data?.count ?? 0;
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const primary = NAV_ITEMS.filter((i) => i.section === "primary");
-  const more = NAV_ITEMS.filter((i) => i.section === "more");
+  // Reuse the cached /auth/me payload (same query key as the rest of the app)
+  // so flag-gated entries (e.g. Viajes) only render for opted-in users.
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.getMe(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const navItems = visibleNavItems({
+    featureTripsEnabled: me?.feature_trips_enabled ?? false,
+  });
+
+  const primary = navItems.filter((i) => i.section === "primary");
+  const more = navItems.filter((i) => i.section === "more");
   const moreActive = more.some((i) => isActiveHref(pathname, i.href));
 
   return (

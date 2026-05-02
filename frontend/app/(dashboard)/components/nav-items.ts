@@ -6,6 +6,7 @@ import {
   Repeat,
   Settings,
   Bell,
+  Plane,
   type LucideIcon,
 } from "lucide-react";
 
@@ -85,6 +86,15 @@ export const NAV_ITEMS: NavItem[] = [
     showInSidebar: true,
   },
   {
+    href: "/viajes",
+    label: "Viajes",
+    shortLabel: "Viajes",
+    description: "Gastos compartidos por viaje",
+    icon: Plane,
+    section: "more",
+    showInSidebar: true,
+  },
+  {
     href: "/settings",
     label: "Configuración",
     shortLabel: "Config",
@@ -94,3 +104,18 @@ export const NAV_ITEMS: NavItem[] = [
     showInSidebar: true,
   },
 ];
+
+/**
+ * Filter NAV_ITEMS based on per-user feature flags. Sidebar/BottomNav consumers
+ * call this with the current user's flags so flag-gated entries (e.g. Viajes)
+ * stay hidden until the flag is enabled. Keeps NAV_ITEMS as a static, declarative
+ * source of truth — the gate lives at consume time, not in the data layer.
+ */
+export function visibleNavItems(opts: {
+  featureTripsEnabled: boolean;
+}): NavItem[] {
+  return NAV_ITEMS.filter((item) => {
+    if (item.href === "/viajes" && !opts.featureTripsEnabled) return false;
+    return true;
+  });
+}
