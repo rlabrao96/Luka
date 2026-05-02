@@ -213,6 +213,8 @@ async def create_trip(
     user: User = Depends(require_trips_feature),
 ) -> TripResponse:
     trip = await service.create_trip(db, creator=user, payload=payload)
+    await db.commit()
+    await db.refresh(trip)
     return _to_trip_response(trip, your_net_balance=Decimal("0"))
 
 
@@ -275,6 +277,7 @@ async def join_via_invite(
     Rate-limited per IP.
     """
     trip = await service.accept_invite(db, token, user)
+    await db.commit()
     # Re-fetch with eager-loaded attendees so ``_to_trip_detail`` can use them.
     full_trip = await service.get_trip(db, trip.id, user)
     return await _to_trip_detail(full_trip, user, db)
@@ -303,6 +306,7 @@ async def create_invite_link(
     killing any previously-distributed link.
     """
     raw_token, expires_at = await service.generate_invite_link(db, trip_id, user)
+    await db.commit()
     url = f"{settings.frontend_url}/viajes/join/{raw_token}"
     return InviteLinkResponse(token=raw_token, url=url, expires_at=expires_at)
 
@@ -315,6 +319,7 @@ async def revoke_invite_link(
 ) -> None:
     """Creator-only. Clear the invite hash + expiry (kills the live link)."""
     await service.revoke_invite_link(db, trip_id, user)
+    await db.commit()
     return None
 
 
@@ -326,6 +331,8 @@ async def update_trip(
     user: User = Depends(require_trips_feature),
 ) -> TripResponse:
     trip = await service.update_trip(db, trip_id, user, payload)
+    await db.commit()
+    await db.refresh(trip)
     net = await _your_net_for_trip(trip, user, db)
     return _to_trip_response(trip, your_net_balance=net)
 
@@ -337,6 +344,7 @@ async def archive_trip(
     user: User = Depends(require_trips_feature),
 ) -> None:
     await service.archive_trip(db, trip_id, user)
+    await db.commit()
     return None
 
 
@@ -354,6 +362,8 @@ async def add_attendee(
     # ``get_trip`` enforces membership (404 otherwise) and eager-loads attendees.
     trip = await service.get_trip(db, trip_id, user)
     attendee = await service.add_attendee(db, trip, user, payload)
+    await db.commit()
+    await db.refresh(attendee)
     return AttendeeResponse.model_validate(attendee)
 
 
@@ -368,6 +378,7 @@ async def remove_attendee(
     user: User = Depends(require_trips_feature),
 ) -> None:
     await service.remove_attendee(db, trip_id, attendee_id, user)
+    await db.commit()
     return None
 
 
@@ -408,6 +419,7 @@ async def create_expense(
     # ``get_trip`` enforces membership (404 otherwise).
     trip = await service.get_trip(db, trip_id, user)
     expense = await service.create_expense(db, trip, user, payload)
+    await db.commit()
     return _to_expense_response(expense)
 
 
@@ -423,6 +435,7 @@ async def patch_expense(
     # ``get_trip`` enforces membership (404 otherwise).
     await service.get_trip(db, trip_id, user)
     expense = await service.update_expense(db, trip_id, expense_id, user, payload, if_match)
+    await db.commit()
     return _to_expense_response(expense)
 
 
@@ -438,6 +451,7 @@ async def delete_expense(
 ) -> None:
     await service.get_trip(db, trip_id, user)
     await service.delete_expense(db, trip_id, expense_id, user)
+    await db.commit()
     return None
 
 
@@ -459,6 +473,7 @@ async def create_settlement(
 ) -> SettlementResponse:
     trip = await service.get_trip(db, trip_id, user)
     settlement = await service.create_settlement(db, trip, user, payload)
+    await db.commit()
     return _to_settlement_response(settlement)
 
 
@@ -478,6 +493,7 @@ async def force_remove_attendee(
     user: User = Depends(require_trips_feature),
 ) -> None:
     await service.force_remove_attendee(db, trip_id, attendee_id, user)
+    await db.commit()
     return None
 
 
@@ -510,6 +526,7 @@ async def dismiss_suggested_transaction(
     user: User = Depends(require_trips_feature),
 ) -> None:
     await service.dismiss_suggestion(db, trip_id, transaction_id, user)
+    await db.commit()
     return None
 
 
@@ -524,6 +541,7 @@ async def undismiss_suggested_transaction(
     user: User = Depends(require_trips_feature),
 ) -> None:
     await service.undismiss_suggestion(db, trip_id, transaction_id, user)
+    await db.commit()
     return None
 
 
@@ -573,6 +591,7 @@ async def confirm_settlement_suggestion(
             transaction_id=payload.transaction_id,
         ),
     )
+    await db.commit()
     return _to_settlement_response(settlement)
 
 
@@ -586,4 +605,5 @@ async def dismiss_settlement_suggestion(
     user: User = Depends(require_trips_feature),
 ) -> None:
     await service.dismiss_settlement_suggestion(db, payload.transaction_id, user)
+    await db.commit()
     return None
