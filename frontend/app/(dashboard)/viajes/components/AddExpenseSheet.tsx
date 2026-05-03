@@ -203,7 +203,7 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
     }));
   }
 
-  async function handleSubmit() {
+  function handleSubmit() {
     setError(null);
     const v = validate();
     if (v) {
@@ -221,16 +221,26 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
     if (prefill?.transaction_id) {
       body.transaction_id = prefill.transaction_id;
     }
-    try {
-      await createMutation.mutateAsync(body);
-      onClose();
-    } catch (err) {
-      if (err instanceof ApiError) setError(err.message);
-      else setError("No pudimos guardar el gasto. Intenta de nuevo.");
-    }
+    // Optimistic close: the cache shows the new row immediately via
+    // useCreateExpense.onMutate. If the server rejects, the rollback
+    // removes the row and we surface a console error — the user can re-open
+    // the suggestion to retry.
+    createMutation.mutate(body, {
+      onError: (err) => {
+        console.error("create trip expense failed", err);
+        const msg =
+          err instanceof ApiError
+            ? err.message
+            : "No pudimos guardar el gasto. Intenta de nuevo.";
+        if (typeof window !== "undefined") {
+          window.alert(msg);
+        }
+      },
+    });
+    onClose();
   }
 
-  const isPending = createMutation.isPending;
+  const isPending = false;
   const dateOutOfRange =
     expenseDate &&
     (expenseDate < trip.start_date || expenseDate > trip.end_date);

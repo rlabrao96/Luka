@@ -100,28 +100,35 @@ function SettlementForm({ tripId, trip, prefill, onClose }: SettlementFormProps)
     return null;
   }
 
-  async function handleSubmit() {
+  function handleSubmit() {
     setError(null);
     const v = validate();
     if (v) {
       setError(v);
       return;
     }
-    try {
-      await createMutation.mutateAsync({
+    createMutation.mutate(
+      {
         from_attendee_id: fromId,
         to_attendee_id: toId,
         amount: amountNum.toFixed(2),
         currency: trip.base_currency,
-      });
-      onClose();
-    } catch (err) {
-      if (err instanceof ApiError) setError(err.message);
-      else setError("No pudimos registrar el pago. Intenta de nuevo.");
-    }
+      },
+      {
+        onError: (err) => {
+          console.error("create trip settlement failed", err);
+          const msg =
+            err instanceof ApiError
+              ? err.message
+              : "No pudimos registrar el pago. Intenta de nuevo.";
+          if (typeof window !== "undefined") window.alert(msg);
+        },
+      },
+    );
+    onClose();
   }
 
-  const isPending = createMutation.isPending;
+  const isPending = false;
 
   return (
     <div className="space-y-4 pt-1">

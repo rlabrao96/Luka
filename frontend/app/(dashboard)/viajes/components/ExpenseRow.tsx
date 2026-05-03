@@ -66,14 +66,16 @@ export default function ExpenseRow({
     alert("Editar gasto — próximamente");
   }
 
-  async function handleDelete() {
-    try {
-      await deleteMutation.mutateAsync(expense.id);
-      setConfirmOpen(false);
-    } catch {
-      // Surface the error in-place; mutation state is enough for v1.
-      setConfirmOpen(false);
-    }
+  function handleDelete() {
+    deleteMutation.mutate(expense.id, {
+      onError: (err) => {
+        console.error("delete trip expense failed", err);
+        if (typeof window !== "undefined") {
+          window.alert("No pudimos eliminar el gasto. Intenta de nuevo.");
+        }
+      },
+    });
+    setConfirmOpen(false);
   }
 
   return (

@@ -47,23 +47,24 @@ export default function AddAttendeeDialog({
     onOpenChange(nextOpen);
   }
 
-  async function handleSubmit() {
+  function handleSubmit() {
     setError(null);
     const payload = classify(value);
     if (!payload) {
       setError("Ingresa un email, teléfono o nombre.");
       return;
     }
-    try {
-      await addMutation.mutateAsync(payload);
-      handleClose(false);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError("No pudimos agregar al asistente. Intenta de nuevo.");
-      }
-    }
+    addMutation.mutate(payload, {
+      onError: (err) => {
+        console.error("add trip attendee failed", err);
+        const msg =
+          err instanceof ApiError
+            ? err.message
+            : "No pudimos agregar al asistente. Intenta de nuevo.";
+        if (typeof window !== "undefined") window.alert(msg);
+      },
+    });
+    handleClose(false);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -73,7 +74,7 @@ export default function AddAttendeeDialog({
     }
   }
 
-  const isPending = addMutation.isPending;
+  const isPending = false;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
