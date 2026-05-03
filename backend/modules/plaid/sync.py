@@ -5,7 +5,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func as sa_func, select, delete, update
+from sqlalchemy import func as sa_func, select, delete, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.encryption import decrypt_token
@@ -321,13 +321,47 @@ async def run_plaid_sync(
                 .where(TransactionSplit.transaction_id == old_tx.id)
                 .values(transaction_id=replacement.id)
             )
+            # Re-link any trip-side references too, so a user's trip expenses
+            # / settlements / dismissals follow the pending → settled rotation
+            # rather than getting orphaned. The trip_expenses partial unique
+            # index excludes deleted_at-stamped rows, so the update is safe.
+            await session.execute(
+                text(
+                    "UPDATE trip_expenses SET transaction_id = :new_id "
+                    "WHERE transaction_id = :old_id"
+                ),
+                {"new_id": str(replacement.id), "old_id": str(old_tx.id)},
+            )
+            await session.execute(
+                text(
+                    "UPDATE trip_settlements SET transaction_id = :new_id "
+                    "WHERE transaction_id = :old_id"
+                ),
+                {"new_id": str(replacement.id), "old_id": str(old_tx.id)},
+            )
+            await session.execute(
+                text(
+                    "UPDATE trip_suggestion_dismissals SET transaction_id = :new_id "
+                    "WHERE transaction_id = :old_id"
+                ),
+                {"new_id": str(replacement.id), "old_id": str(old_tx.id)},
+            )
+            await session.execute(
+                text(
+                    "UPDATE trip_settlement_dismissals SET transaction_id = :new_id "
+                    "WHERE transaction_id = :old_id"
+                ),
+                {"new_id": str(replacement.id), "old_id": str(old_tx.id)},
+            )
             # Copy enrichment fields if the replacement doesn't have them yet
             if old_tx.category and not replacement.category:
                 replacement.category = old_tx.category
             if old_tx.merchant_id and not replacement.merchant_id:
                 replacement.merchant_id = old_tx.merchant_id
         else:
-            # No replacement found — just drop the splits (rare)
+            # No replacement found — just drop the splits (rare). Trip-side
+            # rows are handled by the FK cascade (migration 050): dismissals
+            # CASCADE; trip_expenses / trip_settlements get SET NULL.
             await session.execute(
                 delete(TransactionSplit).where(TransactionSplit.transaction_id == old_tx.id)
             )
