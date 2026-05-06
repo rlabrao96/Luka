@@ -22,7 +22,7 @@ Latin American personal finance SaaS for individuals, couples, and groups. Autom
 
 **Database**
 - Supabase PostgreSQL 15
-- Alembic migrations (49 versions through `048_trips_mutual_exclusivity_triggers`; `pg_trgm` extension enabled for fuzzy merchant matching). Auto-applied on every API container start (`alembic upgrade head` baked into the Dockerfile's `CMD`).
+- Alembic migrations (52 versions through `050_trip_txn_fk_cascade`; `pg_trgm` extension enabled for fuzzy merchant matching). Auto-applied on every API container start (`alembic upgrade head` baked into the Dockerfile's `CMD`).
 
 **Auth**
 - Supabase Auth — Google OAuth (Gmail users); Microsoft OAuth wired but hidden by default (see `NEXT_PUBLIC_ENABLE_MICROSOFT_LOGIN`)
@@ -83,8 +83,8 @@ backend/
   core/               Config, database, security (PyJWT), cache (Redis)
   modules/            Feature modules (see "What Luka Does" below)
   jobs/               ARQ task definitions + queue routing
-  alembic/            Database migrations (41 versions)
-  tests/              56 test files (~401 tests)
+  alembic/            Database migrations (52 versions)
+  tests/              96 test files (~754 tests)
 
 frontend/
   app/
@@ -182,8 +182,8 @@ In-app notification system with unread counts, per-user notification preferences
 **Subscriptions** (`backend/modules/subscriptions/`)
 Automatic recurring transaction detection via DB-backed cache (refreshed on demand). Each detected subscription supports an explicit user-set classification (`Personal` or `Compartido` / shared) via a click-to-flip pill in the subscriptions detail table. Toggling the classification cascades to the last 3 months of underlying `transaction_splits` rows via `reclassify_subscription_split`, upserts the override, and invalidates the detection cache atomically. The household-bills aggregate filters by effective `split_type='shared'` so personal subscriptions are correctly excluded from the household pot — and a symmetric `get_user_shared_known_bills` helper preserves flow conservation when reimbursement-mode members have personal bills.
 
-**Viajes / Trips** (`backend/modules/trips/`, `frontend/app/(dashboard)/trips/`)
-Splitwise-style trip ledger for shared travel expenses. Behind a per-user `feature_trips_enabled` flag (default off; backend 403s, frontend nav-filters). Each trip carries a base currency, a roster of attendees (real Luka users + name-only externals), and a list of expenses split equally / by share / by exact amount across selected attendees. Smart-settle balances run a greedy pair-largest-creditor-with-largest-debtor algorithm and propose ≤ n−1 transfers between attendees. Settlement auto-detect runs as a post-insert hook on Plaid sync + WhatsApp manual entry: when a transaction's amount lines up with a pending settle suggestion within `min(5%, $5)` tolerance, the backend writes a `trip_settlement_suggestion` notification (UI surfacing in the Saldos tab is v2). Shareable invite links use SHA-256-hashed tokens with 256-bit entropy, 30-day TTL refreshed on use, and slowapi rate-limiting (10/min/IP). v1 ships single-currency only — multi-currency trips, FX rate freezing, and base-currency re-anchor are deferred to v2 (see `backend/modules/trips/FX_INTEGRATION.md`). Spec: `docs/superpowers/specs/2026-04-30-viajes-trips-design.md`.
+**Viajes / Trips** (`backend/modules/trips/`, `frontend/app/(dashboard)/viajes/`)
+Splitwise-style trip ledger for shared travel expenses. Behind a per-user `feature_trips_enabled` flag (default off; backend 403s, frontend nav-filters). Each trip carries a base currency, a roster of attendees (real Luka users + name-only externals), and a list of expenses split equally / by share / by exact amount across selected attendees. Smart-settle balances run a greedy pair-largest-creditor-with-largest-debtor algorithm and propose ≤ n−1 transfers between attendees. Settlement auto-detect runs as a post-insert hook on Plaid sync + WhatsApp manual entry: when a transaction's amount lines up with a pending settle suggestion within `min(5%, $5)` tolerance, the backend writes a `trip_settlement_suggestion` notification (UI surfacing in the Saldos tab is v2). Shareable invite links use SHA-256-hashed tokens with 256-bit entropy, 30-day TTL refreshed on use, and slowapi rate-limiting (10/min/IP). All trip mutations on the frontend run optimistically — `useTrips.ts` patches the TanStack Query cache inside `onMutate`, and dialogs (`AddExpenseSheet`, `MarkSettledDialog`, `AddAttendeeDialog`, delete confirms) close synchronously on submit so the new row appears instantly; `onError` rolls back the cache and surfaces the message. v1 ships single-currency only — multi-currency trips, FX rate freezing, and base-currency re-anchor are deferred to v2 (see `backend/modules/trips/FX_INTEGRATION.md`). Spec: `docs/superpowers/specs/2026-04-30-viajes-trips-design.md`.
 
 **Bank Accounts** (`backend/modules/bank_accounts/`)
 Manual bank account creation and management. Supports personal, partner, and joint (hogar) account types. Balance tracking with sync timestamps.
