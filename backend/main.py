@@ -1,9 +1,14 @@
+import asyncio
+
+import redis.asyncio as aioredis
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.config import settings
+from core.database import engine
 from core.rate_limit import limiter, rate_limit_exceeded_handler
 
 # Import all models so SQLAlchemy metadata is complete for FK resolution
@@ -84,6 +89,41 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health():
         return {"status": "ok", "app": "luka"}
+
+    @app.get("/ready")
+    async def ready(response: Response):
+        # Deep healthcheck: confirms Redis + Postgres are actually responsive.
+        # Used as Railway's healthcheckPath so a hung Redis surfaces as ⚠
+        # on the API service instead of staying invisible.
+        checks: dict[str, str] = {}
+        ok = True
+
+        try:
+            client = aioredis.from_url(
+                settings.redis_url,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+            )
+            try:
+                await asyncio.wait_for(client.ping(), timeout=2)
+                checks["redis"] = "ok"
+            finally:
+                await client.aclose()
+        except Exception as exc:
+            checks["redis"] = f"fail: {type(exc).__name__}"
+            ok = False
+
+        try:
+            async with engine.connect() as conn:
+                await asyncio.wait_for(conn.execute(text("SELECT 1")), timeout=2)
+            checks["db"] = "ok"
+        except Exception as exc:
+            checks["db"] = f"fail: {type(exc).__name__}"
+            ok = False
+
+        if not ok:
+            response.status_code = 503
+        return {"status": "ok" if ok else "degraded", "checks": checks}
 
     app.include_router(auth_router)
     app.include_router(households_router)
