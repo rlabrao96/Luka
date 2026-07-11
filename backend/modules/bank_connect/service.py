@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import uuid
 from datetime import datetime, timedelta, timezone
 from random import randint
@@ -11,6 +13,28 @@ from modules.bank_connect.encryption import encrypt, decrypt
 from modules.bank_connect.models import BankCredential
 
 _MIN_SYNC_INTERVAL = timedelta(hours=1)
+
+
+def callback_token(job_id: str) -> str:
+    """Per-job HMAC token embedded in the callback URL we hand to Luka Connect.
+
+    The scraper POSTs to whatever URL it received, so binding the token into
+    the URL authenticates the callback without any scraper-side changes.
+    Empty key (local dev without Connect) → empty token, and verification is
+    skipped in the webhook handler.
+    """
+    key = settings.luka_connect_api_key
+    if not key:
+        return ""
+    return hmac.new(key.encode(), f"connect-callback:{job_id}".encode(), hashlib.sha256).hexdigest()
+
+
+def verify_callback_token(job_id: str, token: str | None) -> bool:
+    """Constant-time check of the callback token. True when no key configured."""
+    expected = callback_token(job_id)
+    if not expected:
+        return True
+    return hmac.compare_digest(expected, token or "")
 
 
 async def store_credentials(
@@ -101,6 +125,10 @@ async def trigger_sync(
         "jobId": job_id,
     }
     if callback_url:
+        token = callback_token(job_id)
+        if token:
+            sep = "&" if "?" in callback_url else "?"
+            callback_url = f"{callback_url}{sep}token={token}"
         payload["callbackUrl"] = callback_url
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(180.0)) as client:

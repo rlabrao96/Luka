@@ -113,7 +113,9 @@ async def run_plaid_sync(
                 kwargs = {"access_token": access_token, "cursor": page_cursor}
                 if initial and not page_cursor:
                     kwargs["count"] = 500
-                response = sync_transactions(**kwargs)
+                # The Plaid SDK is synchronous — run it off the event loop so
+                # one slow institution doesn't stall every other slow-worker job.
+                response = await asyncio.to_thread(sync_transactions, **kwargs)
 
                 all_added.extend(response.added)
                 all_modified.extend(response.modified)

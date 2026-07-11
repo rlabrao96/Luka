@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timezone
+from decimal import Decimal
 
 
 ACCOUNT_KIND_MAP = {
@@ -48,9 +49,8 @@ def map_account_kind(plaid_type, plaid_subtype) -> str:
     return ACCOUNT_KIND_MAP.get((str(plaid_type), str(plaid_subtype)), "other")
 
 
-# Currencies stored as integer units (no sub-cent scaling in Luka).
-# USD/EUR/GBP use 2 decimals; CLP/COP/JPY/KRW are zero-decimal currencies.
-_ZERO_DECIMAL_CURRENCIES = {"CLP", "COP", "JPY", "KRW", "PYG", "VND", "CLF"}
+# Currency scaling lives in modules.currencies.units — single source of truth.
+from modules.currencies.units import to_minor_units  # noqa: E402
 
 
 def _plaid_currency(plaid_tx) -> str:
@@ -72,10 +72,7 @@ def luka_amount_from_plaid(plaid_tx) -> int:
     This helper owns the sign/scale convention so the added and modified code paths
     agree on the encoding.
     """
-    plaid_amount = float(plaid_tx.amount)
-    if _plaid_currency(plaid_tx) in _ZERO_DECIMAL_CURRENCIES:
-        return round(plaid_amount * -1)
-    return round(plaid_amount * -100)
+    return to_minor_units(-Decimal(str(plaid_tx.amount)), _plaid_currency(plaid_tx))
 
 
 def resolve_raw_name(plaid_tx) -> str:

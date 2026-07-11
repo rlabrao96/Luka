@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.notifications.models import Notification
+from modules.currencies.units import format_major
 from modules.transactions.models import Transaction
 
 
@@ -290,10 +291,12 @@ async def emit_credit_suggestions_for_household(
         if key in existing:
             continue  # idempotent
 
+        # Stored amounts are integer minor units — render major units, or a
+        # $27.43 credit reads "USD 2743.00" in the notification.
         amount = abs(float(credit.amount))
         title = (
             f"¿Vincular '{credit.raw_merchant_name}' "
-            f"{credit.currency} {amount:.2f} con "
+            f"{format_major(abs(credit.amount), credit.currency)} con "
             f"'{counterpart.raw_merchant_name}'?"
         )
         payload = {

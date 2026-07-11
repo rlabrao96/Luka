@@ -15,6 +15,7 @@ from modules.bank_connect.mapper import (
     map_movement_to_transaction,
     parse_movement_date,
 )
+from modules.currencies.units import to_minor_units
 from modules.bank_connect.models import BankCredential
 from modules.bank_connect.service import (
     store_credentials,
@@ -22,6 +23,7 @@ from modules.bank_connect.service import (
     get_connection_status,
     get_user_connections,
     trigger_sync,
+    verify_callback_token,
     _random_next_sync,
 )
 from modules.households.models import BankAccount, HouseholdMember
@@ -178,11 +180,23 @@ async def list_connections(
 @router.post("/webhooks/luka-connect")
 async def handle_connect_callback(
     body: ConnectCallback,
+    token: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Receive callback from Luka Connect after a scrape completes."""
+    """Receive callback from Luka Connect after a scrape completes.
+
+    Authenticated via the per-job HMAC token we embedded in the callback URL
+    when triggering the scrape — this endpoint creates real transactions and
+    deletes matched email rows, so it must not be open to the internet.
+    """
+    if not verify_callback_token(body.jobId, token):
+        raise HTTPException(status_code=401, detail="Invalid callback token")
+    try:
+        job_uuid = uuid.UUID(body.jobId)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Malformed job ID")
     result = await db.execute(
-        select(BankCredential).where(BankCredential.current_job_id == uuid.UUID(body.jobId))
+        select(BankCredential).where(BankCredential.current_job_id == job_uuid)
     )
     cred = result.scalar_one_or_none()
     if not cred:
@@ -359,7 +373,7 @@ async def _process_movements(
             skipped += 1
             continue
 
-        from sqlalchemy import func as sa_func, update as sql_update
+        from sqlalchemy import update as sql_update
 
         # Resolve bank account for the movement
         acct_name = mov.get("accountName", "")
@@ -370,6 +384,10 @@ async def _process_movements(
         else:
             ba_id = ba_map.get((acct_name, currency))
 
+        # Stored amounts are integer minor units — compare in the same scale
+        # the mapper writes, or dedup/matching breaks for 2-decimal currencies.
+        scaled_amount = to_minor_units(mov["amount"], currency)
+
         # Dedup: check for an existing connect transaction with same bank_account,
         # same amount, and same exact timestamp. This catches both:
         # (a) re-runs of the same scrape (identical rows)
@@ -379,7 +397,8 @@ async def _process_movements(
         dedup_conditions = [
             Transaction.user_id == cred.user_id,
             Transaction.source == "connect",
-            Transaction.amount == mov["amount"],
+            Transaction.amount == scaled_amount,
+            Transaction.currency == currency,
             Transaction.transaction_date == mov_date,
         ]
         if ba_id:
@@ -389,13 +408,17 @@ async def _process_movements(
             skipped += 1
             continue
 
-        # Check for email match (abs amount exact + date ±1 day)
+        # Check for email match (signed amount + currency exact, date ±1 day).
+        # Signed equality matters: an income email must never consolidate into
+        # an expense movement; currency matters because a USD 50.00 email
+        # (stored 5000) structurally collides with a CLP $5.000 movement.
         email_match = await db.execute(
             select(Transaction)
             .where(
                 Transaction.user_id == cred.user_id,
                 Transaction.source_type == "email",
-                sa_func.abs(Transaction.amount) == abs(mov["amount"]),
+                Transaction.amount == scaled_amount,
+                Transaction.currency == currency,
                 Transaction.transaction_date >= mov_date - timedelta(days=1),
                 Transaction.transaction_date <= mov_date + timedelta(days=1),
             )

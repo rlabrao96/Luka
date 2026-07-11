@@ -417,7 +417,7 @@ async def create_expense(
     user: User = Depends(require_trips_feature),
 ) -> ExpenseResponse:
     # ``get_trip`` enforces membership (404 otherwise).
-    trip = await service.get_trip(db, trip_id, user)
+    trip = await service.get_trip(db, trip_id, user, require_active=True)
     expense = await service.create_expense(db, trip, user, payload)
     await db.commit()
     return _to_expense_response(expense)
@@ -433,7 +433,7 @@ async def patch_expense(
     user: User = Depends(require_trips_feature),
 ) -> ExpenseResponse:
     # ``get_trip`` enforces membership (404 otherwise).
-    await service.get_trip(db, trip_id, user)
+    await service.get_trip(db, trip_id, user, require_active=True)
     expense = await service.update_expense(db, trip_id, expense_id, user, payload, if_match)
     await db.commit()
     return _to_expense_response(expense)
@@ -449,7 +449,7 @@ async def delete_expense(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_trips_feature),
 ) -> None:
-    await service.get_trip(db, trip_id, user)
+    await service.get_trip(db, trip_id, user, require_active=True)
     await service.delete_expense(db, trip_id, expense_id, user)
     await db.commit()
     return None
@@ -471,7 +471,7 @@ async def create_settlement(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_trips_feature),
 ) -> SettlementResponse:
-    trip = await service.get_trip(db, trip_id, user)
+    trip = await service.get_trip(db, trip_id, user, require_active=True)
     settlement = await service.create_settlement(db, trip, user, payload)
     await db.commit()
     return _to_settlement_response(settlement)
@@ -578,7 +578,7 @@ async def confirm_settlement_suggestion(
     Membership is enforced by ``service.get_trip``; ``service.create_settlement``
     handles attendee + currency validation and links ``transaction_id``.
     """
-    trip = await service.get_trip(db, payload.trip_id, user)
+    trip = await service.get_trip(db, payload.trip_id, user, require_active=True)
     settlement = await service.create_settlement(
         db,
         trip,

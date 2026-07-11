@@ -12,6 +12,8 @@ import calendar
 import uuid
 from datetime import date
 from decimal import Decimal
+
+from modules.currencies.units import major_unit_quantum
 from typing import Literal
 
 from sqlalchemy import select
@@ -90,7 +92,14 @@ async def get_active_cuotas_summary(
         if c.first_cuota_date <= month_end and c.last_cuota_date >= month_start:
             this_month += Decimal(c.monthly_amount)
         remaining_installments = max(0, int(c.installments_total) - int(c.installments_paid))
-        future_total += Decimal(c.monthly_amount) * Decimal(remaining_installments)
+        if remaining_installments > 0:
+            # Derive from total_amount so the committed outflow always
+            # reconciles to the purchase total the user entered (monthly x n
+            # drifts by up to n/2 minor units from quantization).
+            remaining = Decimal(c.total_amount) - Decimal(c.monthly_amount) * Decimal(
+                int(c.installments_paid)
+            )
+            future_total += max(remaining, Decimal("0"))
 
     return {
         "this_month": this_month,
@@ -160,7 +169,13 @@ async def create_cuota(
         if tx_check.scalar_one_or_none() is None:
             raise ValueError("origin_transaction_id not found for this user")
 
-    monthly_amount = (total_amount / Decimal(installments_total)).quantize(Decimal("0.01"))
+    # Quantize to the currency's payable step (whole pesos for CLP/COP). The
+    # summary derives future_total from total_amount, so the rounding drift on
+    # monthly_amount x n never compounds (real statements put the remainder on
+    # one installment).
+    monthly_amount = (total_amount / Decimal(installments_total)).quantize(
+        major_unit_quantum(currency)
+    )
     last_cuota_date = _add_months(first_cuota_date, installments_total - 1)
     cuota = CuotaPurchase(
         id=uuid.uuid4(),

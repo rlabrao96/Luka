@@ -208,10 +208,15 @@ async def list_trips(db: AsyncSession, user: User) -> dict:
     return buckets
 
 
-async def get_trip(db: AsyncSession, trip_id: UUID, user: User) -> Trip:
+async def get_trip(
+    db: AsyncSession, trip_id: UUID, user: User, *, require_active: bool = False
+) -> Trip:
     """Return a trip with attendees + expenses + settlements eager-loaded.
 
     Raises 404 if the user has never been on the trip (active or left).
+    With ``require_active=True`` (every MUTATION route), a member who left or
+    was removed gets 403 — departed attendees keep read access to the history
+    but must never be able to rewrite the ledger.
     """
     res = await db.execute(
         select(Trip)
@@ -228,6 +233,15 @@ async def get_trip(db: AsyncSession, trip_id: UUID, user: User) -> Trip:
     if not await _is_any_member(db, trip_id, user.id):
         # 404 (not 403) so we don't leak existence to non-members.
         raise HTTPException(status_code=404, detail="Trip not found")
+
+    if require_active and not await _is_active_member(db, trip_id, user.id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "left_members_cannot_modify",
+                "message": "You are no longer an active member of this trip.",
+            },
+        )
 
     return trip
 
@@ -364,34 +378,35 @@ async def remove_attendee(db: AsyncSession, trip_id: UUID, attendee_id: UUID, us
 
 
 _CENT = Decimal("0.01")
-_HUNDRED = Decimal("100")
-# Currencies whose `transactions.amount` is stored as integer major units
-# (no cents). Mirrors ``modules.plaid.mapper._ZERO_DECIMAL_CURRENCIES``.
-_ZERO_DECIMAL_CURRENCIES = {"CLP", "COP", "JPY", "KRW", "PYG", "VND", "CLF"}
+
+# Currency scaling lives in modules.currencies.units — single source of truth
+# shared with the Plaid mapper and Luka Connect (drift here means 100× money).
+from modules.currencies.units import major_unit_quantum, to_major_units  # noqa: E402
 
 
 def _txn_amount_to_major(amount: Decimal, currency: str) -> Decimal:
     """Convert ``transactions.amount`` storage units → trip-ledger major units.
 
-    Transactions store non-zero-decimal currencies in cents (Plaid +
-    email-parser convention). Trip expenses store everything in major units
-    (``Numeric(14, 2)``), so divide by 100 unless the currency has no
-    sub-unit.
+    Transactions store integer minor units (cents for 2-decimal currencies,
+    whole units for zero-decimal ones). Trip expenses store major units
+    (``Numeric(14, 2)``).
     """
-    if currency.upper() in _ZERO_DECIMAL_CURRENCIES:
-        return Decimal(amount)
-    return (Decimal(amount) / _HUNDRED).quantize(_CENT)
+    return to_major_units(Decimal(amount), currency).quantize(major_unit_quantum(currency))
 
 
-def _floor_cents(value: Decimal) -> Decimal:
-    """Quantize to two decimals, rounding toward negative infinity (== floor for positives)."""
-    return value.quantize(_CENT, rounding=ROUND_FLOOR)
+def _floor_step(value: Decimal, currency: str) -> Decimal:
+    """Quantize to the currency's payable step (1 for CLP/COP, 0.01 for USD),
+    rounding toward negative infinity (== floor for positives)."""
+    return value.quantize(major_unit_quantum(currency), rounding=ROUND_FLOOR)
 
 
 def _normalize_splits(
-    splits: list[SplitInput], amount: Decimal, payer_attendee_id: UUID
+    splits: list[SplitInput], amount: Decimal, payer_attendee_id: UUID, currency: str
 ) -> list[dict]:
     """Compute per-attendee share_amounts so they sum exactly to ``amount``.
+
+    Shares are quantized to the currency's payable step — a 10.000 CLP dinner
+    split 3 ways yields 3.334/3.333/3.333, never fractional pesos.
 
     Modes (must be consistent across all splits):
       - ``equal``           : amount / n, payer absorbs floor remainder.
@@ -402,6 +417,11 @@ def _normalize_splits(
     if not splits:
         raise HTTPException(status_code=422, detail="at least one split required")
 
+    split_ids = [s.attendee_id for s in splits]
+    if len(split_ids) != len(set(split_ids)):
+        # Duplicates would silently double-charge that attendee.
+        raise HTTPException(status_code=422, detail="duplicate attendee in splits")
+
     types = {s.share_type for s in splits}
     if len(types) > 1:
         raise HTTPException(status_code=422, detail="all splits must use the same share_type")
@@ -409,7 +429,7 @@ def _normalize_splits(
     n = len(splits)
 
     if mode == "equal":
-        per = _floor_cents(amount / Decimal(n))
+        per = _floor_step(amount / Decimal(n), currency)
         result = [
             {
                 "attendee_id": s.attendee_id,
@@ -424,6 +444,10 @@ def _normalize_splits(
                 raise HTTPException(
                     status_code=422, detail="share_amount required for custom_amount"
                 )
+            if s.share_amount < 0:
+                # A negative share means an attendee GAINS money from an
+                # expense — corrupts balance netting semantics.
+                raise HTTPException(status_code=422, detail="share_amount must be >= 0")
         result = [
             {
                 "attendee_id": s.attendee_id,
@@ -438,6 +462,8 @@ def _normalize_splits(
                 raise HTTPException(
                     status_code=422, detail="share_percent required for custom_percent"
                 )
+            if s.share_percent < 0:
+                raise HTTPException(status_code=422, detail="share_percent must be >= 0")
         total_pct = sum((s.share_percent for s in splits), Decimal("0"))
         if total_pct != Decimal("100"):
             raise HTTPException(
@@ -447,7 +473,7 @@ def _normalize_splits(
         result = [
             {
                 "attendee_id": s.attendee_id,
-                "share_amount": _floor_cents(amount * s.share_percent / Decimal("100")),
+                "share_amount": _floor_step(amount * s.share_percent / Decimal("100"), currency),
                 "share_type": "custom_percent",
             }
             for s in splits
@@ -562,7 +588,7 @@ async def create_expense(
             )
 
     # 4. Compute splits (raises 422 on mismatch).
-    splits_to_create = _normalize_splits(payload.splits, amount, payer.id)
+    splits_to_create = _normalize_splits(payload.splits, amount, payer.id, payload.currency)
 
     # 5. Insert expense; the BEFORE trigger raises 23514 if the transaction
     #    already has household splits, and the partial unique index raises
@@ -746,15 +772,42 @@ async def update_expense(
     if payer_changed:
         await _validate_payer_on_trip(db, trip_id, new_payer_id)
 
-    # Validate transaction linkage if it's being added/changed.
+    # Validate transaction linkage if it's being added/changed — and re-validate
+    # whenever the final state has a link AND the amount changed, even if the
+    # payload echoes back the SAME transaction_id (otherwise a PATCH with
+    # {amount: X, transaction_id: <current>} could diverge the ledger amount
+    # from abs(transaction.amount)).
     new_transaction_id = expense.transaction_id
     if "transaction_id" in changes:
         new_transaction_id = payload.transaction_id
-        if new_transaction_id is not None and new_transaction_id != expense.transaction_id:
+        if new_transaction_id is not None and (
+            new_transaction_id != expense.transaction_id or amount_changed
+        ):
             await _validate_transaction_link(db, user, new_transaction_id, new_amount)
     elif amount_changed and expense.transaction_id is not None:
         # Amount changed but txn link unchanged — re-validate the link still matches.
         await _validate_transaction_link(db, user, expense.transaction_id, new_amount)
+
+    # v1 single-currency invariant: a currency change must still match the
+    # trip's base currency (create_expense enforces this; PATCH must too, or
+    # compute_balances sums CLP and USD numerals as one unit).
+    new_currency = expense.currency
+    if "currency" in changes and payload.currency is not None:
+        new_currency = payload.currency.upper()
+        base_currency = (
+            await db.execute(select(Trip.base_currency).where(Trip.id == trip_id))
+        ).scalar_one()
+        if new_currency != base_currency.upper():
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "currency_must_match_trip_base",
+                    "message": (
+                        f"expense currency {new_currency} must match trip base "
+                        f"currency {base_currency.upper()} (v1 single-currency)."
+                    ),
+                },
+            )
 
     # Apply scalar field updates.
     if "description" in changes and payload.description is not None:
@@ -762,7 +815,7 @@ async def update_expense(
     if amount_changed:
         expense.amount = new_amount
     if "currency" in changes and payload.currency is not None:
-        expense.currency = payload.currency.upper()
+        expense.currency = new_currency
     if "expense_date" in changes and payload.expense_date is not None:
         expense.expense_date = payload.expense_date
     if payer_changed:
@@ -773,7 +826,7 @@ async def update_expense(
     # Replace splits if provided.
     if splits_provided:
         await _validate_split_attendees(db, trip_id, payload.splits)
-        splits_to_create = _normalize_splits(payload.splits, new_amount, new_payer_id)
+        splits_to_create = _normalize_splits(payload.splits, new_amount, new_payer_id, new_currency)
         # Delete existing splits via the relationship collection so cascade
         # delete-orphan handles them cleanly, then add the new ones.
         expense.splits.clear()
@@ -972,16 +1025,30 @@ async def force_remove_attendee(
         raise HTTPException(status_code=404, detail="Attendee not on this trip")
     if attendee.left_at is not None:
         raise HTTPException(status_code=404, detail="Attendee already left this trip")
+    if attendee.user_id == trip.creator_user_id:
+        # The creator is the write-off counterparty; removing themselves would
+        # emit a from==to settlement (DB CHECK violation → opaque 500).
+        raise HTTPException(
+            status_code=422,
+            detail="creator cannot force-remove themselves; archive the trip instead",
+        )
 
-    # Find the creator's attendee row to be the write-off counterparty.
+    # Find the creator's active attendee row to be the write-off counterparty.
     creator_attendee = (
-        await db.execute(
-            select(TripAttendee).where(
-                TripAttendee.trip_id == trip_id,
-                TripAttendee.user_id == trip.creator_user_id,
+        (
+            await db.execute(
+                select(TripAttendee)
+                .where(
+                    TripAttendee.trip_id == trip_id,
+                    TripAttendee.user_id == trip.creator_user_id,
+                    TripAttendee.left_at.is_(None),
+                )
+                .limit(1)
             )
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .first()
+    )
     if creator_attendee is None:
         raise HTTPException(
             status_code=500, detail="trip creator missing attendee row (data corruption)"
@@ -1192,22 +1259,19 @@ async def get_suggested_transactions(db: AsyncSession, trip_id: UUID, user: User
 
     trip = await get_trip(db, trip_id, user)
 
-    # Already-linked transaction_ids (active links only).
-    linked_q = select(TripExpense.transaction_id).where(
+    sub_keys = await _detected_subscription_merchant_keys(db, user.id)
+
+    # Linked/dismissed exclusions run as SQL anti-joins — the old version
+    # loaded every live trip-expense link PLATFORM-WIDE into a Python set on
+    # each inbox open.
+    linked_subq = select(TripExpense.transaction_id).where(
         TripExpense.transaction_id.isnot(None),
         TripExpense.deleted_at.is_(None),
     )
-    linked_rows = (await db.execute(linked_q)).all()
-    linked_ids = {row[0] for row in linked_rows if row[0] is not None}
-
-    # Dismissed transaction_ids for this (user, trip).
-    dismissed_q = select(TripSuggestionDismissal.transaction_id).where(
+    dismissed_subq = select(TripSuggestionDismissal.transaction_id).where(
         TripSuggestionDismissal.user_id == user.id,
         TripSuggestionDismissal.trip_id == trip.id,
     )
-    dismissed_ids = {row[0] for row in (await db.execute(dismissed_q)).all()}
-
-    sub_keys = await _detected_subscription_merchant_keys(db, user.id)
 
     q = (
         select(Transaction, Merchant.normalized_name)
@@ -1220,6 +1284,8 @@ async def get_suggested_transactions(db: AsyncSession, trip_id: UUID, user: User
             Transaction.reimbursement_group_id.is_(None),
             Transaction.transaction_date >= trip.start_date,
             Transaction.transaction_date < trip.end_date + timedelta(days=1),
+            Transaction.id.notin_(linked_subq),
+            Transaction.id.notin_(dismissed_subq),
         )
         .order_by(Transaction.transaction_date.desc())
     )
@@ -1227,10 +1293,6 @@ async def get_suggested_transactions(db: AsyncSession, trip_id: UUID, user: User
 
     out: list[dict] = []
     for txn, normalized in rows:
-        if txn.id in linked_ids:
-            continue
-        if txn.id in dismissed_ids:
-            continue
         merchant_key = (normalized or txn.raw_merchant_name or "").strip().lower()
         if merchant_key and merchant_key in sub_keys:
             continue
@@ -1238,7 +1300,10 @@ async def get_suggested_transactions(db: AsyncSession, trip_id: UUID, user: User
             {
                 "transaction_id": txn.id,
                 "merchant": normalized or txn.raw_merchant_name,
-                "amount": Decimal(txn.amount),
+                # Trip surfaces speak positive MAJOR units (create_expense
+                # validates against abs(txn.amount) in major units) — emitting
+                # the raw stored minor units made prefilled forms 100× off.
+                "amount": _txn_amount_to_major(abs(Decimal(txn.amount)), txn.currency),
                 "currency": txn.currency,
                 "transaction_date": (
                     txn.transaction_date.date()

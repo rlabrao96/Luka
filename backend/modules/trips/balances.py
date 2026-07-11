@@ -31,10 +31,8 @@ from modules.trips.models import (
     TripExpense,
     TripSettlement,
 )
+from modules.currencies.units import major_unit_quantum
 from modules.trips.schemas import BalanceEntry, SettleSuggestion
-
-
-_EPS = Decimal("0.01")
 
 
 async def compute_balances(trip_id: UUID, db: AsyncSession) -> list[BalanceEntry]:
@@ -106,19 +104,23 @@ def smart_settle_plan(balances: Iterable[BalanceEntry], currency: str) -> list[S
     """Greedy minimum-transactions plan.
 
     Pair the largest creditor with the largest debtor, emit a transfer of
-    ``min(|creditor|, |debtor|)``, decrement both, drop anyone within
-    ``±0.01`` of zero, repeat. For ``n`` attendees with non-zero net, this
+    ``min(|creditor|, |debtor|)``, decrement both, drop anyone within one
+    payable step of zero, repeat. For ``n`` attendees with non-zero net, this
     emits ≤ ``n − 1`` transfers (Splitwise's classic bound).
+
+    Amounts and the dust threshold are quantized to the currency's payable
+    step (1 for CLP/COP, 0.01 for USD) — a CLP plan never says "pay 3333.33".
 
     Pure function. Mutates a local copy; the caller's list is untouched.
     """
+    step = major_unit_quantum(currency)
     pos: list[tuple[UUID, Decimal]] = []
     neg: list[tuple[UUID, Decimal]] = []
     for b in balances:
         v = Decimal(b.net_in_base)
-        if v > _EPS:
+        if v > step:
             pos.append((b.attendee_id, v))
-        elif v < -_EPS:
+        elif v < -step:
             neg.append((b.attendee_id, v))
     pos.sort(key=lambda t: t[1], reverse=True)
     neg.sort(key=lambda t: t[1])  # most-negative first
@@ -127,7 +129,7 @@ def smart_settle_plan(balances: Iterable[BalanceEntry], currency: str) -> list[S
     while pos and neg:
         cid, cval = pos[0]
         did, dval = neg[0]
-        amount = min(cval, -dval).quantize(Decimal("0.01"))
+        amount = min(cval, -dval).quantize(step)
         if amount <= Decimal("0"):
             break
         suggestions.append(
@@ -140,11 +142,11 @@ def smart_settle_plan(balances: Iterable[BalanceEntry], currency: str) -> list[S
         )
         cval -= amount
         dval += amount
-        if cval <= _EPS:
+        if cval <= step:
             pos.pop(0)
         else:
             pos[0] = (cid, cval)
-        if dval >= -_EPS:
+        if dval >= -step:
             neg.pop(0)
         else:
             neg[0] = (did, dval)

@@ -125,7 +125,17 @@ logger = logging.getLogger(__name__)
 
 
 _TOLERANCE_RATIO = Decimal("0.05")
-_TOLERANCE_FLOOR = Decimal("5.00")
+# Absolute tolerance cap in MAJOR units, scaled per currency: 5.00 is a
+# meaningful cap for USD but microscopic for CLP/COP (≈ USD 0.005), where it
+# degraded matching to near-exact only. ~5 USD equivalents, coarse on purpose.
+_TOLERANCE_FLOOR_BY_CURRENCY = {
+    "CLP": Decimal("5000"),
+    "COP": Decimal("20000"),
+    "MXN": Decimal("100"),
+    "PEN": Decimal("20"),
+    "BRL": Decimal("25"),
+}
+_TOLERANCE_FLOOR_DEFAULT = Decimal("5.00")
 _DATE_TAIL_DAYS = 30
 
 
@@ -161,12 +171,15 @@ async def _is_dismissed(db: AsyncSession, user_id: uuid.UUID, transaction_id: uu
     return res.scalar_one_or_none() is not None
 
 
-def _within_tolerance(amount_abs: Decimal, outstanding_abs: Decimal) -> bool:
-    """``|amount - outstanding| <= min(5% of outstanding, $5)``."""
+def _within_tolerance(
+    amount_abs: Decimal, outstanding_abs: Decimal, currency: str | None = None
+) -> bool:
+    """``|amount - outstanding| <= min(5% of outstanding, ~5 USD equivalent)``."""
     if outstanding_abs <= Decimal("0"):
         return False
     delta = abs(amount_abs - outstanding_abs)
-    tol = min(outstanding_abs * _TOLERANCE_RATIO, _TOLERANCE_FLOOR)
+    floor = _TOLERANCE_FLOOR_BY_CURRENCY.get((currency or "").upper(), _TOLERANCE_FLOOR_DEFAULT)
+    tol = min(outstanding_abs * _TOLERANCE_RATIO, floor)
     return delta <= tol
 
 
@@ -284,7 +297,7 @@ async def try_match_settlement(
             if transaction.transaction_type == "income" and my_net <= 0:
                 continue
 
-            if not _within_tolerance(abs_amount, outstanding_abs):
+            if not _within_tolerance(abs_amount, outstanding_abs, transaction.currency):
                 continue
 
             # Match! Emit the notification.

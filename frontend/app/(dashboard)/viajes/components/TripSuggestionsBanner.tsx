@@ -13,7 +13,7 @@ import {
   type TripDetail,
 } from "@/app/lib/api";
 import {
-  formatStoredAmount,
+  formatMajorAmount,
   isZeroDecimalCurrency,
 } from "@/app/lib/currency";
 import AddExpenseSheet, { type AddExpensePrefill } from "./AddExpenseSheet";
@@ -65,10 +65,9 @@ export default function TripSuggestionsBanner({
     s: SuggestedTransaction,
     splitEqual: boolean,
   ): AddExpensePrefill {
-    // Transactions store non-zero-decimal currencies in cents; trip expenses
-    // use major units. Convert before seeding the form.
-    const stored = Math.abs(Number(s.amount));
-    const major = isZeroDecimalCurrency(s.currency) ? stored : stored / 100;
+    // The backend emits suggestion amounts as positive MAJOR units (the same
+    // convention create_expense validates against) — no conversion here.
+    const major = Math.abs(Number(s.amount));
     const decimals = isZeroDecimalCurrency(s.currency) ? 0 : 2;
     return {
       description: s.merchant ?? "",
@@ -139,7 +138,7 @@ export default function TripSuggestionsBanner({
                       </p>
                     </div>
                     <p className="text-sm font-semibold tabular-nums text-red-600 shrink-0">
-                      {formatStoredAmount(
+                      {formatMajorAmount(
                         Math.abs(Number(s.amount)),
                         s.currency,
                       )}

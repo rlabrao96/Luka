@@ -1,6 +1,9 @@
 import hashlib
 import re
 from datetime import datetime, timezone
+from decimal import Decimal
+
+from modules.currencies.units import to_minor_units
 
 # Patterns that identify inter-account movements (CC payments, same-bank transfers).
 # These should always be marked as transaction_type="transfer" with no category.
@@ -26,8 +29,13 @@ def normalize_description(desc: str) -> str:
 
 
 def dedup_key(date_str: str, normalized_desc: str, amount: float, bank_account_id: str) -> str:
-    """Generate a dedup key from movement fields."""
-    raw = f"{date_str}|{normalized_desc}|{amount}|{bank_account_id}"
+    """Generate a dedup key from movement fields.
+
+    The amount is canonicalized through Decimal so `1050` and `1050.0`
+    (int vs float drift between scraper runs) hash identically.
+    """
+    canonical_amount = f"{Decimal(str(amount)).normalize():f}"
+    raw = f"{date_str}|{normalized_desc}|{canonical_amount}|{bank_account_id}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -68,9 +76,16 @@ def map_movement_to_transaction(
     household_id: str,
     bank_account_id: str | None,
 ) -> dict:
-    """Map a raw Luka Connect movement to transaction fields."""
+    """Map a raw Luka Connect movement to transaction fields.
+
+    Amounts are scaled to Luka's integer minor-unit convention (whole pesos
+    for CLP/COP, cents for MXN/BRL/PEN/USD). Scrapers emit major units —
+    storing them raw breaks cross-source matching and renders 100× off for
+    2-decimal currencies.
+    """
     description = movement["description"]
-    amount = movement["amount"]
+    currency = movement.get("currency", "CLP")
+    amount = to_minor_units(movement["amount"], currency)
 
     # Inter-account movements (CC payments, same-bank own-account moves) → transfer
     if is_inter_account_transfer(description):
@@ -84,7 +99,7 @@ def map_movement_to_transaction(
         "bank_account_id": bank_account_id,
         "raw_merchant_name": description,
         "amount": amount,
-        "currency": movement.get("currency", "CLP"),
+        "currency": currency,
         "transaction_date": parse_movement_date(movement["date"], movement.get("time")),
         "source": "connect",
         "source_type": "connect",
