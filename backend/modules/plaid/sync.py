@@ -4,6 +4,7 @@ import asyncio
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from sqlalchemy import func as sa_func, select, delete, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from modules.plaid.mapper import (
     map_account_kind,
     is_plaid_transfer,
     luka_amount_from_plaid,
+    resolve_raw_name,
 )
 from modules.plaid.service import sync_transactions
 from modules.households.models import BankAccount
@@ -279,13 +281,28 @@ async def run_plaid_sync(
         # zero-decimal currencies (CLP, COP, ...) stay on one canonical convention.
         tx.amount = luka_amount_from_plaid(plaid_tx)
         tx.status = "pending" if plaid_tx.pending else "settled"
-        tx.raw_merchant_name = plaid_tx.merchant_name or plaid_tx.name or tx.raw_merchant_name
+        # User edits win: a tip adjustment must not revert a manual rename, and
+        # the name goes through the same Zelle/CC extraction as the added path.
+        if not (tx.user_edited_fields or {}).get("merchant_name"):
+            tx.raw_merchant_name = resolve_raw_name(plaid_tx)
+        # Re-derive expense/income if the sign flipped — but never clobber a
+        # transfer classification (CC-payment routing) with a sign-based guess.
+        if tx.transaction_type != "transfer":
+            tx.transaction_type = "expense" if tx.amount <= 0 else "income"
         stats["modified"] += 1
 
     # Process removed transactions — Plaid sends "removed" when a pending tx settles
     # and is replaced by a new settled one (different plaid_transaction_id).
     # Transfer enrichment (splits, category, merchant_id) from the old one to the
     # matching new tx before deleting, so the user doesn't lose their categorization.
+    #
+    # Plaid's posted replacement carries pending_transaction_id — the deterministic
+    # link for a pending→settled rotation. Prefer it over amount heuristics.
+    pending_replacement_map = {
+        getattr(a, "pending_transaction_id", None): a.transaction_id
+        for a in all_added
+        if getattr(a, "pending_transaction_id", None)
+    }
     for plaid_tx in all_removed:
         old_tx_result = await session.execute(
             select(Transaction).where(Transaction.plaid_transaction_id == plaid_tx.transaction_id)
@@ -294,28 +311,54 @@ async def run_plaid_sync(
         if old_tx is None:
             continue
 
-        # Find the replacement Plaid transaction: same user, same bank_account,
-        # same absolute amount, transaction_date within ±3 days, different plaid_id.
+        replacement = None
+        replacement_plaid_id = pending_replacement_map.get(plaid_tx.transaction_id)
+        if replacement_plaid_id:
+            replacement_result = await session.execute(
+                select(Transaction).where(Transaction.plaid_transaction_id == replacement_plaid_id)
+            )
+            replacement = replacement_result.scalar_one_or_none()
+
+        # Heuristic fallback: same user, same bank_account, transaction_date
+        # within ±3 days, different plaid_id. Exact absolute amount first, then
+        # a ±20% window (tip adjustments / FX settles change the amount).
         date_min = old_tx.transaction_date - timedelta(days=3)
         date_max = old_tx.transaction_date + timedelta(days=3)
-        replacement_result = await session.execute(
-            select(Transaction)
-            .where(
-                Transaction.user_id == old_tx.user_id,
-                Transaction.bank_account_id == old_tx.bank_account_id,
-                Transaction.source == "plaid",
-                Transaction.plaid_transaction_id != plaid_tx.transaction_id,
-                sa_func.abs(Transaction.amount) == abs(old_tx.amount),
-                Transaction.transaction_date >= date_min,
-                Transaction.transaction_date <= date_max,
+        base_filters = [
+            Transaction.user_id == old_tx.user_id,
+            Transaction.bank_account_id == old_tx.bank_account_id,
+            Transaction.source == "plaid",
+            Transaction.plaid_transaction_id != plaid_tx.transaction_id,
+            Transaction.transaction_date >= date_min,
+            Transaction.transaction_date <= date_max,
+            (Transaction.amount <= 0) if old_tx.amount <= 0 else (Transaction.amount > 0),
+        ]
+        if replacement is None:
+            replacement_result = await session.execute(
+                select(Transaction)
+                .where(*base_filters, sa_func.abs(Transaction.amount) == abs(old_tx.amount))
+                .order_by(Transaction.created_at.desc())
+                .limit(1)
             )
-            .order_by(Transaction.created_at.desc())
-            .limit(1)
-        )
-        replacement = replacement_result.scalar_one_or_none()
+            replacement = replacement_result.scalar_one_or_none()
+        if replacement is None:
+            lo = abs(old_tx.amount) * Decimal("0.8")
+            hi = abs(old_tx.amount) * Decimal("1.2")
+            replacement_result = await session.execute(
+                select(Transaction)
+                .where(*base_filters, sa_func.abs(Transaction.amount).between(lo, hi))
+                .order_by(Transaction.created_at.desc())
+                .limit(1)
+            )
+            replacement = replacement_result.scalar_one_or_none()
 
         if replacement is not None:
-            # Re-link splits to the new transaction
+            # The replacement already received a default split in the added path.
+            # Drop it BEFORE re-linking the old split — a transaction with two
+            # split rows is double-counted by every JOIN-based aggregate.
+            await session.execute(
+                delete(TransactionSplit).where(TransactionSplit.transaction_id == replacement.id)
+            )
             await session.execute(
                 update(TransactionSplit)
                 .where(TransactionSplit.transaction_id == old_tx.id)
@@ -358,6 +401,14 @@ async def run_plaid_sync(
                 replacement.category = old_tx.category
             if old_tx.merchant_id and not replacement.merchant_id:
                 replacement.merchant_id = old_tx.merchant_id
+            # Carry pair links so the surviving partner rows aren't orphaned
+            # (an orphaned pair id silently excludes the partner from totals).
+            if old_tx.transfer_pair_id and replacement.transfer_pair_id is None:
+                replacement.transfer_pair_id = old_tx.transfer_pair_id
+            if old_tx.refund_pair_id and replacement.refund_pair_id is None:
+                replacement.refund_pair_id = old_tx.refund_pair_id
+            if old_tx.reimbursement_group_id and replacement.reimbursement_group_id is None:
+                replacement.reimbursement_group_id = old_tx.reimbursement_group_id
         else:
             # No replacement found — just drop the splits (rare). Trip-side
             # rows are handled by the FK cascade (migration 050): dismissals
@@ -365,6 +416,20 @@ async def run_plaid_sync(
             await session.execute(
                 delete(TransactionSplit).where(TransactionSplit.transaction_id == old_tx.id)
             )
+            # Null pair ids on surviving partners (mirrors delete_transaction)
+            # so they can be re-paired by a future reconciliation tick instead
+            # of being silently excluded from totals forever.
+            for pair_col in ("transfer_pair_id", "refund_pair_id", "reimbursement_group_id"):
+                pair_val = getattr(old_tx, pair_col, None)
+                if pair_val is not None:
+                    await session.execute(
+                        update(Transaction)
+                        .where(
+                            getattr(Transaction, pair_col) == pair_val,
+                            Transaction.id != old_tx.id,
+                        )
+                        .values(**{pair_col: None})
+                    )
 
         await session.execute(delete(Transaction).where(Transaction.id == old_tx.id))
         stats["removed"] += 1
@@ -405,12 +470,12 @@ async def ensure_plaid_accounts(
         mask = pa.mask
 
         if ba:
-            # Update balances
+            # Update balances (round, not truncate — int() drops a cent half the time)
             ba.balance_current = (
-                int(pa.balances.current * 100) if pa.balances.current is not None else None
+                round(pa.balances.current * 100) if pa.balances.current is not None else None
             )
             ba.balance_limit = (
-                int(pa.balances.limit * 100) if pa.balances.limit is not None else None
+                round(pa.balances.limit * 100) if pa.balances.limit is not None else None
             )
             ba.last_synced_at = datetime.now(timezone.utc)
         else:
@@ -424,10 +489,10 @@ async def ensure_plaid_accounts(
                 account_name=account_name,
                 account_number=mask,
                 currency=pa.balances.iso_currency_code or "USD",
-                balance_current=int(pa.balances.current * 100)
+                balance_current=round(pa.balances.current * 100)
                 if pa.balances.current is not None
                 else None,
-                balance_limit=int(pa.balances.limit * 100)
+                balance_limit=round(pa.balances.limit * 100)
                 if pa.balances.limit is not None
                 else None,
                 last_synced_at=datetime.now(timezone.utc),

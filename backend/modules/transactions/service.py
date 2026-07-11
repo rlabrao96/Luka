@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, text, delete as sql_delete, update as sql_update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from modules.transactions.models import Transaction, TransactionSplit
 from modules.households.models import BankAccount, HouseholdMember
 from modules.merchants.models import Merchant
@@ -70,7 +71,14 @@ async def ensure_default_split(
         )
         default_split_type = "shared" if account_type == "joint" else "personal"
 
-    db.add(TransactionSplit(transaction_id=txn.id, split_type=default_split_type))
+    # ON CONFLICT DO NOTHING: concurrent ingestion paths (webhook + Plaid sync)
+    # can race the SELECT above; the unique index (migration 051) makes the
+    # second insert a no-op instead of a double-counted split.
+    await db.execute(
+        pg_insert(TransactionSplit)
+        .values(id=uuid.uuid4(), transaction_id=txn.id, split_type=default_split_type)
+        .on_conflict_do_nothing(index_elements=["transaction_id"])
+    )
 
 
 async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date) -> list[dict]:

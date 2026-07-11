@@ -53,6 +53,15 @@ def map_account_kind(plaid_type, plaid_subtype) -> str:
 _ZERO_DECIMAL_CURRENCIES = {"CLP", "COP", "JPY", "KRW", "PYG", "VND", "CLF"}
 
 
+def _plaid_currency(plaid_tx) -> str:
+    """Plaid's currency code, trying unofficial_currency_code before the USD fallback."""
+    return (
+        getattr(plaid_tx, "iso_currency_code", None)
+        or getattr(plaid_tx, "unofficial_currency_code", None)
+        or "USD"
+    ).upper()
+
+
 def luka_amount_from_plaid(plaid_tx) -> int:
     """Convert a Plaid-reported amount into Luka's signed, integer-scaled amount.
 
@@ -64,10 +73,24 @@ def luka_amount_from_plaid(plaid_tx) -> int:
     agree on the encoding.
     """
     plaid_amount = float(plaid_tx.amount)
-    currency = (getattr(plaid_tx, "iso_currency_code", None) or "USD").upper()
-    if currency in _ZERO_DECIMAL_CURRENCIES:
+    if _plaid_currency(plaid_tx) in _ZERO_DECIMAL_CURRENCIES:
         return round(plaid_amount * -1)
     return round(plaid_amount * -100)
+
+
+def resolve_raw_name(plaid_tx) -> str:
+    """Resolve the display merchant name for a Plaid tx.
+
+    Zelle person > CC issuer > merchant_name > name. Shared by the added and
+    modified sync paths so a pending-update never reverts an enriched name.
+    """
+    full_name = plaid_tx.name or ""
+    zelle_person = _extract_zelle_person(full_name)
+    if zelle_person:
+        return zelle_person
+    if _is_cc_payment(full_name):
+        return full_name.split(" DES:")[0].strip().title()
+    return plaid_tx.merchant_name or plaid_tx.name or "Unknown"
 
 
 def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, household_id: str) -> dict:
@@ -79,22 +102,11 @@ def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, househol
     plaid_amount = float(plaid_tx.amount)
     luka_amount = luka_amount_from_plaid(plaid_tx)
 
-    # Derive transaction_type from Plaid's amount sign (before our flip)
-    transaction_type = "expense" if plaid_amount > 0 else "income"
+    # Derive transaction_type from Plaid's amount sign (before our flip).
+    # Zero-amount rows (card verifications) are expenses, not phantom income.
+    transaction_type = "expense" if plaid_amount >= 0 else "income"
 
-    # Full description (name has more detail than merchant_name for Zelle/ACH)
-    full_name = plaid_tx.name or ""
-
-    # Extract person name from Zelle transactions
-    zelle_person = _extract_zelle_person(full_name)
-    if zelle_person:
-        raw_name = zelle_person
-    elif _is_cc_payment(full_name):
-        # Credit card payments → extract issuer name (caller decides if transfer)
-        raw_name = full_name.split(" DES:")[0].strip().title()
-    else:
-        # Default: prefer merchant_name, fall back to name
-        raw_name = plaid_tx.merchant_name or plaid_tx.name or "Unknown"
+    raw_name = resolve_raw_name(plaid_tx)
 
     # Status from pending flag
     status = "pending" if plaid_tx.pending else "settled"
@@ -105,7 +117,7 @@ def map_plaid_transaction(plaid_tx, bank_account_id: str, user_id: str, househol
         "bank_account_id": bank_account_id,
         "raw_merchant_name": raw_name,
         "amount": luka_amount,
-        "currency": plaid_tx.iso_currency_code or "USD",
+        "currency": _plaid_currency(plaid_tx),
         "transaction_date": datetime.combine(plaid_tx.date, datetime.min.time()).replace(
             tzinfo=timezone.utc
         ),
