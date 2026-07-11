@@ -7,6 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from modules.households.models import Household, HouseholdMember, HouseholdInvite
+from modules.transactions.totals import totals_exclusion_sql
 from modules.households.errors import (
     InviteError,
     INVITE_ALREADY_MEMBER,
@@ -371,20 +372,25 @@ async def get_contribution_summary(
     params: dict = {"household_id": str(household_id)}
     if currency:
         params["currency"] = currency
+    # Expenses only (income used to net against spending here), absolute
+    # amounts, and the shared totals-exclusion rule — this is "spending by
+    # member", so refunds/reimbursements/transfers must not distort it.
     result = await db.execute(
         text(f"""
         SELECT
             t.user_id,
             u.full_name,
             u.email,
-            COALESCE(SUM(t.amount), 0) AS total_paid,
-            COALESCE(SUM(t.amount) FILTER (WHERE ts.split_type = 'shared'), 0) AS shared_paid,
-            COALESCE(SUM(t.amount) FILTER (WHERE ts.split_type = 'personal'), 0) AS personal_paid
+            COALESCE(SUM(ABS(t.amount)), 0) AS total_paid,
+            COALESCE(SUM(ABS(t.amount)) FILTER (WHERE ts.split_type = 'shared'), 0) AS shared_paid,
+            COALESCE(SUM(ABS(t.amount)) FILTER (WHERE ts.split_type = 'personal'), 0) AS personal_paid
         FROM transactions t
         JOIN transaction_splits ts ON ts.transaction_id = t.id
         JOIN users u ON u.id = t.user_id
         JOIN household_members hm ON hm.user_id = u.id AND hm.household_id = t.household_id
         WHERE t.household_id = :household_id
+          AND t.transaction_type = 'expense'
+          AND {totals_exclusion_sql("t")}
           AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
           AND hm.left_at IS NULL
           {currency_clause}
@@ -461,6 +467,7 @@ async def get_category_breakdown(
         WHERE t.household_id = :household_id
           AND ts.split_type = 'shared'
           AND t.transaction_type = 'expense'
+          AND {totals_exclusion_sql("t")}
           AND hm.left_at IS NULL
           AND {month_clause}
           {currency_clause}
@@ -582,6 +589,7 @@ async def get_settlement(
             WHERE t.household_id = :household_id
               AND ts.split_type = 'shared'
               AND t.transaction_type = 'expense'
+              AND {totals_exclusion_sql("t")}
               AND {month_clause}
               {currency_clause}
             GROUP BY t.user_id
@@ -616,12 +624,13 @@ async def get_member_stats(
 ) -> list[dict]:
     """Aggregate stats for all active members — no individual transaction rows."""
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT u.id AS user_id, u.full_name,
                    COALESCE(SUM(ABS(t.amount)) FILTER (WHERE t.transaction_type = 'expense'), 0) AS total_spent
             FROM household_members hm
             JOIN users u ON u.id = hm.user_id
             LEFT JOIN transactions t ON t.user_id = u.id AND t.household_id = :household_id
+                 AND {totals_exclusion_sql("t")}
             WHERE hm.household_id = :household_id
               AND hm.left_at IS NULL
               AND hm.user_id != :viewer_id

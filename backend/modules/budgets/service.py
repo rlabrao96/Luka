@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from modules.households.models import HouseholdBudget, BankAccount
 from modules.transactions.models import Transaction, TransactionSplit
+from modules.transactions.totals import counts_toward_totals_clauses
 
 
 async def get_budget_status(
@@ -43,7 +44,7 @@ async def get_budget_status(
         .where(
             Transaction.household_id == household_id,
             Transaction.transaction_type == "expense",
-            Transaction.reimbursement_group_id.is_(None),
+            *counts_toward_totals_clauses(),
             TransactionSplit.split_type == "shared",
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,

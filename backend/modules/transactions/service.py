@@ -5,6 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, text, delete as sql_delete, update as sql_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from modules.transactions.models import Transaction, TransactionSplit
+
+# exclude_from_totals is re-exported for backwards compatibility; the canonical
+# definition (and the rationale for the exclusion rule) lives in totals.py.
+from modules.transactions.totals import exclude_from_totals, totals_exclusion_sql  # noqa: F401
 from modules.households.models import BankAccount, HouseholdMember
 from modules.merchants.models import Merchant
 from modules.merchant_review.models import CanonicalMerchant
@@ -160,10 +164,8 @@ async def get_monthly_summary(
             WHERE t.user_id = :user_id
               AND t.household_id = :household_id
               AND ts.split_type = 'personal'
-              AND t.status NOT IN ('pending', 'orphan')
-              AND t.transfer_pair_id IS NULL
-              AND t.refund_pair_id IS NULL
-              AND t.reimbursement_group_id IS NULL
+              AND t.status != 'pending'
+              AND {totals_exclusion_sql("t")}
               {currency_clause}
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
         ),
@@ -176,10 +178,8 @@ async def get_monthly_summary(
             JOIN bank_accounts ba ON ba.id = t.bank_account_id AND ba.is_active = TRUE
             WHERE t.household_id = :household_id
               AND ts.split_type = 'shared'
-              AND t.status NOT IN ('pending', 'orphan')
-              AND t.transfer_pair_id IS NULL
-              AND t.refund_pair_id IS NULL
-              AND t.reimbursement_group_id IS NULL
+              AND t.status != 'pending'
+              AND {totals_exclusion_sql("t")}
               {currency_clause}
             GROUP BY DATE_TRUNC('month', t.transaction_date::DATE)
         )
@@ -1097,22 +1097,6 @@ async def is_duplicate_transaction(
             return True
 
     return False
-
-
-def exclude_from_totals(query):
-    """Apply the invariant that transfers, refund pairs, and orphans do not
-    contribute to spend/income/budget totals.
-
-    Use this helper whenever aggregating (SUM) over `transactions`. Do NOT use
-    it to filter list views — paired rows should remain visible and the
-    frontend groups them visually.
-    """
-    return query.where(
-        Transaction.status != "orphan",
-        Transaction.transfer_pair_id.is_(None),
-        Transaction.refund_pair_id.is_(None),
-        Transaction.reimbursement_group_id.is_(None),
-    )
 
 
 class ServiceError(Exception):

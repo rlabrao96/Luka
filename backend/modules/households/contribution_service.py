@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.households.models import HouseholdMember
 from modules.transactions.models import Transaction
+from modules.transactions.totals import counts_toward_totals_clauses
 
 
 _ZERO = Decimal("0")
@@ -104,6 +105,7 @@ async def income_for_personal_view(
         Transaction.user_id == user_id,
         Transaction.household_id == household_id,
         Transaction.transaction_type == "income",
+        *counts_toward_totals_clauses(),
         Transaction.currency == currency,
         Transaction.transaction_date >= first_day,
         Transaction.transaction_date < first_day_next,
@@ -209,6 +211,7 @@ async def income_breakdown_for_household_view(
             Transaction.user_id == caller_id,
             Transaction.household_id == household_id,
             Transaction.transaction_type == "income",
+            *counts_toward_totals_clauses(),
             Transaction.currency == currency,
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,

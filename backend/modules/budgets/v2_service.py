@@ -76,6 +76,7 @@ from modules.subscriptions.read import (
     get_user_shared_unpaid_known_bills,
 )
 from modules.transactions.models import Transaction, TransactionSplit
+from modules.transactions.totals import counts_toward_totals_clauses
 
 
 _ZERO = Decimal("0")
@@ -217,7 +218,7 @@ async def _household_shared_outflows(
             Transaction.household_id == household_id,
             Transaction.currency == currency,
             Transaction.transaction_type == "expense",
-            Transaction.reimbursement_group_id.is_(None),
+            *counts_toward_totals_clauses(),
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,
             TransactionSplit.split_type == "shared",
@@ -261,7 +262,7 @@ async def _fetch_month_transactions(
                 Transaction.household_id == household_id,
                 Transaction.currency == currency,
                 Transaction.transaction_type == "expense",
-                Transaction.reimbursement_group_id.is_(None),
+                *counts_toward_totals_clauses(),
                 Transaction.transaction_date >= first_day,
                 Transaction.transaction_date < first_day_next,
                 (TransactionSplit.split_type == "personal")
@@ -276,7 +277,7 @@ async def _fetch_month_transactions(
                 Transaction.household_id == household_id,
                 Transaction.currency == currency,
                 Transaction.transaction_type == "expense",
-                Transaction.reimbursement_group_id.is_(None),
+                *counts_toward_totals_clauses(),
                 Transaction.transaction_date >= first_day,
                 Transaction.transaction_date < first_day_next,
                 TransactionSplit.split_type == "shared",
@@ -326,7 +327,7 @@ async def _three_month_category_stats(
                     Transaction.household_id == household_id,
                     Transaction.currency == currency,
                     Transaction.transaction_type == "expense",
-                    Transaction.reimbursement_group_id.is_(None),
+                    *counts_toward_totals_clauses(),
                     Transaction.transaction_date >= first_day,
                     Transaction.transaction_date < first_day_next,
                     (TransactionSplit.split_type == "personal")
@@ -344,7 +345,7 @@ async def _three_month_category_stats(
                     Transaction.household_id == household_id,
                     Transaction.currency == currency,
                     Transaction.transaction_type == "expense",
-                    Transaction.reimbursement_group_id.is_(None),
+                    *counts_toward_totals_clauses(),
                     Transaction.transaction_date >= first_day,
                     Transaction.transaction_date < first_day_next,
                     TransactionSplit.split_type == "shared",
@@ -415,7 +416,7 @@ async def _daily_burn_14d(
                 Transaction.household_id == household_id,
                 Transaction.currency == currency,
                 Transaction.transaction_type == "expense",
-                Transaction.reimbursement_group_id.is_(None),
+                *counts_toward_totals_clauses(),
                 Transaction.transaction_date >= fourteen_days_ago,
                 Transaction.transaction_date <= today,
                 (TransactionSplit.split_type == "personal")
@@ -430,7 +431,7 @@ async def _daily_burn_14d(
                 Transaction.household_id == household_id,
                 Transaction.currency == currency,
                 Transaction.transaction_type == "expense",
-                Transaction.reimbursement_group_id.is_(None),
+                *counts_toward_totals_clauses(),
                 Transaction.transaction_date >= fourteen_days_ago,
                 Transaction.transaction_date <= today,
                 TransactionSplit.split_type == "shared",
@@ -1174,7 +1175,7 @@ async def get_budget_v2(
                 Transaction.user_id == user_id,
                 Transaction.household_id == household_id,
                 Transaction.transaction_type == "income",
-                Transaction.reimbursement_group_id.is_(None),
+                *counts_toward_totals_clauses(),
                 Transaction.currency == currency,
                 Transaction.transaction_date >= first_day,
                 Transaction.transaction_date < first_day_next,
@@ -1459,7 +1460,7 @@ async def _top_expense_txns(
             Transaction.household_id == household_id,
             Transaction.currency == currency,
             Transaction.transaction_type == "expense",
-            Transaction.reimbursement_group_id.is_(None),
+            *counts_toward_totals_clauses(),
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,
             (TransactionSplit.split_type == "personal") | (TransactionSplit.split_type.is_(None)),
@@ -1469,7 +1470,7 @@ async def _top_expense_txns(
             Transaction.household_id == household_id,
             Transaction.currency == currency,
             Transaction.transaction_type == "expense",
-            Transaction.reimbursement_group_id.is_(None),
+            *counts_toward_totals_clauses(),
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,
             TransactionSplit.split_type == "shared",
@@ -1535,7 +1536,7 @@ async def _top_income_txns(
             Transaction.household_id == household_id,
             Transaction.currency == currency,
             Transaction.transaction_type == "income",
-            Transaction.reimbursement_group_id.is_(None),
+            *counts_toward_totals_clauses(),
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,
         )
@@ -1657,7 +1658,7 @@ async def get_node_drilldown(
                 Transaction.household_id == household_id,
                 Transaction.currency == currency,
                 Transaction.transaction_type == "expense",
-                Transaction.reimbursement_group_id.is_(None),
+                *counts_toward_totals_clauses(),
                 Transaction.transaction_date >= first_day,
                 Transaction.transaction_date < first_day_next,
             )

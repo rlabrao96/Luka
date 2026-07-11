@@ -416,3 +416,44 @@ async def test_exclude_from_totals_filters_orphan(db):
 
     total = await _sum_amount_for_user(db, user.id)
     assert total == Decimal("-15")
+
+
+@pytest.mark.asyncio
+async def test_wallet_funding_pair_keeps_canonical_expense_in_totals(db):
+    """Wallet funding pair: the bank leg (re-typed 'transfer') is excluded but
+    the wallet leg — the canonical expense, which carries the SAME
+    transfer_pair_id — must still count. Regression: pair-id-based exclusion
+    silently vanished every Venmo/PayPal purchase from spend totals."""
+    user, hh, acc = await _seed_household(db)
+    now = datetime.now(timezone.utc)
+    pair_id = uuid.uuid4()
+    db.add_all(
+        [
+            # Bank funding leg — excluded (transfer).
+            _tx(
+                user=user,
+                household=hh,
+                account=acc,
+                amount=Decimal("-3090"),
+                when=now,
+                status="settled",
+                tx_type="transfer",
+                transfer_pair_id=pair_id,
+            ),
+            # Wallet leg — canonical expense, same pair id, MUST count.
+            _tx(
+                user=user,
+                household=hh,
+                account=acc,
+                amount=Decimal("-3090"),
+                when=now,
+                status="settled",
+                tx_type="expense",
+                transfer_pair_id=pair_id,
+            ),
+        ]
+    )
+    await db.flush()
+
+    total = await _sum_amount_for_user(db, user.id)
+    assert total == Decimal("-3090")

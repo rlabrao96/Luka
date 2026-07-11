@@ -426,7 +426,7 @@ async def test_sankey_flow_conservation_fixed_outflow_exceeds_income(db):
         ),
         category="Ingresos",
         source="manual",
-        status="categorized",
+        status="settled",
         transaction_type="income",
     )
     db.add(synthetic)
