@@ -3,7 +3,7 @@ import secrets
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from modules.households.models import Household, HouseholdMember, HouseholdInvite
@@ -473,20 +473,37 @@ async def get_category_breakdown(
 
 
 def calculate_settlement(members: list[dict], split_ratio: list[int]) -> list[dict]:
-    """Pool-based settlement for N members. Returns minimal list of transfers."""
-    if len(members) <= 1 or not split_ratio:
+    """Pool-based settlement for N members. Returns minimal list of transfers.
+
+    `members` MUST be ordered by household_members.joined_at ASC — the same
+    canonical order budgets v2 `_caller_ratio_share` uses — because
+    `split_ratio[i]` maps positionally onto members[i]. Falls back to an equal
+    split when the ratio is missing, shorter than the member list, or sums to
+    zero. Expected shares are quantized to one minor unit and the last member
+    absorbs the rounding residual so balances always net to zero.
+    """
+    if len(members) <= 1:
         return []
 
     grand_total = sum(m["total"] for m in members)
     if grand_total == 0:
         return []
 
-    # Calculate each member's balance (positive = overpaid/creditor, negative = underpaid/debtor)
+    n = len(members)
+    if not split_ratio or len(split_ratio) < n or sum(split_ratio[:n]) <= 0:
+        ratios = [Decimal(1) / Decimal(n)] * n
+    else:
+        ratio_sum = Decimal(sum(split_ratio[:n]))
+        ratios = [Decimal(r) / ratio_sum for r in split_ratio[:n]]
+
+    _ONE = Decimal("1")
+    expected = [(grand_total * r).quantize(_ONE, rounding=ROUND_HALF_UP) for r in ratios]
+    expected[-1] = grand_total - sum(expected[:-1])
+
+    # Each member's balance (positive = overpaid/creditor, negative = underpaid/debtor)
     balances = []
     for i, member in enumerate(members):
-        ratio = Decimal(split_ratio[i]) if i < len(split_ratio) else Decimal(0)
-        expected = grand_total * ratio / Decimal(100)
-        balance = member["total"] - expected
+        balance = member["total"] - expected[i]
         balances.append(
             {
                 "user_id": str(member["user_id"]),
@@ -550,21 +567,28 @@ async def get_settlement(
         currency_clause = "AND t.currency = :currency"
         params["currency"] = currency
 
+    # Members come from household_members (not from who happened to spend) so a
+    # zero-spend partner still participates, and joined_at ASC keeps
+    # split_ratio[i] mapped to the same person as budgets v2 _caller_ratio_share.
     sql = text(f"""
         SELECT u.id AS user_id, u.full_name,
-               COALESCE(SUM(ABS(t.amount)), 0) AS total
-        FROM transactions t
-        JOIN transaction_splits ts ON ts.transaction_id = t.id
-        JOIN users u ON u.id = t.user_id
-        JOIN household_members hm ON hm.user_id = u.id AND hm.household_id = t.household_id
-        WHERE t.household_id = :household_id
-          AND ts.split_type = 'shared'
-          AND t.transaction_type = 'expense'
+               COALESCE(agg.total, 0) AS total
+        FROM household_members hm
+        JOIN users u ON u.id = hm.user_id
+        LEFT JOIN (
+            SELECT t.user_id, SUM(ABS(t.amount)) AS total
+            FROM transactions t
+            JOIN transaction_splits ts ON ts.transaction_id = t.id
+            WHERE t.household_id = :household_id
+              AND ts.split_type = 'shared'
+              AND t.transaction_type = 'expense'
+              AND {month_clause}
+              {currency_clause}
+            GROUP BY t.user_id
+        ) agg ON agg.user_id = hm.user_id
+        WHERE hm.household_id = :household_id
           AND hm.left_at IS NULL
-          AND {month_clause}
-          {currency_clause}
-        GROUP BY u.id, u.full_name
-        ORDER BY total DESC
+        ORDER BY hm.joined_at ASC
     """)
     result = await db.execute(sql, params)
     members = [dict(r._mapping) for r in result.all()]
