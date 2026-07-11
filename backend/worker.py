@@ -1,6 +1,7 @@
 import redis.asyncio as aioredis
 from arq import cron
 from arq.connections import RedisSettings
+from arq.worker import func as arq_func
 from core.config import settings
 from jobs.tasks import (
     process_email,
@@ -34,7 +35,10 @@ class FastWorkerSettings:
     """Handles webhooks, emails, schedulers, and lightweight cron jobs."""
 
     functions = [
-        process_email,
+        # A Gmail history push can carry several template-missing emails, each
+        # taking 10-15s of Gemini waterfall — the worker-default 60s timeout
+        # killed such batches mid-run. 300s covers the worst realistic batch.
+        arq_func(process_email, timeout=300),
         send_invite_email,
         refresh_subscriptions_for_user,
     ]

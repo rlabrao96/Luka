@@ -719,6 +719,11 @@ async def link_manual_transfer(
     amt_b = Decimal(str(b.amount))
     if amt_a == 0 or amt_b == 0:
         raise ServiceError("invalid_action", "Transfer legs cannot have zero amount")
+    # Mirror the ±2% tolerance the candidates endpoint applies — the link
+    # endpoint accepts arbitrary ids, so a stale UI or direct API call could
+    # otherwise pair -500.00 with +3.00 and hide the difference from totals.
+    if abs(abs(amt_a) - abs(amt_b)) > max(abs(amt_a), abs(amt_b)) * Decimal("0.02"):
+        raise ServiceError("invalid_action", "Transfer legs differ by more than 2%")
     if (amt_a > 0) == (amt_b > 0):
         raise ServiceError("invalid_action", "Both transactions have the same sign")
 
@@ -850,9 +855,11 @@ async def link_reimbursement_group(
             "Exactly one leg must have the opposite sign (the inflow or the outflow)",
         )
 
-    # Sum to zero within 1¢ tolerance.
+    # Sum to zero within one MINOR UNIT (amounts are stored as integer minor
+    # units, so Decimal("0.01") would demand exact zero — blocking legitimate
+    # 1¢ bank-rounding differences the docstring promises to accept).
     total = sum(amounts.values(), Decimal("0"))
-    if abs(total) > Decimal("0.01"):
+    if abs(total) > Decimal("1"):
         raise ServiceError(
             "invalid_action",
             f"Legs do not net to zero (off by {total})",
@@ -1045,14 +1052,20 @@ async def is_duplicate_transaction(
     amount: int,
     bank_name: str | None = None,
     currency: str | None = None,
+    merchant_name: str | None = None,
 ) -> bool:
     """
     Two-tier dedup for email transactions:
     1. Same amount + SAME currency + SAME bank within 5 min → duplicate (BChile compra+comprobante)
-    2. Same amount + SAME currency + DIFFERENT bank within 24h → duplicate (BofA + PayPal for same charge)
+    2. Same amount + SAME currency + DIFFERENT bank within 24h AND similar
+       merchant → duplicate (BofA + PayPal for same charge)
 
     Tier 1 catches fast duplicates from the same sender.
-    Tier 2 catches slow cross-sender duplicates (e.g. PayPal alert hours after BofA alert).
+    Tier 2 catches slow cross-sender duplicates (e.g. PayPal alert hours after
+    a BofA alert). It requires merchant similarity when ``merchant_name`` is
+    provided — round amounts dominate in zero-decimal currencies, so two
+    distinct 10.000 CLP purchases on different cards the same day must NOT be
+    silently dropped as duplicates.
     Currency + bank scoping prevents cross-currency / cross-bank false positives
     (e.g. CLP 2000 and USD 2000 arriving seconds apart are not duplicates).
     Neither blocks legitimate repeat purchases (3 beers at $7 from the same bank).
@@ -1092,9 +1105,20 @@ async def is_duplicate_transaction(
         ]
         if currency is not None:
             slow_conds.append(Transaction.currency == currency)
-        slow_result = await db.execute(select(Transaction).where(*slow_conds).limit(1))
-        if slow_result.scalar_one_or_none():
-            return True
+        slow_result = await db.execute(select(Transaction).where(*slow_conds).limit(5))
+        candidates = slow_result.scalars().all()
+        if candidates:
+            if merchant_name is None:
+                return True  # legacy behavior when the caller has no merchant
+            from modules.reconciliation.dedup import (
+                _merchant_token_match,
+                normalize_merchant,
+            )
+
+            query_norm = normalize_merchant(merchant_name)
+            for cand in candidates:
+                if _merchant_token_match(query_norm, cand.raw_merchant_name):
+                    return True
 
     return False
 

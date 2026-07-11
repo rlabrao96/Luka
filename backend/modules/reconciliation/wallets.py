@@ -126,8 +126,9 @@ async def detect_wallet_pairs(
             token = _wallet_token(wallet_acct)
             if not token or token not in bank_merchant:
                 continue
-            day_diff = abs((bank_tx.transaction_date - wallet_tx.transaction_date).days)
-            if day_diff > _PAIR_WINDOW_DAYS:
+            if abs(bank_tx.transaction_date - wallet_tx.transaction_date) > timedelta(
+                days=_PAIR_WINDOW_DAYS
+            ):
                 continue
 
             pair_id = uuid.uuid4()

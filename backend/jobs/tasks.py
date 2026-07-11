@@ -335,9 +335,15 @@ async def process_email(
                 # Lookup merchant categories (to provide options via WhatsApp)
                 categories = await lookup_merchant(parsed.raw_merchant, db=db, redis=redis_client)
 
-                # Cross-sender dedup: same bank 5min OR different bank 24h
+                # Cross-sender dedup: same bank 5min OR (different bank 24h +
+                # similar merchant — round CLP amounts collide constantly).
                 if await is_duplicate_transaction(
-                    db, user.id, parsed.amount, inferred_bank, currency=parsed.currency
+                    db,
+                    user.id,
+                    parsed.amount,
+                    inferred_bank,
+                    currency=parsed.currency,
+                    merchant_name=parsed.raw_merchant,
                 ):
                     print(
                         f"[PROCESS_EMAIL] skipping duplicate transaction ${parsed.amount} for {user.email}",
@@ -528,6 +534,13 @@ async def process_email(
                 )
                 await save_msgid(msg_id, str(txn.id), redis_client)
             except Exception as e:
+                # Release the dedup marker so a redelivery can retry this email —
+                # leaving it set turns any transient failure into a permanently
+                # dropped transaction (the marker is written before parsing).
+                try:
+                    await redis_client.delete(f"txn_processed:{raw_email.message_id}")
+                except Exception:
+                    logger.warning("process_email: failed to release dedup marker", exc_info=True)
                 await _record_failed_job(
                     "process_email", {"email_address": email_address}, str(e), db
                 )
@@ -692,9 +705,13 @@ async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> No
 
 
 async def refresh_subscriptions_cache(ctx: dict) -> None:
-    """Periodic cron: recompute subscription detection for all active users (batched)."""
-    from modules.subscriptions.service import _compute_and_store
+    """Periodic cron: fan out one per-user refresh job per active user.
 
+    The old version recomputed every user inside this single 60s-capped
+    fast-worker job — past ~300 users ARQ killed it mid-run and everyone
+    after the cutoff silently kept a stale cache until the next cron
+    (~10 days). Fan-out keeps each unit of work well under the timeout.
+    """
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             text("""
@@ -703,23 +720,11 @@ async def refresh_subscriptions_cache(ctx: dict) -> None:
                 WHERE ba.is_active = true
             """)
         )
-        user_ids = [row[0] for row in result.all()]
-        logger.info("Refreshing subscriptions cache for %d users", len(user_ids))
+        user_ids = [str(row[0]) for row in result.all()]
 
-        batch_size = 50
-        for i in range(0, len(user_ids), batch_size):
-            batch = user_ids[i : i + batch_size]
-            for uid in batch:
-                try:
-                    await _compute_and_store(db, uid)
-                except Exception:
-                    logger.warning(
-                        "Failed to refresh subscriptions for user %s", uid, exc_info=True
-                    )
-            if i + batch_size < len(user_ids):
-                import asyncio
-
-                await asyncio.sleep(2)
+    for uid in user_ids:
+        await enqueue_job("refresh_subscriptions_for_user", uid)
+    logger.info("refresh_subscriptions_cache: enqueued %d per-user refreshes", len(user_ids))
 
 
 async def refresh_subscriptions_for_user(ctx: dict, user_id: str) -> None:
@@ -1126,17 +1131,19 @@ async def schedule_plaid_syncs(ctx: dict):
 
 
 async def run_reconciliation_job(ctx: dict):
-    """Daily cron: detect inter-account transfers across all households."""
-    from modules.reconciliation.transfers import detect_transfers
+    """Daily 6am safety net: enqueue a FULL reconciliation tick per household.
+
+    Two bugs fixed at once: the old version (a) looped every household inside
+    one 600s-capped job, so late households were silently skipped at scale,
+    and (b) only ran transfer detection — the full tick (rematch, transfers,
+    refunds, wallets, aging) existed but was registered on no worker.
+    """
     from modules.households.models import Household
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Household.id))
-        household_ids = result.scalars().all()
-        total = 0
-        for hid in household_ids:
-            pairs = await detect_transfers(db, hid)
-            total += pairs
-        await db.commit()
-        if total:
-            print(f"[RECONCILIATION] Detected {total} transfer pairs", flush=True)
+        household_ids = [str(h) for h in result.scalars().all()]
+
+    for hid in household_ids:
+        await enqueue_job("run_reconciliation_tick_for_household", hid)
+    logger.info("run_reconciliation_job: enqueued %d household ticks", len(household_ids))

@@ -175,9 +175,9 @@ async def detect_transfers(
                 if (tx_a.amount > 0) == (tx_b.amount > 0):
                     continue
 
-                # Within ±2 days
-                day_diff = abs((tx_a.transaction_date - tx_b.transaction_date).days)
-                if day_diff > 2:
+                # Within ±2 days (abs of the full timedelta — flooring
+                # negative .days first made the window asymmetric by row order)
+                if abs(tx_a.transaction_date - tx_b.transaction_date) > timedelta(days=2):
                     continue
 
                 # Match found — mark both as transfers

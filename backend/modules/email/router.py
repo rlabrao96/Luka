@@ -6,7 +6,7 @@ from fastapi.responses import PlainTextResponse
 from core.config import settings
 from core.database import AsyncSessionLocal
 from jobs.queue import enqueue_job
-from modules.transactions.idempotency import is_already_processed
+from modules.transactions.idempotency import is_already_processed, unmark_processed
 
 router = APIRouter(tags=["webhooks"])
 
@@ -52,9 +52,18 @@ async def gmail_webhook(request: Request):
     history_id = data.get("historyId", "")
     email_address = data.get("emailAddress", "")
 
-    await enqueue_job(
-        "process_email", provider="gmail", email_address=email_address, history_id=history_id
-    )
+    try:
+        await enqueue_job(
+            "process_email", provider="gmail", email_address=email_address, history_id=history_id
+        )
+    except Exception:
+        # Roll back the idempotency marker so Pub/Sub's redelivery retries —
+        # otherwise a Redis blip here answers the retry "duplicate" and the
+        # email is dropped forever.
+        if message_id:
+            async with AsyncSessionLocal() as db:
+                await unmark_processed(db, message_id)
+        raise
     return {"status": "ok"}
 
 
@@ -78,11 +87,19 @@ async def outlook_webhook(request: Request, validationToken: str = None):
                 if await is_already_processed(db, message_id):
                     continue
 
-        await enqueue_job(
-            "process_email",
-            provider="outlook",
-            message_id=message_id,
-            subscription_id=subscription_id,
-        )
+        try:
+            await enqueue_job(
+                "process_email",
+                provider="outlook",
+                message_id=message_id,
+                subscription_id=subscription_id,
+            )
+        except Exception:
+            # Outlook redelivers per message_id — without the rollback a
+            # failed enqueue permanently drops this email.
+            if message_id:
+                async with AsyncSessionLocal() as db:
+                    await unmark_processed(db, message_id)
+            raise
 
     return {"status": "ok"}

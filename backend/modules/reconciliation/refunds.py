@@ -43,8 +43,14 @@ async def detect_refunds(
             Transaction.household_id == household_id,
             Transaction.transaction_date >= cutoff,
             Transaction.bank_account_id.is_not(None),
+            # A pending email echo carrying a bank_account_id must never be
+            # refund-paired with a real bank row (it would block the email's
+            # normal consolidation). Rows already netted in a reimbursement
+            # group must not be consumed into a refund pair.
+            Transaction.source_type != "email",
             Transaction.transfer_pair_id.is_(None),
             Transaction.refund_pair_id.is_(None),
+            Transaction.reimbursement_group_id.is_(None),
         )
         .order_by(Transaction.transaction_date)
     )
@@ -94,7 +100,9 @@ async def repair_refund_pairs(
                     Transaction.household_id == household_id,
                     Transaction.transaction_date >= cutoff,
                     Transaction.bank_account_id.is_not(None),
+                    Transaction.source_type != "email",
                     Transaction.transfer_pair_id.is_(None),
+                    Transaction.reimbursement_group_id.is_(None),
                 )
             )
         )

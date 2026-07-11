@@ -4,7 +4,9 @@ from worker import FastWorkerSettings, SlowWorkerSettings
 
 
 def _func_names(settings_cls):
-    return {f.__name__ for f in settings_cls.functions}
+    # Entries are either coroutines or arq.worker.func(...) wrappers (used to
+    # override the per-function timeout, e.g. process_email).
+    return {getattr(f, "__name__", None) or f.name for f in settings_cls.functions}
 
 
 def _cron_names(settings_cls):
@@ -25,6 +27,7 @@ def test_slow_worker_functions():
         "run_plaid_sync_job",
         "process_merchant_review",
         "run_template_agent",
+        "run_reconciliation_tick_for_household",
     }
 
 
@@ -42,10 +45,11 @@ def test_fast_worker_cron_jobs():
 
 
 def test_slow_worker_cron_jobs():
+    # The 6am safety net (run_reconciliation_job) fans out per-household
+    # full ticks; the monolithic run_reconciliation_tick cron is gone.
     assert _cron_names(SlowWorkerSettings) == {
         "run_reconciliation_job",
         "run_template_agent",
-        "run_reconciliation_tick",
     }
 
 

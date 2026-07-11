@@ -1,31 +1,17 @@
-"""ARQ wrappers for the reconciliation tick orchestrator.
+"""ARQ wrapper for the reconciliation tick orchestrator.
 
-Two task variants exist:
-
-- ``run_reconciliation_tick``: runs a full pass across every household.
-  Kept available for the daily safety-net cron at 6am (``run_reconciliation_job``)
-  and ad-hoc invocations.
-- ``run_reconciliation_tick_for_household``: per-household variant enqueued
-  event-driven from email ingest and Plaid sync completion. This replaces
-  the old every-15-minute cron that ticked all households unconditionally.
+``run_reconciliation_tick_for_household`` is the single unit of work:
+enqueued event-driven from email ingest and Plaid sync completion, and
+fanned out per household by the daily 6am safety net
+(``run_reconciliation_job``). The old all-households-in-one-job wrapper was
+removed — it was registered on no worker (the 6am cron silently ran only
+transfer detection) and would exceed the slow worker's 600s budget at scale.
 """
 
 import uuid
 
 from core.database import AsyncSessionLocal
-from modules.reconciliation.tick import (
-    reconciliation_tick_all_households,
-    reconciliation_tick_for_household,
-)
-
-
-async def run_reconciliation_tick(ctx: dict) -> dict[str, int]:
-    """ARQ task: runs a full reconciliation tick across every household."""
-    async with AsyncSessionLocal() as db:
-        totals = await reconciliation_tick_all_households(db)
-    if any(totals.values()):
-        print(f"[RECONCILIATION_TICK] {totals}", flush=True)
-    return totals
+from modules.reconciliation.tick import reconciliation_tick_for_household
 
 
 async def run_reconciliation_tick_for_household(ctx: dict, household_id: str) -> dict[str, int]:
