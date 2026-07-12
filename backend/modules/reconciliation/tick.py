@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.households.models import Household
@@ -105,22 +105,24 @@ async def reconciliation_tick_for_household(
         .all()
     )
 
+    # One query for the whole batch: latest Plaid sync per owner (M25) —
+    # the old per-row PlaidItem lookup turned a 200-email backlog into 200
+    # sequential point queries.
     orphaned = 0
-    for tx in aging_rows:
-        has_recent_sync = (
-            await session.execute(
-                select(PlaidItem.id)
-                .where(
-                    PlaidItem.user_id == tx.user_id,
-                    PlaidItem.last_sync_at > tx.created_at,
-                )
-                .limit(1)
-            )
-        ).first()
-        if has_recent_sync:
-            tx.status = "orphan"
-            tx.orphaned_at = now
-            orphaned += 1
+    if aging_rows:
+        owner_ids = {tx.user_id for tx in aging_rows}
+        sync_rows = await session.execute(
+            select(PlaidItem.user_id, func.max(PlaidItem.last_sync_at))
+            .where(PlaidItem.user_id.in_(owner_ids))
+            .group_by(PlaidItem.user_id)
+        )
+        last_sync_by_user = {uid: ts for uid, ts in sync_rows.all() if ts is not None}
+        for tx in aging_rows:
+            last_sync = last_sync_by_user.get(tx.user_id)
+            if last_sync is not None and last_sync > tx.created_at:
+                tx.status = "orphan"
+                tx.orphaned_at = now
+                orphaned += 1
     await session.flush()
 
     # ---------- 5. Credit-suggestion pass.

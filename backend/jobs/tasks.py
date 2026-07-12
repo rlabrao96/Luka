@@ -1009,21 +1009,33 @@ async def process_merchant_review(ctx: dict, job_id: str) -> None:
                 )
             raw_names = [r[0] for r in txn_result.all() if r[0]]
 
-            # Split into known (has canonical) vs new merchants
+            # Split into known (has canonical) vs new merchants.
+            # Pre-load merchants + canonicals in TWO queries — the old
+            # per-name SELECT pair made a first sync issue hundreds of
+            # sequential round trips before the LLM phase even started (M22).
+            merchants_by_name: dict[str, Merchant] = {}
+            if raw_names:
+                mr_all = await db.execute(select(Merchant).where(Merchant.raw_name.in_(raw_names)))
+                merchants_by_name = {m.raw_name: m for m in mr_all.scalars().all()}
+            canonical_ids = {
+                m.canonical_merchant_id
+                for m in merchants_by_name.values()
+                if m.canonical_merchant_id
+            }
+            canonicals_by_id: dict = {}
+            if canonical_ids:
+                canon_all = await db.execute(
+                    select(CanonicalMerchant).where(CanonicalMerchant.id.in_(canonical_ids))
+                )
+                canonicals_by_id = {c.id: c for c in canon_all.scalars().all()}
+
             names_to_process = []
             known_count = 0
             for name in raw_names:
-                mr = await db.execute(select(Merchant).where(Merchant.raw_name == name))
-                merchant = mr.scalar_one_or_none()
+                merchant = merchants_by_name.get(name)
                 if merchant and merchant.canonical_merchant_id:
                     known_count += 1
-                    # Backfill category for known merchants missing one
-                    canon_result = await db.execute(
-                        select(CanonicalMerchant).where(
-                            CanonicalMerchant.id == merchant.canonical_merchant_id
-                        )
-                    )
-                    canonical = canon_result.scalar_one_or_none()
+                    canonical = canonicals_by_id.get(merchant.canonical_merchant_id)
                     if canonical and not canonical.default_category:
                         categories = await lookup_merchant(name, db, redis)
                         if categories:

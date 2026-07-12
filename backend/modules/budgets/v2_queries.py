@@ -273,66 +273,66 @@ async def _three_month_category_stats(
     """Return per-category (mean, pstdev, n) over the 3 preceding months.
 
     Savings-equivalent categories are excluded from this — they're not
-    "spending risk".
+    "spending risk". ONE query grouped by (month, category) instead of the
+    old three sequential per-month queries (M20).
     """
-    # Build a per-category list of 3 monthly totals.
-    per_category: dict[str, list[Decimal]] = {}
-    for offset in range(1, 4):
-        prior_start = _prior_month(month, offset)
-        first_day, first_day_next, _ = _month_bounds_datetime(prior_start)
+    window_start, _, _ = _month_bounds_datetime(_prior_month(month, 3))
+    current_start, _, _ = _month_bounds_datetime(month)
+    month_expr = func.date_trunc("month", Transaction.transaction_date).label("month_start")
 
-        # Luka stores expense amounts as negative Decimals; take abs() so
-        # category totals come out positive and downstream share×CV math
-        # (mean/std/cap) works correctly.
-        # Personal view uses LEFT JOIN so email-ingested txns with no split row
-        # (treated as "personal" in the UI) don't drop out.
-        if view == "personal":
-            trip_joins, spent_expr = _personal_spent_expr(user_id, currency)
-            q = (
-                select(
-                    Transaction.category,
-                    func.coalesce(func.sum(spent_expr), 0).label("total"),
-                )
-                .select_from(Transaction)
-                .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+    # Luka stores expense amounts as negative Decimals; abs() so category
+    # totals come out positive for the downstream share×CV math (mean/std/cap).
+    # Personal view uses LEFT JOIN so email-ingested txns with no split row
+    # (treated as "personal" in the UI) don't drop out.
+    if view == "personal":
+        trip_joins, spent_expr = _personal_spent_expr(user_id, currency)
+        q = (
+            select(
+                month_expr,
+                Transaction.category,
+                func.coalesce(func.sum(spent_expr), 0).label("total"),
             )
-            for target, onclause in trip_joins:
-                q = q.outerjoin(target, onclause)
-            q = q.where(
-                Transaction.user_id == user_id,
+            .select_from(Transaction)
+            .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        )
+        for target, onclause in trip_joins:
+            q = q.outerjoin(target, onclause)
+        q = q.where(
+            Transaction.user_id == user_id,
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "expense",
+            *counts_toward_totals_clauses(),
+            Transaction.transaction_date >= window_start,
+            Transaction.transaction_date < current_start,
+            (TransactionSplit.split_type == "personal") | (TransactionSplit.split_type.is_(None)),
+        )
+    else:
+        q = (
+            select(
+                month_expr,
+                Transaction.category,
+                func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
+            )
+            .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(
                 Transaction.household_id == household_id,
                 Transaction.currency == currency,
                 Transaction.transaction_type == "expense",
                 *counts_toward_totals_clauses(),
-                Transaction.transaction_date >= first_day,
-                Transaction.transaction_date < first_day_next,
-                (TransactionSplit.split_type == "personal")
-                | (TransactionSplit.split_type.is_(None)),
+                Transaction.transaction_date >= window_start,
+                Transaction.transaction_date < current_start,
+                TransactionSplit.split_type == "shared",
             )
-        else:
-            q = (
-                select(
-                    Transaction.category,
-                    func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
-                )
-                .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-                .where(
-                    Transaction.household_id == household_id,
-                    Transaction.currency == currency,
-                    Transaction.transaction_type == "expense",
-                    *counts_toward_totals_clauses(),
-                    Transaction.transaction_date >= first_day,
-                    Transaction.transaction_date < first_day_next,
-                    TransactionSplit.split_type == "shared",
-                )
-            )
-        q = q.group_by(Transaction.category)
+        )
+    q = q.group_by(month_expr, Transaction.category)
 
-        rows = await db.execute(q)
-        for category, total in rows:
-            if not category or is_savings_category(category):
-                continue
-            per_category.setdefault(category, []).append(Decimal(str(total)))
+    per_category: dict[str, list[Decimal]] = {}
+    rows = await db.execute(q)
+    for _month_start, category, total in rows:
+        if not category or is_savings_category(category):
+            continue
+        per_category.setdefault(category, []).append(Decimal(str(total)))
 
     stats: dict[str, tuple[Decimal, Decimal, int]] = {}
     for category, totals in per_category.items():
