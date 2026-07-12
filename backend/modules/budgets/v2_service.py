@@ -232,7 +232,7 @@ async def _household_shared_outflows(
 # ---------------------------------------------------------------- spent
 
 
-async def _fetch_month_transactions(
+async def _month_category_sums(
     db: AsyncSession,
     *,
     view: str,
@@ -240,8 +240,12 @@ async def _fetch_month_transactions(
     household_id: uuid.UUID,
     month: date,
     currency: str,
-) -> list[Transaction]:
-    """Pull expense transactions for the month in one query.
+) -> list[tuple[str | None, Decimal]]:
+    """Per-category expense totals for the month — SQL aggregation.
+
+    Returns ``[(category, sum_abs_amount), ...]``. Every consumer only needs
+    category sums; the previous version hydrated FULL ORM rows (hundreds per
+    household-month, twice per dashboard load).
 
     Both views filter by effective split_type: household → shared, personal →
     personal. This keeps the two Sankeys additive — a shared expense belongs
@@ -249,13 +253,17 @@ async def _fetch_month_transactions(
     ratio), never to the personal Level-3 category breakdown.
     """
     first_day, first_day_next, _ = _month_bounds_datetime(month)
+    agg = select(
+        Transaction.category,
+        func.sum(func.abs(Transaction.amount)).label("total"),
+    ).group_by(Transaction.category)
     # Email-ingested transactions on non-joint accounts have no transaction_splits
     # row at ingestion time (see jobs/tasks.py). The frontend treats a NULL split
     # as "personal", so we do the same here via LEFT JOIN + NULL coalesce —
     # otherwise ~every email-ingested expense drops out of the personal view.
     if view == "personal":
         base = (
-            select(Transaction)
+            agg.select_from(Transaction)
             .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
                 Transaction.user_id == user_id,
@@ -271,7 +279,7 @@ async def _fetch_month_transactions(
         )
     else:
         base = (
-            select(Transaction)
+            agg.select_from(Transaction)
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
                 Transaction.household_id == household_id,
@@ -284,7 +292,7 @@ async def _fetch_month_transactions(
             )
         )
     r = await db.execute(base)
-    return list(r.scalars().all())
+    return [(row[0], Decimal(str(row[1] or 0))) for row in r.all()]
 
 
 # --------------------------------------------------- historical category stats
@@ -406,10 +414,14 @@ async def _daily_burn_14d(
     today = datetime.now(timezone.utc)
     fourteen_days_ago = today - timedelta(days=14)
 
+    burn_agg = select(
+        Transaction.category,
+        func.sum(func.abs(Transaction.amount)),
+    ).group_by(Transaction.category)
     if view == "personal":
         # LEFT JOIN so email-ingested txns with no split row are included.
         q = (
-            select(Transaction)
+            burn_agg.select_from(Transaction)
             .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
                 Transaction.user_id == user_id,
@@ -425,7 +437,7 @@ async def _daily_burn_14d(
         )
     else:
         q = (
-            select(Transaction)
+            burn_agg.select_from(Transaction)
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
                 Transaction.household_id == household_id,
@@ -438,14 +450,12 @@ async def _daily_burn_14d(
             )
         )
     rows = await db.execute(q)
-    txns = list(rows.scalars().all())
 
     total = _ZERO
-    for t in txns:
-        if is_savings_category(t.category):
+    for category, amt in rows.all():
+        if is_savings_category(category):
             continue
-        # Expenses are stored as negative; abs() so the daily burn is positive.
-        total += abs(Decimal(str(t.amount)))
+        total += Decimal(str(amt or 0))
     return (total / Decimal("14")) if total > _ZERO else _ZERO
 
 
@@ -1226,7 +1236,7 @@ async def get_budget_v2(
         gastos_hogar_personal = (shared_outflows * caller_ratio).quantize(Decimal("0.01"))
 
     # ---- spent (excluding savings-equivalent categories) ----------------
-    month_txns = await _fetch_month_transactions(
+    category_sums = await _month_category_sums(
         db,
         view=view,
         user_id=user_id,
@@ -1237,16 +1247,13 @@ async def get_budget_v2(
     mtd_spent = _ZERO
     mtd_savings_progress = _ZERO
     mtd_by_category: dict[str, Decimal] = {}
-    for t in month_txns:
-        # Luka stores expense amounts as negative; normalize to positive
-        # before aggregating so spent/category totals are outflows, not net.
-        amt = abs(Decimal(str(t.amount)))
-        if is_savings_category(t.category):
+    for category, amt in category_sums:
+        if is_savings_category(category):
             mtd_savings_progress += amt
             continue
         mtd_spent += amt
-        if t.category:
-            mtd_by_category[t.category] = mtd_by_category.get(t.category, _ZERO) + amt
+        if category:
+            mtd_by_category[category] = mtd_by_category.get(category, _ZERO) + amt
 
     # ---- spendable -------------------------------------------------------
     spendable_amount = spendable_ceiling(
@@ -1430,7 +1437,7 @@ async def _top_expense_txns(
 ) -> list[DrilldownItem]:
     """Top-N expense transactions by absolute amount for the given scope.
 
-    Scope is defined by `view` (same rules as `_fetch_month_transactions`):
+    Scope is defined by `view` (same rules as `_month_category_sums`):
     household → shared splits only, personal → split_type personal OR NULL.
     `category_filter` narrows to one category; `exclude_categories` is the
     inverse (used for the `spent_other` node).
@@ -1766,7 +1773,7 @@ async def get_node_drilldown(
         # can invert it and `spent_<slug>` can resolve the slug back to the
         # original category name.
         mtd_by_category: dict[str, Decimal] = {}
-        month_txns = await _fetch_month_transactions(
+        category_sums = await _month_category_sums(
             db,
             view=view,
             user_id=user_id,
@@ -1774,11 +1781,10 @@ async def get_node_drilldown(
             month=month,
             currency=currency,
         )
-        for t in month_txns:
-            if not t.category or is_savings_category(t.category):
+        for category, amt in category_sums:
+            if not category or is_savings_category(category):
                 continue
-            amt = abs(Decimal(str(t.amount)))
-            mtd_by_category[t.category] = mtd_by_category.get(t.category, _ZERO) + amt
+            mtd_by_category[category] = mtd_by_category.get(category, _ZERO) + amt
         top_cats = [
             c for c, _ in sorted(mtd_by_category.items(), key=lambda kv: kv[1], reverse=True)[:5]
         ]
