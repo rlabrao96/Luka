@@ -4,6 +4,9 @@ _Last updated: 2026-07-12 (night pass: v2_service split, tz-aware month bounds, 
 
 ## Recently Shipped
 
+- **Small-safe items + reclassify feature (2026-07-12)** — commits `0785441` … `8e259ee`. (1) **SEC-8** — uvicorn now runs `--forwarded-allow-ips=*` so behind Railway's edge the rate limiter keys on the real client IP instead of the proxy (was: all users shared one bucket). (2) **Manual reclassify** (user request) — `GET /transactions/unclassified-count` + `POST /transactions/reclassify` create a `MerchantReviewJob` scoped to uncategorized settled expenses in a chosen range and enqueue the existing LLM-classify→approval-notification pipeline; frontend 'Clasificar' button + timeframe picker (7/30/90/180d) with a live count badge on the transactions header. (3) **Trips Saldos auto-detect chip** — smart-settle rows matching an unactioned `trip_settlement_suggestion` notification get a one-tap 'Auto-detectado · Confirmar' chip; confirming marks the notification actioned. **Deferred:** test/code dedup (M28-remaining shared seed helpers + central model registration) — maintainability-only, high-churn; do deliberately.
+
+
 - **Autonomous backlog pass (2026-07-12)** — commits `7118e37` … `178615d`. Six items, privacy-heavy: (1) **contribution-summary leak** — stopped returning every member's personal/total spending (frontend only shows `shared_paid`; the rest was readable via devtools); (2) **member-stats leak** — scoped to shared-split only (was leaking others' all-time personal spend); (3) **phone uniqueness** — migration 053 (self-healing dedup + partial unique index) + 409 guard in verify-pin, fixing ambiguous inbound WhatsApp routing where one account silently won a shared number; (4) **leave-group endpoint** — `POST /households/{id}/leave` auto-promotes the oldest remaining member so a sole owner isn't trapped into deleting their account; frontend 'Salir del grupo' button + confirm; (5) **invite rate-limit** — 20/min/IP on `/invite/{token}`; (6) **UX polish** — joined-group confirmation toast, Compartido 'Tú' accent + dropped a hardcoded 'Activo' badge. Also noted stale: the WhatsApp PIN rate-limit was already shipped.
 
 
@@ -82,7 +85,7 @@ _Last updated: 2026-07-12 (night pass: v2_service split, tz-aware month bounds, 
 - ~~[M30] Sankey drilldown tests~~ — **DONE 2026-07-12**: `tests/test_budget_v2_drilldown.py` covers category nodes, spent_other, hubs, unknown ids, invalid view.
 - **[L11] Transaction list pagination** — partial 2026-07-12: `/mine` now supports month+limit and the dashboard/transactions pages fetch month-scoped; full keyset pagination for the all-months view still pending.
 - ~~[L12] Subscriptions cache coupling~~ — **DONE 2026-07-12**: `get_active_subscription_merchant_keys` lives in the subscriptions module; trips delegates.
-- **[SEC-8] Rate-limiter proxy IP** — confirm Railway proxy-header config; `get_remote_address` may see the LB address (shared bucket) or be spoofable via X-Forwarded-For if proxy headers are trusted without an allowlist.
+- ~~[SEC-8] Rate-limiter proxy IP~~ **[DONE 2026-07-12]** — confirm Railway proxy-header config; `get_remote_address` may see the LB address (shared bucket) or be spoofable via X-Forwarded-For if proxy headers are trusted without an allowlist.
 - **[N4] `_find_single_match` bank-name lookup** — accept `known_bank` from callers that already hold the account list.
 - Re-run `/graphify --update` — the knowledge graph predates this remediation sweep.
 
