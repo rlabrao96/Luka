@@ -630,6 +630,69 @@ function ConnectBankModal({ onClose }: { onClose: () => void }) {
    Detected account card (Luka Connect — auto-created accounts)
    ═══════════════════════════════════════════════════════════════════ */
 
+/** Mask-based hint: when a single bank connection (Plaid item) returns two or
+ *  more credit cards and none is yet marked "De mi pareja", one of them may be
+ *  a partner's authorized-user card whose spending is counting as the owner's.
+ *  Plaid can't tell us who owns a card, so we only *suggest* — the user marks it
+ *  themselves via the account's type selector. Dismissible (persisted). */
+function PartnerCardHint({ accounts }: { accounts: BankAccountRow[] }) {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setDismissed(localStorage.getItem("luka-partner-card-hint") === "dismissed");
+    } catch {
+      /* localStorage unavailable — just show the hint */
+    }
+  }, []);
+
+  // Any Plaid login with 2+ credit cards and none already marked partner.
+  const groups = new Map<string, BankAccountRow[]>();
+  for (const a of accounts) {
+    if (a.account_kind !== "credit_card" || !a.plaid_item_id) continue;
+    const list = groups.get(a.plaid_item_id) ?? [];
+    list.push(a);
+    groups.set(a.plaid_item_id, list);
+  }
+  const hasCandidate = Array.from(groups.values()).some(
+    (cards) => cards.length >= 2 && cards.every((c) => c.account_type !== "partner"),
+  );
+
+  if (dismissed || !hasCandidate) return null;
+
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2.5">
+      <span className="mt-0.5 text-purple-500">💳</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-purple-800">¿Alguna tarjeta es de tu pareja?</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-purple-700">
+          Detectamos más de una tarjeta de crédito en la misma conexión. Si una es adicional y la
+          usa y paga tu pareja, márcala como <strong>“De mi pareja”</strong> para que sus gastos no
+          cuenten como tuyos.
+        </p>
+      </div>
+      <button
+        onClick={() => {
+          try {
+            localStorage.setItem("luka-partner-card-hint", "dismissed");
+          } catch {
+            /* ignore */
+          }
+          setDismissed(true);
+        }}
+        className="shrink-0 text-purple-400 hover:text-purple-600"
+        title="Descartar"
+        aria-label="Descartar"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function DetectedAccountCard({
   account,
   householdId,
@@ -660,7 +723,7 @@ function DetectedAccountCard({
     }
   }
 
-  async function changeType(newType: "personal" | "joint") {
+  async function changeType(newType: "personal" | "partner" | "joint") {
     if (newType === account.account_type) return;
     setUpdating(true);
     try {
@@ -669,6 +732,7 @@ function DetectedAccountCard({
       });
       await queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     } finally {
       setUpdating(false);
     }
@@ -689,16 +753,20 @@ function DetectedAccountCard({
   const typeSelect = (
     <select
       value={account.account_type}
-      onChange={(e) => changeType(e.target.value as "personal" | "joint")}
+      onChange={(e) => changeType(e.target.value as "personal" | "partner" | "joint")}
       disabled={updating}
+      title="De mi pareja: tarjeta adicional que usa y paga tu pareja. Sus gastos no cuentan como tuyos."
       className={`text-[10px] font-medium px-2 py-1 rounded-md border cursor-pointer appearance-none pr-5 disabled:opacity-50 transition-colors ${
         account.account_type === "joint"
           ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-          : "bg-blue-50 border-blue-200 text-blue-700"
+          : account.account_type === "partner"
+            ? "bg-purple-50 border-purple-200 text-purple-700"
+            : "bg-blue-50 border-blue-200 text-blue-700"
       }`}
       style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 4px center" }}
     >
       <option value="personal">Personal</option>
+      <option value="partner">De mi pareja</option>
       <option value="joint">Compartida</option>
     </select>
   );
@@ -893,6 +961,7 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
               <p className="text-xs text-slate-400">
                 Cuentas creadas automáticamente al sincronizar con tu banco.
               </p>
+              <PartnerCardHint accounts={detectedAccounts} />
               {Array.from(byBank.entries()).map(([bankName, bankAccounts]) => (
                 <div key={bankName} className="space-y-2">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">

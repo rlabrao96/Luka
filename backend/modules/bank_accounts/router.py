@@ -53,6 +53,10 @@ async def list_bank_accounts(
             "account_name": a.account_name,
             "account_number": a.account_number,
             "cardholder_name": a.cardholder_name,
+            # Groups cards that share one Plaid login, so the UI can hint when
+            # multiple credit cards on the same connection may include a
+            # partner's authorized-user card. Internal id, not PII.
+            "plaid_item_id": str(a.plaid_item_id) if a.plaid_item_id else None,
             "currency": a.currency,
             "is_active": a.is_active,
             "user_id": str(a.user_id),
