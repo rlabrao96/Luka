@@ -376,7 +376,9 @@ async def test_handle_text_message_manual_trigger_creates_transaction():
     assert added_txn.status == "settled"
     assert added_txn.source == "manual"
     assert added_txn.currency == "USD"
-    mock_db.commit.assert_called_once()
+    # The handler commits at least once (split-ensure and notification paths
+    # may add more) — pin persistence, not the exact commit count.
+    assert mock_db.commit.await_count >= 1
     mock_alert.assert_called_once()
     # Session must be saved in redis
     assert any("wa_session" in key for key in stored)

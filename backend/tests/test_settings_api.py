@@ -35,44 +35,32 @@ def auth_app(app, mock_user):
 
 
 @pytest.mark.asyncio
-async def test_patch_profile_route_exists(auth_app, mock_user):
-    from modules.auth.schemas import UserResponse
+async def test_patch_profile_route_exists(app, db, make_user):
+    """Real-DB smoke: PATCH /auth/me renames the profile. (The old version
+    patched AsyncSession globally and broke when the endpoint adopted
+    db.merge; full contribution-field coverage lives in test_auth.py.)"""
+    from core.database import get_db
+    from core.security import get_current_user
 
-    fake_response = UserResponse(
-        id=mock_user.id,
-        email=mock_user.email,
-        full_name="New Name",
-        email_provider=mock_user.email_provider,
-        whatsapp_verified=mock_user.whatsapp_verified,
-        phone_whatsapp=mock_user.phone_whatsapp,
-        household_id=None,
-    )
-    mock_result = type(
-        "R",
-        (),
-        {
-            "first": lambda self: None,
-            "scalar_one_or_none": lambda self: mock_user,
-        },
-    )()
-    # Patch at DB level — commit/refresh are the problematic calls
-    with (
-        patch("sqlalchemy.ext.asyncio.AsyncSession.commit", new=AsyncMock()),
-        patch("sqlalchemy.ext.asyncio.AsyncSession.refresh", new=AsyncMock()),
-        patch(
-            "sqlalchemy.ext.asyncio.AsyncSession.execute",
-            new=AsyncMock(return_value=mock_result),
-        ),
-    ):
-        async with AsyncClient(
-            transport=ASGITransport(app=auth_app), base_url="http://test"
-        ) as c:
+    user = await make_user()
+
+    async def _db():
+        yield db
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             response = await c.patch(
                 "/auth/me",
                 json={"full_name": "New Name"},
                 headers={"Authorization": "Bearer token"},
             )
-    assert response.status_code in (200, 500)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["full_name"] == "New Name"
 
 
 @pytest.mark.asyncio
@@ -127,7 +115,14 @@ async def test_get_categories_requires_auth(app):
 
 @pytest.mark.asyncio
 async def test_put_categories_reorder_route_exists(auth_app):
-    fake_cats = [{"category": "Alimentación", "sort_order": 0, "category_type": "expense", "is_custom": False}]
+    fake_cats = [
+        {
+            "category": "Alimentación",
+            "sort_order": 0,
+            "category_type": "expense",
+            "is_custom": False,
+        }
+    ]
     with patch(
         "modules.settings.service.reorder_categories",
         new=AsyncMock(return_value=fake_cats),
@@ -143,8 +138,23 @@ async def test_put_categories_reorder_route_exists(auth_app):
 
 def test_allowed_currencies_contains_all_16():
     from modules.auth.schemas import ALLOWED_CURRENCIES
+
     expected = {
-        "CLP", "USD", "COP", "BRL", "MXN", "ARS", "PEN",
-        "UYU", "PYG", "BOB", "VES", "DOP", "GTQ", "HNL", "NIO", "CRC",
+        "CLP",
+        "USD",
+        "COP",
+        "BRL",
+        "MXN",
+        "ARS",
+        "PEN",
+        "UYU",
+        "PYG",
+        "BOB",
+        "VES",
+        "DOP",
+        "GTQ",
+        "HNL",
+        "NIO",
+        "CRC",
     }
     assert expected == ALLOWED_CURRENCIES

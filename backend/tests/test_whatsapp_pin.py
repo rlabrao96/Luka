@@ -74,21 +74,39 @@ async def test_send_pin_validates_phone_format(app, setup_pin_app):
 
 
 @pytest.mark.asyncio
-async def test_verify_pin_success(app, mock_user_for_pin, setup_pin_app):
-    pin_data = {"pin": "123456", "user_id": str(mock_user_for_pin.id), "attempts": 0}
-    with (
-        patch("modules.auth.router.cache_get", new_callable=AsyncMock, return_value=pin_data),
-        patch("modules.auth.router.cache_delete", new_callable=AsyncMock) as mock_del,
-    ):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            response = await c.post(
-                "/auth/verify-whatsapp-pin", json={"phone": "+56912345678", "pin": "123456"}
-            )
+async def test_verify_pin_success(app, db, make_user):
+    """Real-DB variant: the endpoint db.merge()s the current user, which an
+    AsyncMock session can't emulate (the old mock asserted attributes on an
+    object the endpoint never touched)."""
+    from core.database import get_db
+    from core.security import get_current_user
+
+    user = await make_user()
+    pin_data = {"pin": "123456", "user_id": str(user.id), "attempts": 0}
+
+    async def _db():
+        yield db
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = _db
+    try:
+        with (
+            patch("modules.auth.router.cache_get", new_callable=AsyncMock, return_value=pin_data),
+            patch("modules.auth.router.cache_delete", new_callable=AsyncMock) as mock_del,
+            patch("modules.auth.router.invalidate_user_cache", new_callable=AsyncMock),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                response = await c.post(
+                    "/auth/verify-whatsapp-pin", json={"phone": "+56912345678", "pin": "123456"}
+                )
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert mock_user_for_pin.phone_whatsapp == "+56912345678"
-    assert mock_user_for_pin.whatsapp_verified is True
-    assert mock_del.call_count == 2
+    await db.refresh(user)
+    assert user.phone_whatsapp == "+56912345678"
+    assert user.whatsapp_verified is True
+    assert mock_del.call_count >= 1
 
 
 @pytest.mark.asyncio

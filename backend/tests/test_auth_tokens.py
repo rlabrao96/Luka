@@ -1,46 +1,53 @@
+"""Provider-token storage + email-watch setup endpoints.
+
+Real DB (savepoint-rolled-back). The old AsyncMock-session versions rotted
+when the endpoints moved to ``get_current_user_attached`` and gained the
+Google tokeninfo ownership check — the mocks silently targeted the wrong
+dependency and asserted on objects the endpoints never touched.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+
+# Register models for FK resolution.
+import modules.merchants.models  # noqa: F401
+import modules.plaid.models  # noqa: F401
 
 
 @pytest.fixture
-def mock_user_with_tokens():
-    from modules.auth.models import User
-    import uuid
+def wire(app, db):
+    """Override auth + db for a REAL user row; returns a setup function."""
+    from core.database import get_db
+    from core.security import get_current_user, get_current_user_attached
 
-    return User(
-        id=uuid.uuid4(),
-        email="rafa@test.cl",
-        full_name="Rafa Test",
-        email_provider="gmail",
-        whatsapp_verified=False,
-        google_access_token_enc=None,
-        google_refresh_token_enc=None,
-    )
+    def _wire(user):
+        async def _db():
+            yield db
+
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_current_user_attached] = lambda: user
+        app.dependency_overrides[get_db] = _db
+
+    yield _wire
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
-async def test_store_provider_tokens(app, mock_user_with_tokens):
-    from core.security import get_current_user
-    from core.database import get_db
-
-    app.dependency_overrides[get_current_user] = lambda: mock_user_with_tokens
-
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_with_tokens)
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    mock_db.commit = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    async def _mock_db():
-        yield mock_db
-
-    app.dependency_overrides[get_db] = _mock_db
+async def test_store_provider_tokens(app, db, make_user, wire):
+    user = await make_user()
+    wire(user)
 
     with (
         patch("modules.auth.router.encrypt_token", side_effect=lambda x: f"enc_{x}"),
-        patch("modules.auth.router.cache_delete", new_callable=AsyncMock),
+        patch(
+            "modules.auth.router._verify_google_token_ownership",
+            new_callable=AsyncMock,
+        ),
+        patch("modules.auth.router.invalidate_user_cache", new_callable=AsyncMock),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             response = await c.post(
@@ -53,36 +60,24 @@ async def test_store_provider_tokens(app, mock_user_with_tokens):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert mock_user_with_tokens.google_access_token_enc == "enc_google-access-tok"
-    assert mock_user_with_tokens.google_refresh_token_enc == "enc_google-refresh-tok"
-
-    app.dependency_overrides.clear()
+    await db.refresh(user)
+    assert user.google_access_token_enc == "enc_google-access-tok"
+    assert user.google_refresh_token_enc == "enc_google-refresh-tok"
 
 
 @pytest.mark.asyncio
-async def test_store_provider_tokens_preserves_existing_refresh(app, mock_user_with_tokens):
-    """When provider_refresh_token is None, existing refresh token should NOT be overwritten."""
-    from core.security import get_current_user
-    from core.database import get_db
-
-    mock_user_with_tokens.google_refresh_token_enc = "enc_existing-refresh"
-    app.dependency_overrides[get_current_user] = lambda: mock_user_with_tokens
-
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_with_tokens)
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    mock_db.commit = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    async def _mock_db():
-        yield mock_db
-
-    app.dependency_overrides[get_db] = _mock_db
+async def test_store_provider_tokens_preserves_existing_refresh(app, db, make_user, wire):
+    """When provider_refresh_token is None, the existing refresh token stays."""
+    user = await make_user(google_refresh_token_enc="enc_existing-refresh")
+    wire(user)
 
     with (
         patch("modules.auth.router.encrypt_token", side_effect=lambda x: f"enc_{x}"),
-        patch("modules.auth.router.cache_delete", new_callable=AsyncMock),
+        patch(
+            "modules.auth.router._verify_google_token_ownership",
+            new_callable=AsyncMock,
+        ),
+        patch("modules.auth.router.invalidate_user_cache", new_callable=AsyncMock),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             response = await c.post(
@@ -91,31 +86,17 @@ async def test_store_provider_tokens_preserves_existing_refresh(app, mock_user_w
             )
 
     assert response.status_code == 200
-    assert mock_user_with_tokens.google_refresh_token_enc == "enc_existing-refresh"
-
-    app.dependency_overrides.clear()
+    await db.refresh(user)
+    assert user.google_refresh_token_enc == "enc_existing-refresh"
 
 
 @pytest.mark.asyncio
-async def test_setup_email_watch(app, mock_user_with_tokens):
-    from core.security import get_current_user
-    from core.database import get_db
-
-    mock_user_with_tokens.google_access_token_enc = "enc_access"
-    mock_user_with_tokens.google_refresh_token_enc = "enc_refresh"
-    app.dependency_overrides[get_current_user] = lambda: mock_user_with_tokens
-
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_with_tokens)
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    mock_db.commit = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    async def _mock_db():
-        yield mock_db
-
-    app.dependency_overrides[get_db] = _mock_db
+async def test_setup_email_watch(app, db, make_user, wire):
+    user = await make_user(
+        google_access_token_enc="enc_access",
+        google_refresh_token_enc="enc_refresh",
+    )
+    wire(user)
 
     mock_provider = AsyncMock()
     mock_provider.setup_watch = AsyncMock(
@@ -127,41 +108,24 @@ async def test_setup_email_watch(app, mock_user_with_tokens):
         patch("modules.auth.router.decrypt_token", return_value="decrypted"),
         patch("modules.auth.router.encrypt_token", side_effect=lambda x: f"enc_{x}"),
         patch("modules.auth.router.get_email_provider", return_value=mock_provider),
-        patch("modules.auth.router.cache_delete", new_callable=AsyncMock),
+        patch("modules.auth.router.invalidate_user_cache", new_callable=AsyncMock),
     ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             response = await c.post("/auth/setup-email-watch")
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "ok"
-    assert mock_user_with_tokens.mail_watch_subscription_id == "history-123"
-
-    app.dependency_overrides.clear()
+    assert response.json()["status"] == "ok"
+    await db.refresh(user)
+    assert user.mail_watch_subscription_id == "history-123"
 
 
 @pytest.mark.asyncio
-async def test_setup_email_watch_requires_tokens(app, mock_user_with_tokens):
-    """Should return 400 if user has no stored Google tokens."""
-    from core.security import get_current_user
-    from core.database import get_db
-
-    mock_user_with_tokens.google_access_token_enc = None
-    app.dependency_overrides[get_current_user] = lambda: mock_user_with_tokens
-
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user_with_tokens)
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    async def _mock_db():
-        yield mock_db
-
-    app.dependency_overrides[get_db] = _mock_db
+async def test_setup_email_watch_requires_tokens(app, db, make_user, wire):
+    """400 when the user has no stored Google tokens."""
+    user = await make_user(google_access_token_enc=None)
+    wire(user)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         response = await c.post("/auth/setup-email-watch")
 
     assert response.status_code == 400
-
-    app.dependency_overrides.clear()
