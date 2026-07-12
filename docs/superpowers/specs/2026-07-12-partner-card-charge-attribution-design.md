@@ -76,12 +76,13 @@ Rafael tags a transaction "De mi pareja (tarjeta adicional)"
 ```
 
 - **On tag it is immediately hers** (optimistic). Only an explicit **reject** pulls it back; ignore leaves it with her. This matches the intent: Rafael knows whose charge it is, so the notification is a heads-up + veto, not a gate.
+- **The tag action is an upsert on `transaction_id`** (respecting the unique constraint): if a `rejected` row already exists for the transaction (Camila rejected it and Rafael re-hands it off), reactivate that row to `status='active'`, clear `acknowledged_at`, and re-send the notification — do **not** insert a second row. If no row exists, insert.
 - **Un-tag by Rafael** (he made the mistake): delete the attribution row and revert `split_type` to `personal`. No notification to Camila needed (it never mattered to her totals meaningfully, but if already acknowledged, send an informational note — see Edge cases).
 - **Reject by Camila** reverts the split to `personal` (back in Rafael's totals) and notifies Rafael.
 
 ### 3. Query changes — "exactly one owner" invariant
 
-A transaction counts toward **exactly one** person's personal totals: Rafael when not attributed-active, Camila when attributed-active — never both, never neither (while pending it is already `active` = hers).
+A **handed-off** transaction counts toward **exactly one** person's personal totals: Rafael when not attributed-active, Camila when attributed-active — never both, never neither (on tag it is already `active` = hers). Note the scope of the invariant: it governs rows created through the new flow. Exclude-only `partner` rows (account-level `account_type='partner'`, or pre-existing per-transaction tags with no attribution) are excluded from Rafael and counted for nobody — unchanged from today's behavior, and intentional. Camila's inclusion predicate is the exact complement of Rafael's exclusion **restricted to rows carrying an `active` attribution**.
 
 **Rafael's side (already shipped, no change):**
 - `get_dashboard_summary`, budgets v2, and `modules/transactions/totals.py` already exclude `split_type='partner'`. An attributed charge drops out automatically.
@@ -112,11 +113,21 @@ Reuse the `notifications` table + `create_notification` + the `merchant_review` 
 
 Frontend: add both types to `notifications/page.tsx` (icon + detail +, for `charge_attributed`, the two action buttons), mirroring the `new_account_detected` pattern already in place.
 
-### 6. Taxonomy / UI
+### 6. Taxonomy / UI — and how "hand off" is distinguished from "exclude only"
 
-- The per-transaction `SplitTypeEditor` gains a third target: **Personal / Compartido / De mi pareja (tarjeta adicional)**. Selecting the third fires the hand-off (creates the attribution + notification) rather than only flipping the local split.
-- Note this differs from the existing plain `partner` split (exclude-only): on the shared card, choosing "De mi pareja" now *also* creates an attribution to the household partner. The editor resolves the recipient as the other active household member (couples/2-member case; if >1 other member, prompt for which — see Edge cases).
-- Camila's transaction list labels an attributed row as coming from the shared card (e.g. "de la tarjeta compartida"), read-only for her except the Confirmar / No es mío actions.
+The per-transaction `SplitTypeEditor` already offers three targets (shipped this session): **Personal / Compartido / De mi pareja (tarjeta adicional)**. This feature upgrades what the third option *does* — no new "shared card" flag is introduced.
+
+**The trigger rule.** Choosing "De mi pareja" on a transaction:
+- resolves the recipient = the **other active household member**. If there is exactly one → hand off; if there are >1 → prompt for which member; if there are **none** (solo user) → fall back to exclude-only (set `split_type='partner'`, create **no** attribution — today's behavior, preserving the account-level use case).
+- when a recipient is resolved: set `split_type='partner'` **and** create/reactivate the attribution + notification (the hand-off).
+
+**The distinguishing signal is the attribution row, not the account.** A `split_type='partner'` transaction is:
+- **handed off** (counts for the recipient) when it has an `active` `transaction_attributions` row;
+- **exclude-only** (counts for nobody, as today) when it has none — this covers account-level `account_type='partner'` cards (out of scope, unchanged) and any pre-existing per-transaction partner tags.
+
+There is therefore no dependence on marking an account as "shared"; the same shared Amex needs no schema change. Existing exclude-only partner rows are **not** auto-migrated — they stay exclude-only until re-tagged through the new flow.
+
+**Camila's side:** her transaction list labels an attributed row as coming from the partner's shared card (e.g. "de la tarjeta compartida"), read-only for her except the Confirmar / No es mío actions.
 
 ### 7. Per-person card balance view
 
@@ -140,7 +151,8 @@ Platinum ••4012
 - **Re-sync:** attribution persists (separate row keyed to the stable transaction); the `split_type` flip is marked user-edited via the existing `mark_user_edited(txn, "split_type")`, so the merge pipeline will not revert it.
 - **Refund / reversal of an attributed charge:** the attribution rides with the transaction; refund pairs / reimbursement groups are already excluded from totals on both sides.
 - **Recipient ambiguity:** in a 2-member couple the recipient is unambiguous (the other member). If the household has >1 other active member, the editor prompts which member to hand it to. (Couples is the primary case; the prompt is the general fallback.)
-- **Camila leaves the household:** her `active` attributions revert — `status` cleared and `split_type` back to `personal` on Rafael's rows — so nothing is "owned" by a non-member.
+- **Camila leaves the household:** her `active` attributions revert — `status` cleared and `split_type` back to `personal` on Rafael's rows — so nothing is "owned" by a non-member. This hook lives in the household/member leave path (`modules/households`), invoked when `left_at` is set — see Touch points.
+- **Tagging a payment (transfer row):** the balance view's `pagos` depends on the "De mi pareja" action being available on transfer-type rows on the card. Transfers are sometimes UI-restricted; the implementation must ensure the `SplitTypeEditor` (or an equivalent tag action) is rendered on the card's payment/transfer rows, not only on expense rows.
 - **Un-tag after acknowledgment:** allowed; deletes the attribution and reverts the split. If `acknowledged_at` was set, send Camila an informational notification that the charge was removed from her account.
 - **Currency:** attribution does not change a transaction's currency; Camila sees it in the transaction's own currency (multi-currency safe).
 - **Double-count safety:** guaranteed structurally by the single `effective_owner` predicate — a row is in exactly one person's personal totals. Household **shared/settlement** aggregates are unaffected because attributed charges are personal, never `shared`.
@@ -162,7 +174,7 @@ Platinum ••4012
 
 ## Touch points (reference)
 
-- Backend: `modules/transactions/models.py` (+ new `transaction_attributions`), `modules/transactions/service.py` (`get_my_transactions`, `get_dashboard_summary`, `update_split_type`, new attribution service + `effective_owner`), `modules/transactions/totals.py`, `modules/budgets/v2_queries.py`, `modules/notifications/service.py`, a new Alembic migration.
+- Backend: `modules/transactions/models.py` (+ new `transaction_attributions`), `modules/transactions/service.py` (`get_my_transactions`, `get_dashboard_summary`, `update_split_type`, new attribution service + `effective_owner`), `modules/transactions/totals.py`, `modules/budgets/v2_queries.py`, `modules/notifications/service.py`, `modules/households` (leave-household revert hook), a new Alembic migration.
 - Frontend: `app/(dashboard)/components/SplitTypeEditor.tsx`, `app/(dashboard)/notifications/page.tsx`, the shared-account detail in `settings/components/BankAccountsSection.tsx` (balance view), `app/lib/api.ts` types.
 </content>
 </invoke>
