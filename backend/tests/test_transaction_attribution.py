@@ -83,3 +83,42 @@ async def test_attribution_row_persists(db):
     ).scalar_one()
     assert row.status == "active"
     assert row.attributed_to_user_id == camila.id
+
+
+async def test_effective_owner_and_predicate(db):
+    from modules.transactions.attribution import attributed_to_clause, effective_owner_id
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    attr = TransactionAttribution(
+        transaction_id=txn.id,
+        attributed_to_user_id=camila.id,
+        attributed_by_user_id=rafael.id,
+        status="active",
+    )
+    db.add(attr)
+    await db.flush()
+
+    assert effective_owner_id(rafael.id, attr) == camila.id
+    assert effective_owner_id(rafael.id, None) == rafael.id
+    attr.status = "rejected"
+    assert effective_owner_id(rafael.id, attr) == rafael.id  # rejected → back to owner
+
+    # Predicate: Camila's rows = her own OR active-attributed-to-her.
+    attr.status = "active"
+    await db.flush()
+    rows = (
+        (
+            await db.execute(
+                select(Transaction.id)
+                .outerjoin(
+                    TransactionAttribution,
+                    TransactionAttribution.transaction_id == Transaction.id,
+                )
+                .where(attributed_to_clause(camila.id))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert txn.id in rows
