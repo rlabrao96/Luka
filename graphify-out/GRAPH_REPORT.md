@@ -1,40 +1,40 @@
-# Graph Report - .  (2026-04-30)
+# Graph Report - /Users/rlabrao/Documents/Proyectos AI/Finanzas Personales  (2026-07-11)
 
 ## Corpus Check
-- 464 files · ~0 words
+- 441 files · ~2,351,870 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3902 nodes · 9250 edges · 293 communities detected
-- Extraction: 50% EXTRACTED · 50% INFERRED · 0% AMBIGUOUS · INFERRED: 4632 edges (avg confidence: 0.59)
+- 4507 nodes · 12519 edges · 343 communities detected
+- Extraction: 43% EXTRACTED · 57% INFERRED · 0% AMBIGUOUS · INFERRED: 7194 edges (avg confidence: 0.58)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Bank Accounts & Connect Sync|Bank Accounts & Connect Sync]]
-- [[_COMMUNITY_Worker Queue & Cron|Worker Queue & Cron]]
-- [[_COMMUNITY_Email Parser Pipeline|Email Parser Pipeline]]
-- [[_COMMUNITY_Frontend API Client|Frontend API Client]]
-- [[_COMMUNITY_Plans & Specs Index|Plans & Specs Index]]
-- [[_COMMUNITY_Merchant Categorization|Merchant Categorization]]
-- [[_COMMUNITY_Auth & Membership|Auth & Membership]]
-- [[_COMMUNITY_Budget Schemas & Cuotas|Budget Schemas & Cuotas]]
-- [[_COMMUNITY_Architecture Concepts|Architecture Concepts]]
-- [[_COMMUNITY_Transactions Linking & Tests|Transactions Linking & Tests]]
-- [[_COMMUNITY_Categories Service|Categories Service]]
-- [[_COMMUNITY_Subscriptions Module|Subscriptions Module]]
-- [[_COMMUNITY_Bank Registry & Email Filter|Bank Registry & Email Filter]]
-- [[_COMMUNITY_Bank Account UI & Migrations|Bank Account UI & Migrations]]
-- [[_COMMUNITY_Bank Email Templates|Bank Email Templates]]
-- [[_COMMUNITY_User Budget Settings|User Budget Settings]]
-- [[_COMMUNITY_Bank Connect (Chile)|Bank Connect (Chile)]]
-- [[_COMMUNITY_Budget Config Modal|Budget Config Modal]]
-- [[_COMMUNITY_Reconciliation Tick & Refunds|Reconciliation Tick & Refunds]]
-- [[_COMMUNITY_Project  Business Model|Project / Business Model]]
-- [[_COMMUNITY_Transfer Pair Detection|Transfer Pair Detection]]
-- [[_COMMUNITY_Cuota Purchases|Cuota Purchases]]
-- [[_COMMUNITY_Budget Forecast Engine|Budget Forecast Engine]]
-- [[_COMMUNITY_Wallet Pair Detection|Wallet Pair Detection]]
-- [[_COMMUNITY_Dedup Logic|Dedup Logic]]
+- [[_COMMUNITY_Community 0|Community 0]]
+- [[_COMMUNITY_Community 1|Community 1]]
+- [[_COMMUNITY_Community 2|Community 2]]
+- [[_COMMUNITY_Community 3|Community 3]]
+- [[_COMMUNITY_Community 4|Community 4]]
+- [[_COMMUNITY_Community 5|Community 5]]
+- [[_COMMUNITY_Community 6|Community 6]]
+- [[_COMMUNITY_Community 7|Community 7]]
+- [[_COMMUNITY_Community 8|Community 8]]
+- [[_COMMUNITY_Community 9|Community 9]]
+- [[_COMMUNITY_Community 10|Community 10]]
+- [[_COMMUNITY_Community 11|Community 11]]
+- [[_COMMUNITY_Community 12|Community 12]]
+- [[_COMMUNITY_Community 13|Community 13]]
+- [[_COMMUNITY_Community 14|Community 14]]
+- [[_COMMUNITY_Community 15|Community 15]]
+- [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 20|Community 20]]
+- [[_COMMUNITY_Community 21|Community 21]]
+- [[_COMMUNITY_Community 22|Community 22]]
+- [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Community 24|Community 24]]
 - [[_COMMUNITY_Community 25|Community 25]]
 - [[_COMMUNITY_Community 26|Community 26]]
 - [[_COMMUNITY_Community 27|Community 27]]
@@ -303,18 +303,68 @@
 - [[_COMMUNITY_Community 290|Community 290]]
 - [[_COMMUNITY_Community 291|Community 291]]
 - [[_COMMUNITY_Community 292|Community 292]]
+- [[_COMMUNITY_Community 293|Community 293]]
+- [[_COMMUNITY_Community 294|Community 294]]
+- [[_COMMUNITY_Community 295|Community 295]]
+- [[_COMMUNITY_Community 296|Community 296]]
+- [[_COMMUNITY_Community 297|Community 297]]
+- [[_COMMUNITY_Community 298|Community 298]]
+- [[_COMMUNITY_Community 299|Community 299]]
+- [[_COMMUNITY_Community 300|Community 300]]
+- [[_COMMUNITY_Community 301|Community 301]]
+- [[_COMMUNITY_Community 302|Community 302]]
+- [[_COMMUNITY_Community 303|Community 303]]
+- [[_COMMUNITY_Community 304|Community 304]]
+- [[_COMMUNITY_Community 305|Community 305]]
+- [[_COMMUNITY_Community 306|Community 306]]
+- [[_COMMUNITY_Community 307|Community 307]]
+- [[_COMMUNITY_Community 308|Community 308]]
+- [[_COMMUNITY_Community 309|Community 309]]
+- [[_COMMUNITY_Community 310|Community 310]]
+- [[_COMMUNITY_Community 311|Community 311]]
+- [[_COMMUNITY_Community 312|Community 312]]
+- [[_COMMUNITY_Community 313|Community 313]]
+- [[_COMMUNITY_Community 314|Community 314]]
+- [[_COMMUNITY_Community 315|Community 315]]
+- [[_COMMUNITY_Community 316|Community 316]]
+- [[_COMMUNITY_Community 317|Community 317]]
+- [[_COMMUNITY_Community 318|Community 318]]
+- [[_COMMUNITY_Community 319|Community 319]]
+- [[_COMMUNITY_Community 320|Community 320]]
+- [[_COMMUNITY_Community 321|Community 321]]
+- [[_COMMUNITY_Community 322|Community 322]]
+- [[_COMMUNITY_Community 323|Community 323]]
+- [[_COMMUNITY_Community 324|Community 324]]
+- [[_COMMUNITY_Community 325|Community 325]]
+- [[_COMMUNITY_Community 326|Community 326]]
+- [[_COMMUNITY_Community 327|Community 327]]
+- [[_COMMUNITY_Community 328|Community 328]]
+- [[_COMMUNITY_Community 329|Community 329]]
+- [[_COMMUNITY_Community 330|Community 330]]
+- [[_COMMUNITY_Community 331|Community 331]]
+- [[_COMMUNITY_Community 332|Community 332]]
+- [[_COMMUNITY_Community 333|Community 333]]
+- [[_COMMUNITY_Community 334|Community 334]]
+- [[_COMMUNITY_Community 335|Community 335]]
+- [[_COMMUNITY_Community 336|Community 336]]
+- [[_COMMUNITY_Community 337|Community 337]]
+- [[_COMMUNITY_Community 338|Community 338]]
+- [[_COMMUNITY_Community 339|Community 339]]
+- [[_COMMUNITY_Community 340|Community 340]]
+- [[_COMMUNITY_Community 341|Community 341]]
+- [[_COMMUNITY_Community 342|Community 342]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Transaction` - 432 edges
-2. `User` - 353 edges
-3. `HouseholdMember` - 319 edges
-4. `BankAccount` - 289 edges
-5. `TransactionSplit` - 223 edges
-6. `Household` - 220 edges
-7. `Merchant` - 149 edges
-8. `GET()` - 142 edges
-9. `CanonicalMerchant` - 137 edges
-10. `HouseholdIncomeBreakdown` - 85 edges
+1. `Transaction` - 602 edges
+2. `User` - 479 edges
+3. `HouseholdMember` - 442 edges
+4. `BankAccount` - 373 edges
+5. `TransactionSplit` - 304 edges
+6. `Household` - 291 edges
+7. `Merchant` - 238 edges
+8. `CanonicalMerchant` - 198 edges
+9. `GET()` - 160 edges
+10. `make_user()` - 109 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Convention: three-layer email parser (Template -> Gemini waterfall -> regex)` --semantically_similar_to--> `Capture: email notifications + scraping + open banking + AI classification + WhatsApp alert`  [INFERRED] [semantically similar]
@@ -338,253 +388,253 @@
 
 ## Communities
 
-### Community 0 - "Bank Accounts & Connect Sync"
+### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (419): ensure_accounts(), Auto-create bank accounts from Luka Connect scrape data and update balances., Auto-create/update bank accounts from scrape data. Returns ba_map:     dict[(acc, _enforce_joint_split(), PendingPair, One-shot backfill: consolidate duplicate pending transactions.  Today the "Pendi, Decide whether a (email, plaid) pending pair represents the same event., Local pending-aware variant — does not require Plaid status='settled'. (+411 more)
+Nodes (551): ensure_accounts(), Auto-create bank accounts from Luka Connect scrape data and update balances., Auto-create/update bank accounts from scrape data. Returns ba_map:     dict[(acc, PendingPair, One-shot backfill: consolidate duplicate pending transactions.  Today the "Pendi, Decide whether a (email, plaid) pending pair represents the same event., Local pending-aware variant — does not require Plaid status='settled'., Return (email_pending, plaid_pending) for the household. (+543 more)
 
-### Community 1 - "Worker Queue & Cron"
-Cohesion: 0.03
-Nodes (198): Base, update(), main(), Identify (and optionally delete) orphan merchant_review notifications.  A notifi, _unverified_count(), Base, DeclarativeBase, consolidate_email_values_into_plaid() (+190 more)
-
-### Community 2 - "Email Parser Pipeline"
+### Community 1 - "Community 1"
 Cohesion: 0.02
-Nodes (170): ParsedEmail, main(), One-off script: fix BofA transactions created before USD parsing was added.  Run, _build_system_prompt(), _extraction_to_parsed_email(), _get_client(), _parse_llm_response(), parse_with_llm() (+162 more)
+Nodes (159): ABC, EmailProvider, fetch_new_emails(), RawEmail, renew_watch(), setup_watch(), BaseHTTPMiddleware, cache_delete() (+151 more)
 
-### Community 3 - "Frontend API Client"
+### Community 2 - "Community 2"
 Cohesion: 0.02
-Nodes (128): ABC, ApiError, apiFetch(), getAuthHeader(), EmailProvider, fetch_new_emails(), RawEmail, renew_watch() (+120 more)
+Nodes (168): Raise 403 if user is not a member of the household., require_membership(), BaseModel, get_category_budgets(), Per-category monthly caps (category_budgets table).  LIVE code — backs /budgets/, Return category caps for a household/month, optionally filtered to a     single, Return category caps for a household/month, optionally filtered to a     single, Replace all caps for `(household_id, month)` with the provided list.      Each r (+160 more)
 
-### Community 4 - "Plans & Specs Index"
-Cohesion: 0.01
-Nodes (183): Auth Session Management Plan, Budget inline config Plan, Budget Page Redesign Plan, Budget v3 Sankey Redesign Plan, Budget v3 — Subscription Classification Toggle Plan, Budgeting: Personal + Household Waterfall Plan, ^(CLP|USD)$ currency regex, IDOR on set_monthly_budget (+175 more)
+### Community 3 - "Community 3"
+Cohesion: 0.06
+Nodes (167): HouseholdIncomeBreakdown, OtherMemberContribution, get_household_unpaid_known_bills(), Household SHARED scheduled bills across active members, minus those     already, is_savings_category(), _normalize(), Single source of truth for which transaction categories are 'savings-equivalent', _current_month() (+159 more)
 
-### Community 5 - "Merchant Categorization"
+### Community 4 - "Community 4"
 Cohesion: 0.02
-Nodes (161): Exception, _detect_currency(), handle_button_click(), handle_list_selection(), _handle_manual_expense_trigger(), handle_text_message(), _parse_amount(), parse_manual_expense() (+153 more)
+Nodes (163): ParsedEmail, _build_system_prompt(), _extraction_to_parsed_email(), _get_client(), _parse_llm_response(), parse_with_llm(), LLM-powered email parser with confidence-based model waterfall., _strip_code_fences() (+155 more)
 
-### Community 6 - "Auth & Membership"
-Cohesion: 0.03
-Nodes (119): Raise 403 if user is not a member of the household., require_membership(), cache_delete(), cache_get(), cache_set(), _get_redis(), Lightweight Redis cache for frequently-accessed data (user profiles, etc.)., Get a JSON-serialized value from Redis. Returns None on miss or error. (+111 more)
-
-### Community 7 - "Budget Schemas & Cuotas"
+### Community 5 - "Community 5"
 Cohesion: 0.04
-Nodes (99): BaseModel, CuotaCreateRequest, CuotaListResponse, CuotaResponse, Pydantic schemas for the cuotas REST surface (Chunk E).  Kept isolated from `v2_, Payload for POST /cuotas — marks a purchase as an installment plan.      The ser, One cuota row as exposed via the API., budget_v2() (+91 more)
+Nodes (160): _is_dismissed(), _name_match(), try_match_settlement(), _within_tolerance(), compute_balances(), smart_settle_plan(), your_net_balance(), db() (+152 more)
 
-### Community 8 - "Architecture Concepts"
+### Community 6 - "Community 6"
+Cohesion: 0.02
+Nodes (167): Auth Session Management Plan, Budget inline config Plan, Budget Page Redesign Plan, Budget v3 Sankey Redesign Plan, Budget v3 — Subscription Classification Toggle Plan, Budgeting: Personal + Household Waterfall Plan, ^(CLP|USD)$ currency regex, IDOR on set_monthly_budget (+159 more)
+
+### Community 7 - "Community 7"
+Cohesion: 0.02
+Nodes (151): Exception, _detect_currency(), _get_user_and_household_by_phone(), handle_button_click(), handle_list_selection(), _handle_manual_expense_trigger(), handle_text_message(), _parse_amount() (+143 more)
+
+### Community 8 - "Community 8"
+Cohesion: 0.08
+Nodes (139): Trip settlement auto-detect — Phase 6 Tasks 6.0 + 6.2 + 6.3.  When a freshly-ins, Case-insensitive substring match in either direction.      Spec §4.7 reuses "the, ``|amount - outstanding| <= min(5% of outstanding, ~5 USD equivalent)``., Inspect ``transaction``; emit notifications for matching trips.      Returns the, Trip balance computation + smart-settle plan.  Phase 4 v1 cut: single-currency o, Greedy minimum-transactions plan.      Pair the largest creditor with the larges, Helper: return the caller's net for one trip (sum across all their     active+le, Compute net balance per attendee in the trip's base currency.      Net per atten (+131 more)
+
+### Community 9 - "Community 9"
+Cohesion: 0.03
+Nodes (107): update(), main(), _unverified_count(), _call_grouping_llm(), _fallback_grouping(), _fix_json(), group_raw_merchants(), Fix common LLM JSON issues: trailing commas before ] or }. (+99 more)
+
+### Community 10 - "Community 10"
 Cohesion: 0.02
 Nodes (113): Unified amount sign convention, ARQ Worker Architecture (fast/slow), Authentication & Authorization, bank_accounts table, bank_credentials table, bank_registry table, Bank Sync Flow (Luka Connect), BudgetConfigModal (+105 more)
 
-### Community 9 - "Transactions Linking & Tests"
+### Community 11 - "Community 11"
 Cohesion: 0.06
-Nodes (91): bulk_action_endpoint(), category_matching_count(), confirm_credit_suggestion(), _credit_suggestion_dto(), _default_since(), dismiss_transaction_endpoint(), link_manual_transfer_endpoint(), link_reimbursement_endpoint() (+83 more)
+Nodes (98): bulk_action_endpoint(), category_matching_count(), confirm_credit_suggestion(), _credit_suggestion_dto(), _default_since(), dismiss_transaction_endpoint(), link_manual_transfer_endpoint(), link_reimbursement_endpoint() (+90 more)
 
-### Community 10 - "Categories Service"
-Cohesion: 0.04
-Nodes (81): get_category_budgets(), Return category caps for a household/month, optionally filtered to a     single, Replace all caps for `(household_id, month)` with the provided list.      Each r, set_category_budgets(), main(), One-off: clean Rafa's category drift.  - Adds Supermercado + Restaurantes to Raf, Compare distinct categories on transactions vs the user's category preferences., CategoryBudget (+73 more)
-
-### Community 11 - "Subscriptions Module"
-Cohesion: 0.04
-Nodes (81): get_household_known_bills(), get_user_known_bills(), get_user_personal_known_bills(), get_user_personal_unpaid_known_bills(), get_user_shared_known_bills(), get_user_shared_unpaid_known_bills(), get_user_unpaid_known_bills(), _month_bounds() (+73 more)
-
-### Community 12 - "Bank Registry & Email Filter"
+### Community 12 - "Community 12"
 Cohesion: 0.04
 Nodes (79): _extract_domain(), get_bank_metadata(), get_bank_name(), is_bank_sender(), _lookup_domain(), DB-backed bank registry with Redis cache — replaces hardcoded BANK_SENDER_DOMAIN, _extract_domain(), get_bank_name() (+71 more)
 
-### Community 13 - "Bank Account UI & Migrations"
+### Community 13 - "Community 13"
+Cohesion: 0.04
+Nodes (76): dropTrailingS(), findDuplicate(), levenshtein(), normalize(), decrypt(), encrypt(), _get_key(), Encrypt plaintext with AES-256-GCM. Returns (ciphertext, iv). (+68 more)
+
+### Community 14 - "Community 14"
+Cohesion: 0.04
+Nodes (75): get_household_known_bills(), get_user_known_bills(), get_user_personal_known_bills(), get_user_personal_unpaid_known_bills(), get_user_shared_known_bills(), get_user_shared_unpaid_known_bills(), get_user_unpaid_known_bills(), _month_bounds() (+67 more)
+
+### Community 15 - "Community 15"
 Cohesion: 0.03
 Nodes (80): AccountCard, Auth Session Management, Migration 018, bank_accounts.currency, modules/bank_accounts, transactions.card_last_four, CategoryBottomSheet deleted, CategoryPicker (+72 more)
 
-### Community 14 - "Bank Email Templates"
+### Community 16 - "Community 16"
 Cohesion: 0.03
 Nodes (75): Banco de Chile Compra Tarjeta Credito, Banco de Chile Pago Tarjeta Credito, Banco de Chile Transferencia a Terceros, Banco de Chile, Bank of America, Banco Edwards, Santander Chile, Bank of America Credit Card Transaction Alert (+67 more)
 
-### Community 15 - "User Budget Settings"
+### Community 17 - "Community 17"
+Cohesion: 0.06
+Nodes (65): _assert_value_absent(), _current_month(), _flow_conservation_errors(), _household_by_name(), test_contract_fixture_matches_pydantic_schema(), test_hogar_fixed_currencies_available(), test_hogar_fixed_household_income_respects_fixed_contribution(), test_hogar_fixed_privacy_partner_amount_synthetic() (+57 more)
+
+### Community 18 - "Community 18"
 Cohesion: 0.07
-Nodes (60): _assert_value_absent(), _current_month(), _flow_conservation_errors(), _household_by_name(), test_contract_fixture_matches_pydantic_schema(), test_hogar_fixed_currencies_available(), test_hogar_fixed_household_income_respects_fixed_contribution(), test_hogar_fixed_privacy_partner_amount_synthetic() (+52 more)
+Nodes (56): add_category_preference(), adopt_household_category(), delete_category_preference(), get_category_preferences(), get_category_usage(), get_household_partner_categories(), reorder_category_preferences(), CategoryPreferencesResponse (+48 more)
 
-### Community 16 - "Bank Connect (Chile)"
-Cohesion: 0.05
-Nodes (55): decrypt(), encrypt(), _get_key(), Encrypt plaintext with AES-256-GCM. Returns (ciphertext, iv)., Decrypt ciphertext with AES-256-GCM. Returns plaintext string., dedup_key(), is_inter_account_transfer(), map_movement_to_transaction() (+47 more)
+### Community 19 - "Community 19"
+Cohesion: 0.1
+Nodes (57): apply_match_and_delete_emails(), _bank_name_matches(), consolidate_email_values_into_plaid(), _extract_enrichment(), find_email_match(), find_plaid_match_for_email(), find_plaid_match_for_email_values(), _find_single_match() (+49 more)
 
-### Community 17 - "Budget Config Modal"
+### Community 20 - "Community 20"
 Cohesion: 0.04
 Nodes (58): BudgetConfigModal, Budget Inline Config Modal, Budget Page Redesign Design Spec (v2), GET /budgets/v2/{household_id}, Budget v3 Sankey Redesign, Budgeting Personal/Household Spec, Budgeting Personal+Household Waterfall, GET/POST /budgets/allocation/{household_id} (+50 more)
 
-### Community 18 - "Reconciliation Tick & Refunds"
-Cohesion: 0.09
-Nodes (46): main(), One-time cleanup for Rafael's pending-transaction backlog.  Runs the reconciliat, ARQ wrappers for the reconciliation tick orchestrator.  Two task variants exist:, ARQ task: runs a full reconciliation tick across every household., ARQ task: runs a full reconciliation tick across every household., ARQ task: runs the reconciliation tick for a single household.      Enqueued at, run_reconciliation_tick(), run_reconciliation_tick_for_household() (+38 more)
+### Community 21 - "Community 21"
+Cohesion: 0.06
+Nodes (47): CuotaPurchase, delete_cuota(), get_cuotas(), post_cuota(), REST surface for cuotas (installment purchases).  - POST   /cuotas, Cancel a cuota. Returns {"ok": true} on success.      Returns a JSON body (not 2, CuotaListResponse, _add_months() (+39 more)
 
-### Community 19 - "Project / Business Model"
+### Community 22 - "Community 22"
+Cohesion: 0.08
+Nodes (45): _extract_zelle_person(), _is_cc_payment(), is_plaid_transfer(), luka_amount_from_plaid(), map_account_kind(), map_plaid_transaction(), _plaid_currency(), Check if Plaid transaction is an internal transfer (not person-to-person). (+37 more)
+
+### Community 23 - "Community 23"
 Cohesion: 0.06
 Nodes (48): Auth: Supabase Auth (Google/Microsoft OAuth), PyJWT + JWKS, B2B revenue: aggregated anonymized behavioral data (YouTube ad-model analog), Backend: Python 3.12 + FastAPI 0.111, SQLAlchemy 2.0 async, ARQ, Redis, Business Model: two-sided (user subscription + B2B aggregated data), Coding Values (6 principles), Convention: expenses/transfers negative, income positive, Convention: transactions carry own currency (no hardcoding), Convention: three-layer email parser (Template -> Gemini waterfall -> regex) (+40 more)
 
-### Community 20 - "Transfer Pair Detection"
-Cohesion: 0.1
-Nodes (40): main(), Clear the orphaned transfer_pair_id on the Amex $2000 inflow and re-run transfer, main(), _orphan_pair_ids(), Repair orphan transfer/refund pair_ids.  A pair_id is "orphan" when only one row, Return pair_ids that exactly one row carries (optionally scoped to one household, delete_transaction(), Transaction not found returns not_found. (+32 more)
+### Community 24 - "Community 24"
+Cohesion: 0.06
+Nodes (21): fmt(), fmtAmount(), formatMajorAmount(), formatMajorAmountCompact(), formatStoredAmount(), isValidCurrencyCode(), isZeroDecimalCurrency(), majorToStored() (+13 more)
 
-### Community 21 - "Cuota Purchases"
-Cohesion: 0.07
-Nodes (40): CuotaPurchase, delete_cuota(), get_cuotas(), post_cuota(), REST surface for cuotas (installment purchases).  - POST   /cuotas, Cancel a cuota. Returns {"ok": true} on success.      Returns a JSON body (not 2, _add_months(), cancel_cuota() (+32 more)
-
-### Community 22 - "Budget Forecast Engine"
+### Community 25 - "Community 25"
 Cohesion: 0.07
 Nodes (36): category_stats(), overshoot_probability(), pace_forecast(), Heuristic v1 forecast engine for budget-v2.  These are intentionally simple func, Gaussian P(actual > cap) given `projected` as the mean and `std` as σ.      Uses, How many days of runway given remaining budget and the 14-day burn rate.      Ze, Discretionary budget = income minus fixed commitments.      Clamped to 0 — a neg, Return (mean, population stdev, n) over a list of monthly totals.      Empty ite (+28 more)
 
-### Community 23 - "Wallet Pair Detection"
-Cohesion: 0.12
-Nodes (37): main(), _print_new_pairs(), One-time backfill: detect wallet funding pairs across a household's full history, IDs of transactions already paired before the run., Print a table of pairs created by this run (not present in pre_ids)., _snapshot_paired_ids(), main(), Diagnostic: why did detect_wallet_pairs find 0 pairs?  Prints:   1. All bank_acc (+29 more)
-
-### Community 24 - "Dedup Logic"
-Cohesion: 0.2
-Nodes (34): apply_match_and_delete_emails(), _bank_name_matches(), _extract_enrichment(), find_email_match(), find_plaid_match_for_email(), find_plaid_match_for_email_values(), _find_single_match(), _find_sum_match() (+26 more)
-
-### Community 25 - "Community 25"
-Cohesion: 0.09
-Nodes (26): Registration tests for the reconciliation tick on the slow worker.  The every-15, The reconciliation_tick cron must be registered on the slow worker., The per-household tick must be registered as a callable function., The every-15-minute cron must no longer be on the slow worker., Cron must fire at minutes 0, 15, 30, 45., The daily 6am safety-net cron is preserved., test_cron_registered_on_slow_worker_settings(), test_cron_schedule_every_15_minutes() (+18 more)
-
 ### Community 26 - "Community 26"
-Cohesion: 0.08
-Nodes (15): fmt(), fmtAmount(), formatMajorAmount(), formatMajorAmountCompact(), formatStoredAmount(), isValidCurrencyCode(), isZeroDecimalCurrency(), normalizeBalance() (+7 more)
+Cohesion: 0.15
+Nodes (33): main(), _print_new_pairs(), One-time backfill: detect wallet funding pairs across a household's full history, IDs of transactions already paired before the run., Print a table of pairs created by this run (not present in pre_ids)., _snapshot_paired_ids(), Tests for wallet funding-pair detection (Venmo / PayPal / CashApp)., The Feb 6 / Feb 9 Nicolas Celasco case from the spec. (+25 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.18
-Nodes (26): income_breakdown_for_household_view(), income_for_household_view(), income_for_personal_view(), _month_bounds_datetime(), update_contribution(), assert_value_absent(), Shared JSON-walking helpers for privacy / redaction tests.  Chunk C wrote a loca, Yield every leaf value in a JSON-parsed structure.      Descends into dicts (val (+18 more)
+Cohesion: 0.13
+Nodes (32): income_breakdown_for_household_view(), income_for_household_view(), income_for_personal_view(), _month_bounds_datetime(), Contribution mode service.  Owns the logic that decides how each household membe, Return household income total, contribution-mode-aware.      Per-member dispatch, Return a caller-relative breakdown of household income for the month.      PRIVA, Update a member's contribution mode (and optional fixed amount/currency).      V (+24 more)
 
 ### Community 28 - "Community 28"
-Cohesion: 0.18
-Nodes (25): CreditSuggestion, emit_credit_suggestions_for_household(), _existing_suggestion_pairs(), find_credit_suggestions(), is_credit_pattern_name(), Card-issuer credit auto-suggestion detector.  Card programs (Amex Platinum benef, Scan recent credit-pattern inflows and propose 1-to-1 reimbursements.      Skips, Map (credit_id, counterpart_id) → Notification for every existing     credit_sug (+17 more)
+Cohesion: 0.09
+Nodes (26): Registration tests for the reconciliation tick on the slow worker.  The every-15, The reconciliation_tick cron must be registered on the slow worker., The per-household tick must be registered as a callable function., The every-15-minute cron must no longer be on the slow worker., Cron must fire at minutes 0, 15, 30, 45., The daily 6am safety-net cron is preserved., test_daily_reconciliation_cron_still_registered(), test_no_15min_reconciliation_cron_registered() (+18 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.17
-Nodes (22): get_pending_transactions(), is_duplicate_transaction(), Same amount + within 5 minutes of created_at → duplicate., No matching transaction → not a duplicate., test_detects_duplicate_within_5_minutes(), test_no_duplicate_when_none_found(), Email transaction with no prior connect sync → awaiting_reconciliation., No pending transactions → all 3 lists empty. (+14 more)
+Cohesion: 0.07
+Nodes (6): TripSuggestionsBanner(), suggestedKey(), tripKey(), useDismissSuggestion(), useSuggestedTransactions(), useTrip()
 
 ### Community 30 - "Community 30"
-Cohesion: 0.1
-Nodes (19): finalizeOnboarding(), normalizePhone(), sendPin(), skip(), verifyPin(), Migration 042 must add user_edited_fields JSONB NOT NULL DEFAULT '{}'., Migration 043 must add a nullable matched_email_at timestamp column., Migration 044 must add a nullable reimbursement_group_id UUID column + index. (+11 more)
+Cohesion: 0.14
+Nodes (26): get_pending_transactions(), is_duplicate_transaction(), Same amount + within 5 minutes of created_at → duplicate., No matching transaction → not a duplicate., test_detects_duplicate_within_5_minutes(), test_no_duplicate_when_none_found(), Email transaction with no prior connect sync → awaiting_reconciliation., No pending transactions → all 3 lists empty. (+18 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.11
-Nodes (23): Accounts card — Checking, Card Balance, Net Cash (with info tooltip), plus Savings and Investments placeholders with Start/Add actions; last-sync timestamp and Sync now action, 5-tab bottom bar: Home, Recurring, Spending, Transactions, More — central Spending highlighted in blue, Hero spend tile — large month-to-date spend number with contextual comparison to prior month ('$728 below last month') and underlaid area chart vs BUDGET dashed line, Design palette — strong royal blue (~#1F6FFF) primary, white/light gray surfaces, green for positive deltas, red for outflows; Rocket-Money-like information-dense dashboard intent focused on subscriptions, budgets and net cash, Home screen — 'CURRENT SPEND THIS MONTH $1,542' with $728 below last month indicator, spend vs budget area chart, accounts list (Checking $3,928, Card Balance $1,082, Net Cash $821), Savings/Investments add CTAs, Sync now, Upcoming bills row, 5-tab bottom bar (Home/Recurring/Spending/Transactions/More), Mobile mockup set — Spendly blue subscription/expense tracker app (Onboarding, Home, Spending), Email onboarding screen — 'Let's start with your email', Email Address input, Enable FaceID checkbox, Terms & Privacy checkbox with links to Spendly Terms of Service/Account Terms of Use/Privacy Policy, Continue CTA, Spending screen — Monthly selector, Earned vs Spent legend, bar chart Jun-Nov with Oct highlighted, summary rows (Income $2,180, Spending $589, Bills & Utilities $583, Net Income $1722), Spend in October with Include bills toggle, Budgets/Categories segmented control (+15 more)
+Cohesion: 0.16
+Nodes (24): UserCurrency, add_currency(), delete_currency(), get_currencies(), add_currency(), delete_currency(), get_currencies(), Sync user_currencies to match new preferred_currency.      Does NOT commit — the (+16 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.1
-Nodes (7): CategoryBulkApplyToast(), getSince(), useMatchCandidates(), useMyTransactions(), useReimbursementCandidates(), useSharedTransactions(), useUpdateCategoryBulk()
+Nodes (19): finalizeOnboarding(), normalizePhone(), sendPin(), skip(), verifyPin(), Migration 042 must add user_edited_fields JSONB NOT NULL DEFAULT '{}'., Migration 043 must add a nullable matched_email_at timestamp column., Migration 044 must add a nullable reimbursement_group_id UUID column + index. (+11 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.26
-Nodes (20): _accounts_by_id(), _backfill_household(), _candidate_compatible(), _find_pending_plaid_matches(), _household_ids(), _load_pending_for_household(), main(), _merchant_compatible() (+12 more)
+Cohesion: 0.25
+Nodes (21): _accounts_by_id(), _backfill_household(), _candidate_compatible(), _enforce_joint_split(), _find_pending_plaid_matches(), _household_ids(), _load_pending_for_household(), main() (+13 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.22
-Nodes (13): _current_month(), _flow_conservation_errors(), _household_by_name(), _sample_breakdown_full_full(), test_caller_sees_own_sources_and_partner_as_aggregate(), test_fixed_member_node_value_equals_contribution_amount(), test_flow_conservation(), test_personal_view_has_no_member_nodes() (+5 more)
+Cohesion: 0.11
+Nodes (23): Accounts card — Checking, Card Balance, Net Cash (with info tooltip), plus Savings and Investments placeholders with Start/Add actions; last-sync timestamp and Sync now action, 5-tab bottom bar: Home, Recurring, Spending, Transactions, More — central Spending highlighted in blue, Hero spend tile — large month-to-date spend number with contextual comparison to prior month ('$728 below last month') and underlaid area chart vs BUDGET dashed line, Design palette — strong royal blue (~#1F6FFF) primary, white/light gray surfaces, green for positive deltas, red for outflows; Rocket-Money-like information-dense dashboard intent focused on subscriptions, budgets and net cash, Home screen — 'CURRENT SPEND THIS MONTH $1,542' with $728 below last month indicator, spend vs budget area chart, accounts list (Checking $3,928, Card Balance $1,082, Net Cash $821), Savings/Investments add CTAs, Sync now, Upcoming bills row, 5-tab bottom bar (Home/Recurring/Spending/Transactions/More), Mobile mockup set — Spendly blue subscription/expense tracker app (Onboarding, Home, Spending), Email onboarding screen — 'Let's start with your email', Email Address input, Enable FaceID checkbox, Terms & Privacy checkbox with links to Spendly Terms of Service/Account Terms of Use/Privacy Policy, Continue CTA, Spending screen — Monthly selector, Earned vs Spent legend, bar chart Jun-Nov with Oct highlighted, summary rows (Income $2,180, Spending $589, Bills & Utilities $583, Net Income $1722), Spend in October with Include bills toggle, Budgets/Categories segmented control (+15 more)
 
 ### Community 35 - "Community 35"
+Cohesion: 0.1
+Nodes (7): CategoryBulkApplyToast(), getSince(), useMatchCandidates(), useMyTransactions(), useReimbursementCandidates(), useSharedTransactions(), useUpdateCategoryBulk()
+
+### Community 36 - "Community 36"
+Cohesion: 0.1
+Nodes (10): ApiError, apiFetch(), getAuthHeader(), DashboardLayout(), signInWithGoogle(), signInWithMicrosoft(), createClient(), handleClose() (+2 more)
+
+### Community 37 - "Community 37"
+Cohesion: 0.25
+Nodes (20): CreditSuggestion, emit_credit_suggestions_for_household(), _existing_suggestion_pairs(), find_credit_suggestions(), is_credit_pattern_name(), _override_user(), _seed(), test_auto_resolves_when_paired_elsewhere() (+12 more)
+
+### Community 38 - "Community 38"
+Cohesion: 0.21
+Nodes (19): detect_refunds(), _match_buckets(), _normalize_merchant(), Refund/reversal detection: identifies same-account refund pairs.  A refund pair, Pair rows inside each bucket using closest-match. Returns pair count., Lowercase + collapse whitespace. Matches the detector's grouping key., Scan recent transactions for same-account refund pairs.      Returns the number, Release existing refund pairs that have a strictly closer unpaired charge,     t (+11 more)
+
+### Community 39 - "Community 39"
 Cohesion: 0.14
 Nodes (17): bank_registry, Email Pre-Filter + Gemini LLM, email_templates, core/encryption.py, Gemini 2.0 Flash swap, Gemini confidence waterfall, Gmail Pipeline Wiring, luka-gmail-notifications topic (+9 more)
 
-### Community 36 - "Community 36"
+### Community 40 - "Community 40"
 Cohesion: 0.39
 Nodes (16): get_match_candidates(), _pending_email(), _plaid_pending(), _plaid_settled(), _seed_user_household(), test_404_if_pending_id_not_owned_by_caller(), test_excludes_already_paired_rows(), test_filters_by_2pct_amount_tolerance() (+8 more)
 
-### Community 37 - "Community 37"
+### Community 41 - "Community 41"
 Cohesion: 0.15
 Nodes (5): advance(), handleApprove(), handleSkip(), handleSubmit(), waitForSessionStart()
 
-### Community 38 - "Community 38"
-Cohesion: 0.12
-Nodes (15): Test that enqueue_job routes jobs to the correct queue., SLOW_JOBS should contain exactly the heavy jobs., Schedulers are lightweight cron jobs — they must NOT be in SLOW_JOBS., Schedulers are lightweight cron jobs — they must NOT be in SLOW_JOBS., Slow jobs should be enqueued with _queue_name='arq:queue:slow'., Slow jobs should be enqueued with _queue_name='arq:queue:slow'., Fast jobs should be enqueued with _queue_name='arq:queue'., Fast jobs should be enqueued with _queue_name='arq:queue'. (+7 more)
-
-### Community 39 - "Community 39"
-Cohesion: 0.13
-Nodes (16): BudgetBars, CashFlowCards, CurrencyToggle, Dashboard Redesign, /categories/preferences (GET/PUT/POST/POST-delete/usage), API: PATCH /auth/me & DELETE /auth/me, Feature: Settings Page (profile/notifications/categories/delete), Frontend Redesign Tier 2 Plan (+8 more)
-
-### Community 40 - "Community 40"
+### Community 42 - "Community 42"
 Cohesion: 0.15
 Nodes (16): Spending by Category donut: Food & Dining 31% (highlighted), Shopping, Software, Streaming, Other — multi-color segments with legend, Spendora Dashboard (light gray background, clean minimalist SaaS layout with left sidebar + main content), Modern minimal SaaS aesthetic: neutral grays + red accent, rounded cards, flat icons in colored rounded tiles, generous whitespace, typographic hierarchy, Expense Trends area chart Jan–Dec with red gradient fill and tooltip 'August 1, 2025 $870'; 'This Year' date filter toggle, Four KPI cards: Total Spending $1,284 (-8.6%), Total Income $3,200 (+4.5%), Remaining Budget $716, Active Subscriptions 12 — each with colored rounded icon tile, Left sidebar nav with Spendora logo and items: Dashboard (active red), Subscription, Analytics, Notifications (6 badge), Budget, Settings, Help & Support; footer shows upcoming-payments card and Ralph Edwards user profile, Subscriptions & Recent Payments data table with columns Service, Amount, Category, Last Charged, Billing Cycle, Next Billing, Payment Method (Netflix, Spotify, Adobe CC, ChatGPT Plus, Dropbox) and pagination, Top bar: Dashboard title, search transactions/subscriptions input, and black '+ Add Expense' primary CTA button (+8 more)
 
-### Community 41 - "Community 41"
+### Community 43 - "Community 43"
+Cohesion: 0.13
+Nodes (16): BudgetBars, CashFlowCards, CurrencyToggle, Dashboard Redesign, /categories/preferences (GET/PUT/POST/POST-delete/usage), API: PATCH /auth/me & DELETE /auth/me, Feature: Settings Page (profile/notifications/categories/delete), Frontend Redesign Tier 2 Plan (+8 more)
+
+### Community 44 - "Community 44"
 Cohesion: 0.14
 Nodes (5): NotificationBadge(), ProcessingBanner(), useReviewStatus(), useNotifications(), useUnreadCount()
 
-### Community 42 - "Community 42"
-Cohesion: 0.36
-Nodes (13): FakePlaidAccount, FakePlaidTx, FakeSyncResponse, _run_sync_with_fake(), _seed_plaid_household(), test_cc_payment_with_last_four_links_amex(), test_cc_payment_without_last_four_falls_back_to_name_match(), test_luka_amount_from_plaid_clp_is_integer_units() (+5 more)
-
-### Community 43 - "Community 43"
+### Community 45 - "Community 45"
 Cohesion: 0.15
 Nodes (2): handleSubmit(), waitForSessionStart()
 
-### Community 44 - "Community 44"
+### Community 46 - "Community 46"
 Cohesion: 0.17
 Nodes (0): 
 
-### Community 45 - "Community 45"
-Cohesion: 0.21
-Nodes (10): _extract_zelle_person(), _is_cc_payment(), is_plaid_transfer(), luka_amount_from_plaid(), map_plaid_transaction(), Check if Plaid transaction is an internal transfer (not person-to-person)., Extract person name from Zelle transaction descriptions., Check if transaction is a credit card bill payment. (+2 more)
-
-### Community 46 - "Community 46"
+### Community 47 - "Community 47"
 Cohesion: 0.33
 Nodes (7): approve_merchant(), _seed_canonical_with_txns(), _seed_household(), _split_types(), test_approve_merchant_applies_split_type_to_linked_transactions(), test_approve_merchant_split_type_user_override_wins_on_joint(), test_approve_merchant_without_split_type_leaves_existing_unchanged()
 
-### Community 47 - "Community 47"
+### Community 48 - "Community 48"
 Cohesion: 0.2
 Nodes (11): Apple OAuth button — 'Apple' social login option (no Microsoft shown), Email + password form with Remember Me and Forgot Password, Google OAuth button — 'Google' social login option, Sellora branding — blue primary #4F46E5-ish, rounded CTA, 'Welcome Back' copy, Split-screen login — left form panel, right blue marketing panel with dashboard preview, Returning-user login screen — CRM dashboard preview reinforces product value, Email sign-up form — Name, Email, Password (min 8 chars), T&C checkbox, 'Sign up with Google' primary social auth button (no Microsoft, no Apple) (+3 more)
 
-### Community 48 - "Community 48"
+### Community 49 - "Community 49"
 Cohesion: 0.2
 Nodes (1): mock_user_for_pin()
 
-### Community 49 - "Community 49"
+### Community 50 - "Community 50"
+Cohesion: 0.36
+Nodes (7): addAttendeeFromInput(), classifyAttendee(), handleAttendeeKeyDown(), handleClose(), handleSubmit(), reset(), validate()
+
+### Community 51 - "Community 51"
+Cohesion: 0.22
+Nodes (1): Verify migration 046 creates all eight trip tables with key columns.
+
+### Community 52 - "Community 52"
 Cohesion: 0.29
 Nodes (8): Email Filter Gemini LLM Spec, API: POST /webhooks/gmail + /webhooks/outlook, LLM Email Parser LATAM Spec, Luka Plan 1: Foundation, Luka Plan 2: Transaction Pipeline, Module: backend/modules/email, Rationale: LATAM 6-country email parser (CL/CO/MX/PE/BR/US), Worker Queue Scaling Spec
 
-### Community 50 - "Community 50"
-Cohesion: 0.29
-Nodes (2): getDateKey(), getItemDateKey()
-
-### Community 51 - "Community 51"
-Cohesion: 0.29
-Nodes (7): API: DELETE /transactions/{id}, API: GET /transactions/pending, Feature: Pending Transactions Block + Reconciliation, Module: backend/modules/fintoc, Rationale: Cross-sender dedup for Banco de Chile email pairs, Transaction Reconciliation + Pending Block Plan, Transaction Reconciliation Design Spec
-
-### Community 52 - "Community 52"
-Cohesion: 0.33
-Nodes (3): CurrencyToggle(), useCurrencies(), usePrimaryCurrency()
-
 ### Community 53 - "Community 53"
-Cohesion: 0.33
-Nodes (5): downgrade(), initial_schema  Revision ID: 001 Revises: Create Date: 2026-03-11 11:55:11.89588, Create all core tables in dependency order., Drop all tables in reverse dependency order., upgrade()
+Cohesion: 0.43
+Nodes (4): capitalize(), currentMonthKey(), getLastNMonths(), monthKey()
 
 ### Community 54 - "Community 54"
 Cohesion: 0.33
-Nodes (6): Columns: users.google_access_token_enc / google_refresh_token_enc, API: POST /auth/setup-email-watch, API: POST /auth/store-provider-tokens, Feature: Gmail OAuth Token Pipeline + Watch, Gmail Pipeline Wiring Plan, Rationale: Fernet-encrypted OAuth tokens at rest
+Nodes (3): CurrencyToggle(), useCurrencies(), usePrimaryCurrency()
 
 ### Community 55 - "Community 55"
-Cohesion: 0.67
-Nodes (6): Luka full logo master (Logo1.svg) — stylized angular L brandmark + 'uka' wordmark lockup, navy blue, source asset for frontend logo.svg and logo-dashboard.svg, Luka logo raster PNG — stylized angular L brandmark joined to 'uka' wordmark, dark navy blue on white background, Luka brandmark symbol (Logo2) — standalone stylized angular L mark without wordmark, navy blue, Luka primary logo — full lockup with stylized L brandmark and 'uka' wordmark in navy blue, Luka full logo (dashboard variant) — stylized L brandmark + 'uka' wordmark in navy blue, Luka symbol mark — standalone stylized L brandmark (no wordmark), navy blue
+Cohesion: 0.33
+Nodes (2): getDateKey(), getItemDateKey()
 
 ### Community 56 - "Community 56"
-Cohesion: 0.33
-Nodes (0): 
+Cohesion: 0.29
+Nodes (7): API: DELETE /transactions/{id}, API: GET /transactions/pending, Feature: Pending Transactions Block + Reconciliation, Module: backend/modules/fintoc, Rationale: Cross-sender dedup for Banco de Chile email pairs, Transaction Reconciliation + Pending Block Plan, Transaction Reconciliation Design Spec
 
 ### Community 57 - "Community 57"
-Cohesion: 0.33
-Nodes (0): 
+Cohesion: 0.47
+Nodes (3): buildSplits(), handleSubmit(), validate()
 
 ### Community 58 - "Community 58"
-Cohesion: 0.53
-Nodes (4): capitalize(), currentMonthKey(), getLastNMonths(), monthKey()
+Cohesion: 0.6
+Nodes (5): classify(), handleClose(), handleKeyDown(), handleSubmit(), reset()
 
 ### Community 59 - "Community 59"
 Cohesion: 0.33
-Nodes (0): 
+Nodes (2): MarkAsCuotaDialog(), useCreateCuota()
 
 ### Community 60 - "Community 60"
 Cohesion: 0.33
 Nodes (0): 
 
 ### Community 61 - "Community 61"
-Cohesion: 0.53
-Nodes (4): dropTrailingS(), findDuplicate(), levenshtein(), normalize()
+Cohesion: 0.33
+Nodes (0): 
 
 ### Community 62 - "Community 62"
 Cohesion: 0.33
@@ -592,319 +642,319 @@ Nodes (0):
 
 ### Community 63 - "Community 63"
 Cohesion: 0.33
-Nodes (5): downgrade(), backfill joint split type  Revision ID: 1d4edef10702 Revises: 041 Create Date: 2, Set split_type='shared' on every TransactionSplit whose underlying     transacti, No-op: we cannot tell which rows were originally personal vs shared., upgrade()
+Nodes (5): downgrade(), initial_schema  Revision ID: 001 Revises: Create Date: 2026-03-11 11:55:11.89588, Create all core tables in dependency order., Drop all tables in reverse dependency order., upgrade()
 
 ### Community 64 - "Community 64"
-Cohesion: 0.7
-Nodes (4): getCategoryIcon(), getCategoryIconOrInitial(), getCategoryPill(), themeFromName()
+Cohesion: 0.33
+Nodes (5): downgrade(), backfill joint split type  Revision ID: 1d4edef10702 Revises: 041 Create Date: 2, Set split_type='shared' on every TransactionSplit whose underlying     transacti, No-op: we cannot tell which rows were originally personal vs shared., upgrade()
 
 ### Community 65 - "Community 65"
-Cohesion: 0.4
-Nodes (0): 
+Cohesion: 0.33
+Nodes (6): Columns: users.google_access_token_enc / google_refresh_token_enc, API: POST /auth/setup-email-watch, API: POST /auth/store-provider-tokens, Feature: Gmail OAuth Token Pipeline + Watch, Gmail Pipeline Wiring Plan, Rationale: Fernet-encrypted OAuth tokens at rest
 
 ### Community 66 - "Community 66"
-Cohesion: 0.4
-Nodes (0): 
+Cohesion: 0.67
+Nodes (6): Luka full logo master (Logo1.svg) — stylized angular L brandmark + 'uka' wordmark lockup, navy blue, source asset for frontend logo.svg and logo-dashboard.svg, Luka logo raster PNG — stylized angular L brandmark joined to 'uka' wordmark, dark navy blue on white background, Luka brandmark symbol (Logo2) — standalone stylized angular L mark without wordmark, navy blue, Luka primary logo — full lockup with stylized L brandmark and 'uka' wordmark in navy blue, Luka full logo (dashboard variant) — stylized L brandmark + 'uka' wordmark in navy blue, Luka symbol mark — standalone stylized L brandmark (no wordmark), navy blue
 
 ### Community 67 - "Community 67"
-Cohesion: 0.4
-Nodes (0): 
+Cohesion: 0.7
+Nodes (4): getCategoryIcon(), getCategoryIconOrInitial(), getCategoryPill(), themeFromName()
 
 ### Community 68 - "Community 68"
 Cohesion: 0.4
 Nodes (0): 
 
 ### Community 69 - "Community 69"
-Cohesion: 0.5
-Nodes (2): run_async_migrations(), run_migrations_online()
-
-### Community 70 - "Community 70"
-Cohesion: 0.4
-Nodes (5): /currencies (GET/POST/DELETE), CurrencyPillBar UI, backend/modules/currencies, Multi-Currency Support Design (2026-04-09), user_currencies
-
-### Community 71 - "Community 71"
-Cohesion: 0.5
-Nodes (3): Add LLM parser tables: email_templates, bank_registry, parsed_email_log  Revisio, _seed_bank_registry(), upgrade()
-
-### Community 72 - "Community 72"
 Cohesion: 0.4
 Nodes (2): toTitleCase(), bankLabel()
 
+### Community 70 - "Community 70"
+Cohesion: 0.4
+Nodes (0): 
+
+### Community 71 - "Community 71"
+Cohesion: 0.4
+Nodes (0): 
+
+### Community 72 - "Community 72"
+Cohesion: 0.4
+Nodes (0): 
+
 ### Community 73 - "Community 73"
-Cohesion: 0.5
-Nodes (2): setSplitType(), toggleSplit()
+Cohesion: 0.4
+Nodes (3): per_user_key(), Rate-limiting utilities backed by ``slowapi``.  Bootstrapped here so route modul, Use authenticated user id when available, else fall back to IP.      NOTE: For t
 
 ### Community 74 - "Community 74"
 Cohesion: 0.4
-Nodes (5): card_last_four parsed but not persisted, detect_transfers dead code, Status confirmed vs settled, backend/modules/reconciliation, Transaction Consolidation Ultrareview (2026-04-20)
+Nodes (0): 
 
 ### Community 75 - "Community 75"
-Cohesion: 0.5
+Cohesion: 0.4
 Nodes (0): 
 
 ### Community 76 - "Community 76"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (2): run_async_migrations(), run_migrations_online()
 
 ### Community 77 - "Community 77"
 Cohesion: 0.5
-Nodes (2): Badge(), cn()
+Nodes (3): Add LLM parser tables: email_templates, bank_registry, parsed_email_log  Revisio, _seed_bank_registry(), upgrade()
 
 ### Community 78 - "Community 78"
-Cohesion: 0.5
-Nodes (1): 036 — add subscription_overrides.split_type  Revision ID: 036 Revises: 035
+Cohesion: 0.4
+Nodes (5): /currencies (GET/POST/DELETE), CurrencyPillBar UI, backend/modules/currencies, Multi-Currency Support Design (2026-04-09), user_currencies
 
 ### Community 79 - "Community 79"
-Cohesion: 0.5
-Nodes (1): Add subscription_overrides and detected_subscriptions_cache tables  Revision ID:
+Cohesion: 0.4
+Nodes (5): card_last_four parsed but not persisted, detect_transfers dead code, Status confirmed vs settled, backend/modules/reconciliation, Transaction Consolidation Ultrareview (2026-04-20)
 
 ### Community 80 - "Community 80"
 Cohesion: 0.5
-Nodes (1): Create user_category_preferences table with RLS.  Revision ID: 015 Revises: 014
+Nodes (0): 
 
 ### Community 81 - "Community 81"
 Cohesion: 0.5
-Nodes (1): transaction_type and household_budget_allocations  Revision ID: 011 Revises: 010
+Nodes (0): 
 
 ### Community 82 - "Community 82"
 Cohesion: 0.5
-Nodes (1): Add canonical_merchants, notifications, merchant_review_jobs tables.
+Nodes (0): 
 
 ### Community 83 - "Community 83"
 Cohesion: 0.5
-Nodes (1): Remove Fintoc columns, add bank_credentials table and source_type.  Revision ID:
+Nodes (0): 
 
 ### Community 84 - "Community 84"
 Cohesion: 0.5
-Nodes (1): performance_indexes  Revision ID: 008 Revises: 007 Create Date: 2026-03-20  Add
+Nodes (0): 
 
 ### Community 85 - "Community 85"
 Cohesion: 0.5
-Nodes (1): Add import_status column to bank_accounts.  Revision ID: 005 Down revision: 004
+Nodes (0): 
 
 ### Community 86 - "Community 86"
 Cohesion: 0.5
-Nodes (1): Rename partner_stats to member_stats — N-member support  Revision ID: 033 Revise
+Nodes (0): 
 
 ### Community 87 - "Community 87"
 Cohesion: 0.5
-Nodes (1): Create notification_preferences table with RLS.  Revision ID: 014 Revises: 013
+Nodes (0): 
 
 ### Community 88 - "Community 88"
 Cohesion: 0.5
-Nodes (1): Add account_kind column to bank_accounts.  Revision ID: 006 Down revision: 005
+Nodes (2): Badge(), cn()
 
 ### Community 89 - "Community 89"
 Cohesion: 0.5
-Nodes (1): Add split_ratio JSONB column to households.
+Nodes (1): 036 — add subscription_overrides.split_type  Revision ID: 036 Revises: 035
 
 ### Community 90 - "Community 90"
 Cohesion: 0.5
-Nodes (1): Add account_number column to bank_accounts.  Revision ID: 007 Down revision: 006
+Nodes (1): Add subscription_overrides and detected_subscriptions_cache tables  Revision ID:
 
 ### Community 91 - "Community 91"
 Cohesion: 0.5
-Nodes (1): bank_account_sync_columns  Revision ID: 009 Revises: 008 Create Date: 2026-03-19
+Nodes (1): Create user_category_preferences table with RLS.  Revision ID: 015 Revises: 014
 
 ### Community 92 - "Community 92"
 Cohesion: 0.5
-Nodes (1): 037 — add user_budget_settings.personal_allocation_amount / _currency  Revision
+Nodes (1): transaction_type and household_budget_allocations  Revision ID: 011 Revises: 010
 
 ### Community 93 - "Community 93"
 Cohesion: 0.5
-Nodes (1): bank_account_currency  Revision ID: 010 Revises: 009 Create Date: 2026-03-20  Ad
+Nodes (1): Add canonical_merchants, notifications, merchant_review_jobs tables.
 
 ### Community 94 - "Community 94"
 Cohesion: 0.5
-Nodes (1): Add phone_whatsapp column to users table.  Revision ID: 013 Revises: 012
+Nodes (1): Remove Fintoc columns, add bank_credentials table and source_type.  Revision ID:
 
 ### Community 95 - "Community 95"
 Cohesion: 0.5
-Nodes (1): Budget redesign — contribution modes, user_budget_settings, cuota_purchases  Rev
+Nodes (1): performance_indexes  Revision ID: 008 Revises: 007 Create Date: 2026-03-20  Add
 
 ### Community 96 - "Community 96"
 Cohesion: 0.5
-Nodes (1): Enforce at most one active household membership per user  Context: A manual SQL
+Nodes (1): Add import_status column to bank_accounts.  Revision ID: 005 Down revision: 004
 
 ### Community 97 - "Community 97"
 Cohesion: 0.5
-Nodes (1): Add fintoc_link_id and fintoc_account_id to bank_accounts.  Revision ID: 003 Dow
+Nodes (1): 051 — money-integrity constraints and hot-path indexes  Revision ID: 051 Revises
 
 ### Community 98 - "Community 98"
 Cohesion: 0.5
-Nodes (1): Add preferred_currency to users table.
+Nodes (1): Rename partner_stats to member_stats — N-member support  Revision ID: 033 Revise
 
 ### Community 99 - "Community 99"
 Cohesion: 0.5
-Nodes (1): add balance columns to bank_accounts  Revision ID: 012 Revises: 011 Create Date:
+Nodes (1): Create notification_preferences table with RLS.  Revision ID: 014 Revises: 013
 
 ### Community 100 - "Community 100"
 Cohesion: 0.5
-Nodes (1): Remove deprecated expense categories and reassign transactions to random default
+Nodes (1): 047 — RLS policies + helper functions for Viajes (Trips)  Revision ID: 047 Revis
 
 ### Community 101 - "Community 101"
 Cohesion: 0.5
-Nodes (1): Enable RLS policies on transactions table.  Revision ID: 002 Down revision: 001
+Nodes (1): Add account_kind column to bank_accounts.  Revision ID: 006 Down revision: 005
 
 ### Community 102 - "Community 102"
 Cohesion: 0.5
-Nodes (1): Compartido redesign: settlement_enabled, left_at, nullable invited_email, couple
+Nodes (1): Add split_ratio JSONB column to households.
 
 ### Community 103 - "Community 103"
 Cohesion: 0.5
-Nodes (1): add transaction_ids JSONB column to merchant_review_jobs  Revision ID: 026 Revis
+Nodes (1): Add account_number column to bank_accounts.  Revision ID: 007 Down revision: 006
 
 ### Community 104 - "Community 104"
 Cohesion: 0.5
-Nodes (1): Enforce account_type IN ('personal', 'partner', 'joint').  Revision ID: 004 Down
+Nodes (1): bank_account_sync_columns  Revision ID: 009 Revises: 008 Create Date: 2026-03-19
 
 ### Community 105 - "Community 105"
 Cohesion: 0.5
-Nodes (1): plaid_integration  Revision ID: 023 Revises: 022 Create Date: 2026-04-04
+Nodes (1): 037 — add user_budget_settings.personal_allocation_amount / _currency  Revision
 
 ### Community 106 - "Community 106"
 Cohesion: 0.5
-Nodes (1): Add account_name, balance columns, and last_synced_at to bank_accounts.
+Nodes (1): 049 — narrow trip ↔ split mutex triggers to shared splits only  Revision ID: 049
 
 ### Community 107 - "Community 107"
 Cohesion: 0.5
-Nodes (1): user_categories — add category_type/is_custom, drop hidden, per-user merchant co
+Nodes (1): bank_account_currency  Revision ID: 010 Revises: 009 Create Date: 2026-03-20  Ad
 
 ### Community 108 - "Community 108"
 Cohesion: 0.5
-Nodes (1): Add source_bank_name to transactions for email-inferred bank identification.
+Nodes (1): 042 — add transactions.user_edited_fields  Revision ID: 042 Revises: 1d4edef1070
 
 ### Community 109 - "Community 109"
 Cohesion: 0.5
-Nodes (4): Columns: households.settlement_enabled + household_members.left_at, Compartido Redesign Plan, Feature: Compartido group households (up to 5 members, pool settlement), Module: backend/modules/households
+Nodes (1): Add phone_whatsapp column to users table.  Revision ID: 013 Revises: 012
 
 ### Community 110 - "Community 110"
 Cohesion: 0.5
-Nodes (4): LATAM-first branding — Chilean capital imagery for login backdrop, Cool blue-gray palette — snow-capped peaks, dusk city lights, Full-bleed landscape photograph, aerial cityscape composition, Santiago Chile skyline dusk photo — Andes mountains backdrop
+Nodes (1): 045 — add users.feature_trips_enabled  Revision ID: 045 Revises: 044  Adds a per
 
 ### Community 111 - "Community 111"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (1): Budget redesign — contribution modes, user_budget_settings, cuota_purchases  Rev
 
 ### Community 112 - "Community 112"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (1): Enforce at most one active household membership per user  Context: A manual SQL
 
 ### Community 113 - "Community 113"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (1): 044 — add transactions.reimbursement_group_id  Revision ID: 044 Revises: 043  Ad
 
 ### Community 114 - "Community 114"
 Cohesion: 0.5
-Nodes (1): user_currencies table  Revision ID: 029b Revises: 029  Historically this file sh
+Nodes (1): Add fintoc_link_id and fintoc_account_id to bank_accounts.  Revision ID: 003 Dow
 
 ### Community 115 - "Community 115"
 Cohesion: 0.5
-Nodes (1): Transaction consolidation schema — card_last_four, refund_pair_id, orphan status
+Nodes (1): Add preferred_currency to users table.
 
 ### Community 116 - "Community 116"
 Cohesion: 0.5
-Nodes (1): Indexes for hot auth and household-membership paths.  Every authenticated reques
+Nodes (1): 052 — budget caps/budgets stored in minor units  Revision ID: 052 Revises: 051
 
 ### Community 117 - "Community 117"
 Cohesion: 0.5
-Nodes (1): 040 — add currency column to category_budgets  Revision ID: 040 Revises: 039  Le
+Nodes (1): user_currencies table  Revision ID: 029b Revises: 029  Historically this file sh
 
 ### Community 118 - "Community 118"
 Cohesion: 0.5
-Nodes (1): Add category_budgets table  Revision ID: 029 Revises: 028 Create Date: 2026-04-0
+Nodes (1): add balance columns to bank_accounts  Revision ID: 012 Revises: 011 Create Date:
 
 ### Community 119 - "Community 119"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (1): Remove deprecated expense categories and reassign transactions to random default
 
 ### Community 120 - "Community 120"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (1): 046 — create eight trip tables (Viajes)  Revision ID: 046 Revises: 045  Creates
 
 ### Community 121 - "Community 121"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (1): Enable RLS policies on transactions table.  Revision ID: 002 Down revision: 001
 
 ### Community 122 - "Community 122"
 Cohesion: 0.5
-Nodes (1): 042 — add transactions.user_edited_fields  Revision ID: 042 Revises: 1d4edef1070
+Nodes (1): Compartido redesign: settlement_enabled, left_at, nullable invited_email, couple
 
 ### Community 123 - "Community 123"
 Cohesion: 0.5
-Nodes (1): 044 — add transactions.reimbursement_group_id  Revision ID: 044 Revises: 043  Ad
+Nodes (1): 048 — mutual-exclusivity triggers between trip_expenses and transaction_splits
 
 ### Community 124 - "Community 124"
 Cohesion: 0.5
-Nodes (1): 043 — add transactions.matched_email_at  Revision ID: 043 Revises: 042  Idempote
+Nodes (1): Transaction consolidation schema — card_last_four, refund_pair_id, orphan status
 
 ### Community 125 - "Community 125"
 Cohesion: 0.5
-Nodes (1): 041 — drop transaction_splits.category  Revision ID: 041 Revises: 040  `transact
+Nodes (1): add transaction_ids JSONB column to merchant_review_jobs  Revision ID: 026 Revis
 
 ### Community 126 - "Community 126"
 Cohesion: 0.5
-Nodes (4): Two-sided business model, Problem to be Solved (User + B2B), Target Customer (LATAM fintechs), Target User (LATAM mid-high income)
+Nodes (1): Indexes for hot auth and household-membership paths.  Every authenticated reques
 
 ### Community 127 - "Community 127"
 Cohesion: 0.5
-Nodes (4): CategoryPicker component, BottomSheet component (mobile), DM Sans typography migration, Plan: Frontend Redesign Tier 1
+Nodes (1): Enforce account_type IN ('personal', 'partner', 'joint').  Revision ID: 004 Down
 
 ### Community 128 - "Community 128"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 0.5
+Nodes (1): plaid_integration  Revision ID: 023 Revises: 022 Create Date: 2026-04-04
 
 ### Community 129 - "Community 129"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 0.5
+Nodes (1): Add account_name, balance columns, and last_synced_at to bank_accounts.
 
 ### Community 130 - "Community 130"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 0.5
+Nodes (1): 040 — add currency column to category_budgets  Revision ID: 040 Revises: 039  Le
 
 ### Community 131 - "Community 131"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 0.5
+Nodes (1): 043 — add transactions.matched_email_at  Revision ID: 043 Revises: 042  Idempote
 
 ### Community 132 - "Community 132"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 0.5
+Nodes (1): user_categories — add category_type/is_custom, drop hidden, per-user merchant co
 
 ### Community 133 - "Community 133"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 0.5
+Nodes (1): Add category_budgets table  Revision ID: 029 Revises: 028 Create Date: 2026-04-0
 
 ### Community 134 - "Community 134"
-Cohesion: 0.67
-Nodes (1): Merchant Training Server  Run this file to start the training UI:     python3 sc
+Cohesion: 0.5
+Nodes (1): 041 — drop transaction_splits.category  Revision ID: 041 Revises: 040  `transact
 
 ### Community 135 - "Community 135"
-Cohesion: 0.67
-Nodes (3): PATCH /transactions/{id}/split-type, Frontend Redesign Tier 1 (2026-03-23), DM Sans typography
+Cohesion: 0.5
+Nodes (1): 050 — cascade behavior for trip → transactions FKs  Revision ID: 050 Revises: 04
 
 ### Community 136 - "Community 136"
-Cohesion: 0.67
-Nodes (2): BaseSettings, Settings
+Cohesion: 0.5
+Nodes (1): Add source_bank_name to transactions for email-inferred bank identification.
 
 ### Community 137 - "Community 137"
-Cohesion: 0.67
-Nodes (1): Diagnostic: inspect the Apple / Uber Eats rows that aren't refund-pairing for Ra
+Cohesion: 0.5
+Nodes (4): Columns: households.settlement_enabled + household_members.left_at, Compartido Redesign Plan, Feature: Compartido group households (up to 5 members, pool settlement), Module: backend/modules/households
 
 ### Community 138 - "Community 138"
-Cohesion: 1.0
-Nodes (2): localeForCurrency(), resolveAppLocale()
+Cohesion: 0.5
+Nodes (4): LATAM-first branding — Chilean capital imagery for login backdrop, Cool blue-gray palette — snow-capped peaks, dusk city lights, Full-bleed landscape photograph, aerial cityscape composition, Santiago Chile skyline dusk photo — Andes mountains backdrop
 
 ### Community 139 - "Community 139"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 0.5
+Nodes (4): Two-sided business model, Problem to be Solved (User + B2B), Target Customer (LATAM fintechs), Target User (LATAM mid-high income)
 
 ### Community 140 - "Community 140"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 0.5
+Nodes (4): CategoryPicker component, BottomSheet component (mobile), DM Sans typography migration, Plan: Frontend Redesign Tier 1
 
 ### Community 141 - "Community 141"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 1.0
+Nodes (2): localeForCurrency(), resolveAppLocale()
 
 ### Community 142 - "Community 142"
 Cohesion: 0.67
@@ -923,60 +973,60 @@ Cohesion: 0.67
 Nodes (0): 
 
 ### Community 146 - "Community 146"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 1.0
+Nodes (2): handleSubmit(), validate()
 
 ### Community 147 - "Community 147"
 Cohesion: 0.67
-Nodes (3): No debt ledger (aggregate query), v3 Sankey caller-relative privacy, Partner privacy: get_contribution_summary leaks totals
+Nodes (0): 
 
 ### Community 148 - "Community 148"
-Cohesion: 1.0
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 149 - "Community 149"
-Cohesion: 1.0
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 150 - "Community 150"
-Cohesion: 1.0
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 151 - "Community 151"
-Cohesion: 1.0
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 152 - "Community 152"
-Cohesion: 1.0
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 153 - "Community 153"
-Cohesion: 1.0
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 154 - "Community 154"
-Cohesion: 1.0
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 155 - "Community 155"
-Cohesion: 1.0
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 156 - "Community 156"
-Cohesion: 1.0
-Nodes (0): 
+Cohesion: 0.67
+Nodes (2): BaseSettings, Settings
 
 ### Community 157 - "Community 157"
-Cohesion: 1.0
-Nodes (0): 
+Cohesion: 0.67
+Nodes (1): Merchant Training Server  Run this file to start the training UI:     python3 sc
 
 ### Community 158 - "Community 158"
-Cohesion: 1.0
-Nodes (0): 
+Cohesion: 0.67
+Nodes (3): No debt ledger (aggregate query), v3 Sankey caller-relative privacy, Partner privacy: get_contribution_summary leaks totals
 
 ### Community 159 - "Community 159"
-Cohesion: 1.0
-Nodes (0): 
+Cohesion: 0.67
+Nodes (3): PATCH /transactions/{id}/split-type, Frontend Redesign Tier 1 (2026-03-23), DM Sans typography
 
 ### Community 160 - "Community 160"
 Cohesion: 1.0
@@ -1012,43 +1062,43 @@ Nodes (0):
 
 ### Community 168 - "Community 168"
 Cohesion: 1.0
-Nodes (2): merchant_review module, Merchant Review Training UI
+Nodes (0): 
 
 ### Community 169 - "Community 169"
 Cohesion: 1.0
-Nodes (2): Architecture Doc, Bank Email Notifications Research
+Nodes (0): 
 
 ### Community 170 - "Community 170"
 Cohesion: 1.0
-Nodes (2): Bank Scraper Next Steps, Luka Connect Next Session Notes
+Nodes (0): 
 
 ### Community 171 - "Community 171"
 Cohesion: 1.0
-Nodes (2): Deployment Doc, Railway Worker Doc
+Nodes (0): 
 
 ### Community 172 - "Community 172"
 Cohesion: 1.0
-Nodes (2): Roadmap, Luka Next Steps
+Nodes (0): 
 
 ### Community 173 - "Community 173"
 Cohesion: 1.0
-Nodes (2): Fintoc Integration Reference, Fintoc Limitations
+Nodes (0): 
 
 ### Community 174 - "Community 174"
 Cohesion: 1.0
-Nodes (2): API Reference, Development Guide
+Nodes (0): 
 
 ### Community 175 - "Community 175"
 Cohesion: 1.0
-Nodes (2): Docs README, Luka Project State
+Nodes (0): 
 
 ### Community 176 - "Community 176"
 Cohesion: 1.0
-Nodes (2): WhatsApp Cloud API, WhatsApp PIN Verification Plan
+Nodes (0): 
 
 ### Community 177 - "Community 177"
 Cohesion: 1.0
-Nodes (2): ARQ Async Queue, Worker Queue Scaling Plan
+Nodes (0): 
 
 ### Community 178 - "Community 178"
 Cohesion: 1.0
@@ -1132,15 +1182,15 @@ Nodes (0):
 
 ### Community 198 - "Community 198"
 Cohesion: 1.0
-Nodes (2): Luka project overview, Tech Stack
+Nodes (0): 
 
 ### Community 199 - "Community 199"
 Cohesion: 1.0
-Nodes (2): Codebase Knowledge Graph (RAG), Ways of Working
+Nodes (0): 
 
 ### Community 200 - "Community 200"
 Cohesion: 1.0
-Nodes (2): update-project-docs SKILL.md, Update Project Docs Skill
+Nodes (0): 
 
 ### Community 201 - "Community 201"
 Cohesion: 1.0
@@ -1148,59 +1198,59 @@ Nodes (0):
 
 ### Community 202 - "Community 202"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): merchant_review module, Merchant Review Training UI
 
 ### Community 203 - "Community 203"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Bank Scraper Next Steps, Luka Connect Next Session Notes
 
 ### Community 204 - "Community 204"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Fintoc Integration Reference, Fintoc Limitations
 
 ### Community 205 - "Community 205"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Deployment Doc, Railway Worker Doc
 
 ### Community 206 - "Community 206"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): API Reference, Development Guide
 
 ### Community 207 - "Community 207"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Architecture Doc, Bank Email Notifications Research
 
 ### Community 208 - "Community 208"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Docs README, Luka Project State
 
 ### Community 209 - "Community 209"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Roadmap, Luka Next Steps
 
 ### Community 210 - "Community 210"
 Cohesion: 1.0
-Nodes (1): Handles webhooks, emails, schedulers, and lightweight cron jobs.
+Nodes (2): WhatsApp Cloud API, WhatsApp PIN Verification Plan
 
 ### Community 211 - "Community 211"
 Cohesion: 1.0
-Nodes (1): Handles bank syncs, LLM processing, and heavy batch jobs.
+Nodes (2): ARQ Async Queue, Worker Queue Scaling Plan
 
 ### Community 212 - "Community 212"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Luka project overview, Tech Stack
 
 ### Community 213 - "Community 213"
 Cohesion: 1.0
-Nodes (1): Cannot delete a connect-sourced (scraped) transaction.
+Nodes (2): Codebase Knowledge Graph (RAG), Ways of Working
 
 ### Community 214 - "Community 214"
 Cohesion: 1.0
-Nodes (1): Transaction not found returns not_found.
+Nodes (2): update-project-docs SKILL.md, Update Project Docs Skill
 
 ### Community 215 - "Community 215"
 Cohesion: 1.0
-Nodes (1): total == sum(caller_sources) + caller_other_income + sum(other_members.amount)
+Nodes (0): 
 
 ### Community 216 - "Community 216"
 Cohesion: 1.0
@@ -1208,15 +1258,15 @@ Nodes (0):
 
 ### Community 217 - "Community 217"
 Cohesion: 1.0
-Nodes (1): No function should appear in both workers.
+Nodes (0): 
 
 ### Community 218 - "Community 218"
 Cohesion: 1.0
-Nodes (1): No cron should appear in both workers.
+Nodes (0): 
 
 ### Community 219 - "Community 219"
 Cohesion: 1.0
-Nodes (1): Route correctly returns whatever the service layer provides (filtered at DB leve
+Nodes (0): 
 
 ### Community 220 - "Community 220"
 Cohesion: 1.0
@@ -1236,23 +1286,23 @@ Nodes (0):
 
 ### Community 224 - "Community 224"
 Cohesion: 1.0
-Nodes (1): Find matching email transaction(s) using 3-tier priority.      Returns dict with
+Nodes (0): 
 
 ### Community 225 - "Community 225"
 Cohesion: 1.0
-Nodes (1): Apply enrichment from email tx to bank tx, re-link splits, delete email txs.
+Nodes (0): 
 
 ### Community 226 - "Community 226"
 Cohesion: 1.0
-Nodes (1): Find a single email transaction matching by merchant, date window, and amount to
+Nodes (0): 
 
 ### Community 227 - "Community 227"
 Cohesion: 1.0
-Nodes (1): Find N email transactions from same merchant whose sum matches the bank amount.
+Nodes (0): 
 
 ### Community 228 - "Community 228"
 Cohesion: 1.0
-Nodes (1): Extract enrichment data from an email transaction.
+Nodes (0): 
 
 ### Community 229 - "Community 229"
 Cohesion: 1.0
@@ -1276,23 +1326,23 @@ Nodes (0):
 
 ### Community 234 - "Community 234"
 Cohesion: 1.0
-Nodes (1): Sum recurring bills for one user in `currency` where the effective     split_typ
+Nodes (0): 
 
 ### Community 235 - "Community 235"
 Cohesion: 1.0
-Nodes (1): Sum the monthly total of ALL detected recurring bills for one user in     `curre
+Nodes (0): 
 
 ### Community 236 - "Community 236"
 Cohesion: 1.0
-Nodes (1): Sum of one user's recurring bills that are PERSONAL (not shared with     the hou
+Nodes (0): 
 
 ### Community 237 - "Community 237"
 Cohesion: 1.0
-Nodes (1): Sum of one user's recurring bills that are SHARED with the household.     Used b
+Nodes (0): 
 
 ### Community 238 - "Community 238"
 Cohesion: 1.0
-Nodes (1): Sum of household SHARED recurring bills across every active member     in `curre
+Nodes (0): 
 
 ### Community 239 - "Community 239"
 Cohesion: 1.0
@@ -1308,7 +1358,7 @@ Nodes (0):
 
 ### Community 242 - "Community 242"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): total == sum(caller_sources) + caller_other_income + sum(other_members.amount)
 
 ### Community 243 - "Community 243"
 Cohesion: 1.0
@@ -1332,35 +1382,35 @@ Nodes (0):
 
 ### Community 248 - "Community 248"
 Cohesion: 1.0
-Nodes (1): Frontend README
+Nodes (0): 
 
 ### Community 249 - "Community 249"
 Cohesion: 1.0
-Nodes (1): Gmail Pipeline Wiring Design
+Nodes (0): 
 
 ### Community 250 - "Community 250"
 Cohesion: 1.0
-Nodes (1): Auth Session Management Design
+Nodes (0): 
 
 ### Community 251 - "Community 251"
 Cohesion: 1.0
-Nodes (1): Update Project Docs Skill Design
+Nodes (0): 
 
 ### Community 252 - "Community 252"
 Cohesion: 1.0
-Nodes (1): Subscriptions Redesign
+Nodes (0): 
 
 ### Community 253 - "Community 253"
 Cohesion: 1.0
-Nodes (1): Sync and Transactions UX Design
+Nodes (0): 
 
 ### Community 254 - "Community 254"
 Cohesion: 1.0
-Nodes (1): Merchant Cleaning Review Design
+Nodes (0): 
 
 ### Community 255 - "Community 255"
 Cohesion: 1.0
-Nodes (1): WhatsApp PIN Verification Design
+Nodes (0): 
 
 ### Community 256 - "Community 256"
 Cohesion: 1.0
@@ -1392,121 +1442,321 @@ Nodes (0):
 
 ### Community 263 - "Community 263"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Handles webhooks, emails, schedulers, and lightweight cron jobs.
 
 ### Community 264 - "Community 264"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Handles bank syncs, LLM processing, and heavy batch jobs.
 
 ### Community 265 - "Community 265"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Cannot delete a connect-sourced (scraped) transaction.
 
 ### Community 266 - "Community 266"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Transaction not found returns not_found.
 
 ### Community 267 - "Community 267"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Given raw rows from SQL, builds category breakdown with member totals and percen
 
 ### Community 268 - "Community 268"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Returns empty list when no rows.
 
 ### Community 269 - "Community 269"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): With 50/50 split, person who paid less owes the difference.
 
 ### Community 270 - "Community 270"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): 3 members, equal split. One paid everything, other two owe.
 
 ### Community 271 - "Community 271"
 Cohesion: 1.0
-Nodes (1): notifications table
+Nodes (1): 4 members with equal ratio, multiple transfers needed.
 
 ### Community 272 - "Community 272"
 Cohesion: 1.0
-Nodes (1): Resend (transactional email)
+Nodes (1): Single member — no transfers needed.
 
 ### Community 273 - "Community 273"
 Cohesion: 1.0
-Nodes (1): Railway (backend hosting)
+Nodes (1): No members — no transfers.
 
 ### Community 274 - "Community 274"
 Cohesion: 1.0
-Nodes (1): Vercel (frontend hosting)
+Nodes (1): All members paid zero — no transfers needed.
 
 ### Community 275 - "Community 275"
 Cohesion: 1.0
-Nodes (1): Alembic migrations (auto-applied)
+Nodes (1): reclassify_to that doesn't exist in user's preferences raises ValueError.
 
 ### Community 276 - "Community 276"
 Cohesion: 1.0
-Nodes (1): Zustand 5 client state
+Nodes (1): Schedulers are lightweight cron jobs — they must NOT be in SLOW_JOBS.
 
 ### Community 277 - "Community 277"
 Cohesion: 1.0
-Nodes (1): TanStack Query 5
+Nodes (1): Slow jobs should be enqueued with _queue_name='arq:queue:slow'.
 
 ### Community 278 - "Community 278"
 Cohesion: 1.0
-Nodes (1): Bank logo registry
+Nodes (1): Fast jobs should be enqueued with _queue_name='arq:queue'.
 
 ### Community 279 - "Community 279"
 Cohesion: 1.0
-Nodes (1): Settings module
+Nodes (1): Unknown job names default to the fast queue.
 
 ### Community 280 - "Community 280"
 Cohesion: 1.0
-Nodes (1): Settled-row kebab + bulk rename
+Nodes (1): No function should appear in both workers.
 
 ### Community 281 - "Community 281"
 Cohesion: 1.0
-Nodes (1): Mobile UX overhaul + bank-logo registry
+Nodes (1): No cron should appear in both workers.
 
 ### Community 282 - "Community 282"
 Cohesion: 1.0
-Nodes (1): WhatsApp message templates pending
+Nodes (1): Route correctly returns whatever the service layer provides (filtered at DB leve
 
 ### Community 283 - "Community 283"
 Cohesion: 1.0
-Nodes (1): Microsoft Azure / Outlook push notifications pending
+Nodes (1): One-off script: fix BofA transactions created before USD parsing was added.  Run
 
 ### Community 284 - "Community 284"
 Cohesion: 1.0
-Nodes (1): Plaid webhook handler pending
+Nodes (1): Find matching email transaction(s) using 3-tier priority.      Returns dict with
 
 ### Community 285 - "Community 285"
 Cohesion: 1.0
-Nodes (1): Coding Values
+Nodes (1): Apply enrichment from email tx to bank tx, re-link splits, delete email txs.
 
 ### Community 286 - "Community 286"
 Cohesion: 1.0
-Nodes (1): Settlement / contribution ledger
+Nodes (1): Find a single email transaction matching by merchant, date window, and amount to
 
 ### Community 287 - "Community 287"
 Cohesion: 1.0
-Nodes (1): pytest asyncio_mode=auto real DB
+Nodes (1): Find N email transactions from same merchant whose sum matches the bank amount.
 
 ### Community 288 - "Community 288"
 Cohesion: 1.0
-Nodes (1): TanStack Query
+Nodes (1): Extract enrichment data from an email transaction.
 
 ### Community 289 - "Community 289"
 Cohesion: 1.0
-Nodes (1): Zustand store
+Nodes (1): Sum recurring bills for one user in `currency` where the effective     split_typ
 
 ### Community 290 - "Community 290"
 Cohesion: 1.0
-Nodes (1): shadcn/ui
+Nodes (1): Sum the monthly total of ALL detected recurring bills for one user in     `curre
 
 ### Community 291 - "Community 291"
 Cohesion: 1.0
-Nodes (1): ARQ worker tier (fast/slow)
+Nodes (1): Sum of one user's recurring bills that are PERSONAL (not shared with     the hou
 
 ### Community 292 - "Community 292"
+Cohesion: 1.0
+Nodes (1): Sum of one user's recurring bills that are SHARED with the household.     Used b
+
+### Community 293 - "Community 293"
+Cohesion: 1.0
+Nodes (1): Sum of household SHARED recurring bills across every active member     in `curre
+
+### Community 294 - "Community 294"
+Cohesion: 1.0
+Nodes (1): Return True if the movement description matches a known inter-account pattern.
+
+### Community 295 - "Community 295"
+Cohesion: 1.0
+Nodes (1): Normalize description for dedup comparison.
+
+### Community 296 - "Community 296"
+Cohesion: 1.0
+Nodes (1): Generate a dedup key from movement fields.
+
+### Community 297 - "Community 297"
+Cohesion: 1.0
+Nodes (1): Parse date string and optional HH:MM time into a timezone-aware datetime.      S
+
+### Community 298 - "Community 298"
+Cohesion: 1.0
+Nodes (1): Map a raw Luka Connect movement to transaction fields.
+
+### Community 299 - "Community 299"
+Cohesion: 1.0
+Nodes (1): # NOTE: person-to-person transfers ("Traspaso A:Name") are NOT in this list — th
+
+### Community 300 - "Community 300"
+Cohesion: 1.0
+Nodes (1): Frontend README
+
+### Community 301 - "Community 301"
+Cohesion: 1.0
+Nodes (1): Gmail Pipeline Wiring Design
+
+### Community 302 - "Community 302"
+Cohesion: 1.0
+Nodes (1): Auth Session Management Design
+
+### Community 303 - "Community 303"
+Cohesion: 1.0
+Nodes (1): Update Project Docs Skill Design
+
+### Community 304 - "Community 304"
+Cohesion: 1.0
+Nodes (1): Subscriptions Redesign
+
+### Community 305 - "Community 305"
+Cohesion: 1.0
+Nodes (1): Sync and Transactions UX Design
+
+### Community 306 - "Community 306"
+Cohesion: 1.0
+Nodes (1): Merchant Cleaning Review Design
+
+### Community 307 - "Community 307"
+Cohesion: 1.0
+Nodes (1): WhatsApp PIN Verification Design
+
+### Community 308 - "Community 308"
+Cohesion: 1.0
+Nodes (1): Handles webhooks, emails, schedulers, and lightweight cron jobs.
+
+### Community 309 - "Community 309"
+Cohesion: 1.0
+Nodes (1): Handles bank syncs, LLM processing, and heavy batch jobs.
+
+### Community 310 - "Community 310"
+Cohesion: 1.0
+Nodes (1): Diagnostic: inspect the Apple / Uber Eats rows that aren't refund-pairing for Ra
+
+### Community 311 - "Community 311"
+Cohesion: 1.0
+Nodes (1): ARQ task: runs a full reconciliation tick across every household.
+
+### Community 312 - "Community 312"
+Cohesion: 1.0
+Nodes (1): Diagnostic: why did detect_wallet_pairs find 0 pairs?  Prints:   1. All bank_acc
+
+### Community 313 - "Community 313"
+Cohesion: 1.0
+Nodes (1): Run the tick for every household. Commits between households so a     failure on
+
+### Community 314 - "Community 314"
+Cohesion: 1.0
+Nodes (1): Map a Plaid transaction object to a Luka transaction dict.      Sign convention:
+
+### Community 315 - "Community 315"
+Cohesion: 1.0
+Nodes (1): Check if Plaid transaction is an internal transfer (not person-to-person).
+
+### Community 316 - "Community 316"
+Cohesion: 1.0
+Nodes (1): Wallet Account (Venmo/PayPal/CashApp)
+
+### Community 317 - "Community 317"
+Cohesion: 1.0
+Nodes (1): Plaid ('depository','paypal') Subtype
+
+### Community 318 - "Community 318"
+Cohesion: 1.0
+Nodes (1): account_kind='wallet'
+
+### Community 319 - "Community 319"
+Cohesion: 1.0
+Nodes (1): ARQ task: runs a full reconciliation tick across every household.
+
+### Community 320 - "Community 320"
+Cohesion: 1.0
+Nodes (1): ARQ task: runs the reconciliation tick for a single household.      Enqueued at
+
+### Community 321 - "Community 321"
+Cohesion: 1.0
+Nodes (1): notifications table
+
+### Community 322 - "Community 322"
+Cohesion: 1.0
+Nodes (1): Resend (transactional email)
+
+### Community 323 - "Community 323"
+Cohesion: 1.0
+Nodes (1): Railway (backend hosting)
+
+### Community 324 - "Community 324"
+Cohesion: 1.0
+Nodes (1): Vercel (frontend hosting)
+
+### Community 325 - "Community 325"
+Cohesion: 1.0
+Nodes (1): Alembic migrations (auto-applied)
+
+### Community 326 - "Community 326"
+Cohesion: 1.0
+Nodes (1): Zustand 5 client state
+
+### Community 327 - "Community 327"
+Cohesion: 1.0
+Nodes (1): TanStack Query 5
+
+### Community 328 - "Community 328"
+Cohesion: 1.0
+Nodes (1): Bank logo registry
+
+### Community 329 - "Community 329"
+Cohesion: 1.0
+Nodes (1): Settings module
+
+### Community 330 - "Community 330"
+Cohesion: 1.0
+Nodes (1): Settled-row kebab + bulk rename
+
+### Community 331 - "Community 331"
+Cohesion: 1.0
+Nodes (1): Mobile UX overhaul + bank-logo registry
+
+### Community 332 - "Community 332"
+Cohesion: 1.0
+Nodes (1): WhatsApp message templates pending
+
+### Community 333 - "Community 333"
+Cohesion: 1.0
+Nodes (1): Microsoft Azure / Outlook push notifications pending
+
+### Community 334 - "Community 334"
+Cohesion: 1.0
+Nodes (1): Plaid webhook handler pending
+
+### Community 335 - "Community 335"
+Cohesion: 1.0
+Nodes (1): Coding Values
+
+### Community 336 - "Community 336"
+Cohesion: 1.0
+Nodes (1): Settlement / contribution ledger
+
+### Community 337 - "Community 337"
+Cohesion: 1.0
+Nodes (1): pytest asyncio_mode=auto real DB
+
+### Community 338 - "Community 338"
+Cohesion: 1.0
+Nodes (1): TanStack Query
+
+### Community 339 - "Community 339"
+Cohesion: 1.0
+Nodes (1): Zustand store
+
+### Community 340 - "Community 340"
+Cohesion: 1.0
+Nodes (1): shadcn/ui
+
+### Community 341 - "Community 341"
+Cohesion: 1.0
+Nodes (1): ARQ worker tier (fast/slow)
+
+### Community 342 - "Community 342"
 Cohesion: 1.0
 Nodes (1): Rocket Money
 
@@ -1517,197 +1767,173 @@ Nodes (1): Rocket Money
   docs/superpowers/specs/reviews/2026-04-14-day4-integration-report.md · relation: reviews
 
 ## Knowledge Gaps
-- **535 isolated node(s):** `Handles webhooks, emails, schedulers, and lightweight cron jobs.`, `Handles bank syncs, LLM processing, and heavy batch jobs.`, `Decode a Supabase JWT using JWKS (supports ES256, RS256, HS256).      Tries JWKS`, `Validate Supabase JWT and return the User.      Uses JWKS for local validation (`, `Lightweight Redis cache for frequently-accessed data (user profiles, etc.).` (+530 more)
+- **579 isolated node(s):** `Handles webhooks, emails, schedulers, and lightweight cron jobs.`, `Handles bank syncs, LLM processing, and heavy batch jobs.`, `Lightweight Redis cache for frequently-accessed data (user profiles, etc.).`, `Get a JSON-serialized value from Redis. Returns None on miss or error.`, `Set a JSON-serialized value in Redis with TTL. Fails silently.` (+574 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 148`** (2 nodes): `manifest.ts`, `manifest()`
+- **Thin community `Community 160`** (2 nodes): `middleware.ts`, `middleware()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 149`** (2 nodes): `providers.tsx`, `Providers()`
+- **Thin community `Community 161`** (2 nodes): `layout.tsx`, `RootLayout()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 150`** (2 nodes): `layout.tsx`, `PublicLayout()`
+- **Thin community `Community 162`** (2 nodes): `manifest.ts`, `manifest()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 151`** (2 nodes): `page.tsx`, `PrivacyPage()`
+- **Thin community `Community 163`** (2 nodes): `providers.tsx`, `Providers()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 152`** (2 nodes): `page.tsx`, `TermsPage()`
+- **Thin community `Community 164`** (2 nodes): `page.tsx`, `PlaidOAuthPage()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 153`** (2 nodes): `page.tsx`, `DataDeletionPage()`
+- **Thin community `Community 165`** (2 nodes): `layout.tsx`, `PublicLayout()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 154`** (2 nodes): `useCategories.ts`, `useCategories()`
+- **Thin community `Community 166`** (2 nodes): `page.tsx`, `PrivacyPage()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 155`** (2 nodes): `page.tsx`, `nextStep()`
+- **Thin community `Community 167`** (2 nodes): `page.tsx`, `TermsPage()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 156`** (2 nodes): `CountrySelectorModal()`, `CountrySelectorModal.tsx`
+- **Thin community `Community 168`** (2 nodes): `page.tsx`, `DataDeletionPage()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 157`** (2 nodes): `PlaidLinkButton.tsx`, `usePlaidConnection()`
+- **Thin community `Community 169`** (2 nodes): `withDurableCookie()`, `cookieOptions.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 158`** (2 nodes): `PrivacySection.tsx`, `PrivacySection()`
+- **Thin community `Community 170`** (2 nodes): `createClient()`, `client.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 159`** (2 nodes): `SplitTypeEditor.tsx`, `handleSelect()`
+- **Thin community `Community 171`** (2 nodes): `useCategories.ts`, `useCategories()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 160`** (2 nodes): `handleSelect()`, `CategoryBottomSheet.tsx`
+- **Thin community `Community 172`** (2 nodes): `useBreakpoint.ts`, `useBreakpoint()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 161`** (2 nodes): `RiskAlertBand.tsx`, `RiskAlertBand()`
+- **Thin community `Community 173`** (2 nodes): `page.tsx`, `nextStep()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 162`** (2 nodes): `index.tsx`, `toggleRow()`
+- **Thin community `Community 174`** (2 nodes): `TransactionsConfigSection.tsx`, `handleDelete()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 163`** (2 nodes): `MemberCard.tsx`, `fmt()`
+- **Thin community `Community 175`** (2 nodes): `FeatureTogglesSection()`, `FeatureTogglesSection.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 164`** (2 nodes): `tabs.tsx`, `cn()`
+- **Thin community `Community 176`** (2 nodes): `CountrySelectorModal()`, `CountrySelectorModal.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 165`** (2 nodes): `switch.tsx`, `Switch()`
+- **Thin community `Community 177`** (2 nodes): `PlaidLinkButton.tsx`, `usePlaidConnection()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 166`** (2 nodes): `separator.tsx`, `cn()`
+- **Thin community `Community 178`** (2 nodes): `handleAdd()`, `CategoriesSection.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 167`** (2 nodes): `input.tsx`, `Input()`
+- **Thin community `Community 179`** (2 nodes): `PrivacySection.tsx`, `PrivacySection()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 168`** (2 nodes): `merchant_review module`, `Merchant Review Training UI`
+- **Thin community `Community 180`** (2 nodes): `TripCardSkeleton()`, `page.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 169`** (2 nodes): `Architecture Doc`, `Bank Email Notifications Research`
+- **Thin community `Community 181`** (2 nodes): `Avatar()`, `SaldosRows.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 170`** (2 nodes): `Bank Scraper Next Steps`, `Luka Connect Next Session Notes`
+- **Thin community `Community 182`** (2 nodes): `SplitTypeEditor.tsx`, `handleSelect()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 171`** (2 nodes): `Deployment Doc`, `Railway Worker Doc`
+- **Thin community `Community 183`** (2 nodes): `cn()`, `DirectionIcon.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 172`** (2 nodes): `Roadmap`, `Luka Next Steps`
+- **Thin community `Community 184`** (2 nodes): `BankLogo()`, `BankLogo.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 173`** (2 nodes): `Fintoc Integration Reference`, `Fintoc Limitations`
+- **Thin community `Community 185`** (2 nodes): `visibleNavItems()`, `nav-items.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 174`** (2 nodes): `API Reference`, `Development Guide`
+- **Thin community `Community 186`** (2 nodes): `BalanceCard()`, `BalanceCard.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 175`** (2 nodes): `Docs README`, `Luka Project State`
+- **Thin community `Community 187`** (2 nodes): `isActiveHref()`, `BottomNav.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 176`** (2 nodes): `WhatsApp Cloud API`, `WhatsApp PIN Verification Plan`
+- **Thin community `Community 188`** (2 nodes): `formatShortDate()`, `BudgetDrilldownCard.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 177`** (2 nodes): `ARQ Async Queue`, `Worker Queue Scaling Plan`
+- **Thin community `Community 189`** (2 nodes): `RiskAlertBand.tsx`, `RiskAlertBand()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 178`** (2 nodes): `middleware.ts`, `middleware()`
+- **Thin community `Community 190`** (2 nodes): `EmptyState()`, `EmptyState.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 179`** (2 nodes): `withDurableCookie()`, `cookieOptions.ts`
+- **Thin community `Community 191`** (2 nodes): `index.tsx`, `toggleRow()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 180`** (2 nodes): `createClient()`, `client.ts`
+- **Thin community `Community 192`** (2 nodes): `isSupportedCurrency()`, `currencies.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 181`** (2 nodes): `formatShortDate()`, `BudgetDrilldownCard.tsx`
+- **Thin community `Community 193`** (2 nodes): `MemberCard.tsx`, `fmt()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 182`** (2 nodes): `cn()`, `button.tsx`
+- **Thin community `Community 194`** (2 nodes): `tabs.tsx`, `cn()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 183`** (2 nodes): `Checkbox()`, `checkbox.tsx`
+- **Thin community `Community 195`** (2 nodes): `BottomSheet()`, `bottom-sheet.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 184`** (2 nodes): `skeleton.tsx`, `Skeleton()`
+- **Thin community `Community 196`** (2 nodes): `switch.tsx`, `Switch()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 185`** (2 nodes): `layout.tsx`, `RootLayout()`
+- **Thin community `Community 197`** (2 nodes): `separator.tsx`, `cn()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 186`** (2 nodes): `useBreakpoint.ts`, `useBreakpoint()`
+- **Thin community `Community 198`** (2 nodes): `cn()`, `button.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 187`** (2 nodes): `layout.tsx`, `DashboardLayout()`
+- **Thin community `Community 199`** (2 nodes): `Checkbox()`, `checkbox.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 188`** (2 nodes): `TransactionsConfigSection.tsx`, `handleDelete()`
+- **Thin community `Community 200`** (2 nodes): `input.tsx`, `Input()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 189`** (2 nodes): `FeatureTogglesSection()`, `FeatureTogglesSection.tsx`
+- **Thin community `Community 201`** (2 nodes): `skeleton.tsx`, `Skeleton()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 190`** (2 nodes): `cn()`, `DirectionIcon.tsx`
+- **Thin community `Community 202`** (2 nodes): `merchant_review module`, `Merchant Review Training UI`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 191`** (2 nodes): `BankLogo()`, `BankLogo.tsx`
+- **Thin community `Community 203`** (2 nodes): `Bank Scraper Next Steps`, `Luka Connect Next Session Notes`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 192`** (2 nodes): `BalanceCard()`, `BalanceCard.tsx`
+- **Thin community `Community 204`** (2 nodes): `Fintoc Integration Reference`, `Fintoc Limitations`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 193`** (2 nodes): `isActiveHref()`, `BottomNav.tsx`
+- **Thin community `Community 205`** (2 nodes): `Deployment Doc`, `Railway Worker Doc`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 194`** (2 nodes): `MarkAsCuotaDialog.tsx`, `MarkAsCuotaDialog()`
+- **Thin community `Community 206`** (2 nodes): `API Reference`, `Development Guide`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 195`** (2 nodes): `EmptyState()`, `EmptyState.tsx`
+- **Thin community `Community 207`** (2 nodes): `Architecture Doc`, `Bank Email Notifications Research`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 196`** (2 nodes): `isSupportedCurrency()`, `currencies.ts`
+- **Thin community `Community 208`** (2 nodes): `Docs README`, `Luka Project State`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 197`** (2 nodes): `page.tsx`, `PlaidOAuthPage()`
+- **Thin community `Community 209`** (2 nodes): `Roadmap`, `Luka Next Steps`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 198`** (2 nodes): `Luka project overview`, `Tech Stack`
+- **Thin community `Community 210`** (2 nodes): `WhatsApp Cloud API`, `WhatsApp PIN Verification Plan`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 199`** (2 nodes): `Codebase Knowledge Graph (RAG)`, `Ways of Working`
+- **Thin community `Community 211`** (2 nodes): `ARQ Async Queue`, `Worker Queue Scaling Plan`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 200`** (2 nodes): `update-project-docs SKILL.md`, `Update Project Docs Skill`
+- **Thin community `Community 212`** (2 nodes): `Luka project overview`, `Tech Stack`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 201`** (1 nodes): `postcss.config.mjs`
+- **Thin community `Community 213`** (2 nodes): `Codebase Knowledge Graph (RAG)`, `Ways of Working`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 202`** (1 nodes): `eslint.config.mjs`
+- **Thin community `Community 214`** (2 nodes): `update-project-docs SKILL.md`, `Update Project Docs Skill`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 203`** (1 nodes): `layout.tsx`
+- **Thin community `Community 215`** (1 nodes): `postcss.config.mjs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 204`** (1 nodes): `DeleteAccountSection.tsx`
+- **Thin community `Community 216`** (1 nodes): `next-env.d.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 205`** (1 nodes): `CompartidoSection.tsx`
+- **Thin community `Community 217`** (1 nodes): `eslint.config.mjs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 206`** (1 nodes): `ProfileSection.tsx`
+- **Thin community `Community 218`** (1 nodes): `next.config.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 207`** (1 nodes): `CategoryCapPicker.tsx`
+- **Thin community `Community 219`** (1 nodes): `store.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 208`** (1 nodes): `AccordionRow.tsx`
+- **Thin community `Community 220`** (1 nodes): `layout.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 209`** (1 nodes): `PaydayRow.tsx`
+- **Thin community `Community 221`** (1 nodes): `page.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 210`** (1 nodes): `Handles webhooks, emails, schedulers, and lightweight cron jobs.`
+- **Thin community `Community 222`** (1 nodes): `DeleteAccountSection.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 211`** (1 nodes): `Handles bank syncs, LLM processing, and heavy batch jobs.`
+- **Thin community `Community 223`** (1 nodes): `CompartidoSection.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 212`** (1 nodes): `__init__.py`
+- **Thin community `Community 224`** (1 nodes): `ProfileSection.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 213`** (1 nodes): `Cannot delete a connect-sourced (scraped) transaction.`
+- **Thin community `Community 225`** (1 nodes): `TripHeader.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 214`** (1 nodes): `Transaction not found returns not_found.`
+- **Thin community `Community 226`** (1 nodes): `GastosTab.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 215`** (1 nodes): `total == sum(caller_sources) + caller_other_income + sum(other_members.amount)`
+- **Thin community `Community 227`** (1 nodes): `page.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 216`** (1 nodes): `__init__.py`
+- **Thin community `Community 228`** (1 nodes): `VincularTypeDialog.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 217`** (1 nodes): `No function should appear in both workers.`
+- **Thin community `Community 229`** (1 nodes): `KpiCard.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 218`** (1 nodes): `No cron should appear in both workers.`
+- **Thin community `Community 230`** (1 nodes): `PageHeader.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 219`** (1 nodes): `Route correctly returns whatever the service layer provides (filtered at DB leve`
+- **Thin community `Community 231`** (1 nodes): `CashFlowCards.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 220`** (1 nodes): `__init__.py`
+- **Thin community `Community 232`** (1 nodes): `CategoryCapPicker.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 221`** (1 nodes): `__init__.py`
+- **Thin community `Community 233`** (1 nodes): `ContributionRow.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 222`** (1 nodes): `__init__.py`
+- **Thin community `Community 234`** (1 nodes): `SavingsTargetRow.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 223`** (1 nodes): `__init__.py`
+- **Thin community `Community 235`** (1 nodes): `AccordionRow.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 224`** (1 nodes): `Find matching email transaction(s) using 3-tier priority.      Returns dict with`
+- **Thin community `Community 236`** (1 nodes): `PersonalAllocationRow.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 225`** (1 nodes): `Apply enrichment from email tx to bank tx, re-link splits, delete email txs.`
+- **Thin community `Community 237`** (1 nodes): `PaydayRow.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 226`** (1 nodes): `Find a single email transaction matching by merchant, date window, and amount to`
+- **Thin community `Community 238`** (1 nodes): `CategoryCapsRow.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 227`** (1 nodes): `Find N email transactions from same merchant whose sum matches the bank amount.`
+- **Thin community `Community 239`** (1 nodes): `page.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 228`** (1 nodes): `Extract enrichment data from an email transaction.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 229`** (1 nodes): `__init__.py`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 230`** (1 nodes): `__init__.py`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 231`** (1 nodes): `__init__.py`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 232`** (1 nodes): `__init__.py`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 233`** (1 nodes): `__init__.py`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 234`** (1 nodes): `Sum recurring bills for one user in `currency` where the effective     split_typ`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 235`** (1 nodes): `Sum the monthly total of ALL detected recurring bills for one user in     `curre`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 236`** (1 nodes): `Sum of one user's recurring bills that are PERSONAL (not shared with     the hou`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 237`** (1 nodes): `Sum of one user's recurring bills that are SHARED with the household.     Used b`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 238`** (1 nodes): `Sum of household SHARED recurring bills across every active member     in `curre`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 239`** (1 nodes): `__init__.py`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 240`** (1 nodes): `__init__.py`
+- **Thin community `Community 240`** (1 nodes): `dialog.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 241`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 242`** (1 nodes): `__init__.py`
+- **Thin community `Community 242`** (1 nodes): `total == sum(caller_sources) + caller_other_income + sum(other_members.amount)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 243`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1719,95 +1945,195 @@ Nodes (1): Rocket Money
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 247`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 248`** (1 nodes): `Frontend README`
+- **Thin community `Community 248`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 249`** (1 nodes): `Gmail Pipeline Wiring Design`
+- **Thin community `Community 249`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 250`** (1 nodes): `Auth Session Management Design`
+- **Thin community `Community 250`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 251`** (1 nodes): `Update Project Docs Skill Design`
+- **Thin community `Community 251`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 252`** (1 nodes): `Subscriptions Redesign`
+- **Thin community `Community 252`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 253`** (1 nodes): `Sync and Transactions UX Design`
+- **Thin community `Community 253`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 254`** (1 nodes): `Merchant Cleaning Review Design`
+- **Thin community `Community 254`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 255`** (1 nodes): `WhatsApp PIN Verification Design`
+- **Thin community `Community 255`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 256`** (1 nodes): `next.config.ts`
+- **Thin community `Community 256`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 257`** (1 nodes): `ContributionRow.tsx`
+- **Thin community `Community 257`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 258`** (1 nodes): `SavingsTargetRow.tsx`
+- **Thin community `Community 258`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 259`** (1 nodes): `PersonalAllocationRow.tsx`
+- **Thin community `Community 259`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 260`** (1 nodes): `CategoryCapsRow.tsx`
+- **Thin community `Community 260`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 261`** (1 nodes): `next-env.d.ts`
+- **Thin community `Community 261`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 262`** (1 nodes): `store.ts`
+- **Thin community `Community 262`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 263`** (1 nodes): `page.tsx`
+- **Thin community `Community 263`** (1 nodes): `Handles webhooks, emails, schedulers, and lightweight cron jobs.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 264`** (1 nodes): `KpiCard.tsx`
+- **Thin community `Community 264`** (1 nodes): `Handles bank syncs, LLM processing, and heavy batch jobs.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 265`** (1 nodes): `nav-items.ts`
+- **Thin community `Community 265`** (1 nodes): `Cannot delete a connect-sourced (scraped) transaction.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 266`** (1 nodes): `PageHeader.tsx`
+- **Thin community `Community 266`** (1 nodes): `Transaction not found returns not_found.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 267`** (1 nodes): `CashFlowCards.tsx`
+- **Thin community `Community 267`** (1 nodes): `Given raw rows from SQL, builds category breakdown with member totals and percen`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 268`** (1 nodes): `page.tsx`
+- **Thin community `Community 268`** (1 nodes): `Returns empty list when no rows.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 269`** (1 nodes): `dialog.tsx`
+- **Thin community `Community 269`** (1 nodes): `With 50/50 split, person who paid less owes the difference.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 270`** (1 nodes): `VincularTypeDialog.tsx`
+- **Thin community `Community 270`** (1 nodes): `3 members, equal split. One paid everything, other two owe.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 271`** (1 nodes): `notifications table`
+- **Thin community `Community 271`** (1 nodes): `4 members with equal ratio, multiple transfers needed.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 272`** (1 nodes): `Resend (transactional email)`
+- **Thin community `Community 272`** (1 nodes): `Single member — no transfers needed.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 273`** (1 nodes): `Railway (backend hosting)`
+- **Thin community `Community 273`** (1 nodes): `No members — no transfers.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 274`** (1 nodes): `Vercel (frontend hosting)`
+- **Thin community `Community 274`** (1 nodes): `All members paid zero — no transfers needed.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 275`** (1 nodes): `Alembic migrations (auto-applied)`
+- **Thin community `Community 275`** (1 nodes): `reclassify_to that doesn't exist in user's preferences raises ValueError.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 276`** (1 nodes): `Zustand 5 client state`
+- **Thin community `Community 276`** (1 nodes): `Schedulers are lightweight cron jobs — they must NOT be in SLOW_JOBS.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 277`** (1 nodes): `TanStack Query 5`
+- **Thin community `Community 277`** (1 nodes): `Slow jobs should be enqueued with _queue_name='arq:queue:slow'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 278`** (1 nodes): `Bank logo registry`
+- **Thin community `Community 278`** (1 nodes): `Fast jobs should be enqueued with _queue_name='arq:queue'.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 279`** (1 nodes): `Settings module`
+- **Thin community `Community 279`** (1 nodes): `Unknown job names default to the fast queue.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 280`** (1 nodes): `Settled-row kebab + bulk rename`
+- **Thin community `Community 280`** (1 nodes): `No function should appear in both workers.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 281`** (1 nodes): `Mobile UX overhaul + bank-logo registry`
+- **Thin community `Community 281`** (1 nodes): `No cron should appear in both workers.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 282`** (1 nodes): `WhatsApp message templates pending`
+- **Thin community `Community 282`** (1 nodes): `Route correctly returns whatever the service layer provides (filtered at DB leve`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 283`** (1 nodes): `Microsoft Azure / Outlook push notifications pending`
+- **Thin community `Community 283`** (1 nodes): `One-off script: fix BofA transactions created before USD parsing was added.  Run`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 284`** (1 nodes): `Plaid webhook handler pending`
+- **Thin community `Community 284`** (1 nodes): `Find matching email transaction(s) using 3-tier priority.      Returns dict with`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 285`** (1 nodes): `Coding Values`
+- **Thin community `Community 285`** (1 nodes): `Apply enrichment from email tx to bank tx, re-link splits, delete email txs.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 286`** (1 nodes): `Settlement / contribution ledger`
+- **Thin community `Community 286`** (1 nodes): `Find a single email transaction matching by merchant, date window, and amount to`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 287`** (1 nodes): `pytest asyncio_mode=auto real DB`
+- **Thin community `Community 287`** (1 nodes): `Find N email transactions from same merchant whose sum matches the bank amount.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 288`** (1 nodes): `TanStack Query`
+- **Thin community `Community 288`** (1 nodes): `Extract enrichment data from an email transaction.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 289`** (1 nodes): `Zustand store`
+- **Thin community `Community 289`** (1 nodes): `Sum recurring bills for one user in `currency` where the effective     split_typ`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 290`** (1 nodes): `shadcn/ui`
+- **Thin community `Community 290`** (1 nodes): `Sum the monthly total of ALL detected recurring bills for one user in     `curre`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 291`** (1 nodes): `ARQ worker tier (fast/slow)`
+- **Thin community `Community 291`** (1 nodes): `Sum of one user's recurring bills that are PERSONAL (not shared with     the hou`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 292`** (1 nodes): `Rocket Money`
+- **Thin community `Community 292`** (1 nodes): `Sum of one user's recurring bills that are SHARED with the household.     Used b`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 293`** (1 nodes): `Sum of household SHARED recurring bills across every active member     in `curre`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 294`** (1 nodes): `Return True if the movement description matches a known inter-account pattern.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 295`** (1 nodes): `Normalize description for dedup comparison.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 296`** (1 nodes): `Generate a dedup key from movement fields.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 297`** (1 nodes): `Parse date string and optional HH:MM time into a timezone-aware datetime.      S`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 298`** (1 nodes): `Map a raw Luka Connect movement to transaction fields.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 299`** (1 nodes): `# NOTE: person-to-person transfers ("Traspaso A:Name") are NOT in this list — th`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 300`** (1 nodes): `Frontend README`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 301`** (1 nodes): `Gmail Pipeline Wiring Design`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 302`** (1 nodes): `Auth Session Management Design`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 303`** (1 nodes): `Update Project Docs Skill Design`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 304`** (1 nodes): `Subscriptions Redesign`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 305`** (1 nodes): `Sync and Transactions UX Design`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 306`** (1 nodes): `Merchant Cleaning Review Design`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 307`** (1 nodes): `WhatsApp PIN Verification Design`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 308`** (1 nodes): `Handles webhooks, emails, schedulers, and lightweight cron jobs.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 309`** (1 nodes): `Handles bank syncs, LLM processing, and heavy batch jobs.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 310`** (1 nodes): `Diagnostic: inspect the Apple / Uber Eats rows that aren't refund-pairing for Ra`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 311`** (1 nodes): `ARQ task: runs a full reconciliation tick across every household.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 312`** (1 nodes): `Diagnostic: why did detect_wallet_pairs find 0 pairs?  Prints:   1. All bank_acc`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 313`** (1 nodes): `Run the tick for every household. Commits between households so a     failure on`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 314`** (1 nodes): `Map a Plaid transaction object to a Luka transaction dict.      Sign convention:`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 315`** (1 nodes): `Check if Plaid transaction is an internal transfer (not person-to-person).`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 316`** (1 nodes): `Wallet Account (Venmo/PayPal/CashApp)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 317`** (1 nodes): `Plaid ('depository','paypal') Subtype`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 318`** (1 nodes): `account_kind='wallet'`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 319`** (1 nodes): `ARQ task: runs a full reconciliation tick across every household.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 320`** (1 nodes): `ARQ task: runs the reconciliation tick for a single household.      Enqueued at`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 321`** (1 nodes): `notifications table`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 322`** (1 nodes): `Resend (transactional email)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 323`** (1 nodes): `Railway (backend hosting)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 324`** (1 nodes): `Vercel (frontend hosting)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 325`** (1 nodes): `Alembic migrations (auto-applied)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 326`** (1 nodes): `Zustand 5 client state`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 327`** (1 nodes): `TanStack Query 5`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 328`** (1 nodes): `Bank logo registry`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 329`** (1 nodes): `Settings module`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 330`** (1 nodes): `Settled-row kebab + bulk rename`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 331`** (1 nodes): `Mobile UX overhaul + bank-logo registry`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 332`** (1 nodes): `WhatsApp message templates pending`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 333`** (1 nodes): `Microsoft Azure / Outlook push notifications pending`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 334`** (1 nodes): `Plaid webhook handler pending`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 335`** (1 nodes): `Coding Values`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 336`** (1 nodes): `Settlement / contribution ledger`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 337`** (1 nodes): `pytest asyncio_mode=auto real DB`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 338`** (1 nodes): `TanStack Query`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 339`** (1 nodes): `Zustand store`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 340`** (1 nodes): `shadcn/ui`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 341`** (1 nodes): `ARQ worker tier (fast/slow)`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 342`** (1 nodes): `Rocket Money`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
@@ -1817,13 +2143,13 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: unrelated_to) - confidence is low._
 - **What is the exact relationship between `Finanzas Personales Initial Design (2026-03-10)` and `Budget v2 Day 4 Integration Report (2026-04-14)`?**
   _Edge tagged AMBIGUOUS (relation: reviews) - confidence is low._
-- **Why does `GET()` connect `Frontend API Client` to `Bank Accounts & Connect Sync`, `Worker Queue & Cron`, `Email Parser Pipeline`, `Community 34`, `Community 33`, `Merchant Categorization`, `Auth & Membership`, `Budget Schemas & Cuotas`, `Transactions Linking & Tests`, `Categories Service`, `Subscriptions Module`, `Bank Registry & Email Filter`, `User Budget Settings`, `Bank Connect (Chile)`, `Reconciliation Tick & Refunds`, `Dedup Logic`, `Community 28`?**
-  _High betweenness centrality (0.108) - this node is a cross-community bridge._
-- **Why does `User` connect `Bank Accounts & Connect Sync` to `Worker Queue & Cron`, `Email Parser Pipeline`, `Frontend API Client`, `Merchant Categorization`, `Auth & Membership`, `Budget Schemas & Cuotas`, `Transactions Linking & Tests`, `Categories Service`, `Subscriptions Module`, `User Budget Settings`, `Reconciliation Tick & Refunds`, `Transfer Pair Detection`, `Cuota Purchases`, `Dedup Logic`, `Community 28`, `Community 29`, `Community 33`, `Community 34`, `Community 36`, `Community 42`, `Community 46`, `Community 48`?**
-  _High betweenness centrality (0.075) - this node is a cross-community bridge._
-- **Why does `Transaction` connect `Bank Accounts & Connect Sync` to `Worker Queue & Cron`, `Email Parser Pipeline`, `Frontend API Client`, `Merchant Categorization`, `Budget Schemas & Cuotas`, `Transactions Linking & Tests`, `Categories Service`, `Subscriptions Module`, `User Budget Settings`, `Bank Connect (Chile)`, `Reconciliation Tick & Refunds`, `Transfer Pair Detection`, `Cuota Purchases`, `Dedup Logic`, `Community 27`, `Community 28`, `Community 29`, `Community 33`, `Community 34`, `Community 36`, `Community 42`, `Community 46`?**
-  _High betweenness centrality (0.067) - this node is a cross-community bridge._
-- **Are the 430 inferred relationships involving `Transaction` (e.g. with `Base` and `_insert_income()`) actually correct?**
-  _`Transaction` has 430 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 351 inferred relationships involving `User` (e.g. with `Base` and `Decode a Supabase JWT using JWKS (supports ES256, RS256, HS256).      Tries JWKS`) actually correct?**
-  _`User` has 351 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `GET()` connect `Community 1` to `Community 0`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 17`, `Community 19`, `Community 22`, `Community 26`, `Community 33`, `Community 36`, `Community 37`?**
+  _High betweenness centrality (0.138) - this node is a cross-community bridge._
+- **Why does `Transaction` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 11`, `Community 13`, `Community 14`, `Community 17`, `Community 19`, `Community 21`, `Community 22`, `Community 26`, `Community 27`, `Community 30`, `Community 33`, `Community 37`, `Community 38`, `Community 40`, `Community 47`?**
+  _High betweenness centrality (0.089) - this node is a cross-community bridge._
+- **Why does `User` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 8`, `Community 9`, `Community 11`, `Community 17`, `Community 18`, `Community 19`, `Community 21`, `Community 22`, `Community 26`, `Community 30`, `Community 31`, `Community 33`, `Community 37`, `Community 38`, `Community 40`, `Community 47`, `Community 49`?**
+  _High betweenness centrality (0.069) - this node is a cross-community bridge._
+- **Are the 600 inferred relationships involving `Transaction` (e.g. with `Tests for the suggestions inbox — Phase 6 Task 6.1.  Spec ``docs/superpowers/spe` and `Insert a transaction. ``amount`` is in major units; this helper scales     to th`) actually correct?**
+  _`Transaction` has 600 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 477 inferred relationships involving `User` (e.g. with `Drop the cached User+household blob. Call after any mutation that     changes fi` and `Verify a Supabase JWT, caching the decoded payload by token hash.      JWKS veri`) actually correct?**
+  _`User` has 477 INFERRED edges - model-reasoned connections that need verification._
