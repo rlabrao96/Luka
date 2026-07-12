@@ -101,6 +101,14 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 // ── Types ──────────────────────────────────────────────────
 
+export interface EmailWatchStatus {
+  provider: string;
+  tokens_connected: boolean;
+  watch_active: boolean;
+  watch_expiry: string | null;
+  last_email_transaction_at: string | null;
+}
+
 export interface UserMe {
   id: string;
   email: string;
@@ -448,6 +456,9 @@ export type BulkActionKind = "dismiss" | "delete";
 // ── API calls ──────────────────────────────────────────────
 
 export const api = {
+  getEmailWatchStatus: () => apiFetch<EmailWatchStatus>("/auth/email-watch-status"),
+  setupEmailWatch: () =>
+    apiFetch<{ status: string }>("/auth/setup-email-watch", { method: "POST" }),
   getMe: () => apiFetch<UserMe>("/auth/me"),
 
   getMyTransactions: (since: string) =>

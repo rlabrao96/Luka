@@ -10,6 +10,7 @@ import { CategoriesSection } from "./components/CategoriesSection";
 import { TransactionsConfigSection } from "./components/TransactionsConfigSection";
 import { FeatureTogglesSection } from "./components/FeatureTogglesSection";
 import { PrivacySection } from "./components/PrivacySection";
+import { EmailCaptureSection } from "./components/EmailCaptureSection";
 import { DeleteAccountSection } from "./components/DeleteAccountSection";
 import { PageHeader } from "../components/PageHeader";
 
@@ -45,6 +46,8 @@ export default function SettingsPage() {
         />
 
         <TransactionsConfigSection preferredCurrency={me.preferred_currency ?? "CLP"} />
+
+        <EmailCaptureSection />
 
         <FeatureTogglesSection />
 

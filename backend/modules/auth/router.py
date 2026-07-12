@@ -206,6 +206,47 @@ async def setup_email_watch(
     }
 
 
+@router.get("/email-watch-status")
+async def email_watch_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Health of the email-capture pipeline for the settings chip.
+
+    Reports whether provider tokens exist, whether the mail watch is active
+    (expiry in the future), and when the last email-sourced transaction
+    landed — so a silently dead watch is visible to the user instead of
+    transactions just... stopping.
+    """
+    from sqlalchemy import func as sa_func, select
+
+    from modules.transactions.models import Transaction
+
+    row = await db.execute(
+        select(User.mail_watch_expiry, User.google_access_token_enc).where(
+            User.id == current_user.id
+        )
+    )
+    watch_expiry, token_enc = row.one()
+
+    last_email_txn = await db.scalar(
+        select(sa_func.max(Transaction.created_at)).where(
+            Transaction.user_id == current_user.id,
+            Transaction.source_type == "email",
+        )
+    )
+
+    now = datetime.now(timezone.utc)
+    watch_active = bool(watch_expiry and watch_expiry > now)
+    return {
+        "provider": current_user.email_provider,
+        "tokens_connected": token_enc is not None,
+        "watch_active": watch_active,
+        "watch_expiry": watch_expiry.isoformat() if watch_expiry else None,
+        "last_email_transaction_at": (last_email_txn.isoformat() if last_email_txn else None),
+    }
+
+
 @router.post("/send-whatsapp-pin")
 async def send_whatsapp_pin(
     body: SendWhatsAppPinRequest,
