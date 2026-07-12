@@ -619,7 +619,7 @@ def _build_hogar_sankey(
     # Pay each allocation from income via first-fit routing. We only need
     # the shortfall (`ot_*`) because `ingresos_hogar` collapses every source
     # into a single hub — there's no per-allocation income/otras link split
-    # like in the legacy `_build_sankey`.
+    # like in the personal-view builder (_build_personal_sankey).
     remaining = breakdown.total
     _, ot_kb, remaining = _pay_first_fit(target=known_bills, remaining_income=remaining)
     _, ot_cu, remaining = _pay_first_fit(target=cuotas_this_month, remaining_income=remaining)

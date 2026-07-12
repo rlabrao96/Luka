@@ -130,7 +130,7 @@ async def test_list_trips_groups_by_date(db, make_user, make_trip):
     assert {t["id"] for t in result["active"]} == {active.id}
     assert {t["id"] for t in result["upcoming"]} == {upcoming.id}
     assert {t["id"] for t in result["past"]} == {past.id}
-    # All include net_balance for Phase 2 (hardcoded 0)
+    # No expenses seeded — everyone's real net balance is exactly 0.
     for bucket in ("active", "upcoming", "past"):
         for t in result[bucket]:
             assert t["your_net_balance"] == Decimal("0")

@@ -32,7 +32,7 @@ from core.rate_limit import limiter
 from core.security import get_current_user
 from modules.auth.models import User
 from modules.trips import service
-from modules.trips.balances import compute_balances, smart_settle_plan
+from modules.trips.balances import compute_balances, smart_settle_plan, your_net_balance
 from modules.trips.models import Trip, TripAttendee, TripExpense, TripSettlement
 from modules.trips.schemas import (
     AttendeeResponse,
@@ -159,50 +159,16 @@ async def _to_trip_detail(trip: Trip, user: User, db) -> TripDetailResponse:
 # ---------------------------------------------------------------------------
 
 
-async def _your_net_for_trip(trip: Trip, user: User, db) -> Decimal:
-    from modules.trips.models import TripAttendee
-
-    balances = await compute_balances(trip.id, db)
-    res = await db.execute(
-        select(TripAttendee.id).where(
-            TripAttendee.trip_id == trip.id,
-            TripAttendee.user_id == user.id,
-        )
-    )
-    own_ids = {row[0] for row in res.all()}
-    return sum((b.net_in_base for b in balances if b.attendee_id in own_ids), Decimal("0"))
-
-
 @router.get("", response_model=TripListResponse)
 async def list_trips(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_trips_feature),
 ) -> TripListResponse:
-    # Re-fetch trip rows so we can compute balances per trip (the service
-    # returns dicts already; we need ORM rows here to call ``compute_balances``).
-    from modules.trips.models import TripAttendee
-
-    res = await db.execute(
-        select(Trip)
-        .join(TripAttendee, TripAttendee.trip_id == Trip.id)
-        .where(
-            TripAttendee.user_id == user.id,
-            TripAttendee.left_at.is_(None),
-        )
-        .order_by(Trip.start_date.desc())
-    )
-    trips = res.scalars().unique().all()
-
-    buckets: dict[str, list[TripResponse]] = {"active": [], "upcoming": [], "past": []}
-    for trip in trips:
-        if trip.status == "archived":
-            continue
-        net = await _your_net_for_trip(trip, user, db)
-        bucket_key = service._classify_status(trip.start_date, trip.end_date)
-        buckets[bucket_key].append(_to_trip_response(trip, your_net_balance=net))
-
+    buckets = await service.list_trips(db, user)
     return TripListResponse(
-        active=buckets["active"], upcoming=buckets["upcoming"], past=buckets["past"]
+        active=[TripResponse(**t) for t in buckets["active"]],
+        upcoming=[TripResponse(**t) for t in buckets["upcoming"]],
+        past=[TripResponse(**t) for t in buckets["past"]],
     )
 
 
@@ -333,7 +299,7 @@ async def update_trip(
     trip = await service.update_trip(db, trip_id, user, payload)
     await db.commit()
     await db.refresh(trip)
-    net = await _your_net_for_trip(trip, user, db)
+    net = await your_net_balance(trip, user.id, db)
     return _to_trip_response(trip, your_net_balance=net)
 
 

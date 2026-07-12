@@ -107,8 +107,8 @@ def _classify_status(start: date, end: date, today: Optional[date] = None) -> st
     return "active"
 
 
-def _trip_to_summary(trip: Trip) -> dict:
-    """Build the TripResponse payload (Phase 2: hardcoded $0 balance)."""
+def _trip_to_summary(trip: Trip, your_net_balance: Decimal = Decimal("0")) -> dict:
+    """Build the TripResponse payload."""
     return {
         "id": trip.id,
         "name": trip.name,
@@ -118,8 +118,7 @@ def _trip_to_summary(trip: Trip) -> dict:
         "status": _classify_status(trip.start_date, trip.end_date),
         "creator_user_id": trip.creator_user_id,
         "created_at": trip.created_at,
-        # TODO Phase 4: real balance computation per spec §3.4.
-        "your_net_balance": Decimal("0"),
+        "your_net_balance": your_net_balance,
     }
 
 
@@ -183,11 +182,15 @@ async def create_trip(db: AsyncSession, creator: User, payload: CreateTripReques
 
 
 async def list_trips(db: AsyncSession, user: User) -> dict:
-    """Return trips bucketed by date window (active / upcoming / past).
+    """Return trips bucketed by date window (active / upcoming / past) with
+    the caller's REAL net balance per trip.
 
     Only trips where the user has an active (``left_at IS NULL``) attendee
-    row are included. ``your_net_balance`` is hardcoded to $0 in Phase 2.
+    row are included. This is the single implementation behind GET /trips —
+    an earlier duplicate lived in the router while this one hardcoded $0.
     """
+    from modules.trips.balances import your_net_balance  # local: avoids cycle
+
     res = await db.execute(
         select(Trip)
         .join(TripAttendee, TripAttendee.trip_id == Trip.id)
@@ -204,7 +207,10 @@ async def list_trips(db: AsyncSession, user: User) -> dict:
         # Archived trips drop out of the date-bucketed list view.
         if trip.status == "archived":
             continue
-        buckets[_classify_status(trip.start_date, trip.end_date)].append(_trip_to_summary(trip))
+        net = await your_net_balance(trip, user.id, db)
+        buckets[_classify_status(trip.start_date, trip.end_date)].append(
+            _trip_to_summary(trip, your_net_balance=net)
+        )
     return buckets
 
 

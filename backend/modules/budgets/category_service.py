@@ -1,3 +1,10 @@
+"""Per-category monthly caps (category_budgets table).
+
+LIVE code — backs /budgets/categories, consumed by the caps editor and the
+dashboard category bars. amounts are integer MINOR units per currency
+(migration 052); each row carries its own currency.
+"""
+
 import uuid
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession

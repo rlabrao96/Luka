@@ -176,6 +176,20 @@ async def run_plaid_sync(
 
     stats = {"added": 0, "modified": 0, "removed": 0, "deduped": 0, "new_tx_ids": []}
 
+    # Pre-load already-ingested plaid ids in ONE query — the per-row SELECT
+    # made an initial 1,000-tx sync issue 1,000 sequential round trips.
+    existing_plaid_ids: set[str] = set()
+    if all_added:
+        added_ids = [t.transaction_id for t in all_added]
+        for i in range(0, len(added_ids), 1000):
+            chunk = added_ids[i : i + 1000]
+            res = await session.execute(
+                select(Transaction.plaid_transaction_id).where(
+                    Transaction.plaid_transaction_id.in_(chunk)
+                )
+            )
+            existing_plaid_ids.update(r[0] for r in res)
+
     # Process added transactions
     for plaid_tx in all_added:
         plaid_account_id = plaid_tx.account_id
@@ -183,13 +197,8 @@ async def run_plaid_sync(
         if not bank_account_id:
             continue
 
-        # Check for existing (dedup by plaid_transaction_id)
-        existing = await session.execute(
-            select(Transaction.id).where(
-                Transaction.plaid_transaction_id == plaid_tx.transaction_id
-            )
-        )
-        if existing.scalar_one_or_none():
+        # Dedup by plaid_transaction_id (pre-loaded above)
+        if plaid_tx.transaction_id in existing_plaid_ids:
             continue
 
         tx_data = map_plaid_transaction(

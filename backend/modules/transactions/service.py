@@ -356,35 +356,37 @@ async def update_category_bulk(
     original_merchant_id = anchor.merchant_id
 
     match_clause = _merchant_name_match_clause(original_raw, original_merchant_id)
-    siblings_q = await db.execute(
-        select(Transaction).where(
+    # Single UPDATE for all siblings — a frequent merchant (400 Uber rows)
+    # used to hydrate 400 ORM objects and emit 400 statements per click.
+    result = await db.execute(
+        sql_update(Transaction)
+        .where(
             Transaction.household_id == anchor.household_id,
             Transaction.id != anchor.id,
             match_clause,
             Transaction.category.is_distinct_from(category),
             func.coalesce(Transaction.user_edited_fields["category"].astext, "false") != "true",
         )
+        .values(
+            category=category,
+            user_edited_fields=func.coalesce(
+                Transaction.user_edited_fields, text("'{}'::jsonb")
+            ).op("||")(text("""'{"category": true}'::jsonb""")),
+        )
     )
-    siblings = siblings_q.scalars().all()
+    sibling_count = result.rowcount or 0
 
-    targets: list[Transaction] = []
     # Anchor: only update if not already at target.
     if anchor.category != category:
         anchor.category = category
     mark_user_edited(anchor, "category")
-    targets.append(anchor)
-
-    for txn in siblings:
-        txn.category = category
-        mark_user_edited(txn, "category")
-        targets.append(txn)
 
     await db.commit()
 
     if category:
         await _record_training_safe(original_raw, category, db, user_id)
 
-    return len(targets)
+    return sibling_count + 1
 
 
 async def update_split_type(
@@ -508,27 +510,37 @@ async def update_merchant_name_bulk(
     original_merchant_id = anchor.merchant_id
 
     match_clause = _merchant_name_match_clause(original_raw, original_merchant_id)
-    siblings_q = await db.execute(
-        select(Transaction).where(
+    # Single UPDATE for all siblings (see update_category_bulk).
+    values: dict = {
+        "user_edited_fields": func.coalesce(Transaction.user_edited_fields, text("'{}'::jsonb")).op(
+            "||"
+        )(text("""'{"merchant_name": true}'::jsonb""")),
+    }
+    if raw_merchant_name is not None:
+        values["raw_merchant_name"] = raw_merchant_name
+    if merchant_id is not None:
+        values["merchant_id"] = merchant_id
+    result = await db.execute(
+        sql_update(Transaction)
+        .where(
             Transaction.household_id == anchor.household_id,
             Transaction.id != anchor.id,
             match_clause,
             func.coalesce(Transaction.user_edited_fields["merchant_name"].astext, "false")
             != "true",
         )
+        .values(**values)
     )
-    siblings = siblings_q.scalars().all()
+    sibling_count = result.rowcount or 0
 
-    targets = [anchor, *siblings]
-    for txn in targets:
-        if raw_merchant_name is not None:
-            txn.raw_merchant_name = raw_merchant_name
-        if merchant_id is not None:
-            txn.merchant_id = merchant_id
-        mark_user_edited(txn, "merchant_name")
+    if raw_merchant_name is not None:
+        anchor.raw_merchant_name = raw_merchant_name
+    if merchant_id is not None:
+        anchor.merchant_id = merchant_id
+    mark_user_edited(anchor, "merchant_name")
 
     await db.commit()
-    return len(targets)
+    return sibling_count + 1
 
 
 async def update_merchant_name(

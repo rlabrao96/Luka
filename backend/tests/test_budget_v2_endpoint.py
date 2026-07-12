@@ -333,7 +333,8 @@ async def test_savings_target_reads_from_user_budget_settings(db):
 
 # --------------------------------------------------- Sankey flow conservation
 #
-# Regression tests for `_build_sankey`: the clamp block used to emit
+# Regression tests for the Sankey builders (_build_hogar_sankey /
+# _build_personal_sankey): the clamp block used to emit
 # `income → known_bills` links with full known_bills values even when
 # income < known_bills, producing impossible flow (inflow/outflow mismatch)
 # that Recharts silently drew as bogus arrows. The first-fit routing now

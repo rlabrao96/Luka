@@ -1,3 +1,11 @@
+"""Joint-account monthly budget (the dashboard's "Presupuesto total" card).
+
+LIVE code — NOT superseded by v2_service.py. This backs /budgets/monthly and
+/budgets/categories (frontend api.ts getBudgetStatus/getCategoryBudgets),
+i.e. the per-bank-account joint budget; v2_service backs the Sankey screen.
+Amounts are integer minor units (migration 052).
+"""
+
 import uuid
 from datetime import date, datetime, timezone
 from fastapi import HTTPException
