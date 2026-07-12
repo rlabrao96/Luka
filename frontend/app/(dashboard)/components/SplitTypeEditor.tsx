@@ -9,6 +9,9 @@ import { api, type Transaction } from "@/app/lib/api";
 const SPLIT_OPTIONS = [
   { value: "personal", label: "Personal", className: "bg-blue-50 text-blue-600" },
   { value: "shared", label: "Compartido", className: "bg-emerald-50 text-emerald-600" },
+  // For a purchase made by your partner on a card you share (e.g. an
+  // authorized-user Amex): drops it out of your totals without hiding yours.
+  { value: "partner", label: "De mi pareja", className: "bg-purple-50 text-purple-600" },
 ];
 
 interface SplitTypeEditorProps {
@@ -36,6 +39,7 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
     try {
       await api.updateTransactionSplitType(txn.id, value);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     } catch {
       setLocalSplit(txn.split_type ?? "personal");
     } finally {
