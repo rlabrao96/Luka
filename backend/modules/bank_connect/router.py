@@ -216,7 +216,13 @@ async def handle_connect_callback(
     )
     cred = result.scalar_one_or_none()
     if not cred:
-        raise HTTPException(status_code=404, detail="Unknown job ID")
+        # ACK stale/unknown jobs with 200 — the scraper treats non-2xx as
+        # retryable and will hammer a dead job forever (INCIDENT 2026-07-12:
+        # 7 stale callbacks retried every 10s for hours). A job id that no
+        # longer matches means we already resolved that sync; there is
+        # nothing to redo and nothing sensitive in acknowledging it.
+        logger.warning("connect callback for unknown/stale job %s — acked and ignored", body.jobId)
+        return {"status": "ignored_unknown_job"}
 
     if body.status == "awaiting_2fa":
         cred.last_sync_status = "awaiting_2fa"
