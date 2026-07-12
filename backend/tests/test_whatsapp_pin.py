@@ -162,3 +162,42 @@ async def test_verify_pin_lockout_after_5_attempts(app, mock_user_for_pin, setup
             )
     assert response.status_code == 400
     mock_del.assert_called_once_with("whatsapp_pin:+56912345678")
+
+
+async def test_verify_pin_rejects_number_taken_by_another_user(app, db, make_user):
+    """A phone already verified by another account → 409, never reassigned."""
+    from unittest.mock import AsyncMock, patch
+
+    from core.database import get_db
+    from core.security import get_current_user
+
+    phone = "+56911112222"
+    owner = await make_user(phone_whatsapp=phone, whatsapp_verified=True)
+    newcomer = await make_user()
+    assert owner.id != newcomer.id
+
+    pin_data = {"pin": "123456", "user_id": str(newcomer.id), "attempts": 0}
+
+    async def _db():
+        yield db
+
+    app.dependency_overrides[get_current_user] = lambda: newcomer
+    app.dependency_overrides[get_db] = _db
+    try:
+        with (
+            patch("modules.auth.router.cache_get", new_callable=AsyncMock, return_value=pin_data),
+            patch("modules.auth.router.cache_delete", new_callable=AsyncMock),
+            patch("modules.auth.router.invalidate_user_cache", new_callable=AsyncMock),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                res = await c.post(
+                    "/auth/verify-whatsapp-pin", json={"phone": phone, "pin": "123456"}
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert res.status_code == 409
+    await db.refresh(newcomer)
+    assert newcomer.phone_whatsapp is None
+    await db.refresh(owner)
+    assert owner.phone_whatsapp == phone  # unchanged

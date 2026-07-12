@@ -1,5 +1,16 @@
+import uuid as _uuid
+from datetime import datetime, timezone
+from decimal import Decimal
+
 import pytest
+
+# Register models for FK resolution.
+import modules.merchants.models  # noqa: F401
+import modules.plaid.models  # noqa: F401
+from modules.auth.models import User
+from modules.households.models import Household, HouseholdMember
 from modules.households.service import get_contribution_summary, get_member_stats
+from modules.transactions.models import Transaction, TransactionSplit
 
 
 @pytest.mark.skip(reason="Requires live Supabase DATABASE_URL")
@@ -28,17 +39,6 @@ async def test_member_stats_returns_only_aggregates(db, mock_user, mock_partner,
 # Regression: get_contribution_summary must NOT leak a member's personal or
 # total spending — only shared_paid is the legitimately-shared number.
 # ---------------------------------------------------------------------------
-
-import uuid as _uuid
-from datetime import datetime, timezone
-from decimal import Decimal
-
-import modules.merchants.models  # noqa: F401
-import modules.plaid.models  # noqa: F401
-from modules.auth.models import User
-from modules.households.models import Household, HouseholdMember
-from modules.transactions.models import Transaction, TransactionSplit
-
 
 async def _member(db, household, name):
     u = User(

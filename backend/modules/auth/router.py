@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.cache import cache_delete, cache_get, cache_set
@@ -218,7 +219,7 @@ async def email_watch_status(
     landed — so a silently dead watch is visible to the user instead of
     transactions just... stopping.
     """
-    from sqlalchemy import func as sa_func, select
+    from sqlalchemy import func as sa_func
 
     from modules.transactions.models import Transaction
 
@@ -306,6 +307,22 @@ async def verify_whatsapp_pin(
         else:
             await cache_set(key, data, ttl_seconds=300)
         raise HTTPException(status_code=400, detail="PIN incorrecto o expirado")
+
+    # A number may only belong to one account — inbound WhatsApp routing finds
+    # the user by phone, so a shared number would misroute expenses. Reject if
+    # another user already holds it (belt-and-suspenders with the unique index
+    # in migration 053).
+    taken = await db.scalar(
+        select(User.id).where(
+            User.phone_whatsapp == body.phone,
+            User.id != current_user.id,
+        )
+    )
+    if taken is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Este número ya está vinculado a otra cuenta de Luka.",
+        )
 
     # Success — save phone and mark verified
     user = await db.merge(current_user, load=False)
