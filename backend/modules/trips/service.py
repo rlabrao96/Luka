@@ -1216,37 +1216,18 @@ async def accept_invite(db: AsyncSession, raw_token: str, user: User) -> Trip:
 
 
 async def _detected_subscription_merchant_keys(db: AsyncSession, user_id: UUID) -> set[str]:
-    """Return lowercase merchant keys flagged as subscriptions for this user.
-
-    Reads ``detected_subscriptions_cache.result_json`` (see
-    ``modules.subscriptions.service``). Each item carries a ``merchant_name``
-    field which is matched against
-    ``COALESCE(merchants.normalized_name, transactions.raw_merchant_name)``.
-
-    Falls back to an empty set if the cache row is missing or malformed —
-    meaning the user has never opened the Subscriptions page. That's fine
-    for v1: the user simply dismisses any subscription-shaped suggestions
-    manually until they refresh detection.
-    """
-    from sqlalchemy import text
-
-    res = await db.execute(
-        text("SELECT result_json FROM detected_subscriptions_cache WHERE user_id = :uid"),
-        {"uid": str(user_id)},
-    )
-    row = res.scalar_one_or_none()
-    if not row:
-        return set()
+    """Delegates to the subscriptions module — the cache schema is owned
+    there (L12); a broad except keeps suggestion filtering best-effort."""
     try:
-        items = row if isinstance(row, list) else []
-        return {
-            (item.get("merchant_name") or "").strip().lower()
-            for item in items
-            if isinstance(item, dict)
-            and item.get("merchant_name")
-            and item.get("status") == "active"
-        }
+        from modules.subscriptions.service import get_active_subscription_merchant_keys
+
+        return await get_active_subscription_merchant_keys(db, user_id)
     except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "subscription-key lookup failed; trip suggestions unfiltered", exc_info=True
+        )
         return set()
 
 

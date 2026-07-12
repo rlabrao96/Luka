@@ -124,6 +124,27 @@ def detect_from_rows(rows: list[dict]) -> list[dict]:
     return results
 
 
+async def get_active_subscription_merchant_keys(db: AsyncSession, user_id) -> set[str]:
+    """Lowercased merchant keys of ACTIVE detected subscriptions.
+
+    Public accessor for other modules (trips suggestion filtering) — the
+    cache's result_json shape is owned HERE; consumers must not re-parse it.
+    Returns an empty set when the cache is missing or malformed.
+    """
+    row = await db.execute(
+        text("SELECT result_json FROM detected_subscriptions_cache WHERE user_id = :uid"),
+        {"uid": str(user_id)},
+    )
+    items = row.scalar_one_or_none()
+    if not isinstance(items, list):
+        return set()
+    return {
+        (item.get("merchant_name") or "").strip().lower()
+        for item in items
+        if isinstance(item, dict) and item.get("merchant_name") and item.get("status") == "active"
+    }
+
+
 async def get_detected_subscriptions(db: AsyncSession, user_id, months_back: int = 6) -> dict:
     """Read from DB cache, compute on first access. Merge overrides at read time."""
     # Check DB cache

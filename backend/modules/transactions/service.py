@@ -249,9 +249,10 @@ async def get_dashboard_summary(
     transaction download: caller's own settled rows, one month, one currency,
     counts-toward-totals exclusions, sign-based income/expense split.
     """
+    from core.dates import month_bounds_datetime
+
     year, mon = (int(x) for x in month.split("-"))
-    start = date(year, mon, 1)
-    end = date(year + 1, 1, 1) if mon == 12 else date(year, mon + 1, 1)
+    start, end, _ = month_bounds_datetime(date(year, mon, 1), currency)
 
     conds = [
         Transaction.user_id == user_id,

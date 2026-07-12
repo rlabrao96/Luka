@@ -364,6 +364,19 @@ def _equal_ratio(n: int) -> list[int]:
     return ratio
 
 
+def _month_range(month: str | None, currency: str | None):
+    """Tz-aware [start, end) UTC instants for a YYYY-MM (or the current
+    month in the currency's home timezone). See core.dates (M14)."""
+    from core.dates import month_bounds_datetime, tz_for_currency
+
+    if month:
+        anchor = date.fromisoformat(f"{month}-01")
+    else:
+        anchor = datetime.now(tz_for_currency(currency)).date().replace(day=1)
+    start, end, _ = month_bounds_datetime(anchor, currency)
+    return start, end
+
+
 async def get_contribution_summary(
     db: AsyncSession, household_id: uuid.UUID, currency: str | None = None
 ) -> list[dict]:
@@ -372,6 +385,7 @@ async def get_contribution_summary(
     params: dict = {"household_id": str(household_id)}
     if currency:
         params["currency"] = currency
+    params["m_start"], params["m_end"] = _month_range(None, currency)
     # Expenses only (income used to net against spending here), absolute
     # amounts, and the shared totals-exclusion rule — this is "spending by
     # member", so refunds/reimbursements/transfers must not distort it.
@@ -391,7 +405,7 @@ async def get_contribution_summary(
         WHERE t.household_id = :household_id
           AND t.transaction_type = 'expense'
           AND {totals_exclusion_sql("t")}
-          AND DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)
+          AND t.transaction_date >= :m_start AND t.transaction_date < :m_end
           AND hm.left_at IS NULL
           {currency_clause}
         GROUP BY t.user_id, u.full_name, u.email
@@ -443,14 +457,9 @@ async def get_category_breakdown(
 ):
     """Returns per-category spending breakdown for shared transactions."""
     params: dict = {"household_id": str(household_id)}
-    if month:
-        month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = CAST(:month_start AS DATE)"
-        # asyncpg rejects raw strings for DATE bind params; coerce explicitly.
-        params["month_start"] = date.fromisoformat(f"{month}-01")
-    else:
-        month_clause = (
-            "DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)"
-        )
+    m_start, m_end = _month_range(month, currency)
+    month_clause = "t.transaction_date >= :m_start AND t.transaction_date < :m_end"
+    params["m_start"], params["m_end"] = m_start, m_end
     currency_clause = ""
     if currency:
         currency_clause = "AND t.currency = :currency"
@@ -561,14 +570,9 @@ async def get_settlement(
 ):
     """Returns settlement suggestion for the household."""
     params: dict = {"household_id": str(household_id)}
-    if month:
-        month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = CAST(:month_start AS DATE)"
-        # asyncpg rejects raw strings for DATE bind params; coerce explicitly.
-        params["month_start"] = date.fromisoformat(f"{month}-01")
-    else:
-        month_clause = (
-            "DATE_TRUNC('month', t.transaction_date::DATE) = DATE_TRUNC('month', NOW()::DATE)"
-        )
+    m_start, m_end = _month_range(month, currency)
+    month_clause = "t.transaction_date >= :m_start AND t.transaction_date < :m_end"
+    params["m_start"], params["m_end"] = m_start, m_end
     currency_clause = ""
     if currency:
         currency_clause = "AND t.currency = :currency"

@@ -126,7 +126,7 @@ async def _household_shared_outflows(
     """Household's total shared outflows this month = shared MTD expenses
     (absolute) + household unpaid shared bills. Drives the personal view's
     `Gastos del hogar` bucket via the caller's ratio."""
-    first_day, first_day_next, _ = _month_bounds_datetime(month)
+    first_day, first_day_next, _ = _month_bounds_datetime(month, currency)
     row = await db.execute(
         select(func.coalesce(func.sum(func.abs(Transaction.amount)), 0))
         .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
@@ -213,7 +213,7 @@ async def _month_category_sums(
     to Hogar and to the personal view's `Gastos del hogar` bucket (via the
     ratio), never to the personal Level-3 category breakdown.
     """
-    first_day, first_day_next, _ = _month_bounds_datetime(month)
+    first_day, first_day_next, _ = _month_bounds_datetime(month, currency)
     # Email-ingested transactions on non-joint accounts have no transaction_splits
     # row at ingestion time (see jobs/tasks.py). The frontend treats a NULL split
     # as "personal", so we do the same here via LEFT JOIN + NULL coalesce —
@@ -276,8 +276,8 @@ async def _three_month_category_stats(
     "spending risk". ONE query grouped by (month, category) instead of the
     old three sequential per-month queries (M20).
     """
-    window_start, _, _ = _month_bounds_datetime(_prior_month(month, 3))
-    current_start, _, _ = _month_bounds_datetime(month)
+    window_start, _, _ = _month_bounds_datetime(_prior_month(month, 3), currency)
+    current_start, _, _ = _month_bounds_datetime(month, currency)
     month_expr = func.date_trunc("month", Transaction.transaction_date).label("month_start")
 
     # Luka stores expense amounts as negative Decimals; abs() so category

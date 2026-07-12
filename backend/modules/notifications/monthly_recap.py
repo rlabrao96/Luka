@@ -40,6 +40,9 @@ def _prev_month(anchor: date) -> date:
 async def _category_totals(
     db: AsyncSession, user_id: uuid.UUID, month: date, currency: str
 ) -> dict[str, int]:
+    from core.dates import month_bounds_datetime
+
+    m_start, m_end, _ = month_bounds_datetime(month, currency)
     rows = await db.execute(
         text(f"""
             SELECT COALESCE(t.category, 'Sin categoría') AS category,
@@ -49,10 +52,11 @@ async def _category_totals(
               AND t.currency = :ccy
               AND t.transaction_type = 'expense'
               AND {totals_exclusion_sql("t")}
-              AND DATE_TRUNC('month', t.transaction_date::DATE) = CAST(:month_start AS DATE)
+              AND t.transaction_date >= :m_start
+              AND t.transaction_date < :m_end
             GROUP BY 1
         """),
-        {"uid": str(user_id), "ccy": currency, "month_start": month},
+        {"uid": str(user_id), "ccy": currency, "m_start": m_start, "m_end": m_end},
     )
     return {r[0]: int(r[1]) for r in rows}
 

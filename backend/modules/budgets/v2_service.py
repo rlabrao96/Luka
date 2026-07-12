@@ -131,7 +131,7 @@ async def get_budget_v2(
 
     # Force month=day-1 to match the DATE column convention.
     month = date(month.year, month.month, 1)
-    _, _, days_in_month = _month_bounds_datetime(month)
+    _, _, days_in_month = _month_bounds_datetime(month, currency)
     today_day = _today_day_in_month(month, days_in_month)
 
     # ---- currencies available --------------------------------------------
@@ -215,7 +215,7 @@ async def get_budget_v2(
         # user_category_preferences. Bucketed inline rather than going through
         # income_breakdown_for_household_view because the personal view is
         # single-scope and doesn't need the other_members aggregation.
-        first_day, first_day_next, _ = _month_bounds_datetime(month)
+        first_day, first_day_next, _ = _month_bounds_datetime(month, currency)
         caller_tx_rows = await db.execute(
             select(
                 Transaction.category,
@@ -309,8 +309,8 @@ async def get_budget_v2(
     pct_used = (mtd_spent / spendable_amount) if spendable_amount > _ZERO else _ZERO
     # Round pct_used to 3 decimal places for a sane API contract.
     pct_used_rounded = Decimal(str(round(float(pct_used), 3))) if pct_used else _ZERO
-    _, _, _days_in_month = _month_bounds_datetime(month)
-    _today_day = _today_day_in_month(month, _days_in_month)
+    _, _, _days_in_month = _month_bounds_datetime(month, currency)
+    _today_day = _today_day_in_month(month, _days_in_month, currency)
     _days_left = max(1, _days_in_month - _today_day + 1)
     safe_today = (spendable_remaining / Decimal(_days_left)).quantize(
         Decimal("1"), rounding=ROUND_FLOOR
@@ -489,7 +489,7 @@ async def _top_expense_txns(
     `category_filter` narrows to one category; `exclude_categories` is the
     inverse (used for the `spent_other` node).
     """
-    first_day, first_day_next, _ = _month_bounds_datetime(month)
+    first_day, first_day_next, _ = _month_bounds_datetime(month, currency)
     base = (
         select(
             Transaction.id,
@@ -570,7 +570,7 @@ async def _top_income_txns(
     """Top-N income txns for the caller. No income drilldown in hogar view —
     the caller for a household view is not necessarily the owner of the income,
     and we don't want to reveal other members' income-level breakdowns."""
-    first_day, first_day_next, _ = _month_bounds_datetime(month)
+    first_day, first_day_next, _ = _month_bounds_datetime(month, currency)
     stmt = (
         select(
             Transaction.id,
@@ -693,7 +693,7 @@ async def get_node_drilldown(
 
     # ---- meta de ahorro -------------------------------------------------
     if node_id in ("meta_ahorro", "meta_ahorro_personal"):
-        first_day, first_day_next, _ = _month_bounds_datetime(month)
+        first_day, first_day_next, _ = _month_bounds_datetime(month, currency)
         stmt = (
             select(
                 Transaction.id,
