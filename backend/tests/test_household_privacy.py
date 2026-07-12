@@ -103,3 +103,22 @@ async def test_contribution_summary_never_leaks_personal_spending(db):
     for row in summary:
         assert Decimal(row["shared_paid"]) != Decimal("900000")
         assert Decimal(row["shared_paid"]) != Decimal("950000")
+
+
+async def test_member_stats_excludes_personal_spending(db):
+    h = Household(id=_uuid.uuid4(), name="MS HH", type="couple")
+    db.add(h)
+    await db.flush()
+    viewer = await _member(db, h, "Viewer")
+    other = await _member(db, h, "Other")
+
+    # Other member: big personal spend + small shared. Viewer must only see shared.
+    await _expense(db, other, h, "-700000", "personal")
+    await _expense(db, other, h, "-40000", "shared")
+
+    stats = await get_member_stats(db, h.id, requester_id=viewer.id)
+    by_user = {r["user_id"]: r for r in stats}
+    assert other.id in by_user
+    assert viewer.id not in by_user  # viewer excluded by design
+    assert by_user[other.id]["total_spent"] == Decimal("40000")
+    assert by_user[other.id]["total_spent"] != Decimal("740000")

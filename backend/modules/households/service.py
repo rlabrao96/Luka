@@ -788,18 +788,27 @@ async def get_equity_report(
 async def get_member_stats(
     db: AsyncSession, household_id: uuid.UUID, requester_id: uuid.UUID
 ) -> list[dict]:
-    """Aggregate stats for all active members — no individual transaction rows."""
+    """Aggregate SHARED spending per active member — no individual rows.
+
+    Privacy: scoped to shared-split expenses only. Returning each other
+    member's TOTAL spend (personal included) would leak their private
+    spending, same class of breach as get_contribution_summary once did.
+    """
     result = await db.execute(
         text(f"""
             SELECT u.id AS user_id, u.full_name,
-                   COALESCE(SUM(ABS(t.amount)) FILTER (WHERE t.transaction_type = 'expense'), 0) AS total_spent
+                   COALESCE(SUM(ABS(t.amount)), 0) AS total_spent
             FROM household_members hm
             JOIN users u ON u.id = hm.user_id
             LEFT JOIN transactions t ON t.user_id = u.id AND t.household_id = :household_id
+                 AND t.transaction_type = 'expense'
                  AND {totals_exclusion_sql("t")}
+            LEFT JOIN transaction_splits ts
+                 ON ts.transaction_id = t.id AND ts.split_type = 'shared'
             WHERE hm.household_id = :household_id
               AND hm.left_at IS NULL
               AND hm.user_id != :viewer_id
+              AND (t.id IS NULL OR ts.id IS NOT NULL)
             GROUP BY u.id, u.full_name
         """),
         {"household_id": str(household_id), "viewer_id": str(requester_id)},
