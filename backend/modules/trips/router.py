@@ -662,6 +662,22 @@ async def confirm_settlement_suggestion(
             transaction_id=payload.transaction_id,
         ),
     )
+    # Close the loop: mark the matching auto-detect notification actioned so it
+    # clears from the bell (the smart-settle row already disappears once the
+    # balance nets to zero, but the notification would otherwise linger).
+    from sqlalchemy import update as _sql_update
+
+    from modules.notifications.models import Notification
+
+    await db.execute(
+        _sql_update(Notification)
+        .where(
+            Notification.user_id == user.id,
+            Notification.type == "trip_settlement_suggestion",
+            Notification.payload["transaction_id"].astext == str(payload.transaction_id),
+        )
+        .values(status="actioned")
+    )
     await db.commit()
     return _to_settlement_response(settlement)
 

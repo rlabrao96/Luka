@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, Sparkles } from "lucide-react";
 import {
   api,
   type TripDetail,
@@ -13,6 +13,8 @@ import MarkSettledDialog, {
   type MarkSettledPrefill,
 } from "./MarkSettledDialog";
 import { Avatar, BalanceRow, SettlementRow } from "./SaldosRows";
+import { useNotifications } from "@/app/lib/hooks/useNotifications";
+import { useConfirmSettlementSuggestion } from "@/app/lib/hooks/useTrips";
 
 interface SaldosTabProps {
   trip: TripDetail;
@@ -25,7 +27,9 @@ interface SaldosTabProps {
  *   C) Movimientos (settlement history)
  *
  * Decimal fields cross the wire as strings; Number(...) for math.
- * Auto-detected chip on settle suggestions is Phase 7.7 (notifications).
+ * Auto-detected chips: settle-suggestion rows that match a
+ * trip_settlement_suggestion notification (a real transaction the backend
+ * detected) get a one-tap 'Auto-detectado' confirm using the linked txn.
  */
 export default function SaldosTab({ trip }: SaldosTabProps) {
   const { data: me } = useQuery({
@@ -41,6 +45,34 @@ export default function SaldosTab({ trip }: SaldosTabProps) {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [prefill, setPrefill] = useState<MarkSettledPrefill | undefined>();
+  const { data: notifications = [] } = useNotifications();
+  const confirmSuggestion = useConfirmSettlementSuggestion();
+
+  // Auto-detected settlements: unactioned trip_settlement_suggestion
+  // notifications for THIS trip, keyed by from→to so we can attach a one-tap
+  // confirm chip to the matching smart-settle row.
+  const autoDetected = useMemo(() => {
+    const map = new Map<string, { transaction_id: string; amount: string; currency: string }>();
+    for (const n of notifications) {
+      if (n.type !== "trip_settlement_suggestion") continue;
+      if (n.status === "actioned" || n.status === "dismissed") continue;
+      const p = n.payload as unknown as {
+        trip_id?: string;
+        from_attendee_id?: string;
+        to_attendee_id?: string;
+        transaction_id?: string;
+        suggested_amount?: string;
+        currency?: string;
+      } | null;
+      if (!p || p.trip_id !== trip.id || !p.transaction_id) continue;
+      map.set(`${p.from_attendee_id}-${p.to_attendee_id}`, {
+        transaction_id: p.transaction_id,
+        amount: p.suggested_amount ?? "0",
+        currency: p.currency ?? trip.base_currency,
+      });
+    }
+    return map;
+  }, [notifications, trip.id, trip.base_currency]);
 
   function nameOf(attendeeId: string): string {
     return (
@@ -162,13 +194,43 @@ export default function SaldosTab({ trip }: SaldosTabProps) {
                     </span>
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => openFromSuggestion(s)}
-                  className="text-[11px] font-semibold text-luka-primary hover:underline shrink-0"
-                >
-                  Marcar como pagado
-                </button>
+                {(() => {
+                  const auto = autoDetected.get(
+                    `${s.from_attendee_id}-${s.to_attendee_id}`,
+                  );
+                  if (auto) {
+                    return (
+                      <button
+                        type="button"
+                        disabled={confirmSuggestion.isPending}
+                        onClick={() =>
+                          confirmSuggestion.mutate({
+                            trip_id: trip.id,
+                            transaction_id: auto.transaction_id,
+                            from_attendee_id: s.from_attendee_id,
+                            to_attendee_id: s.to_attendee_id,
+                            amount: auto.amount,
+                            currency: auto.currency,
+                          })
+                        }
+                        className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 shrink-0"
+                        title="Detectamos una transacción que salda este pago"
+                      >
+                        <Sparkles size={12} />
+                        Auto-detectado · Confirmar
+                      </button>
+                    );
+                  }
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => openFromSuggestion(s)}
+                      className="text-[11px] font-semibold text-luka-primary hover:underline shrink-0"
+                    >
+                      Marcar como pagado
+                    </button>
+                  );
+                })()}
               </li>
             ))}
           </ul>

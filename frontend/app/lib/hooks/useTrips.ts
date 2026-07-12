@@ -646,6 +646,7 @@ export function useConfirmSettlementSuggestion() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: TRIPS_KEY });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 }
