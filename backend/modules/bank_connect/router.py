@@ -192,19 +192,23 @@ async def handle_connect_callback(
     when triggering the scrape — this endpoint creates real transactions and
     deletes matched email rows, so it must not be open to the internet.
     """
-    # Strict when a token is PRESENT but wrong; grace path when absent.
-    # INCIDENT 2026-07-12: requiring the token unconditionally 401'd the
-    # scraper's queued callbacks (their URLs predate the token change — and
-    # the scraper may use a fixed configured webhook URL), causing an
-    # infinite retry storm and dropped bank syncs. Without a token the
-    # unguessable per-job UUID remains the auth factor (pre-H1 posture) and
-    # unknown job ids still 404 below. Flip to strict once Luka Connect
-    # confirms it echoes tokenized callback URLs (see NEXT-STEPS).
-    if token is not None and not verify_callback_token(body.jobId, token):
-        raise HTTPException(status_code=401, detail="Invalid callback token")
-    if token is None:
+    # Auth posture (INCIDENT 2026-07-12): a present-but-wrong token is ALWAYS
+    # rejected. A MISSING token is rejected too, UNLESS the grace switch
+    # (settings.luka_connect_allow_untokenized_callbacks) is on — the temporary
+    # fallback to the pre-H1 posture where the unguessable per-job UUID is the
+    # auth factor. Requiring the token unconditionally 401'd the scraper's
+    # legacy/fixed-URL callbacks into an infinite retry storm with dropped bank
+    # syncs. The switch makes the weakening explicit and reversible without a
+    # code change; flip it off once Luka Connect confirms tokenized URLs.
+    if token is not None:
+        if not verify_callback_token(body.jobId, token):
+            raise HTTPException(status_code=401, detail="Invalid callback token")
+    elif not settings.luka_connect_allow_untokenized_callbacks:
+        raise HTTPException(status_code=401, detail="Callback token required")
+    else:
         logger.warning(
-            "connect callback WITHOUT token for job %s — grace path (legacy URL)",
+            "connect callback WITHOUT token for job %s — grace path (untokenized "
+            "callbacks allowed; UUID is the auth factor)",
             body.jobId,
         )
     try:

@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     connect_encryption_key: str = ""  # 32-byte hex key for AES-256-GCM
     luka_connect_url: str = "http://localhost:3001"
     luka_connect_api_key: str = ""
+    # Grace switch (INCIDENT 2026-07-12): accept Luka Connect callbacks that
+    # carry no HMAC token, falling back to the pre-H1 posture (the unguessable
+    # per-job UUID is the auth factor). True keeps prod working while the
+    # scraper's tokenized-URL support is confirmed; flip to False to enforce
+    # strict token auth on every callback.
+    luka_connect_allow_untokenized_callbacks: bool = True
     backend_public_url: str = "http://localhost:8000"  # Used for webhook callback URLs
 
     # Plaid (US bank connections)
