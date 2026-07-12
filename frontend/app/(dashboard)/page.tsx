@@ -9,6 +9,7 @@ import { CurrencyToggle } from "./components/CurrencyToggle";
 import { BalanceCard } from "./components/BalanceCard";
 import { CashFlowCards } from "./components/CashFlowCards";
 import { BudgetBars } from "./components/BudgetBars";
+import { FirstRunCard } from "./components/FirstRunCard";
 import { RecentTransactions } from "./components/RecentTransactions";
 import { EmptyState } from "./components/EmptyState";
 import { PageHeader } from "./components/PageHeader";
@@ -62,6 +63,7 @@ export default function DashboardPage() {
   const { data: myTxns = [] } = useMyTransactions({ month: selectedMonth, limit: 60 });
   const { data: summary } = useDashboardSummary(selectedMonth, selectedCurrency || undefined);
   const { data: pendingData } = usePendingTransactions();
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.getMe(), staleTime: 5 * 60 * 1000 });
   const { data: monthlySpending = [] } = useMonthlySpending(selectedCurrency);
   const { data: budget } = useBudgetStatus(selectedMonth, selectedCurrency);
   const { data: catBudgets } = useCategoryBudgets(selectedMonth);
@@ -158,6 +160,19 @@ export default function DashboardPage() {
           Viendo datos de {new Date(Number(selectedMonth.split("-")[0]), Number(selectedMonth.split("-")[1]) - 1).toLocaleDateString(localeForCurrency(selectedCurrency), { month: "long", year: "numeric" })}
         </div>
       )}
+
+      {/* First-run activation card — only until the user has real data. */}
+      {!isViewingPast &&
+        accounts.length === 0 &&
+        myTxns.length === 0 &&
+        recentTxns.length === 0 &&
+        me && (
+          <FirstRunCard
+            hasBankAccount={accounts.length > 0}
+            whatsappVerified={me.whatsapp_verified}
+            emailConnected={Boolean(me.email_provider)}
+          />
+        )}
 
       {/* ── Section 1: Balance + Cash Flow ── */}
       {!isViewingPast && (
