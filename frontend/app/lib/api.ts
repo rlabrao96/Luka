@@ -426,6 +426,20 @@ export interface NotificationItem {
     transaction_count?: number;
     sync_job_id?: string;
     merchant_count?: number;
+    // monthly_recap
+    body?: string;
+    total?: number;
+    prev_total?: number;
+    movers?: { category: string; delta: number }[];
+    currency?: string;
+    month?: string;
+    // subscription_price_increase / subscription_upcoming_charge
+    merchant?: string;
+    previous_amount?: string;
+    new_amount?: string;
+    expected_amount?: string;
+    pct?: number;
+    charge_date?: string;
   } | null;
   created_at: string;
   read_at: string | null;

@@ -1,11 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Store, CheckCircle, AlertTriangle, Trash2, CheckCheck } from "lucide-react";
+import { Store, CheckCircle, AlertTriangle, Trash2, CheckCheck, TrendingUp, BellRing, BarChart3 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNotifications, useUpdateNotification, useDeleteNotification } from "@/app/lib/hooks/useNotifications";
-import { api } from "@/app/lib/api";
+import { api, type NotificationItem } from "@/app/lib/api";
+type NotificationItemPayload = NotificationItem["payload"];
 import { cn } from "@/lib/utils";
+import { formatStoredAmount } from "@/app/lib/currency";
+import { resolveAppLocale } from "@/app/lib/locale";
 import { PageHeader } from "../components/PageHeader";
 import {
   AlertDialog,
@@ -31,7 +34,50 @@ function timeAgo(dateStr: string): string {
 
 const ICONS: Record<string, typeof Store> = {
   merchant_review: Store,
+  monthly_recap: BarChart3,
+  subscription_price_increase: TrendingUp,
+  subscription_upcoming_charge: BellRing,
 };
+
+/** Per-type subtitle under the notification title. Titles already carry the
+ *  human summary; this adds the useful detail from the payload. */
+function NotifDetail({ notif }: { notif: { type: string; payload: NotificationItemPayload } }) {
+  const p = notif.payload;
+  if (!p) return null;
+  if (notif.type === "monthly_recap" && p.body) {
+    // The recap body is a multi-line WhatsApp-style summary; render the
+    // lines after the title (skip the first line, which is the title).
+    const lines = p.body.split("\n").slice(1).filter(Boolean);
+    return (
+      <div className="mt-1.5 space-y-0.5">
+        {lines.map((line, i) => (
+          <p key={i} className="text-xs text-slate-600 leading-snug">
+            {line}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  if (notif.type === "subscription_price_increase" && p.previous_amount && p.new_amount) {
+    const ccy = p.currency ?? "CLP";
+    return (
+      <p className="mt-0.5 text-xs text-luka-muted">
+        {formatStoredAmount(Number(p.previous_amount), ccy)} →{" "}
+        <span className="font-semibold text-amber-600">
+          {formatStoredAmount(Number(p.new_amount), ccy)}
+        </span>
+      </p>
+    );
+  }
+  if (notif.type === "subscription_upcoming_charge" && p.charge_date) {
+    const when = new Date(p.charge_date).toLocaleDateString(resolveAppLocale(), {
+      day: "numeric",
+      month: "long",
+    });
+    return <p className="mt-0.5 text-xs text-luka-muted">Cargo estimado el {when}</p>;
+  }
+  return null;
+}
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -171,6 +217,7 @@ export default function NotificationsPage() {
                           : ""}
                       </p>
                     )}
+                    <NotifDetail notif={notif} />
                     <p className="text-[10px] text-slate-400 mt-1">
                       {timeAgo(notif.created_at)}
                     </p>
