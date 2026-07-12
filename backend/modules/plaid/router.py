@@ -19,6 +19,10 @@ from modules.plaid.service import (
 from modules.households.models import BankAccount, HouseholdMember
 from modules.transactions.models import Transaction, TransactionSplit
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/plaid", tags=["plaid"])
 
 
@@ -56,8 +60,9 @@ async def create_link_token_endpoint(
     try:
         token = await asyncio.to_thread(create_link_token, user.id)
         return {"link_token": token}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create link token: {e}")
+    except Exception:
+        logger.exception("plaid create_link_token failed for user %s", user.id)
+        raise HTTPException(status_code=500, detail="No pudimos iniciar la conexión con el banco.")
 
 
 @router.post("/exchange-token")
@@ -80,8 +85,11 @@ async def exchange_token_endpoint(
 
     try:
         access_token, item_id = await asyncio.to_thread(exchange_public_token, body.public_token)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Token exchange failed: {e}")
+    except Exception:
+        # Plaid ApiException bodies can carry internal request metadata —
+        # log server-side, return a generic message.
+        logger.exception("plaid token exchange failed for user %s", user.id)
+        raise HTTPException(status_code=500, detail="No pudimos completar la conexión.")
 
     # Create PlaidItem
     plaid_item = PlaidItem(
@@ -108,9 +116,13 @@ async def disconnect_endpoint(
     user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    try:
+        item_uuid = uuid.UUID(plaid_item_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Malformed plaid_item_id")
     result = await session.execute(
         select(PlaidItem).where(
-            PlaidItem.id == uuid.UUID(plaid_item_id),
+            PlaidItem.id == item_uuid,
             PlaidItem.user_id == user.id,
         )
     )
@@ -159,9 +171,13 @@ async def manual_sync_endpoint(
     user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    try:
+        item_uuid = uuid.UUID(plaid_item_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Malformed plaid_item_id")
     result = await session.execute(
         select(PlaidItem).where(
-            PlaidItem.id == uuid.UUID(plaid_item_id),
+            PlaidItem.id == item_uuid,
             PlaidItem.user_id == user.id,
         )
     )

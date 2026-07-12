@@ -194,7 +194,7 @@ export function useAddAttendee(tripId: string) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(tripKey(tripId), ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: tripKey(tripId) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: TRIPS_KEY }),
   });
 }
 
@@ -222,7 +222,7 @@ export function useRemoveAttendee(tripId: string) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(tripKey(tripId), ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: tripKey(tripId) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: TRIPS_KEY }),
   });
 }
 
@@ -248,7 +248,7 @@ export function useForceRemoveAttendee(tripId: string) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(tripKey(tripId), ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: tripKey(tripId) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: TRIPS_KEY }),
   });
 }
 
@@ -367,8 +367,9 @@ export function useCreateExpense(tripId: string) {
         qc.setQueryData(suggestedKey(tripId), ctx.prevSuggested);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: tripKey(tripId) });
-      qc.invalidateQueries({ queryKey: suggestedKey(tripId) });
+      // Prefix invalidation: also refreshes the trips LIST (your_net_balance
+      // on the index) — tripKey alone left it stale for up to 5 minutes.
+      qc.invalidateQueries({ queryKey: TRIPS_KEY });
     },
   });
 }
@@ -436,7 +437,7 @@ export function useUpdateExpense(tripId: string) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(tripKey(tripId), ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: tripKey(tripId) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: TRIPS_KEY }),
   });
 }
 
@@ -460,8 +461,9 @@ export function useDeleteExpense(tripId: string) {
       if (ctx?.prev) qc.setQueryData(tripKey(tripId), ctx.prev);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: tripKey(tripId) });
-      qc.invalidateQueries({ queryKey: suggestedKey(tripId) });
+      // Prefix invalidation: also refreshes the trips LIST (your_net_balance
+      // on the index) — tripKey alone left it stale for up to 5 minutes.
+      qc.invalidateQueries({ queryKey: TRIPS_KEY });
     },
   });
 }
@@ -502,7 +504,7 @@ export function useCreateSettlement(tripId: string) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(tripKey(tripId), ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: tripKey(tripId) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: TRIPS_KEY }),
   });
 }
 
@@ -642,9 +644,8 @@ export function useConfirmSettlementSuggestion() {
       if (ctx?.prevSuggested)
         qc.setQueryData(suggestedKey(ctx.tripId), ctx.prevSuggested);
     },
-    onSettled: (_data, _err, vars) => {
-      qc.invalidateQueries({ queryKey: tripKey(vars.trip_id) });
-      qc.invalidateQueries({ queryKey: suggestedKey(vars.trip_id) });
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: TRIPS_KEY });
     },
   });
 }

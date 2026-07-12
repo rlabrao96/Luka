@@ -124,6 +124,9 @@ def _build_cache_blob(user: User, membership: dict | None) -> dict:
         "whatsapp_verified": user.whatsapp_verified,
         "phone_whatsapp": user.phone_whatsapp,
         "preferred_currency": user.preferred_currency,
+        # Feature flags MUST round-trip through the cache — omitting one makes
+        # the feature 403 only on cache hits (intermittent breakage).
+        "feature_trips_enabled": user.feature_trips_enabled,
         "membership": membership,
     }
 
@@ -137,6 +140,7 @@ def _user_from_cache(cached: dict) -> User:
         whatsapp_verified=cached.get("whatsapp_verified", False),
         phone_whatsapp=cached.get("phone_whatsapp"),
         preferred_currency=cached.get("preferred_currency", "CLP"),
+        feature_trips_enabled=cached.get("feature_trips_enabled", False),
     )
 
 

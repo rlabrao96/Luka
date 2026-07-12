@@ -314,7 +314,7 @@ export function PairedTransactionCard({
                   {formattedAbs}
                 </span>
                 <span className="text-[10px] sm:text-[11px] font-bold tabular-nums text-emerald-600">
-                  $0
+                  {formatStoredAmount(0, currency)}
                 </span>
               </span>
             )}

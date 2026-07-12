@@ -1,8 +1,9 @@
+import logging
 import uuid
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, select, text, delete as sql_delete, update as sql_update
+from sqlalchemy import func, or_, select, text, delete as sql_delete, update as sql_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from modules.transactions.models import Transaction, TransactionSplit
 
@@ -14,6 +15,8 @@ from modules.merchants.models import Merchant
 from modules.merchant_review.models import CanonicalMerchant
 from modules.merchants.service import record_category_selection
 from core.cache import _get_redis
+
+_logger = logging.getLogger(__name__)
 
 
 # Fields a user can touch via web/whatsapp UI. Keep this list in lockstep with the
@@ -31,6 +34,18 @@ USER_EDITABLE_FIELDS = frozenset(
 )
 
 
+async def _record_training_safe(raw_merchant_name, category, db, user_id) -> None:
+    """Record a category correction for merchant training; never blocks the
+    user's save, but a broken training pipeline must not fail SILENTLY —
+    categorization quality degrades invisibly otherwise."""
+    try:
+        await record_category_selection(
+            raw_merchant_name, category, db, _get_redis(), user_id=user_id
+        )
+    except Exception:
+        _logger.warning("merchant training failed for %s", raw_merchant_name, exc_info=True)
+
+
 def mark_user_edited(txn: Transaction, *fields: str) -> None:
     """Set ``user_edited_fields[field] = True`` for each user-edited field on ``txn``.
 
@@ -43,6 +58,30 @@ def mark_user_edited(txn: Transaction, *fields: str) -> None:
             raise ValueError(f"Unknown user-editable field: {field}")
         current[field] = True
     txn.user_edited_fields = current
+
+
+def authorized_txn_query(transaction_id, user_id):
+    """Select a transaction the caller may EDIT.
+
+    Owners edit their own rows. Other household members may only edit rows
+    whose split is already 'shared' — partner privacy means a member must
+    never be able to touch (or read back via edit endpoints) a partner's
+    PERSONAL transaction, including flipping it to shared.
+    """
+    return (
+        select(Transaction)
+        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
+        .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .where(
+            Transaction.id == transaction_id,
+            HouseholdMember.user_id == user_id,
+            HouseholdMember.left_at.is_(None),
+            or_(
+                Transaction.user_id == user_id,
+                TransactionSplit.split_type == "shared",
+            ),
+        )
+    )
 
 
 async def ensure_default_split(
@@ -245,29 +284,15 @@ async def update_category(
     """Update transaction category. Returns False if the transaction does not exist
     or the user is not an active member of its household — so any household member
     can recategorize a shared Plaid/email transaction, not just the owner."""
-    result = await db.execute(
-        select(Transaction)
-        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
-        .where(
-            Transaction.id == transaction_id,
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
+    result = await db.execute(authorized_txn_query(transaction_id, user_id))
     txn = result.scalar_one_or_none()
     if not txn:
         return False
     txn.category = category
     mark_user_edited(txn, "category")
     await db.commit()
-    # Train merchant data: record this user correction for future suggestions
     if category:
-        try:
-            await record_category_selection(
-                txn.raw_merchant_name, category, db, _get_redis(), user_id=user_id
-            )
-        except Exception:
-            pass  # never block the category save if training fails
+        await _record_training_safe(txn.raw_merchant_name, category, db, user_id)
     return True
 
 
@@ -285,15 +310,7 @@ async def get_category_matching_count(
     Returns None when the caller is not a member of the anchor's household
     (or the anchor doesn't exist) so the router can map to 404.
     """
-    anchor = await db.scalar(
-        select(Transaction)
-        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
-        .where(
-            Transaction.id == transaction_id,
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
+    anchor = await db.scalar(authorized_txn_query(transaction_id, user_id))
     if anchor is None:
         return None
 
@@ -329,15 +346,7 @@ async def update_category_bulk(
     Returns the number of rows updated (anchor included), or None when the
     caller is not a household member / the anchor doesn't exist.
     """
-    anchor = await db.scalar(
-        select(Transaction)
-        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
-        .where(
-            Transaction.id == transaction_id,
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
+    anchor = await db.scalar(authorized_txn_query(transaction_id, user_id))
     if anchor is None:
         return None
 
@@ -373,12 +382,7 @@ async def update_category_bulk(
     await db.commit()
 
     if category:
-        try:
-            await record_category_selection(
-                original_raw, category, db, _get_redis(), user_id=user_id
-            )
-        except Exception:
-            pass
+        await _record_training_safe(original_raw, category, db, user_id)
 
     return len(targets)
 
@@ -388,15 +392,7 @@ async def update_split_type(
 ) -> bool:
     """Update transaction split type. Any active member of the transaction's
     household can flip personal/shared — single-owner gating broke partner edits."""
-    result = await db.execute(
-        select(Transaction)
-        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
-        .where(
-            Transaction.id == transaction_id,
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
+    result = await db.execute(authorized_txn_query(transaction_id, user_id))
     txn = result.scalar_one_or_none()
     if not txn:
         return False
@@ -451,15 +447,7 @@ async def get_merchant_name_matching_count(
     Returns None when the caller is not a member of the anchor's household
     (or the anchor doesn't exist) so the router can map to 404.
     """
-    anchor = await db.scalar(
-        select(Transaction)
-        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
-        .where(
-            Transaction.id == transaction_id,
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
+    anchor = await db.scalar(authorized_txn_query(transaction_id, user_id))
     if anchor is None:
         return None
 
@@ -509,15 +497,7 @@ async def update_merchant_name_bulk(
         )
         return 0 if ok is not None else None
 
-    anchor = await db.scalar(
-        select(Transaction)
-        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
-        .where(
-            Transaction.id == transaction_id,
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
+    anchor = await db.scalar(authorized_txn_query(transaction_id, user_id))
     if anchor is None:
         return None
 
@@ -582,15 +562,7 @@ async def update_merchant_name(
             is not None
         )
 
-    result = await db.execute(
-        select(Transaction)
-        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
-        .where(
-            Transaction.id == transaction_id,
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
+    result = await db.execute(authorized_txn_query(transaction_id, user_id))
     txn = result.scalar_one_or_none()
     if not txn:
         return False
@@ -617,15 +589,7 @@ async def update_transaction_date(
     Stamps ``user_edited_fields["transaction_date"]`` so future re-merges from
     the bank source don't overwrite the user's correction.
     """
-    result = await db.execute(
-        select(Transaction)
-        .join(HouseholdMember, HouseholdMember.household_id == Transaction.household_id)
-        .where(
-            Transaction.id == transaction_id,
-            HouseholdMember.user_id == user_id,
-            HouseholdMember.left_at.is_(None),
-        )
-    )
+    result = await db.execute(authorized_txn_query(transaction_id, user_id))
     txn = result.scalar_one_or_none()
     if not txn:
         return False

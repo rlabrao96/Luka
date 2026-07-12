@@ -307,7 +307,8 @@ async def household_summary(
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    return await service.get_contribution_summary(db, household_id, currency)
+    resolved = currency or current_user.preferred_currency or "CLP"
+    return await service.get_contribution_summary(db, household_id, resolved)
 
 
 @router.get("/{household_id}/member-stats")
@@ -329,7 +330,8 @@ async def category_breakdown(
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    data = await service.get_category_breakdown(db, household_id, month, currency)
+    resolved = currency or current_user.preferred_currency or "CLP"
+    data = await service.get_category_breakdown(db, household_id, month, resolved)
     return data
 
 
@@ -342,7 +344,8 @@ async def settlement(
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    return await service.get_settlement(db, household_id, month, currency)
+    resolved = currency or current_user.preferred_currency or "CLP"
+    return await service.get_settlement(db, household_id, month, resolved)
 
 
 @router.get("/{household_id}/split-ratio", response_model=SplitRatioResponse)

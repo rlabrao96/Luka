@@ -1,6 +1,6 @@
 "use client";
 import type { BudgetStatus, CategoryBudgetItem } from "@/app/lib/api";
-import { formatMajorAmount, formatMajorAmountCompact, isZeroDecimalCurrency } from "@/app/lib/currency";
+import { formatMajorAmount, formatMajorAmountCompact, isZeroDecimalCurrency, storedToMajor } from "@/app/lib/currency";
 
 interface CategorySpend {
   category: string;
@@ -47,7 +47,14 @@ function textColor(color: string): string {
 export function BudgetBars({ categories, categoryBudgets, budget, currency }: BudgetBarsProps) {
   if (categories.length === 0) return null;
 
-  const budgetMap = new Map(categoryBudgets.map((b) => [b.category, b.amount]));
+  // Caps arrive in integer minor units and are PER CURRENCY — a USD 200 cap
+  // must never be compared against CLP spending (the editor explicitly allows
+  // mixed-currency caps). Filter to the active currency, convert to major.
+  const budgetMap = new Map(
+    categoryBudgets
+      .filter((b) => (b.currency ?? currency) === currency)
+      .map((b) => [b.category, storedToMajor(b.amount, currency)]),
+  );
 
   return (
     <div className="space-y-4">
@@ -59,7 +66,8 @@ export function BudgetBars({ categories, categoryBudgets, budget, currency }: Bu
               <span className={`font-bold ${textColor(pctColor(budget.percent_used))}`}>
                 {Math.round(budget.percent_used)}%
               </span>
-              {" "}· {fmt(budget.spent, currency)} / {fmt(budget.budgeted, currency)}
+              {" "}· {fmt(storedToMajor(budget.spent, currency), currency)} /{" "}
+              {fmt(storedToMajor(budget.budgeted, currency), currency)}
             </span>
           </div>
           <div className="h-2 bg-slate-100 rounded-full overflow-hidden">

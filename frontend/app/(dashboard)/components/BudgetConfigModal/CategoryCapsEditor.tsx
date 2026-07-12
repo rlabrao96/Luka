@@ -6,6 +6,7 @@ import { Plus, X, Check } from "lucide-react";
 import { api, type BudgetV2Response } from "@/app/lib/api";
 import { getCategoryPill } from "@/app/lib/category-icons";
 import { formatMoney, type Currency } from "@/app/lib/format";
+import { majorToStored, storedToMajor } from "@/app/lib/currency";
 import { CategoryCapPicker } from "./CategoryCapPicker";
 import { CURRENCY_OPTIONS, isSupportedCurrency } from "./currencies";
 
@@ -75,9 +76,11 @@ export function CategoryCapsEditor({
     const seed: Record<string, DraftRow> = {};
     for (const b of budgets.data.budgets) {
       if (b.amount > 0) {
+        const ccy = b.currency ?? defaultCurrency;
         seed[b.category] = {
-          amount: String(b.amount),
-          currency: b.currency ?? defaultCurrency,
+          // API speaks integer minor units; the input speaks major units.
+          amount: String(storedToMajor(b.amount, ccy)),
+          currency: ccy,
         };
       }
     }
@@ -108,7 +111,8 @@ export function CategoryCapsEditor({
       const items = Object.entries(draft)
         .map(([category, row]) => ({
           category,
-          amount: row.amount ? Number(row.amount) : 0,
+          // Convert the typed major-unit cap to stored minor units.
+          amount: row.amount ? majorToStored(Number(row.amount), row.currency) : 0,
           currency: row.currency,
         }))
         .filter((b) => b.amount > 0);

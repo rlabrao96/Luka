@@ -355,12 +355,20 @@ export default function BudgetsPage() {
           (typically when the caller is the only active member with
           transactions this month; showing two identical Sankeys is noise). */}
       {(() => {
-        const sameAsHogar =
+        // Only collapse when there is actual data to compare — at the start
+        // of a month both views are all-zero and value-equality would hide
+        // the Personal Sankey (with a factually wrong "no other members"
+        // message) for every multi-member household.
+        const hasData =
           household.data &&
           personal.data &&
-          Number(household.data.spendable.amount) === Number(personal.data.spendable.amount) &&
-          Number(household.data.spendable.spent) === Number(personal.data.spendable.spent) &&
-          household.data.sankey.nodes.length === personal.data.sankey.nodes.length;
+          (Number(household.data.spendable.amount) > 0 ||
+            Number(household.data.spendable.spent) > 0);
+        const sameAsHogar =
+          hasData &&
+          Number(household.data!.spendable.amount) === Number(personal.data!.spendable.amount) &&
+          Number(household.data!.spendable.spent) === Number(personal.data!.spendable.spent) &&
+          household.data!.sankey.nodes.length === personal.data!.sankey.nodes.length;
         if (sameAsHogar) {
           return (
             <p className="text-xs text-slate-500">

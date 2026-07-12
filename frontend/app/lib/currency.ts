@@ -150,6 +150,18 @@ export function formatMajorAmount(
   }).format(Math.abs(amount));
 }
 
+/** Stored (integer minor units) → major units for display/inputs. */
+export function storedToMajor(amount: number, currency: string): number {
+  return isZeroDecimalCurrency(currency) ? amount : amount / 100;
+}
+
+/** Major units (user input) → stored integer minor units for the API. */
+export function majorToStored(amount: number, currency: string): number {
+  return isZeroDecimalCurrency(currency)
+    ? Math.round(amount)
+    : Math.round(amount * 100);
+}
+
 /** Coerce a provider's balance into the app's storage convention (minor units
  *  for non-zero-decimal currencies). Plaid already reports minor units;
  *  luka_connect and other providers report major units and need ×100 for

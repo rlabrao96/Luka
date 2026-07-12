@@ -1,6 +1,6 @@
 import logging
-import random
 import re
+import secrets
 from datetime import datetime, timezone
 
 import httpx
@@ -53,7 +53,7 @@ def _user_response(current_user: User, membership: dict | None) -> UserResponse:
         fixed_contribution_currency=(
             membership.get("fixed_contribution_currency") if membership else None
         ),
-        feature_trips_enabled=current_user.feature_trips_enabled,
+        feature_trips_enabled=bool(current_user.feature_trips_enabled),
     )
 
 
@@ -214,7 +214,18 @@ async def send_whatsapp_pin(
     if not re.fullmatch(r"\+\d{7,15}", body.phone):
         raise HTTPException(status_code=422, detail="Número inválido")
 
-    pin = str(random.randint(100000, 999999))
+    # Rate limit: 3 sends per hour per (user, phone). WhatsApp sends cost
+    # money and each send overwrites the pending PIN (denial-of-verification).
+    rl_key = f"whatsapp_pin_rl:{current_user.id}:{body.phone}"
+    sends = await cache_get(rl_key) or {"count": 0}
+    if sends["count"] >= 3:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Espera una hora e intenta de nuevo.",
+        )
+    await cache_set(rl_key, {"count": sends["count"] + 1}, ttl_seconds=3600)
+
+    pin = f"{secrets.randbelow(1_000_000):06d}"
     await cache_set(
         f"whatsapp_pin:{body.phone}",
         {"pin": pin, "user_id": str(current_user.id), "attempts": 0},

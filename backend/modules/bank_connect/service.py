@@ -40,20 +40,40 @@ def verify_callback_token(job_id: str, token: str | None) -> bool:
 async def store_credentials(
     db: AsyncSession, user_id: str, bank_code: str, rut: str, password: str
 ) -> BankCredential:
-    """Encrypt and store bank credentials. Sets initial sync schedule."""
+    """Encrypt and store bank credentials. Sets initial sync schedule.
+
+    Upserts per (user, bank): a re-connect updates the credentials in place —
+    a second row would make get_connection_status's scalar_one_or_none() 500
+    with MultipleResultsFound.
+    """
     encrypted_rut, iv_rut = encrypt(rut)
     encrypted_password, iv_password = encrypt(password)
     iv = iv_rut + iv_password  # 24 bytes: 12 for rut + 12 for password
+    uid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
 
-    cred = BankCredential(
-        user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
-        bank_code=bank_code,
-        encrypted_rut=encrypted_rut,
-        encrypted_password=encrypted_password,
-        encryption_iv=iv,
-        next_sync_at=_random_next_sync(),
+    existing = await db.execute(
+        select(BankCredential).where(
+            BankCredential.user_id == uid,
+            BankCredential.bank_code == bank_code,
+        )
     )
-    db.add(cred)
+    cred = existing.scalars().first()
+    if cred is not None:
+        cred.encrypted_rut = encrypted_rut
+        cred.encrypted_password = encrypted_password
+        cred.encryption_iv = iv
+        cred.next_sync_at = _random_next_sync()
+        cred.last_sync_status = None
+    else:
+        cred = BankCredential(
+            user_id=uid,
+            bank_code=bank_code,
+            encrypted_rut=encrypted_rut,
+            encrypted_password=encrypted_password,
+            encryption_iv=iv,
+            next_sync_at=_random_next_sync(),
+        )
+        db.add(cred)
     await db.commit()
     await db.refresh(cred)
     return cred

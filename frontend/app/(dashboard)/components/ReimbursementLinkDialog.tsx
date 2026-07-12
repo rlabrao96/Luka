@@ -17,6 +17,7 @@ import {
 } from "@/app/lib/hooks/useTransactions";
 import type { Transaction } from "@/app/lib/api";
 import { formatStoredAmount } from "@/app/lib/currency";
+import { resolveAppLocale } from "@/app/lib/locale";
 import { toTitleCase } from "@/app/lib/strings";
 import { cn } from "@/lib/utils";
 
@@ -74,23 +75,31 @@ export function ReimbursementLinkDialog({ anchor, open, onOpenChange }: Props) {
           c.raw_merchant_name.toLowerCase().includes(q),
         )
       : candidates;
-    return [...base].sort((a, b) => {
-      const aExact = Math.abs(Math.abs(Number(a.amount)) - anchorMagnitude) < 0.005 ? 1 : 0;
-      const bExact = Math.abs(Math.abs(Number(b.amount)) - anchorMagnitude) < 0.005 ? 1 : 0;
+    // Cross-currency rows can't participate in a netting group — hide them.
+    const sameCcy = base.filter(
+      (c) => (c.currency ?? anchorCurrency) === anchorCurrency,
+    );
+    return [...sameCcy].sort((a, b) => {
+      const aExact = Math.abs(Math.abs(Number(a.amount)) - anchorMagnitude) <= 1 ? 1 : 0;
+      const bExact = Math.abs(Math.abs(Number(b.amount)) - anchorMagnitude) <= 1 ? 1 : 0;
       if (aExact !== bExact) return bExact - aExact;
       return b.transaction_date.localeCompare(a.transaction_date);
     });
-  }, [candidates, search, anchorMagnitude]);
+  }, [candidates, search, anchorMagnitude, anchorCurrency]);
 
   const selectedSum = useMemo(() => {
     let s = 0;
-    for (const c of candidates) if (selected.has(c.id)) s += Number(c.amount);
+    for (const c of candidates)
+      if (selected.has(c.id) && (c.currency ?? anchorCurrency) === anchorCurrency)
+        s += Number(c.amount);
     return s;
-  }, [candidates, selected]);
+  }, [candidates, selected, anchorCurrency]);
 
-  // Balanced iff anchor + Σ counterparts = 0 within 1¢.
+  // Balanced iff anchor + Σ counterparts = 0 within ONE MINOR UNIT — amounts
+  // are stored integer minor units, so 0.005 demanded exact zero and blocked
+  // legitimate 1¢ bank-rounding combos the backend accepts.
   const balance = anchorAmount + selectedSum;
-  const balanced = selected.size > 0 && Math.abs(balance) < 0.005;
+  const balanced = selected.size > 0 && Math.abs(balance) <= 1;
 
   const targetMagnitude = Math.abs(anchorAmount);
   const collectedMagnitude = Math.abs(selectedSum);
@@ -245,9 +254,9 @@ export function ReimbursementLinkDialog({ anchor, open, onOpenChange }: Props) {
               {filtered.map((c) => {
                 const checked = selected.has(c.id);
                 const isExactMatch =
-                  Math.abs(Math.abs(Number(c.amount)) - anchorMagnitude) < 0.005;
+                  Math.abs(Math.abs(Number(c.amount)) - anchorMagnitude) <= 1;
                 const date = new Date(c.transaction_date).toLocaleDateString(
-                  "es-CL",
+                  resolveAppLocale(),
                   { day: "2-digit", month: "short", year: "numeric" },
                 );
                 const amount = formatStoredAmount(

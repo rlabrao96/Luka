@@ -65,7 +65,9 @@ async def monthly_summary(
     current_user: User = Depends(get_current_user),
 ):
     await require_membership(household_id, current_user.id, db)
-    return await service.get_monthly_summary(db, household_id, current_user.id, currency=currency)
+    # Never sum across currencies: default to the caller's primary currency.
+    resolved = currency or current_user.preferred_currency or "CLP"
+    return await service.get_monthly_summary(db, household_id, current_user.id, currency=resolved)
 
 
 @router.get("/shared", response_model=list[TransactionResponse])

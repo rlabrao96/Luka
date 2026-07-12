@@ -69,35 +69,39 @@ async def test_get_me_includes_contribution_fields_for_household_member(
 
 
 @pytest.mark.asyncio
-async def test_patch_me_preserves_contribution_fields(app, mock_user):
+async def test_patch_me_preserves_contribution_fields(app, db, make_user):
     """Regression — PATCH /auth/me must return the caller's contribution
     fields, not null-default them. Prevents the UI from silently overwriting
-    a user's real contribution_mode on a simple profile edit."""
-    import uuid
+    a user's real contribution_mode on a simple profile edit.
+
+    Real DB (savepoint-rolled-back): the old AsyncMock version rotted every
+    time the endpoint's query plan changed."""
+    import uuid as _uuid
     from decimal import Decimal
-    from unittest.mock import AsyncMock, MagicMock
     from core.database import get_db
     from core.security import get_current_user
+    from modules.households.models import Household, HouseholdMember
 
-    hid = uuid.uuid4()
-
-    async def override_get_current_user():
-        return mock_user
+    user = await make_user()
+    h = Household(id=_uuid.uuid4(), name="Patch HH", type="couple")
+    db.add(h)
+    await db.flush()
+    db.add(
+        HouseholdMember(
+            household_id=h.id,
+            user_id=user.id,
+            role="owner",
+            contribution_mode="fixed",
+            fixed_contribution_amount=Decimal("800000"),
+            fixed_contribution_currency="CLP",
+        )
+    )
+    await db.flush()
 
     async def override_get_db():
-        session = AsyncMock()
-        # First call: SELECT User for re-fetch
-        user_result = MagicMock()
-        user_result.scalar_one_or_none = MagicMock(return_value=mock_user)
-        # Second call: SELECT HouseholdMember for contribution fields
-        member_result = MagicMock()
-        member_result.first = MagicMock(return_value=(hid, "fixed", Decimal("800000"), "CLP"))
-        session.execute = AsyncMock(side_effect=[user_result, member_result])
-        session.commit = AsyncMock()
-        session.refresh = AsyncMock()
-        yield session
+        yield db
 
-    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = override_get_db
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -111,6 +115,7 @@ async def test_patch_me_preserves_contribution_fields(app, mock_user):
 
     assert response.status_code == 200
     body = response.json()
+    assert body["full_name"] == "New Name"
     assert body["contribution_mode"] == "fixed"
     assert body["fixed_contribution_amount"] == "800000.00"
     assert body["fixed_contribution_currency"] == "CLP"

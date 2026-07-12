@@ -26,7 +26,10 @@ export function useSetBudget() {
 export function useCategoryBudgets(month?: string) {
   const householdId = useLukaStore((s) => s.householdId);
   return useQuery({
-    queryKey: ["categoryBudgets", householdId, month],
+    // Key prefix must match CategoryCapsEditor's invalidation
+    // (["category-budgets", householdId, month]) or cap edits never refresh
+    // the dashboard bars.
+    queryKey: ["category-budgets", householdId, month],
     queryFn: () => api.getCategoryBudgets(householdId!, month),
     enabled: !!householdId,
   });

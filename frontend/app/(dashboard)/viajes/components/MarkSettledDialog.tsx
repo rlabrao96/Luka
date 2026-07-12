@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isZeroDecimalCurrency } from "@/app/lib/currency";
 import {
   Dialog,
   DialogContent,
@@ -101,6 +102,7 @@ function SettlementForm({ tripId, trip, prefill, onClose }: SettlementFormProps)
   }
 
   function handleSubmit() {
+    if (createMutation.isPending) return; // double-tap = duplicate settlement
     setError(null);
     const v = validate();
     if (v) {
@@ -111,7 +113,7 @@ function SettlementForm({ tripId, trip, prefill, onClose }: SettlementFormProps)
       {
         from_attendee_id: fromId,
         to_attendee_id: toId,
-        amount: amountNum.toFixed(2),
+        amount: amountNum.toFixed(zeroDecimal ? 0 : 2),
         currency: trip.base_currency,
       },
       {
@@ -128,7 +130,8 @@ function SettlementForm({ tripId, trip, prefill, onClose }: SettlementFormProps)
     onClose();
   }
 
-  const isPending = false;
+  const isPending = createMutation.isPending;
+  const zeroDecimal = isZeroDecimalCurrency(trip.base_currency);
 
   return (
     <div className="space-y-4 pt-1">
@@ -169,7 +172,7 @@ function SettlementForm({ tripId, trip, prefill, onClose }: SettlementFormProps)
           <Input
             type="number"
             inputMode="decimal"
-            step="0.01"
+            step={zeroDecimal ? "1" : "0.01"}
             min="0"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -221,11 +224,12 @@ function Field({
   label: string;
   children: React.ReactNode;
 }) {
+  // role="group" + aria-label announces the label with the controls inside.
   return (
-    <div>
-      <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
+    <div role="group" aria-label={label}>
+      <span className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
         {label}
-      </label>
+      </span>
       {children}
     </div>
   );

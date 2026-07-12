@@ -87,9 +87,17 @@ export default function DashboardPage() {
     [myTxns, selectedMonth, selectedCurrency]
   );
 
-  // Exclude transfers and refunds from totals/charts to avoid artificially inflating income and expenses.
+  // Mirror the backend counts-toward-totals rule (modules/transactions/totals.py):
+  // exclude transfer-TYPED rows (NOT transfer_pair_id — the wallet leg of a
+  // funding pair carries the pair id but is the canonical expense and must
+  // count), refund pairs, reimbursement groups, and orphans.
   const validTxns = useMemo(
-    () => monthTxns.filter((t) => !t.transfer_pair_id && !t.refund_pair_id && t.status !== "orphan"),
+    () => monthTxns.filter(
+      (t) => t.transaction_type !== "transfer"
+        && !t.refund_pair_id
+        && !t.reimbursement_group_id
+        && t.status !== "orphan"
+    ),
     [monthTxns]
   );
 

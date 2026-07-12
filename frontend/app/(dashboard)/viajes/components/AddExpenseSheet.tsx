@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatMajorAmount, isZeroDecimalCurrency } from "@/app/lib/currency";
 import {
   Dialog,
   DialogContent,
@@ -193,7 +194,7 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
       return ids.map((id) => ({
         attendee_id: id,
         share_type: "custom_amount",
-        share_amount: (Number(customAmounts[id]) || 0).toFixed(2),
+        share_amount: (Number(customAmounts[id]) || 0).toFixed(moneyDecimals),
       }));
     }
     return ids.map((id) => ({
@@ -204,6 +205,7 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
   }
 
   function handleSubmit() {
+    if (createMutation.isPending) return; // double-tap = duplicate expense
     setError(null);
     const v = validate();
     if (v) {
@@ -213,7 +215,7 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
     const body: CreateExpenseInput = {
       payer_attendee_id: payerId,
       description: description.trim(),
-      amount: amountNum.toFixed(2),
+      amount: amountNum.toFixed(moneyDecimals),
       currency: trip.base_currency,
       expense_date: expenseDate,
       splits: buildSplits(),
@@ -240,7 +242,10 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
     onClose();
   }
 
-  const isPending = false;
+  const isPending = createMutation.isPending;
+  const zeroDecimal = isZeroDecimalCurrency(trip.base_currency);
+  const moneyStep = zeroDecimal ? "1" : "0.01";
+  const moneyDecimals = zeroDecimal ? 0 : 2;
   const dateOutOfRange =
     expenseDate &&
     (expenseDate < trip.start_date || expenseDate > trip.end_date);
@@ -269,7 +274,7 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
           <Input
             type="number"
             inputMode="decimal"
-            step="0.01"
+            step={moneyStep}
             min="0"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -376,7 +381,7 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
                 <Input
                   type="number"
                   inputMode="decimal"
-                  step="0.01"
+                  step={moneyStep}
                   min="0"
                   value={customAmounts[id] ?? ""}
                   onChange={(e) =>
@@ -397,8 +402,8 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
                 : "text-red-600")
             }
           >
-            Suma: {customAmountSum.toFixed(2)} /{" "}
-            {isAmountValid ? amountNum.toFixed(2) : "—"}
+            Suma: {formatMajorAmount(customAmountSum, trip.base_currency)} /{" "}
+            {isAmountValid ? formatMajorAmount(amountNum, trip.base_currency) : "—"}
           </p>
         </div>
       )}
@@ -415,7 +420,7 @@ function ExpenseForm({ tripId, trip, prefill, onClose }: ExpenseFormProps) {
                 <Input
                   type="number"
                   inputMode="decimal"
-                  step="0.01"
+                  step={moneyStep}
                   min="0"
                   max="100"
                   value={customPercents[id] ?? ""}
@@ -477,11 +482,13 @@ function Field({
   label: string;
   children: React.ReactNode;
 }) {
+  // role="group" + aria-label announces the label with the controls inside —
+  // the children are opaque nodes, so htmlFor can't be attached generically.
   return (
-    <div>
-      <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
+    <div role="group" aria-label={label}>
+      <span className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
         {label}
-      </label>
+      </span>
       {children}
     </div>
   );

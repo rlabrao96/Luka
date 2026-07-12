@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -17,7 +18,10 @@ class Transaction(Base):
     )
     merchant_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("merchants.id"), nullable=True)
     raw_merchant_name: Mapped[str] = mapped_column(String, nullable=False)
-    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    # Integer MINOR units (cents for 2-decimal currencies, whole units for
+    # CLP/COP). Numeric returns Decimal at runtime — annotate honestly so type
+    # checkers flag float arithmetic on money.
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String, default="CLP")
     transaction_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     category: Mapped[str | None] = mapped_column(String, nullable=True)  # denormalized

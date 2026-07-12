@@ -29,6 +29,7 @@ import { CategoryPicker } from "./CategoryPicker";
 import { CategoryBulkApplyToast } from "./CategoryBulkApplyToast";
 import { SplitTypeEditor } from "./SplitTypeEditor";
 import { formatStoredAmount, isNegativeStored } from "@/app/lib/currency";
+import { resolveAppLocale } from "@/app/lib/locale";
 import { toTitleCase } from "@/app/lib/strings";
 import { LinkMatchDialog } from "./LinkMatchDialog";
 import {
@@ -658,15 +659,19 @@ function PendingSection({
           const isTransfer = txn.transaction_type === "transfer";
           const isOutflow = isNegativeStored(amount);
           const currency = txn.currency ?? "CLP";
-          const formattedAmount = isTransfer || isOutflow
-            ? `(${formatStoredAmount(amount, currency)})`
-            : `+${formatStoredAmount(amount, currency)}`;
+          // Transfers are neutral moves — no outflow parentheses or "menos"
+          // aria (the receiving leg of a transfer is not negative money).
+          const formattedAmount = isTransfer
+            ? formatStoredAmount(amount, currency)
+            : isOutflow
+              ? `(${formatStoredAmount(amount, currency)})`
+              : `+${formatStoredAmount(amount, currency)}`;
           const bankName = txn.bank_name;
           const age = ageBadge(txn);
           const ageInlineTag = ageInline(txn);
           const isChecked = selected.has(txn.id);
-          const isNegativeAmount = isTransfer || isOutflow;
-          const dateText = new Date(txn.transaction_date).toLocaleDateString("es-CL", { day: "2-digit", month: "short" });
+          const isNegativeAmount = !isTransfer && isOutflow;
+          const dateText = new Date(txn.transaction_date).toLocaleDateString(resolveAppLocale(), { day: "2-digit", month: "short" });
 
           const sourceChip = (
             <span className={cn(
