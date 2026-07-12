@@ -157,6 +157,70 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
     ]
 
 
+async def search_transactions(
+    db: AsyncSession, user_id: uuid.UUID, *, q: str, limit: int = 30
+) -> list[dict]:
+    """Search the caller's own transactions by merchant/category/amount.
+
+    Scoped to user_id (never household) — search results show raw rows, and
+    partner privacy forbids surfacing a partner's personal transactions.
+    """
+    from decimal import InvalidOperation
+
+    pattern = f"%{q.strip()}%"
+    conds = [
+        Transaction.raw_merchant_name.ilike(pattern)
+        | func.coalesce(Transaction.category, "").ilike(pattern)
+        | func.coalesce(CanonicalMerchant.display_name, "").ilike(pattern)
+    ]
+
+    # Numeric query → also match absolute amount (minor units as typed, and
+    # major units x100 for 2-decimal currencies).
+    normalized = q.strip().replace(".", "").replace(",", ".") if q.count(",") == 1 else q.strip()
+    try:
+        num = Decimal(normalized.replace(" ", ""))
+        if num > 0:
+            conds = [
+                conds[0]
+                | (func.abs(Transaction.amount) == num)
+                | (func.abs(Transaction.amount) == num * 100)
+            ]
+    except (InvalidOperation, ValueError):
+        pass
+
+    result = await db.execute(
+        select(
+            Transaction,
+            TransactionSplit,
+            BankAccount.bank_name,
+            BankAccount.account_kind,
+            CanonicalMerchant.display_name.label("display_name"),
+        )
+        .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
+        .outerjoin(Merchant, Transaction.raw_merchant_name == Merchant.raw_name)
+        .outerjoin(CanonicalMerchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.status != "orphan",
+            *conds,
+        )
+        .order_by(Transaction.transaction_date.desc())
+        .limit(limit)
+    )
+    rows = result.all()
+    return [
+        {
+            **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
+            "split_type": split.split_type if split else None,
+            "bank_name": bank_name or txn.source_bank_name,
+            "account_kind": account_kind,
+            "display_name": display_name,
+        }
+        for txn, split, bank_name, account_kind, display_name in rows
+    ]
+
+
 async def get_monthly_summary(
     db: AsyncSession,
     household_id: uuid.UUID,

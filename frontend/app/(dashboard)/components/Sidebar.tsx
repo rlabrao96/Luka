@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
-import { LogOut } from "lucide-react";
+import { Search, LogOut } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useLukaStore } from "@/app/lib/store";
@@ -63,6 +63,17 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("luka:open-search"))}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-luka-dark transition-all duration-150"
+        >
+          <Search size={18} />
+          Buscar
+          <kbd className="ml-auto hidden lg:inline text-[10px] font-semibold text-slate-400 border border-slate-200 rounded px-1">
+            ⌘K
+          </kbd>
+        </button>
         <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
           Menú
         </p>

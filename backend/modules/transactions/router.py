@@ -57,6 +57,23 @@ async def my_transactions(
     return await service.get_my_transactions(db, current_user.id, since=since or _default_since())
 
 
+@router.get("/search", response_model=list[TransactionResponse])
+async def search_transactions(
+    q: str = Query(min_length=2, max_length=80),
+    limit: int = Query(default=30, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Global search over the caller's transactions (merchant, category, amount).
+
+    Merchant matching uses ILIKE (backed by the pg_trgm index from migration
+    039). A numeric query also matches the absolute amount, interpreted both
+    as stored minor units and as major units (so "45.00" finds a USD 45.00
+    charge stored as 4500).
+    """
+    return await service.search_transactions(db, current_user.id, q=q, limit=limit)
+
+
 @router.get("/export")
 async def export_transactions_csv(
     month: str | None = Query(default=None, description="YYYY-MM; omit for all history"),

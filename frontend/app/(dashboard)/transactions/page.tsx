@@ -241,6 +241,21 @@ export default function TransactionsPage() {
 
   const [selectedCurrency, setSelectedCurrency] = useState<string>("");
 
+  // Deep-link support (GlobalSearch ⌘K routes here): /transactions?month=YYYY-MM&q=...
+  // Read via window.location so the page stays statically prerenderable
+  // (useSearchParams would force a Suspense boundary on Next 16).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const month = params.get("month");
+    const q = params.get("q");
+    if (month && /^\d{4}-\d{2}$/.test(month)) setSelectedMonth(month);
+    if (q) {
+      setSearch(q);
+      filterPanel.openSearch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!selectedCurrency && primaryCurrency) {
       setSelectedCurrency(primaryCurrency);

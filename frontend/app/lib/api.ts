@@ -475,6 +475,8 @@ export type BulkActionKind = "dismiss" | "delete";
 // ── API calls ──────────────────────────────────────────────
 
 export const api = {
+  searchTransactions: (q: string) =>
+    apiFetch<Transaction[]>(`/transactions/search?q=${encodeURIComponent(q)}`),
   getEmailWatchStatus: () => apiFetch<EmailWatchStatus>("/auth/email-watch-status"),
   setupEmailWatch: () =>
     apiFetch<{ status: string }>("/auth/setup-email-watch", { method: "POST" }),

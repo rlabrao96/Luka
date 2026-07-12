@@ -13,6 +13,7 @@ export function useFilterPanel() {
     filtersOpen,
     toggleSearch: () => setSearchOpen((v) => !v),
     toggleFilters: () => setFiltersOpen((v) => !v),
+    openSearch: () => setSearchOpen(true),
     closeSearch: () => setSearchOpen(false),
     closeFilters: () => setFiltersOpen(false),
   };
