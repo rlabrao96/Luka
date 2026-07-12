@@ -49,6 +49,7 @@ export default function InvitePage({
         const data = await api.acceptInvite(token);
         setHousehold(data.household_id);
         localStorage.removeItem("pending_invite_token");
+        sessionStorage.setItem("luka_joined_group", "1");
         setStatus("success");
         router.push("/household");
       } catch (err: unknown) {

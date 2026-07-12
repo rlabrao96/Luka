@@ -51,8 +51,21 @@ export default function CompartidoPage() {
   const [ratioModalOpen, setRatioModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [justJoined, setJustJoined] = useState(false);
   const leaveHousehold = useLeaveHousehold();
   const router = useRouter();
+
+  // Confirmation banner after accepting an invite (flag set on the invite page).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (sessionStorage.getItem("luka_joined_group")) {
+      sessionStorage.removeItem("luka_joined_group");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time on-mount read of sessionStorage (unavailable during SSR render)
+      setJustJoined(true);
+      const t = setTimeout(() => setJustJoined(false), 6000);
+      return () => clearTimeout(t);
+    }
+  }, []);
   const primaryCurrency = usePrimaryCurrency();
   const [currency, setCurrency] = useState("");
 
@@ -138,6 +151,12 @@ export default function CompartidoPage() {
 
   return (
     <div className="space-y-6">
+      {justJoined && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          <span aria-hidden="true">🎉</span>
+          ¡Te uniste al grupo! Ahora comparten gastos en Luka.
+        </div>
+      )}
       <PageHeader
         title="Compartido"
         subtitle="Gastos compartidos y balance del grupo"

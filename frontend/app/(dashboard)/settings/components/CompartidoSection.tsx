@@ -34,7 +34,7 @@ export function CompartidoSection() {
         {/* Current user */}
         {me && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-500">Tu</span>
+            <span className="text-sm text-slate-500">Tú</span>
             <div className="text-right">
               <p className="text-sm font-medium text-slate-700">{me.full_name}</p>
               <p className="text-xs text-slate-400">{me.email}</p>
@@ -51,7 +51,6 @@ export function CompartidoSection() {
               <div className="text-right">
                 <p className="text-sm font-medium text-slate-700">{member.full_name}</p>
                 <p className="text-xs text-slate-400">{member.email}</p>
-                <span className="text-xs text-emerald-600 font-medium">Activo</span>
               </div>
             </div>
           );
