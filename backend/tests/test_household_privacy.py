@@ -40,6 +40,7 @@ async def test_member_stats_returns_only_aggregates(db, mock_user, mock_partner,
 # total spending — only shared_paid is the legitimately-shared number.
 # ---------------------------------------------------------------------------
 
+
 async def _member(db, household, name):
     u = User(
         id=_uuid.uuid4(),
