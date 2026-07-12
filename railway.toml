@@ -8,6 +8,6 @@ dockerfilePath = "backend/Dockerfile"
 # inside startCommand, which Railway silently ignored on this service —
 # migration 041 had to be applied by hand.
 releaseCommand = "alembic upgrade head"
-startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT --forwarded-allow-ips='*'"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
