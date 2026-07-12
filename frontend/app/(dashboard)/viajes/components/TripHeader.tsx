@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Archive } from "lucide-react";
+import { downloadCsv } from "@/app/lib/api";
+import { Download, ArrowLeft, Archive } from "lucide-react";
 import type { TripDetail } from "@/app/lib/api";
 import { formatMajorAmount } from "@/app/lib/currency";
 import { formatTripDateRange } from "@/app/lib/months";
@@ -49,6 +50,19 @@ export default function TripHeader({ trip }: TripHeaderProps) {
           <h1 className="text-2xl font-bold text-luka-dark tracking-tight truncate">
             {trip.name}
           </h1>
+          <button
+            type="button"
+            onClick={() =>
+              void downloadCsv(`/trips/${trip.id}/export`, "luka-viaje.csv").catch(() =>
+                window.alert("No pudimos exportar. Intenta de nuevo."),
+              )
+            }
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-50"
+            title="Exportar CSV del viaje"
+          >
+            <Download size={12} />
+            CSV
+          </button>
           {isArchived && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
               <Archive size={10} />

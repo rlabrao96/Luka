@@ -57,6 +57,85 @@ async def my_transactions(
     return await service.get_my_transactions(db, current_user.id, since=since or _default_since())
 
 
+@router.get("/export")
+async def export_transactions_csv(
+    month: str | None = Query(default=None, description="YYYY-MM; omit for all history"),
+    currency: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download the caller's transactions as CSV (major units, Excel-friendly)."""
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy import select
+
+    from modules.currencies.units import to_major_units
+    from modules.transactions.models import Transaction, TransactionSplit
+
+    conds = [Transaction.user_id == current_user.id, Transaction.status != "orphan"]
+    if month:
+        try:
+            year, mon = (int(x) for x in month.split("-"))
+            start = date(year, mon, 1)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="month must be YYYY-MM")
+        end = date(year + 1, 1, 1) if mon == 12 else date(year, mon + 1, 1)
+        conds += [Transaction.transaction_date >= start, Transaction.transaction_date < end]
+    if currency:
+        conds.append(Transaction.currency == currency.upper())
+
+    rows = (
+        await db.execute(
+            select(Transaction, TransactionSplit.split_type)
+            .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(*conds)
+            .order_by(Transaction.transaction_date.desc())
+        )
+    ).all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "fecha",
+            "comercio",
+            "categoria",
+            "tipo",
+            "split",
+            "monto",
+            "moneda",
+            "estado",
+            "fuente",
+        ]
+    )
+    for txn, split_type in rows:
+        writer.writerow(
+            [
+                txn.transaction_date.date().isoformat()
+                if hasattr(txn.transaction_date, "date")
+                else txn.transaction_date,
+                txn.raw_merchant_name,
+                txn.category or "",
+                txn.transaction_type or "",
+                split_type or "",
+                str(to_major_units(txn.amount, txn.currency)),
+                txn.currency,
+                txn.status,
+                txn.source_type or "",
+            ]
+        )
+
+    filename = f"luka-transacciones{('-' + month) if month else ''}.csv"
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/monthly-summary")
 async def monthly_summary(
     household_id: uuid.UUID,

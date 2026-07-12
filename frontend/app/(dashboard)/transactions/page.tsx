@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
-import { ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Download, ChevronDown, Tag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { FilterPanelTriggers, FilterPanelBody, useFilterPanel } from "../components/FilterPanel";
 import { PendingBlock } from "../components/PendingBlock";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,7 +11,7 @@ import { ProcessingBanner } from "../components/ProcessingBanner";
 import { CreditSuggestionsBanner } from "../components/CreditSuggestionsBanner";
 import { useQuery } from "@tanstack/react-query";
 import { useLukaStore } from "@/app/lib/store";
-import { api, type Transaction, type BankAccountRow } from "@/app/lib/api";
+import { downloadCsv, api, type Transaction, type BankAccountRow } from "@/app/lib/api";
 import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import { formatStoredAmount, normalizeBalance } from "@/app/lib/currency";
 import { CurrencyToggle } from "../components/CurrencyToggle";
@@ -388,6 +388,25 @@ export default function TransactionsPage() {
               </>
             }
             actions={
+              <>
+              <button
+                type="button"
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (selectedMonth && selectedMonth !== "all") params.set("month", selectedMonth);
+                  if (selectedCurrency) params.set("currency", selectedCurrency);
+                  const qs = params.toString();
+                  void downloadCsv(
+                    `/transactions/export${qs ? `?${qs}` : ""}`,
+                    "luka-transacciones.csv",
+                  ).catch(() => window.alert("No pudimos exportar. Intenta de nuevo."));
+                }}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                title="Exportar CSV"
+              >
+                <Download size={14} />
+                <span className="hidden sm:inline">Exportar</span>
+              </button>
               <FilterPanelTriggers
                 searchOpen={filterPanel.searchOpen}
                 filtersOpen={filterPanel.filtersOpen}
@@ -395,6 +414,7 @@ export default function TransactionsPage() {
                 onToggleFilters={filterPanel.toggleFilters}
                 activeCount={activeCount}
               />
+              </>
             }
           />
         );

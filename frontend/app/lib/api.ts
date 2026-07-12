@@ -99,6 +99,25 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Authenticated file download: fetches with the bearer token and triggers a
+ *  browser download. apiFetch can't be used — it drops non-JSON bodies. */
+export async function downloadCsv(path: string, fallbackName: string): Promise<void> {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_URL}${path}`, { headers: { ...authHeader } });
+  if (!res.ok) throw new ApiError(res.status, `No pudimos generar el archivo (${res.status})`);
+  const blob = await res.blob();
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = match?.[1] ?? fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // ── Types ──────────────────────────────────────────────────
 
 export interface EmailWatchStatus {

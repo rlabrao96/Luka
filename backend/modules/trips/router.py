@@ -371,6 +371,111 @@ def _to_expense_response(exp) -> ExpenseResponse:
     )
 
 
+@router.get("/{trip_id}/export")
+async def export_trip_csv(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_trips_feature),
+):
+    """Download the trip ledger (expenses + splits + settlements) as CSV."""
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    trip = await service.get_trip(db, trip_id, user)
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from modules.trips.models import TripAttendee, TripExpense, TripSettlement
+
+    attendees = {
+        a.id: a.display_name
+        for a in (
+            await db.execute(select(TripAttendee).where(TripAttendee.trip_id == trip.id))
+        ).scalars()
+    }
+    expenses = (
+        (
+            await db.execute(
+                select(TripExpense)
+                .options(selectinload(TripExpense.splits))
+                .where(TripExpense.trip_id == trip.id, TripExpense.deleted_at.is_(None))
+                .order_by(TripExpense.expense_date)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    settlements = (
+        (
+            await db.execute(
+                select(TripSettlement)
+                .where(TripSettlement.trip_id == trip.id)
+                .order_by(TripSettlement.settled_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        ["registro", "fecha", "descripcion", "pagador/de", "para", "monto", "moneda", "detalle"]
+    )
+    for e in expenses:
+        writer.writerow(
+            [
+                "gasto",
+                e.expense_date.isoformat(),
+                e.description,
+                attendees.get(e.payer_attendee_id, ""),
+                "",
+                str(e.amount),
+                e.currency,
+                "",
+            ]
+        )
+        for s in e.splits:
+            writer.writerow(
+                [
+                    "parte",
+                    e.expense_date.isoformat(),
+                    e.description,
+                    "",
+                    attendees.get(s.attendee_id, ""),
+                    str(s.share_amount),
+                    e.currency,
+                    s.share_type,
+                ]
+            )
+    for st in settlements:
+        writer.writerow(
+            [
+                "pago",
+                st.settled_at.date().isoformat() if st.settled_at else "",
+                "ajuste" if st.write_off else "pago entre asistentes",
+                attendees.get(st.from_attendee_id, ""),
+                attendees.get(st.to_attendee_id, ""),
+                str(st.amount),
+                st.currency,
+                "write-off" if st.write_off else "",
+            ]
+        )
+
+    safe_name = "".join(c if c.isalnum() or c in "-_ " else "" for c in trip.name)[:40].strip()
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="luka-viaje-{safe_name or trip_id}.csv"'
+        },
+    )
+
+
 @router.post(
     "/{trip_id}/expenses",
     response_model=ExpenseResponse,
