@@ -32,6 +32,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
           <p className="text-white/80 text-sm">Configuración inicial de tu cuenta</p>
         </div>
 
+        {pathname !== "/onboarding/welcome" && (
         <div className="flex justify-center items-center gap-2 mb-8">
           {STEPS.map((step, i) => {
             const isActive = pathname === step.href;
@@ -67,7 +68,8 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
             );
           })}
         </div>
-        
+        )}
+
         {children}
       </div>
     </div>

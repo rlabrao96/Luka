@@ -94,7 +94,8 @@ export async function GET(request: Request) {
     if (res.ok) {
       const user = await res.json();
       if (!user.household_id) {
-        targetPath = "/onboarding/setup-household";
+        // Value-first: show what Luka does before any setup ask.
+        targetPath = "/onboarding/welcome";
       }
     } else {
       console.error("/auth/me failed during callback:", res.status);
