@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Store, CheckCircle, AlertTriangle, Trash2, CheckCheck, TrendingUp, BellRing, BarChart3 } from "lucide-react";
+import { Store, CheckCircle, AlertTriangle, Trash2, CheckCheck, TrendingUp, BellRing, BarChart3, CreditCard } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNotifications, useUpdateNotification, useDeleteNotification } from "@/app/lib/hooks/useNotifications";
 import { api, type NotificationItem } from "@/app/lib/api";
@@ -37,6 +37,7 @@ const ICONS: Record<string, typeof Store> = {
   monthly_recap: BarChart3,
   subscription_price_increase: TrendingUp,
   subscription_upcoming_charge: BellRing,
+  new_account_detected: CreditCard,
 };
 
 /** Per-type subtitle under the notification title. Titles already carry the
@@ -76,6 +77,15 @@ function NotifDetail({ notif }: { notif: { type: string; payload: NotificationIt
     });
     return <p className="mt-0.5 text-xs text-luka-muted">Cargo estimado el {when}</p>;
   }
+  if (notif.type === "new_account_detected") {
+    return (
+      <p className="mt-0.5 text-xs text-luka-muted">
+        {p.account_label ? <span className="font-medium">{p.account_label}</span> : null}
+        {p.account_label ? " · " : ""}Si es de tu pareja, márcala para que sus gastos no cuenten
+        como tuyos.
+      </p>
+    );
+  }
   return null;
 }
 
@@ -105,6 +115,25 @@ export default function NotificationsPage() {
     mutationFn: (jobId: string) => api.dismissReview(jobId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
+  // new_account_detected: classify the freshly-detected account. "De mi pareja"
+  // flips it to partner (its spending drops out of the owner's totals); "Es mía"
+  // just acknowledges. Either way the notification is marked actioned.
+  const classifyNewAccount = useMutation({
+    mutationFn: async ({ notif, asPartner }: { notif: NotificationItem; asPartner: boolean }) => {
+      const p = notif.payload;
+      if (asPartner && p?.account_id && p?.household_id) {
+        await api.updateBankAccount(p.account_id, p.household_id, { account_type: "partner" });
+      }
+      await api.updateNotification(notif.id, "actioned");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
   });
 
@@ -247,6 +276,25 @@ export default function NotificationsPage() {
                       className="px-4 py-2 border border-slate-200 text-xs text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
                     >
                       Omitir
+                    </button>
+                  </div>
+                )}
+
+                {!isDone && notif.type === "new_account_detected" && (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => classifyNewAccount.mutate({ notif, asPartner: true })}
+                      disabled={classifyNewAccount.isPending}
+                      className="px-4 py-2 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                    >
+                      Es de mi pareja
+                    </button>
+                    <button
+                      onClick={() => classifyNewAccount.mutate({ notif, asPartner: false })}
+                      disabled={classifyNewAccount.isPending}
+                      className="px-4 py-2 border border-slate-200 text-xs text-slate-500 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
+                    >
+                      Es mía
                     </button>
                   </div>
                 )}

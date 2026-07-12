@@ -463,8 +463,27 @@ async def ensure_plaid_accounts(
     item: PlaidItem,
     plaid_accounts: list,
 ) -> dict[str, uuid.UUID]:
-    """Create/update bank_accounts from Plaid accounts. Returns {plaid_account_id: bank_account_id}."""
+    """Create/update bank_accounts from Plaid accounts. Returns {plaid_account_id: bank_account_id}.
+
+    When a NEW account appears on an item that already had accounts (i.e. a card
+    added AFTER the initial connection — e.g. a spouse's authorized-user Amex),
+    raise a notification so its spending isn't silently attributed to the owner.
+    The initial connection (item had zero accounts) is not notified — that's
+    expected setup, not a surprise new card.
+    """
+    from modules.notifications.models import Notification
+
     account_map: dict[str, uuid.UUID] = {}
+
+    # Snapshot BEFORE creating any account this run: >0 means this item was
+    # already set up, so anything new below is a genuinely new account.
+    had_accounts = (
+        await session.execute(
+            select(sa_func.count())
+            .select_from(BankAccount)
+            .where(BankAccount.plaid_item_id == item.id)
+        )
+    ).scalar_one() > 0
 
     for pa in plaid_accounts:
         plaid_account_id = pa.account_id
@@ -517,6 +536,29 @@ async def ensure_plaid_accounts(
             )
             session.add(ba)
             await session.flush()
+
+            if had_accounts:
+                # New account on an already-connected item — surface it so the
+                # user can mark it "De mi pareja" before its spending counts as
+                # theirs. Added to the session; the sync's commit persists it.
+                is_card = account_kind == "credit_card"
+                noun = "tarjeta" if is_card else "cuenta"
+                label = f"{account_name}" + (f" ••{mask}" if mask else "")
+                session.add(
+                    Notification(
+                        user_id=item.user_id,
+                        type="new_account_detected",
+                        title=f"Detectamos una nueva {noun} en {item.institution_name}",
+                        payload={
+                            "account_id": str(ba.id),
+                            "household_id": str(item.household_id),
+                            "bank_name": item.institution_name,
+                            "account_kind": account_kind,
+                            "account_label": label,
+                            "mask": mask,
+                        },
+                    )
+                )
 
         account_map[plaid_account_id] = ba.id
 

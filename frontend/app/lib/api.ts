@@ -438,6 +438,12 @@ export interface NotificationItem {
     expected_amount?: string;
     pct?: number;
     charge_date?: string;
+    // new_account_detected
+    account_id?: string;
+    household_id?: string;
+    account_kind?: string;
+    account_label?: string;
+    mask?: string;
   } | null;
   created_at: string;
   read_at: string | null;
