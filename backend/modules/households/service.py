@@ -444,7 +444,7 @@ async def get_category_breakdown(
     """Returns per-category spending breakdown for shared transactions."""
     params: dict = {"household_id": str(household_id)}
     if month:
-        month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = :month_start"
+        month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = CAST(:month_start AS DATE)"
         # asyncpg rejects raw strings for DATE bind params; coerce explicitly.
         params["month_start"] = date.fromisoformat(f"{month}-01")
     else:
@@ -562,7 +562,7 @@ async def get_settlement(
     """Returns settlement suggestion for the household."""
     params: dict = {"household_id": str(household_id)}
     if month:
-        month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = :month_start"
+        month_clause = "DATE_TRUNC('month', t.transaction_date::DATE) = CAST(:month_start AS DATE)"
         # asyncpg rejects raw strings for DATE bind params; coerce explicitly.
         params["month_start"] = date.fromisoformat(f"{month}-01")
     else:

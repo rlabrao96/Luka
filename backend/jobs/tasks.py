@@ -704,6 +704,34 @@ async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> No
     await db.commit()
 
 
+async def send_monthly_recaps(ctx: dict) -> None:
+    """Cron (1st of month): fan out one recap job per user with any activity."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            text("""
+                SELECT DISTINCT u.id FROM users u
+                JOIN transactions t ON t.user_id = u.id
+                WHERE t.transaction_date >= NOW() - INTERVAL '65 days'
+            """)
+        )
+        user_ids = [str(r[0]) for r in result.all()]
+    for uid in user_ids:
+        await enqueue_job("send_monthly_recap_for_user_job", uid)
+    logger.info("send_monthly_recaps: enqueued %d recaps", len(user_ids))
+
+
+async def send_monthly_recap_for_user_job(ctx: dict, user_id: str) -> None:
+    from modules.notifications.monthly_recap import send_monthly_recap_for_user
+
+    async with AsyncSessionLocal() as db:
+        try:
+            sent = await send_monthly_recap_for_user(db, user_id)
+            if sent:
+                logger.info("monthly recap sent for user %s", user_id)
+        except Exception:
+            logger.warning("monthly recap failed for user %s", user_id, exc_info=True)
+
+
 async def refresh_subscriptions_cache(ctx: dict) -> None:
     """Periodic cron: fan out one per-user refresh job per active user.
 

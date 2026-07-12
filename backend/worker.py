@@ -14,6 +14,8 @@ from jobs.tasks import (
     run_connect_sync,
     refresh_subscriptions_cache,
     refresh_subscriptions_for_user,
+    send_monthly_recaps,
+    send_monthly_recap_for_user_job,
     process_merchant_review,
     run_plaid_sync_job,
     schedule_plaid_syncs,
@@ -41,6 +43,7 @@ class FastWorkerSettings:
         arq_func(process_email, timeout=300),
         send_invite_email,
         refresh_subscriptions_for_user,
+        send_monthly_recap_for_user_job,
     ]
     cron_jobs = [
         cron(renew_mail_watches, hour=3, minute=0),  # 3am daily
@@ -50,6 +53,7 @@ class FastWorkerSettings:
         cron(schedule_connect_syncs, hour={0, 6, 12, 18}, minute=0),  # every 6h
         cron(refresh_subscriptions_cache, day={1, 11, 21}, hour=5, minute=30),  # ~every 10 days
         cron(schedule_plaid_syncs, hour=3, minute=30),  # 3:30am daily
+        cron(send_monthly_recaps, day=1, hour=13, minute=0),  # 1st of month ~9-10am LATAM
     ]
     on_startup = startup
     on_shutdown = shutdown
