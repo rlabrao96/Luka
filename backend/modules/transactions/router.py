@@ -61,6 +61,30 @@ async def my_transactions(
     )
 
 
+@router.get("/unclassified-count")
+async def unclassified_count(
+    since: date = Query(...),
+    until: date | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    count = await service.count_unclassified(db, current_user.id, since=since, until=until)
+    return {"count": count}
+
+
+@router.post("/reclassify")
+async def reclassify(
+    since: date = Query(...),
+    until: date | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run the automatic classifier over the caller's uncategorized
+    transactions in a date range; a merchant_review notification arrives for
+    approval when it finishes."""
+    return await service.reclassify_unclassified(db, current_user.id, since=since, until=until)
+
+
 @router.get("/dashboard-summary")
 async def dashboard_summary(
     month: str = Query(pattern=r"^\d{4}-\d{2}$"),

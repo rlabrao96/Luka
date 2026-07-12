@@ -17,6 +17,7 @@ import { formatStoredAmount, normalizeBalance } from "@/app/lib/currency";
 import { CurrencyToggle } from "../components/CurrencyToggle";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "../components/PageHeader";
+import { ReclassifyButton } from "../components/ReclassifyButton";
 import { MonthSelector, ALL_MONTHS } from "../components/MonthSelector";
 import { currentMonthKey } from "@/app/lib/months";
 
@@ -406,6 +407,7 @@ export default function TransactionsPage() {
             }
             actions={
               <>
+              <ReclassifyButton />
               <button
                 type="button"
                 onClick={() => {

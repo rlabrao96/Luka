@@ -527,6 +527,19 @@ export const api = {
     apiFetch<{ status: string }>("/auth/setup-email-watch", { method: "POST" }),
   getMe: () => apiFetch<UserMe>("/auth/me"),
 
+  getUnclassifiedCount: (since: string, until?: string) => {
+    const params = new URLSearchParams({ since });
+    if (until) params.set("until", until);
+    return apiFetch<{ count: number }>(`/transactions/unclassified-count?${params.toString()}`);
+  },
+  reclassify: (since: string, until?: string) => {
+    const params = new URLSearchParams({ since });
+    if (until) params.set("until", until);
+    return apiFetch<{ job_id: string | null; transaction_count: number }>(
+      `/transactions/reclassify?${params.toString()}`,
+      { method: "POST" },
+    );
+  },
   getDashboardSummary: (month: string, currency: string) =>
     apiFetch<DashboardSummary>(
       `/transactions/dashboard-summary?month=${month}&currency=${encodeURIComponent(currency)}`,

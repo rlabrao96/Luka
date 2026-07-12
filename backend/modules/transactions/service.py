@@ -1035,6 +1035,68 @@ async def unlink_reimbursement_group(
     return {"unlinked": len(rows)}
 
 
+async def count_unclassified(
+    db: AsyncSession, user_id: uuid.UUID, since: date, until: date | None = None
+) -> int:
+    """Count the caller's settled, uncategorized, non-paired transactions in a
+    date range — the population the manual reclassifier would act on."""
+    conds = [
+        Transaction.user_id == user_id,
+        Transaction.status == "settled",
+        Transaction.category.is_(None),
+        Transaction.transaction_type == "expense",
+        Transaction.transfer_pair_id.is_(None),
+        Transaction.refund_pair_id.is_(None),
+        Transaction.reimbursement_group_id.is_(None),
+        Transaction.transaction_date >= since,
+    ]
+    if until is not None:
+        conds.append(Transaction.transaction_date < until)
+    return int(await db.scalar(select(func.count(Transaction.id)).where(*conds)) or 0)
+
+
+async def reclassify_unclassified(
+    db: AsyncSession, user_id: uuid.UUID, since: date, until: date | None = None
+) -> dict:
+    """Kick off automatic classification for the caller's uncategorized
+    transactions in a date range.
+
+    Reuses the merchant-review pipeline: creates a MerchantReviewJob scoped to
+    the uncategorized transaction ids, enqueues process_merchant_review (LLM
+    grouping + categorization), which posts a merchant_review notification the
+    user approves in /transactions/review/{job_id}. Returns the job id and the
+    count, or count 0 when there's nothing to classify.
+    """
+    from modules.merchant_review.models import MerchantReviewJob
+
+    conds = [
+        Transaction.user_id == user_id,
+        Transaction.status == "settled",
+        Transaction.category.is_(None),
+        Transaction.transaction_type == "expense",
+        Transaction.transfer_pair_id.is_(None),
+        Transaction.refund_pair_id.is_(None),
+        Transaction.reimbursement_group_id.is_(None),
+        Transaction.transaction_date >= since,
+    ]
+    if until is not None:
+        conds.append(Transaction.transaction_date < until)
+    rows = await db.execute(select(Transaction.id).where(*conds))
+    tx_ids = [str(r[0]) for r in rows]
+    if not tx_ids:
+        return {"job_id": None, "transaction_count": 0}
+
+    job = MerchantReviewJob(user_id=user_id, transaction_ids=tx_ids)
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    from jobs.queue import enqueue_job
+
+    await enqueue_job("process_merchant_review", str(job.id))
+    return {"job_id": str(job.id), "transaction_count": len(tx_ids)}
+
+
 async def get_pending_transactions(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """
     Return pending transactions grouped into 3 buckets:
