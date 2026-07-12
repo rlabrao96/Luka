@@ -620,3 +620,15 @@ All endpoints gated on `users.feature_trips_enabled` (403 `feature_disabled` oth
 **Clickable Sankey drilldown:** Every non-hub, non-synthetic node is a link — clicking opens `GET /budgets/v2/{household_id}/drilldown` and renders the top-5 transactions in the `BudgetDrilldownCard` below the chart. The single endpoint handles every node id pattern (source categories, spent categories, `spent_other`, shared pool, savings), and the skip list for inert nodes lives on both sides (backend `get_node_drilldown` + frontend `NON_DRILLABLE`) so the UI only surfaces cursor-pointer styling where a click will actually return data.
 
 **Single document scroll:** The dashboard layout used to nest `h-screen overflow-hidden` on the root flex with `overflow-y-auto` on `<main>`, which produced two vertical scrollbars in some browsers (inner main + browser). The budget page stacked another `overflow-x-auto` on top of `BudgetSankey`'s own horizontal scroller. The layout now uses document-level scrolling with a `sticky top-0 h-screen` desktop sidebar, and the redundant wrappers are gone — one scrollbar, no input-target ambiguity.
+
+## Money-Math Invariants (2026-07-11 audit)
+
+These are load-bearing; breaking any of them silently corrupts user money totals.
+
+1. **Integer minor units everywhere.** `transactions.amount`, `category_budgets.amount`, `household_budgets.budgeted` store integer minor units. Single source of scaling truth: `backend/modules/currencies/units.py` (backend) and `storedToMajor`/`majorToStored` in `frontend/app/lib/currency.ts` (frontend). `ZERO_DECIMAL_CURRENCIES = {CLP, COP, JPY, KRW, PYG, VND}` (COP deliberately zero-decimal per LATAM banking practice; CLF is NOT zero-decimal).
+2. **One totals-exclusion predicate.** `backend/modules/transactions/totals.py` — orphans, transfer-typed rows, refund pairs, reimbursement groups never count; wallet expense legs (pair id but type=expense) DO count. Used by: transactions monthly summary, budgets v1+v2, households contribution/settlement/breakdown/member-stats, contribution-service income, and mirrored in `frontend/app/(dashboard)/page.tsx`.
+3. **One split row per transaction** — UNIQUE index `uq_transaction_splits_transaction_id` (migration 051); `ensure_default_split` inserts `ON CONFLICT DO NOTHING`. Every aggregate JOINs splits, so a duplicate row = double-counted money.
+4. **Settlement members come from `household_members`** (active, `joined_at ASC`), never from a GROUP BY over spenders; `split_ratio[i]` maps by that same ordering.
+5. **Trip ledger quantizes to the currency's payable step** (`major_unit_quantum`): splits, settle plans, dust thresholds. Trip surfaces (suggestions, expense validation) speak positive MAJOR units; only `transactions` uses signed minor units.
+6. **Plaid pending→settled swaps** link via `pending_transaction_id` first; the replacement's default split is dropped before re-linking; pair ids are carried or nulled on surviving partners.
+7. **Luka Connect callbacks** are authenticated by a per-job HMAC token embedded in the callback URL (`bank_connect/service.callback_token`), keyed on `luka_connect_api_key`.

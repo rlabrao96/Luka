@@ -108,6 +108,8 @@ Two Wharton MBAs (mechanical engineer + industrial engineer). We can code and re
 ## Key Architectural Conventions
 
 - **Amount sign convention:** expenses and transfers stored as negative, income as positive — everywhere (email, Plaid, bank connect).
+- **Amount unit convention:** `transactions.amount`, `category_budgets.amount`, and `household_budgets.budgeted` are **integer minor units** (cents for 2-decimal currencies; whole units for CLP/COP). All scaling goes through `modules/currencies/units.py` (`to_minor_units` / `to_major_units` / `major_unit_quantum`) — never hand-roll a ×100/÷100. The frontend converts at input/display boundaries via `storedToMajor`/`majorToStored` in `app/lib/currency.ts`.
+- **Counts-toward-totals rule:** every money aggregate (dashboard, budgets, household contributions/settlement) uses ONE exclusion predicate — `modules/transactions/totals.py`: exclude orphans, `transaction_type='transfer'` rows, refund pairs, reimbursement groups. A `transfer_pair_id` alone is NOT an exclusion signal (the wallet leg of a Venmo/PayPal funding pair carries the pair id but is the canonical expense and must count). The frontend dashboard mirrors this rule.
 - **Transaction types:** `expense` / `income` / `transfer`. "Transfer" = own-account moves only (CC bill payments, checking→savings). Person-to-person payments (Zelle, etc.) = expense/income.
 - **Split types:** `personal` / `shared`. Joint bank accounts auto-classify all transactions as shared.
 - **Multi-currency:** transactions carry their own currency. Never hardcode USD or assume a single currency.
@@ -115,6 +117,7 @@ Two Wharton MBAs (mechanical engineer + industrial engineer). We can code and re
 - **Worker routing:** fast worker (email, cron, ≤60s) vs. slow worker (bank syncs, LLM review, ≤600s).
 - **Categories:** fetched dynamically via API. All dropdowns reflect user preferences in real time.
 - **Testing:** backend uses pytest with `asyncio_mode = auto`. No DB mocks — tests hit a real database. Frontend has no test infrastructure yet.
+- **Settlement ratio ordering:** `households.split_ratio[i]` maps positionally to active members ordered by `joined_at ASC` — the single canonical ordering shared by `calculate_settlement` and budgets v2 `_caller_ratio_share`. Never re-sort before indexing the ratio.
 - **Trips visibility:** the entire Trips (Viajes) feature is gated by `users.feature_trips_enabled` (default false). Backend 403s with `feature_disabled` on every `/trips/*` route; frontend nav-filters the entry.
 - **Trip ledger sign convention:** `trip_expenses.amount`, `trip_expense_splits.share_amount`, and `trip_settlements.amount` are all stored as **positive numerics**. Direction is conveyed structurally via `payer_attendee_id` / `from_attendee_id` + `to_attendee_id`. Luka's negative-expense convention applies only to the `transactions` table — when linking a Luka transaction into a trip expense, `amount = abs(transaction.amount)`.
 - **Trip-only stubs** (`trip_expenses` rows with `transaction_id IS NULL`) never appear in any user's personal ledger, budget, or category totals. They live entirely inside the trip ledger.
