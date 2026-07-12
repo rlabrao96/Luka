@@ -22,13 +22,63 @@ export class ApiError extends Error {
   }
 }
 
+// Single-flight refresh: when several queries 401 at once (token expired
+// while the tab slept), only one refreshSession() runs; the rest await it.
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase.auth.refreshSession();
+        return !error && Boolean(data.session);
+      } catch {
+        return false;
+      } finally {
+        setTimeout(() => {
+          refreshInFlight = null;
+        }, 0);
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
+async function signOutToLogin(): Promise<never> {
+  try {
+    await createClient().auth.signOut();
+  } catch {
+    // best effort — the redirect below is the real recovery
+  }
+  if (typeof window !== "undefined") {
+    window.location.assign("/login?error=session_expired");
+  }
+  throw new ApiError(401, "Sesión expirada");
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const { headers: extraHeaders, ...rest } = options ?? {};
-  const authHeader = await getAuthHeader();
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...authHeader, ...extraHeaders },
-    ...rest,
-  });
+  const doFetch = async () => {
+    const authHeader = await getAuthHeader();
+    return fetch(`${API_URL}${path}`, {
+      headers: { "Content-Type": "application/json", ...authHeader, ...extraHeaders },
+      ...rest,
+    });
+  };
+  let res = await doFetch();
+  // 401 mid-session: the middleware only guards navigations, so a long-lived
+  // tab can outlive its token. Refresh once and retry; if that still 401s the
+  // session is truly dead — sign out cleanly instead of leaving every screen
+  // stuck on a raw ApiError.
+  if (res.status === 401 && typeof window !== "undefined") {
+    if (await tryRefreshSession()) {
+      res = await doFetch();
+    }
+    if (res.status === 401) {
+      await signOutToLogin();
+    }
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     const detail = body?.detail;

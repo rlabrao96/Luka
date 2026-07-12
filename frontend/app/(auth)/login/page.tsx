@@ -13,6 +13,9 @@ const AUTH_ERROR_COPY: Record<string, string> = {
   auth_failed: "No pudimos iniciar sesión. Intenta de nuevo.",
   no_session: "Tu sesión expiró, inicia sesión de nuevo.",
   no_code: "Falta información en el enlace. Intenta de nuevo.",
+  session_expired: "Tu sesión expiró por seguridad. Inicia sesión de nuevo.",
+  gmail_revoked:
+    "Google revocó el acceso a tu correo. Inicia sesión de nuevo para reconectar la captura de gastos.",
 };
 
 export default function LoginPage() {
@@ -117,6 +120,7 @@ export default function LoginPage() {
       options: {
         scopes: "openid email profile",
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: { prompt: "select_account" },
       },
     });
     if (oauthError) {
