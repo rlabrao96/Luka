@@ -704,6 +704,26 @@ async def _record_failed_job(job_name: str, payload: dict, error: str, db) -> No
     await db.commit()
 
 
+async def subscription_precharge_alerts(ctx: dict) -> None:
+    """Daily cron: fan out pre-charge heads-ups for users with detections."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(text("SELECT user_id FROM detected_subscriptions_cache"))
+        user_ids = [str(r[0]) for r in result.all()]
+    for uid in user_ids:
+        await enqueue_job("subscription_precharge_for_user", uid)
+    logger.info("subscription_precharge_alerts: enqueued %d users", len(user_ids))
+
+
+async def subscription_precharge_for_user(ctx: dict, user_id: str) -> None:
+    from modules.subscriptions.guardian import send_precharge_alerts_for_user
+
+    async with AsyncSessionLocal() as db:
+        try:
+            await send_precharge_alerts_for_user(db, user_id)
+        except Exception:
+            logger.warning("precharge alerts failed for user %s", user_id, exc_info=True)
+
+
 async def send_monthly_recaps(ctx: dict) -> None:
     """Cron (1st of month): fan out one recap job per user with any activity."""
     async with AsyncSessionLocal() as db:

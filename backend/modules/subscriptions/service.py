@@ -225,6 +225,14 @@ async def _compute_and_store(
     rows = [dict(r._mapping) for r in result.all()]
     items = detect_from_rows(rows)
 
+    # Snapshot the previous cache BEFORE the upsert so the guardian can diff
+    # old vs new and alert on price increases exactly once per change.
+    prev_row = await db.execute(
+        text("SELECT result_json FROM detected_subscriptions_cache WHERE user_id = :uid"),
+        {"uid": str(user_id)},
+    )
+    prev_items = prev_row.scalar_one_or_none()
+
     # Upsert into DB cache (store raw items, before override merging)
     import json
 
@@ -246,6 +254,19 @@ async def _compute_and_store(
         {"uid": str(user_id)},
     )
     computed_at = ts_row.scalar()
+
+    # Guardian: price-increase alerts (never blocks the refresh).
+    try:
+        from modules.subscriptions.guardian import emit_price_increase_alerts
+
+        if isinstance(prev_items, list) and prev_items:
+            await emit_price_increase_alerts(db, user_id, prev_items, items)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "price-increase alerts failed for %s", user_id, exc_info=True
+        )
 
     return items, computed_at
 

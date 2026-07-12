@@ -19,6 +19,7 @@ def test_fast_worker_functions():
         "send_invite_email",
         "refresh_subscriptions_for_user",
         "send_monthly_recap_for_user_job",
+        "subscription_precharge_for_user",
     }
 
 
@@ -42,6 +43,7 @@ def test_fast_worker_cron_jobs():
         "refresh_subscriptions_cache",
         "schedule_plaid_syncs",
         "send_monthly_recaps",
+        "subscription_precharge_alerts",
     }
     assert _cron_names(FastWorkerSettings) == expected
 
