@@ -380,24 +380,29 @@ def _month_range(month: str | None, currency: str | None):
 async def get_contribution_summary(
     db: AsyncSession, household_id: uuid.UUID, currency: str | None = None
 ) -> list[dict]:
-    """Monthly household spending by member. No privacy restriction — both members see this."""
+    """Monthly SHARED spending by member — the "contribution transparency" view.
+
+    Privacy: only ``shared_paid`` is returned. A member's total or PERSONAL
+    (non-shared) spending is private and must never reach another member —
+    the frontend only ever displays the shared number, and the previous
+    version leaked personal_paid/total_paid for every member in the response
+    body (readable via devtools), contradicting the "no raw partner rows"
+    guarantee in MEMORY.md.
+    """
     currency_clause = "AND t.currency = :currency" if currency else ""
     params: dict = {"household_id": str(household_id)}
     if currency:
         params["currency"] = currency
     params["m_start"], params["m_end"] = _month_range(None, currency)
-    # Expenses only (income used to net against spending here), absolute
-    # amounts, and the shared totals-exclusion rule — this is "spending by
-    # member", so refunds/reimbursements/transfers must not distort it.
+    # Shared expenses only, absolute amounts, shared totals-exclusion rule —
+    # refunds/reimbursements/transfers must not distort the contribution total.
     result = await db.execute(
         text(f"""
         SELECT
             t.user_id,
             u.full_name,
             u.email,
-            COALESCE(SUM(ABS(t.amount)), 0) AS total_paid,
-            COALESCE(SUM(ABS(t.amount)) FILTER (WHERE ts.split_type = 'shared'), 0) AS shared_paid,
-            COALESCE(SUM(ABS(t.amount)) FILTER (WHERE ts.split_type = 'personal'), 0) AS personal_paid
+            COALESCE(SUM(ABS(t.amount)) FILTER (WHERE ts.split_type = 'shared'), 0) AS shared_paid
         FROM transactions t
         JOIN transaction_splits ts ON ts.transaction_id = t.id
         JOIN users u ON u.id = t.user_id

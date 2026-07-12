@@ -219,9 +219,7 @@ export interface HouseholdSummaryRow {
   user_id: string;
   full_name: string;
   email: string;
-  total_paid: number;
   shared_paid: number;
-  personal_paid: number;
 }
 
 export interface MemberStats {
