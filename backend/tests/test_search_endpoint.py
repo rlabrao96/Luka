@@ -76,3 +76,18 @@ async def test_search_never_leaks_other_users(db, make_user):
     stranger = await make_user()
     out = await search_transactions(db, stranger.id, q="uber")
     assert out == []
+
+
+async def test_dashboard_summary_matches_rule(db, make_user):
+    from datetime import datetime, timezone
+
+    from modules.transactions.service import get_dashboard_summary
+
+    user = await _seed(db, make_user)
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    out = await get_dashboard_summary(db, user.id, month=month, currency="CLP")
+    # Seeded: -8990 (Transporte), -45990 (Supermercado), -12990 (Streaming).
+    assert int(out["expenses"]) == 8990 + 45990 + 12990
+    assert int(out["income"]) == 0
+    cats = {c["category"]: int(c["amount"]) for c in out["categories"]}
+    assert cats["Supermercado"] == 45990

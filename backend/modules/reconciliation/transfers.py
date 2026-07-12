@@ -26,6 +26,7 @@ transfer_pair_id.
 
 import uuid
 from collections import defaultdict
+import logging
 from datetime import timedelta
 
 from sqlalchemy import func, select, update
@@ -36,6 +37,8 @@ from modules.transactions.models import Transaction
 
 # Source types that represent actual money movement (vs. email notifications).
 # Only these are eligible to form transfer/refund pairs.
+logger = logging.getLogger(__name__)
+
 BANK_SOURCE_TYPES = ("plaid", "connect")
 
 
@@ -86,11 +89,11 @@ async def _heal_orphan_pair_ids(session: AsyncSession, household_id: uuid.UUID) 
             healed_refunds = result.rowcount or len(orphan_rows)
 
     if healed_transfers or healed_refunds:
-        print(
-            f"[transfers] healed orphan pair_ids: "
-            f"transfers={healed_transfers} refunds={healed_refunds} "
-            f"household={household_id}",
-            flush=True,
+        logger.info(
+            "[transfers] healed orphan pair_ids: transfers=%s refunds=%s household=%s",
+            healed_transfers,
+            healed_refunds,
+            household_id,
         )
 
     return healed_transfers, healed_refunds

@@ -232,6 +232,51 @@ async def _household_shared_outflows(
 # ---------------------------------------------------------------- spent
 
 
+def _personal_spent_expr(user_id: uuid.UUID, currency: str):
+    """(joins, expression) for the personal view's effective spent amount.
+
+    Trip-linked transactions count at the CALLER'S share, not the full
+    amount (Task 6.4): a $90 group dinner you fronted with a $30 share adds
+    $30 to your personal spending. trip_expense_splits.share_amount is in
+    MAJOR units (trip-ledger convention) — scale to the transaction table's
+    minor units. A trip-linked row where the caller has NO share counts 0.
+    """
+    from sqlalchemy import and_, case
+
+    from modules.currencies.units import minor_units_per_major
+    from modules.trips.models import TripAttendee, TripExpense, TripExpenseSplit
+
+    scale = minor_units_per_major(currency)
+    joins = [
+        (
+            TripExpense,
+            and_(
+                TripExpense.transaction_id == Transaction.id,
+                TripExpense.deleted_at.is_(None),
+            ),
+        ),
+        (
+            TripExpenseSplit,
+            and_(
+                TripExpenseSplit.trip_expense_id == TripExpense.id,
+                TripExpenseSplit.attendee_id.in_(
+                    select(TripAttendee.id)
+                    .where(
+                        TripAttendee.trip_id == TripExpense.trip_id,
+                        TripAttendee.user_id == user_id,
+                    )
+                    .scalar_subquery()
+                ),
+            ),
+        ),
+    ]
+    expr = case(
+        (TripExpense.id.is_(None), func.abs(Transaction.amount)),
+        else_=func.coalesce(TripExpenseSplit.share_amount, 0) * scale,
+    )
+    return joins, expr
+
+
 async def _month_category_sums(
     db: AsyncSession,
     *,
@@ -253,33 +298,35 @@ async def _month_category_sums(
     ratio), never to the personal Level-3 category breakdown.
     """
     first_day, first_day_next, _ = _month_bounds_datetime(month)
-    agg = select(
-        Transaction.category,
-        func.sum(func.abs(Transaction.amount)).label("total"),
-    ).group_by(Transaction.category)
     # Email-ingested transactions on non-joint accounts have no transaction_splits
     # row at ingestion time (see jobs/tasks.py). The frontend treats a NULL split
     # as "personal", so we do the same here via LEFT JOIN + NULL coalesce —
     # otherwise ~every email-ingested expense drops out of the personal view.
     if view == "personal":
+        trip_joins, spent_expr = _personal_spent_expr(user_id, currency)
         base = (
-            agg.select_from(Transaction)
+            select(Transaction.category, func.sum(spent_expr).label("total"))
+            .group_by(Transaction.category)
+            .select_from(Transaction)
             .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-            .where(
-                Transaction.user_id == user_id,
-                Transaction.household_id == household_id,
-                Transaction.currency == currency,
-                Transaction.transaction_type == "expense",
-                *counts_toward_totals_clauses(),
-                Transaction.transaction_date >= first_day,
-                Transaction.transaction_date < first_day_next,
-                (TransactionSplit.split_type == "personal")
-                | (TransactionSplit.split_type.is_(None)),
-            )
+        )
+        for target, onclause in trip_joins:
+            base = base.outerjoin(target, onclause)
+        base = base.where(
+            Transaction.user_id == user_id,
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "expense",
+            *counts_toward_totals_clauses(),
+            Transaction.transaction_date >= first_day,
+            Transaction.transaction_date < first_day_next,
+            (TransactionSplit.split_type == "personal") | (TransactionSplit.split_type.is_(None)),
         )
     else:
         base = (
-            agg.select_from(Transaction)
+            select(Transaction.category, func.sum(func.abs(Transaction.amount)).label("total"))
+            .group_by(Transaction.category)
+            .select_from(Transaction)
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
                 Transaction.household_id == household_id,
@@ -324,23 +371,27 @@ async def _three_month_category_stats(
         # Personal view uses LEFT JOIN so email-ingested txns with no split row
         # (treated as "personal" in the UI) don't drop out.
         if view == "personal":
+            trip_joins, spent_expr = _personal_spent_expr(user_id, currency)
             q = (
                 select(
                     Transaction.category,
-                    func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
+                    func.coalesce(func.sum(spent_expr), 0).label("total"),
                 )
+                .select_from(Transaction)
                 .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-                .where(
-                    Transaction.user_id == user_id,
-                    Transaction.household_id == household_id,
-                    Transaction.currency == currency,
-                    Transaction.transaction_type == "expense",
-                    *counts_toward_totals_clauses(),
-                    Transaction.transaction_date >= first_day,
-                    Transaction.transaction_date < first_day_next,
-                    (TransactionSplit.split_type == "personal")
-                    | (TransactionSplit.split_type.is_(None)),
-                )
+            )
+            for target, onclause in trip_joins:
+                q = q.outerjoin(target, onclause)
+            q = q.where(
+                Transaction.user_id == user_id,
+                Transaction.household_id == household_id,
+                Transaction.currency == currency,
+                Transaction.transaction_type == "expense",
+                *counts_toward_totals_clauses(),
+                Transaction.transaction_date >= first_day,
+                Transaction.transaction_date < first_day_next,
+                (TransactionSplit.split_type == "personal")
+                | (TransactionSplit.split_type.is_(None)),
             )
         else:
             q = (
@@ -414,30 +465,32 @@ async def _daily_burn_14d(
     today = datetime.now(timezone.utc)
     fourteen_days_ago = today - timedelta(days=14)
 
-    burn_agg = select(
-        Transaction.category,
-        func.sum(func.abs(Transaction.amount)),
-    ).group_by(Transaction.category)
     if view == "personal":
         # LEFT JOIN so email-ingested txns with no split row are included.
+        trip_joins, spent_expr = _personal_spent_expr(user_id, currency)
         q = (
-            burn_agg.select_from(Transaction)
+            select(Transaction.category, func.sum(spent_expr))
+            .group_by(Transaction.category)
+            .select_from(Transaction)
             .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
-            .where(
-                Transaction.user_id == user_id,
-                Transaction.household_id == household_id,
-                Transaction.currency == currency,
-                Transaction.transaction_type == "expense",
-                *counts_toward_totals_clauses(),
-                Transaction.transaction_date >= fourteen_days_ago,
-                Transaction.transaction_date <= today,
-                (TransactionSplit.split_type == "personal")
-                | (TransactionSplit.split_type.is_(None)),
-            )
+        )
+        for target, onclause in trip_joins:
+            q = q.outerjoin(target, onclause)
+        q = q.where(
+            Transaction.user_id == user_id,
+            Transaction.household_id == household_id,
+            Transaction.currency == currency,
+            Transaction.transaction_type == "expense",
+            *counts_toward_totals_clauses(),
+            Transaction.transaction_date >= fourteen_days_ago,
+            Transaction.transaction_date <= today,
+            (TransactionSplit.split_type == "personal") | (TransactionSplit.split_type.is_(None)),
         )
     else:
         q = (
-            burn_agg.select_from(Transaction)
+            select(Transaction.category, func.sum(func.abs(Transaction.amount)))
+            .group_by(Transaction.category)
+            .select_from(Transaction)
             .join(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
             .where(
                 Transaction.household_id == household_id,

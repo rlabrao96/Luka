@@ -13,7 +13,7 @@ import { RecentTransactions } from "./components/RecentTransactions";
 import { EmptyState } from "./components/EmptyState";
 import { PageHeader } from "./components/PageHeader";
 
-import { useMyTransactions, useMonthlySpending, usePendingTransactions } from "@/app/lib/hooks/useTransactions";
+import { useDashboardSummary, useMyTransactions, useMonthlySpending, usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useBudgetStatus, useCategoryBudgets } from "@/app/lib/hooks/useBudget";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow } from "@/app/lib/api";
@@ -40,16 +40,6 @@ function getMonthKey(iso: string): string {
   return iso.split("T")[0].slice(0, 7);
 }
 
-/** Normalize a transaction amount to a signed value in the currency's standard unit.
- *  Non-zero-decimal currencies are stored as minor units (cents) and divided by 100.
- *  Sign is taken from the stored value — expenses/transfers are already negative,
- *  income positive, refunds positive on an expense row. Do not recompute from type. */
-function normalizeTxnAmount(t: { amount: number; currency: string; source: string; transaction_type: string | null }): number {
-  const currency = t.currency ?? "CLP";
-  const raw = Number(t.amount);
-  return isZeroDecimalCurrency(currency) ? raw : raw / 100;
-}
-
 export default function DashboardPage() {
   const name = useLukaStore((s) => s.userFullName) ?? "tú";
   const householdId = useLukaStore((s) => s.householdId);
@@ -66,7 +56,11 @@ export default function DashboardPage() {
   const isViewingPast = selectedMonth !== currentMonth;
 
   // ── Data ──
-  const { data: myTxns = [] } = useMyTransactions();
+  // Month-scoped, limited fetch: the dashboard only renders recent rows —
+  // aggregates come from the server (dashboard-summary), not from shipping
+  // the whole history to the client.
+  const { data: myTxns = [] } = useMyTransactions({ month: selectedMonth, limit: 60 });
+  const { data: summary } = useDashboardSummary(selectedMonth, selectedCurrency || undefined);
   const { data: pendingData } = usePendingTransactions();
   const { data: monthlySpending = [] } = useMonthlySpending(selectedCurrency);
   const { data: budget } = useBudgetStatus(selectedMonth, selectedCurrency);
@@ -87,43 +81,20 @@ export default function DashboardPage() {
     [myTxns, selectedMonth, selectedCurrency]
   );
 
-  // Mirror the backend counts-toward-totals rule (modules/transactions/totals.py):
-  // exclude transfer-TYPED rows (NOT transfer_pair_id — the wallet leg of a
-  // funding pair carries the pair id but is the canonical expense and must
-  // count), refund pairs, reimbursement groups, and orphans.
-  const validTxns = useMemo(
-    () => monthTxns.filter(
-      (t) => t.transaction_type !== "transfer"
-        && !t.refund_pair_id
-        && !t.reimbursement_group_id
-        && t.status !== "orphan"
-    ),
-    [monthTxns]
-  );
-
-  // Cash flow (normalized to standard currency unit)
-  const income = useMemo(
-    () => validTxns.filter((t) => normalizeTxnAmount(t) > 0).reduce((s, t) => s + normalizeTxnAmount(t), 0),
-    [validTxns]
-  );
-  const expenses = useMemo(
-    () => validTxns.filter((t) => normalizeTxnAmount(t) < 0).reduce((s, t) => s + Math.abs(normalizeTxnAmount(t)), 0),
-    [validTxns]
-  );
+  // Server-side aggregates (counts-toward-totals rule applied in SQL).
+  // Values arrive in stored minor units — convert to major for display.
+  const toMajor = (n: string | number) =>
+    isZeroDecimalCurrency(selectedCurrency || "CLP") ? Number(n) : Number(n) / 100;
+  const income = summary ? toMajor(summary.income) : 0;
+  const expenses = summary ? toMajor(summary.expenses) : 0;
   const net = income - expenses;
 
-  // Category breakdown (top 5 + Otros)
+  // Category breakdown (top 5 + Otros) from the server summary.
   const categoryData = useMemo(() => {
-    const map: Record<string, number> = {};
-    validTxns
-      .filter((t) => normalizeTxnAmount(t) < 0)
-      .forEach((t) => {
-        const cat = t.category ?? "Otros";
-        map[cat] = (map[cat] ?? 0) + Math.abs(normalizeTxnAmount(t));
-      });
-    const sorted = Object.entries(map)
-      .map(([category, amount]) => ({ category, amount }))
-      .sort((a, b) => b.amount - a.amount);
+    const sorted = (summary?.categories ?? []).map((c) => ({
+      category: c.category,
+      amount: toMajor(c.amount),
+    }));
     if (sorted.length <= 5) return sorted;
     const top5 = sorted.slice(0, 5);
     const overflowTotal = sorted.slice(5).reduce((s, e) => s + e.amount, 0);
@@ -133,7 +104,8 @@ export default function DashboardPage() {
       return top5.map((e, i) => i === othersIdx ? { ...e, amount: e.amount + overflowTotal } : e);
     }
     return [...top5, { category: "Otros", amount: overflowTotal }];
-  }, [validTxns]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary, selectedCurrency]);
 
   // Recent transactions (latest 5, including pending)
   const recentTxns = useMemo(() => {

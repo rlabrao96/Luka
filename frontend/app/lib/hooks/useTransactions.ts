@@ -8,12 +8,21 @@ function getSince(): string {
   return d.toISOString().split("T")[0]; // YYYY-MM-DD
 }
 
-export function useMyTransactions() {
+export function useMyTransactions(opts?: { month?: string; limit?: number }) {
   const since = getSince();
   return useQuery({
-    queryKey: ["transactions", "mine", since],
-    queryFn: () => api.getMyTransactions(since),
+    queryKey: ["transactions", "mine", since, opts?.month ?? null, opts?.limit ?? null],
+    queryFn: () => api.getMyTransactions(since, opts),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useDashboardSummary(month?: string, currency?: string) {
+  return useQuery({
+    queryKey: ["dashboard-summary", month, currency],
+    queryFn: () => api.getDashboardSummary(month!, currency!),
+    enabled: !!month && !!currency,
+    staleTime: 60 * 1000,
   });
 }
 

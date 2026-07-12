@@ -124,8 +124,28 @@ async def ensure_default_split(
     )
 
 
-async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date) -> list[dict]:
-    result = await db.execute(
+async def get_my_transactions(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    since: date,
+    month: str | None = None,
+    limit: int | None = None,
+) -> list[dict]:
+    conds = [
+        Transaction.user_id == user_id,
+        Transaction.status.notin_(["pending", "orphan"]),
+    ]
+    if month:
+        # Month-scoped fetch (dashboard/transactions page): far smaller payload
+        # than shipping the full `since` history on every load.
+        year, mon = (int(x) for x in month.split("-"))
+        start = date(year, mon, 1)
+        end = date(year + 1, 1, 1) if mon == 12 else date(year, mon + 1, 1)
+        conds += [Transaction.transaction_date >= start, Transaction.transaction_date < end]
+    else:
+        conds.append(Transaction.transaction_date >= since)
+
+    q = (
         select(
             Transaction,
             TransactionSplit,
@@ -137,13 +157,12 @@ async def get_my_transactions(db: AsyncSession, user_id: uuid.UUID, since: date)
         .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .outerjoin(Merchant, Transaction.raw_merchant_name == Merchant.raw_name)
         .outerjoin(CanonicalMerchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
-        .where(
-            Transaction.user_id == user_id,
-            Transaction.transaction_date >= since,
-            Transaction.status.notin_(["pending", "orphan"]),
-        )
+        .where(*conds)
         .order_by(Transaction.transaction_date.desc())
     )
+    if limit:
+        q = q.limit(limit)
+    result = await db.execute(q)
     rows = result.all()
     return [
         {
@@ -219,6 +238,67 @@ async def search_transactions(
         }
         for txn, split, bank_name, account_kind, display_name in rows
     ]
+
+
+async def get_dashboard_summary(
+    db: AsyncSession, user_id: uuid.UUID, month: str, currency: str
+) -> dict:
+    """Server-side dashboard numbers: income, expenses, category breakdown.
+
+    Mirrors the client rule the dashboard used to compute over the FULL
+    transaction download: caller's own settled rows, one month, one currency,
+    counts-toward-totals exclusions, sign-based income/expense split.
+    """
+    year, mon = (int(x) for x in month.split("-"))
+    start = date(year, mon, 1)
+    end = date(year + 1, 1, 1) if mon == 12 else date(year, mon + 1, 1)
+
+    conds = [
+        Transaction.user_id == user_id,
+        Transaction.currency == currency,
+        Transaction.status.notin_(["pending", "orphan"]),
+        Transaction.transaction_type != "transfer",
+        Transaction.refund_pair_id.is_(None),
+        Transaction.reimbursement_group_id.is_(None),
+        Transaction.transaction_date >= start,
+        Transaction.transaction_date < end,
+    ]
+
+    totals = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(Transaction.amount).filter(Transaction.amount > 0), 0).label(
+                    "income"
+                ),
+                func.coalesce(
+                    func.sum(func.abs(Transaction.amount)).filter(Transaction.amount < 0), 0
+                ).label("expenses"),
+            ).where(*conds)
+        )
+    ).one()
+
+    # One expression object reused in SELECT and GROUP BY — two separate
+    # coalesce(...) calls bind "Otros" as two different parameters and
+    # Postgres rejects the grouping.
+    cat_expr = func.coalesce(Transaction.category, "Otros").label("category")
+    cat_rows = await db.execute(
+        select(
+            cat_expr,
+            func.sum(func.abs(Transaction.amount)).label("amount"),
+        )
+        .where(*conds, Transaction.amount < 0)
+        .group_by(cat_expr)
+        .order_by(func.sum(func.abs(Transaction.amount)).desc())
+    )
+
+    return {
+        "month": month,
+        "currency": currency,
+        "income": totals.income,
+        "expenses": totals.expenses,
+        "net": totals.income - totals.expenses,
+        "categories": [{"category": r.category, "amount": r.amount} for r in cat_rows],
+    }
 
 
 async def get_monthly_summary(

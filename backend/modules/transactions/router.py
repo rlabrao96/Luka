@@ -51,10 +51,25 @@ def _default_since() -> date:
 @router.get("/mine", response_model=list[TransactionResponse])
 async def my_transactions(
     since: date = Query(default=None),
+    month: str | None = Query(default=None, description="YYYY-MM; overrides since"),
+    limit: int | None = Query(default=None, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await service.get_my_transactions(db, current_user.id, since=since or _default_since())
+    return await service.get_my_transactions(
+        db, current_user.id, since=since or _default_since(), month=month, limit=limit
+    )
+
+
+@router.get("/dashboard-summary")
+async def dashboard_summary(
+    month: str = Query(pattern=r"^\d{4}-\d{2}$"),
+    currency: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    resolved = currency or current_user.preferred_currency or "CLP"
+    return await service.get_dashboard_summary(db, current_user.id, month=month, currency=resolved)
 
 
 @router.get("/search", response_model=list[TransactionResponse])

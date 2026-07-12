@@ -223,18 +223,17 @@ async def process_email(
             user, access_token=access_token, refresh_token=refresh_token
         )
         try:
-            print(
-                f"[PROCESS_EMAIL] fetching emails for {user.email}, history_id={history_id}",
-                flush=True,
+            logger.info(
+                "[PROCESS_EMAIL] fetching emails for %s, history_id=%s", user.email, history_id
             )
             emails = await provider_instance.fetch_new_emails(
                 str(user.id), history_id=history_id, message_id=message_id
             )
-            print(f"[PROCESS_EMAIL] fetched {len(emails)} emails for {user.email}", flush=True)
+            logger.info(f"[PROCESS_EMAIL] fetched {len(emails)} emails for {user.email}")
             for e in emails:
-                print(f"[PROCESS_EMAIL] email from={e.sender} subject={e.subject}", flush=True)
+                logger.info(f"[PROCESS_EMAIL] email from={e.sender} subject={e.subject}")
         except Exception as e:
-            print(f"[PROCESS_EMAIL] fetch_new_emails FAILED: {e}", flush=True)
+            logger.info(f"[PROCESS_EMAIL] fetch_new_emails FAILED: {e}")
             if "RefreshError" in type(e).__name__ or "invalid_grant" in str(e).lower():
                 logger.warning(
                     "process_email: Google token revoked for %s, clearing tokens", user.email
@@ -256,19 +255,13 @@ async def process_email(
                 # Deduplicate: skip if we already processed this email
                 dedup_key = f"txn_processed:{raw_email.message_id}"
                 if await redis_client.get(dedup_key):
-                    print(
-                        f"[PROCESS_EMAIL] skipping duplicate email {raw_email.message_id}",
-                        flush=True,
-                    )
+                    logger.info("[PROCESS_EMAIL] skipping duplicate email %s", raw_email.message_id)
                     continue
                 await redis_client.set(dedup_key, "1", ex=86400)  # 24h TTL
 
                 # Pre-filter: only process emails from known bank domains
                 if not await is_bank_sender_async(raw_email.sender, redis=redis_client, db=db):
-                    print(
-                        f"[PROCESS_EMAIL] skipping non-bank sender: {raw_email.sender}",
-                        flush=True,
-                    )
+                    logger.info("[PROCESS_EMAIL] skipping non-bank sender: %s", raw_email.sender)
                     continue
 
                 # Pre-filter: skip non-financial emails
@@ -345,9 +338,10 @@ async def process_email(
                     currency=parsed.currency,
                     merchant_name=parsed.raw_merchant,
                 ):
-                    print(
-                        f"[PROCESS_EMAIL] skipping duplicate transaction ${parsed.amount} for {user.email}",
-                        flush=True,
+                    logger.info(
+                        "[PROCESS_EMAIL] skipping duplicate transaction %s for %s",
+                        parsed.amount,
+                        user.email,
                     )
                     continue
 
@@ -653,7 +647,7 @@ async def schedule_connect_syncs(ctx: dict) -> None:
         for cred in due:
             await enqueue_job("run_connect_sync", str(cred.id))
         if due:
-            print(f"[SCHEDULE_CONNECT_SYNCS] Enqueued {len(due)} syncs", flush=True)
+            logger.info(f"[SCHEDULE_CONNECT_SYNCS] Enqueued {len(due)} syncs")
 
 
 async def run_connect_sync(ctx: dict, credential_id: str) -> None:
@@ -722,6 +716,29 @@ async def subscription_precharge_for_user(ctx: dict, user_id: str) -> None:
             await send_precharge_alerts_for_user(db, user_id)
         except Exception:
             logger.warning("precharge alerts failed for user %s", user_id, exc_info=True)
+
+
+async def failed_jobs_digest(ctx: dict) -> None:
+    """Daily observability heartbeat: surface job failures loudly.
+
+    Crons fail silently otherwise — this logs at ERROR (visible in Railway
+    log-based alerts) when failed_jobs grew in the last 24h, and INFO when
+    clean so the digest itself proves the cron system is alive.
+    """
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            text(
+                "SELECT job_name, COUNT(*) FROM failed_jobs "
+                "WHERE created_at >= NOW() - INTERVAL '24 hours' "
+                "GROUP BY job_name ORDER BY 2 DESC"
+            )
+        )
+        rows = result.all()
+    if rows:
+        summary = ", ".join(f"{name}={count}" for name, count in rows)
+        logger.error("[FAILED_JOBS_DIGEST] failures in last 24h: %s", summary)
+    else:
+        logger.info("[FAILED_JOBS_DIGEST] clean — no failed jobs in last 24h")
 
 
 async def send_monthly_recaps(ctx: dict) -> None:
@@ -1175,7 +1192,7 @@ async def schedule_plaid_syncs(ctx: dict):
         for item in items:
             await enqueue_job("run_plaid_sync_job", plaid_item_id=str(item.id), initial=False)
         if items:
-            print(f"[SCHEDULE_PLAID_SYNCS] Enqueued {len(items)} syncs", flush=True)
+            logger.info(f"[SCHEDULE_PLAID_SYNCS] Enqueued {len(items)} syncs")
 
 
 async def run_reconciliation_job(ctx: dict):

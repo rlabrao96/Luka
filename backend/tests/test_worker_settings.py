@@ -44,6 +44,7 @@ def test_fast_worker_cron_jobs():
         "schedule_plaid_syncs",
         "send_monthly_recaps",
         "subscription_precharge_alerts",
+        "failed_jobs_digest",
     }
     assert _cron_names(FastWorkerSettings) == expected
 

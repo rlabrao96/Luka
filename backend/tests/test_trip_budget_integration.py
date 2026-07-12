@@ -19,10 +19,10 @@ that maps the caller's ``user_id`` to a ``TripAttendee.id`` for the
 share-amount lookup, and the change reaches into stats, forecasts, and
 the Sankey shape.
 
-Per the plan's option (b), the test is marked ``xfail`` and the v1.1
-follow-up to extend the budget aggregator is tracked in
-``NEXT-STEPS.md``. Once the aggregator is taught about
-``trip_expense_splits``, drop the ``xfail`` marker — the test should pass.
+RESOLVED (2026-07-12): the aggregator's personal view now LEFT JOINs
+trip_expenses + trip_expense_splits (via the caller's attendee rows) and
+counts trip-linked transactions at the caller's share, scaled from the trip
+ledger's major units to the transaction table's minor units.
 """
 
 from __future__ import annotations
@@ -53,13 +53,6 @@ async def _make_household(db):
     return h
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Phase 6.4 — budget aggregator extension to consume "
-        "trip_expense_splits.share_amount is pending (v1.1)."
-    ),
-    strict=False,
-)
 @pytest.mark.asyncio
 async def test_trip_split_reflected_in_personal_category_total(
     db: AsyncSession, make_user, make_trip
@@ -67,7 +60,7 @@ async def test_trip_split_reflected_in_personal_category_total(
     """Trip-tagged transaction with a 50/50 split contributes only the
     user's ``share_amount`` to their personal category total — NOT the
     full transaction amount."""
-    from modules.budgets.v2_service import _fetch_month_transactions
+    from modules.budgets.v2_service import _month_category_sums
     from modules.transactions.models import Transaction
 
     user = await make_user()
@@ -131,7 +124,7 @@ async def test_trip_split_reflected_in_personal_category_total(
     )
     await db.flush()
 
-    txns = await _fetch_month_transactions(
+    sums = await _month_category_sums(
         db,
         view="personal",
         user_id=user.id,
@@ -139,17 +132,10 @@ async def test_trip_split_reflected_in_personal_category_total(
         month=date(2026, 5, 1),
         currency="USD",
     )
+    total_for_restaurantes = sum((amt for cat, amt in sums if cat == "Restaurantes"), Decimal("0"))
 
-    # Aggregate by category, applying trip split.
-    total_for_restaurantes = Decimal("0")
-    for t in txns:
-        if t.category != "Restaurantes":
-            continue
-        total_for_restaurantes += abs(Decimal(str(t.amount)))
-
-    # Expected: caller contributes only their $50 share, not the full $100.
-    # Today the aggregator returns $100 (full amount), which is the
-    # behaviour Task 6.4 v1.1 will fix.
+    # Caller contributes only their $50 share (5000 cents), not the full
+    # $100 (10000 cents). share_amount is major units, scaled x100 for USD.
     assert total_for_restaurantes == Decimal(
-        "50.00"
-    ), f"expected user's share=$50 to count, got {total_for_restaurantes}"
+        "5000"
+    ), f"expected user's share (5000 cents) to count, got {total_for_restaurantes}"

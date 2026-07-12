@@ -8,10 +8,13 @@ removed — it was registered on no worker (the 6am cron silently ran only
 transfer detection) and would exceed the slow worker's 600s budget at scale.
 """
 
+import logging
 import uuid
 
 from core.database import AsyncSessionLocal
 from modules.reconciliation.tick import reconciliation_tick_for_household
+
+logger = logging.getLogger(__name__)
 
 
 async def run_reconciliation_tick_for_household(ctx: dict, household_id: str) -> dict[str, int]:
@@ -24,5 +27,5 @@ async def run_reconciliation_tick_for_household(ctx: dict, household_id: str) ->
         totals = await reconciliation_tick_for_household(db, uuid.UUID(household_id))
         await db.commit()
     if any(totals.values()):
-        print(f"[RECONCILIATION_TICK] hh={household_id} {totals}", flush=True)
+        logger.info("[RECONCILIATION_TICK] hh=%s %s", household_id, totals)
     return totals

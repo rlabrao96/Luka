@@ -262,7 +262,9 @@ export default function TransactionsPage() {
     }
   }, [primaryCurrency, selectedCurrency]);
 
-  const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions();
+  const { data: myTxns = [], isLoading: loadingMine } = useMyTransactions(
+    selectedMonth !== ALL_MONTHS ? { month: selectedMonth } : undefined,
+  );
   const { data: sharedTxns = [], isLoading: loadingShared } = useSharedTransactions();
   const { data: accounts = [] } = useQuery<BankAccountRow[]>({
     queryKey: ["bank-accounts", householdId],

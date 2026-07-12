@@ -140,6 +140,15 @@ export interface EquityReportResponse {
   currency: string;
 }
 
+export interface DashboardSummary {
+  month: string;
+  currency: string;
+  income: string | number;
+  expenses: string | number;
+  net: string | number;
+  categories: { category: string; amount: string | number }[];
+}
+
 export interface EmailWatchStatus {
   provider: string;
   tokens_connected: boolean;
@@ -506,8 +515,16 @@ export const api = {
     apiFetch<{ status: string }>("/auth/setup-email-watch", { method: "POST" }),
   getMe: () => apiFetch<UserMe>("/auth/me"),
 
-  getMyTransactions: (since: string) =>
-    apiFetch<Transaction[]>(`/transactions/mine?since=${since}`),
+  getDashboardSummary: (month: string, currency: string) =>
+    apiFetch<DashboardSummary>(
+      `/transactions/dashboard-summary?month=${month}&currency=${encodeURIComponent(currency)}`,
+    ),
+  getMyTransactions: (since: string, opts?: { month?: string; limit?: number }) => {
+    const params = new URLSearchParams({ since });
+    if (opts?.month) params.set("month", opts.month);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    return apiFetch<Transaction[]>(`/transactions/mine?${params.toString()}`);
+  },
 
   getSharedTransactions: (householdId: string, since: string) =>
     apiFetch<Transaction[]>(`/transactions/shared?household_id=${householdId}&since=${since}`),

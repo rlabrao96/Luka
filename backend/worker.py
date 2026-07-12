@@ -14,6 +14,7 @@ from jobs.tasks import (
     run_connect_sync,
     refresh_subscriptions_cache,
     refresh_subscriptions_for_user,
+    failed_jobs_digest,
     send_monthly_recaps,
     send_monthly_recap_for_user_job,
     subscription_precharge_alerts,
@@ -58,6 +59,7 @@ class FastWorkerSettings:
         cron(schedule_plaid_syncs, hour=3, minute=30),  # 3:30am daily
         cron(send_monthly_recaps, day=1, hour=13, minute=0),  # 1st of month ~9-10am LATAM
         cron(subscription_precharge_alerts, hour=12, minute=30),  # daily ~8-9am LATAM
+        cron(failed_jobs_digest, hour=11, minute=0),  # daily observability heartbeat
     ]
     on_startup = startup
     on_shutdown = shutdown
