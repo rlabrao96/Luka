@@ -43,6 +43,7 @@ def setup_pin_app(app, mock_user_for_pin):
 @pytest.mark.asyncio
 async def test_send_pin_stores_in_redis_and_sends(app, mock_user_for_pin, setup_pin_app):
     with (
+        patch("modules.auth.router.cache_get", new_callable=AsyncMock, return_value=None),
         patch("modules.auth.router.cache_set", new_callable=AsyncMock) as mock_cache_set,
         patch("modules.auth.router.send_verification_pin", new_callable=AsyncMock) as mock_send,
     ):
@@ -51,8 +52,11 @@ async def test_send_pin_stores_in_redis_and_sends(app, mock_user_for_pin, setup_
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    mock_cache_set.assert_called_once()
-    call_args = mock_cache_set.call_args
+    # Two writes: the rate-limit counter first, then the PIN itself.
+    assert mock_cache_set.call_count == 2
+    rl_args = mock_cache_set.call_args_list[0]
+    assert rl_args[0][0].startswith("whatsapp_pin_rl:")
+    call_args = mock_cache_set.call_args_list[-1]
     assert call_args[0][0] == "whatsapp_pin:+56912345678"
     stored = call_args[0][1]
     assert len(stored["pin"]) == 6

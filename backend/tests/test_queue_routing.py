@@ -6,6 +6,17 @@ from unittest.mock import AsyncMock, patch
 from jobs.queue import SLOW_JOBS, enqueue_job
 
 
+@pytest.fixture(autouse=True)
+def _reset_pool_singleton():
+    """enqueue_job caches a module-level pool; reset it so each test's
+    patched create_pool actually takes effect."""
+    import jobs.queue as _q
+
+    _q._pool = None
+    yield
+    _q._pool = None
+
+
 def test_slow_jobs_set_contains_expected_jobs():
     """SLOW_JOBS should contain exactly the heavy jobs."""
     assert SLOW_JOBS == {
