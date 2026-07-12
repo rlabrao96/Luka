@@ -1,6 +1,6 @@
 # Next Steps
 
-_Last updated: 2026-07-12 (feature sprint + architecture pass: trip-share budgets, server-side dashboard, cron observability)_
+_Last updated: 2026-07-12 (night pass: v2_service split, tz-aware month bounds, N+1 batch fixes, zero failing tests)_
 
 ## Recently Shipped
 
@@ -67,15 +67,15 @@ _Last updated: 2026-07-12 (feature sprint + architecture pass: trip-share budget
 
 ### Deferred audit findings (from luka-ultrareview-2026-07-11.md — medium/low, not yet applied)
 
-- **[M20] Budget v2 round-trip consolidation** — SQL aggregation is DONE (H15, commit `d5008b2`); remaining: merge the 3 history-month queries into one `GROUP BY month, category` and fold the per-member income loops (~18 sequential round trips → ~8).
-- **[H16/M31/M32] God-module splits** — `budgets/v2_service.py` (1.8k lines) → `v2_queries.py` / `v2_sankey.py`; `transactions/service.py` linking cluster (~800 lines) → `linking.py`; standardize trips on the `ServiceError` pattern instead of raising `HTTPException` from the service layer.
+- **[M20] Budget v2 round-trip consolidation** — history-month merge DONE (one `GROUP BY month, category`, commit `b01a58a`). The per-member income loop stays as-is deliberately: its per-member dispatch IS the fixed-mode privacy invariant ('never query a fixed member's real income, by construction') and saves only 1-4 queries.
+- **[M31/M32] Remaining structure debt** — H16 is DONE (v2_service split into v2_queries/v2_sankey, commit `3cf246a`). Still open: extract `transactions/service.py`'s linking cluster (~800 lines) into `linking.py`; standardize trips on the `ServiceError` pattern instead of raising `HTTPException` from the service layer.
 - ~~[M13] Trip-share carving in budgets~~ — **DONE 2026-07-12** (commit `3b8495b`): personal view counts trip-linked rows at the caller's share; xfail test now a passing regression.
-- **[M14] Per-user timezone month bounds** — all month boundaries are UTC; evening purchases on the 31st land in next month for every LATAM timezone. Add `core/dates.py` (four duplicated `_month_bounds` implementations) + a per-user tz (country → tz or setting).
-- **[M22/M25/L10] Remaining N+1s** — merchant review per-name SELECTs, reconciliation tick aging pass, drilldown top-5 refetch.
-- **[M28] DB-mock test migration** — `test_bank_accounts_routes.py`, `test_email_webhooks.py`, `test_merchant_review_api.py`, `test_notifications_api.py` still mock the session (convention: real DB). `test_auth.py` already migrated; delete `mock_db_session`/`override_db` from conftest once done. **Seven of these mock tests fail TODAY and failed identically before the 2026-07-11 remediation (verified against commit `16996a7`)**: `test_auth_tokens.py` (4), `test_settings_api.py::test_patch_profile_route_exists`, `test_whatsapp_handler.py::test_handle_text_message_manual_trigger_creates_transaction`, `test_whatsapp_pin.py::test_verify_pin_success` — the mocks rotted as the endpoints evolved; migrate rather than re-mock. Everything else in the suite is green (760 passed).
-- **[M30] Sankey drilldown tests** — `get_node_drilldown` (242 lines of money queries) has no coverage.
+- ~~[M14] Per-user timezone month bounds~~ — **DONE 2026-07-12** (commit `f4c0146`): `core/dates.py` maps currency → home timezone; budgets v2, households, recap, and dashboard summary all use tz-aware bounds. Remaining copies in `subscriptions/read.py` / `cuota_service.py` still UTC (low impact: bills/cuotas keyed by month not txn timestamps).
+- ~~[M22/M25/L10] Remaining N+1s~~ — **DONE 2026-07-12** (commit `b01a58a`): merchant review batches merchants+canonicals in two IN queries; tick aging uses one GROUP BY sync-lookup; drilldown top-5 uses the aggregated `_month_category_sums`.
+- **[M28] DB-mock test migration** — the 7 FAILING mock tests are fixed/migrated (commit `3cf246a`) — suite has zero known failures. Remaining (passing but mock-style, migrate opportunistically): `test_bank_accounts_routes.py`, `test_email_webhooks.py`, `test_merchant_review_api.py`, `test_notifications_api.py`; then delete `mock_db_session`/`override_db` from conftest.
+- ~~[M30] Sankey drilldown tests~~ — **DONE 2026-07-12**: `tests/test_budget_v2_drilldown.py` covers category nodes, spent_other, hubs, unknown ids, invalid view.
 - **[L11] Transaction list pagination** — partial 2026-07-12: `/mine` now supports month+limit and the dashboard/transactions pages fetch month-scoped; full keyset pagination for the all-months view still pending.
-- **[L12] Subscriptions cache coupling** — trips re-parses `detected_subscriptions_cache.result_json` via raw SQL; expose a subscriptions-module helper.
+- ~~[L12] Subscriptions cache coupling~~ — **DONE 2026-07-12**: `get_active_subscription_merchant_keys` lives in the subscriptions module; trips delegates.
 - **[SEC-8] Rate-limiter proxy IP** — confirm Railway proxy-header config; `get_remote_address` may see the LB address (shared bucket) or be spoofable via X-Forwarded-For if proxy headers are trusted without an allowlist.
 - **[N4] `_find_single_match` bank-name lookup** — accept `known_bank` from callers that already hold the account list.
 - Re-run `/graphify --update` — the knowledge graph predates this remediation sweep.
