@@ -311,6 +311,20 @@ async def household_summary(
     return await service.get_contribution_summary(db, household_id, resolved)
 
 
+@router.get("/{household_id}/equity-report")
+async def equity_report(
+    household_id: uuid.UUID,
+    months: int = Query(default=6, ge=1, le=12),
+    currency: str = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fairness trend: per-month shared spend vs ratio share per member."""
+    await require_membership(household_id, current_user.id, db)
+    resolved = currency or current_user.preferred_currency or "CLP"
+    return await service.get_equity_report(db, household_id, months=months, currency=resolved)
+
+
 @router.get("/{household_id}/member-stats")
 async def member_stats(
     household_id: uuid.UUID,

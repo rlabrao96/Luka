@@ -120,6 +120,26 @@ export async function downloadCsv(path: string, fallbackName: string): Promise<v
 
 // ── Types ──────────────────────────────────────────────────
 
+export interface EquityMemberRow {
+  user_id: string;
+  full_name: string;
+  paid: string | number;
+  expected: string | number;
+  net: string | number;
+}
+
+export interface EquityMonth {
+  month: string;
+  total: string | number;
+  members: EquityMemberRow[];
+}
+
+export interface EquityReportResponse {
+  months: EquityMonth[];
+  split_ratio: number[];
+  currency: string;
+}
+
 export interface EmailWatchStatus {
   provider: string;
   tokens_connected: boolean;
@@ -477,6 +497,10 @@ export type BulkActionKind = "dismiss" | "delete";
 export const api = {
   searchTransactions: (q: string) =>
     apiFetch<Transaction[]>(`/transactions/search?q=${encodeURIComponent(q)}`),
+  getEquityReport: (householdId: string, currency: string, months = 6) =>
+    apiFetch<EquityReportResponse>(
+      `/households/${householdId}/equity-report?months=${months}&currency=${encodeURIComponent(currency)}`,
+    ),
   getEmailWatchStatus: () => apiFetch<EmailWatchStatus>("/auth/email-watch-status"),
   setupEmailWatch: () =>
     apiFetch<{ status: string }>("/auth/setup-email-watch", { method: "POST" }),

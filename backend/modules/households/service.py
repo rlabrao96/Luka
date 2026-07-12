@@ -619,6 +619,110 @@ async def get_settlement(
     }
 
 
+async def get_equity_report(
+    db: AsyncSession, household_id: uuid.UUID, months: int = 6, currency: str = "CLP"
+) -> dict:
+    """Per-month fairness view: who fronted shared spending vs their ratio share.
+
+    For each of the last `months` months (oldest→newest, current included):
+    each ACTIVE member's shared-expense total, their expected share under the
+    household ratio (joined_at ASC — same canonical ordering as settlement and
+    budgets v2), and the net they fronted (paid − expected; positive = they
+    put in more than their share). Uses the CURRENT ratio for all months —
+    historical ratios aren't versioned.
+    """
+    months = max(1, min(months, 12))
+    today = date.today()
+    month_starts: list[date] = []
+    y, m = today.year, today.month
+    for _ in range(months):
+        month_starts.append(date(y, m, 1))
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    month_starts.reverse()
+
+    members_res = await db.execute(
+        text(
+            """
+            SELECT hm.user_id, u.full_name
+            FROM household_members hm
+            JOIN users u ON u.id = hm.user_id
+            WHERE hm.household_id = :hid AND hm.left_at IS NULL
+            ORDER BY hm.joined_at ASC
+            """
+        ),
+        {"hid": str(household_id)},
+    )
+    members = [(r[0], r[1]) for r in members_res.all()]
+    if not members:
+        return {"months": [], "split_ratio": [], "currency": currency}
+
+    totals_res = await db.execute(
+        text(f"""
+            SELECT t.user_id,
+                   DATE_TRUNC('month', t.transaction_date::DATE)::DATE AS month_start,
+                   COALESCE(SUM(ABS(t.amount)), 0) AS total
+            FROM transactions t
+            JOIN transaction_splits ts ON ts.transaction_id = t.id
+            WHERE t.household_id = :hid
+              AND ts.split_type = 'shared'
+              AND t.transaction_type = 'expense'
+              AND {totals_exclusion_sql("t")}
+              AND t.currency = :ccy
+              AND t.transaction_date >= CAST(:window_start AS DATE)
+            GROUP BY t.user_id, DATE_TRUNC('month', t.transaction_date::DATE)
+        """),
+        {
+            "hid": str(household_id),
+            "ccy": currency,
+            "window_start": month_starts[0],
+        },
+    )
+    paid: dict[tuple, Decimal] = {}
+    for user_id, month_start, total in totals_res.all():
+        paid[(user_id, month_start)] = Decimal(str(total))
+
+    ratio_row = await db.execute(
+        text("SELECT split_ratio FROM households WHERE id = :id"),
+        {"id": str(household_id)},
+    )
+    split_ratio = ratio_row.scalar_one_or_none() or []
+    n = len(members)
+    if not split_ratio or len(split_ratio) < n or sum(split_ratio[:n]) <= 0:
+        ratios = [Decimal(1) / Decimal(n)] * n
+    else:
+        ratio_sum = Decimal(sum(split_ratio[:n]))
+        ratios = [Decimal(r) / ratio_sum for r in split_ratio[:n]]
+
+    _ONE = Decimal("1")
+    out_months = []
+    for ms in month_starts:
+        month_total = sum((paid.get((uid, ms), Decimal("0")) for uid, _ in members), Decimal("0"))
+        expected = [(month_total * r).quantize(_ONE, rounding=ROUND_HALF_UP) for r in ratios]
+        if expected:
+            expected[-1] = month_total - sum(expected[:-1])
+        rows = []
+        for i, (uid, name) in enumerate(members):
+            p = paid.get((uid, ms), Decimal("0"))
+            rows.append(
+                {
+                    "user_id": str(uid),
+                    "full_name": name,
+                    "paid": p,
+                    "expected": expected[i] if expected else Decimal("0"),
+                    "net": p - (expected[i] if expected else Decimal("0")),
+                }
+            )
+        out_months.append({"month": ms.strftime("%Y-%m"), "total": month_total, "members": rows})
+
+    return {
+        "months": out_months,
+        "split_ratio": split_ratio or [round(float(r * 100)) for r in ratios],
+        "currency": currency,
+    }
+
+
 async def get_member_stats(
     db: AsyncSession, household_id: uuid.UUID, requester_id: uuid.UUID
 ) -> list[dict]:

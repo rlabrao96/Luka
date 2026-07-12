@@ -18,6 +18,7 @@ import { usePrimaryCurrency } from "@/app/lib/hooks/useCurrencies";
 import RatioSettingsModal from "./RatioSettingsModal";
 import InviteModal from "./InviteModal";
 import MemberCard from "./MemberCard";
+import { EquityReport } from "./EquityReport";
 import { localeForCurrency } from "@/app/lib/locale";
 import { MonthSelector } from "../components/MonthSelector";
 import { PageHeader } from "../components/PageHeader";
@@ -350,6 +351,8 @@ export default function CompartidoPage() {
           )}
         </CardContent>
       </Card>
+
+      {currency && <EquityReport currency={currency} />}
 
       {/* Modals */}
       <RatioSettingsModal open={ratioModalOpen} onOpenChange={setRatioModalOpen}
