@@ -612,7 +612,7 @@ async def un_tag(db: AsyncSession, transaction_id, by_user_id):
     return True
 ```
 
-> Note: `create_notification` currently commits internally. Inside these ops we want the caller (endpoint) to own the transaction boundary. In Step 3 also refactor `create_notification` to NOT commit (move the single `await db.commit()` to its existing callers), OR add a `commit: bool = True` param and pass `commit=False` here. Prefer the param to avoid touching every caller. Verify existing callers still pass.
+> Note: `create_notification` currently commits internally (and then `await db.refresh(notif)`). Inside these ops we want the caller (endpoint) to own the transaction boundary. In Step 3 add a `commit: bool = True` param to `create_notification` and pass `commit=False` here (avoids touching every caller). **When `commit=False`, skip both the `await db.commit()` and the `await db.refresh(notif)`** (refresh after only a flush is unnecessary and can error) — instead `await db.flush()` so the row gets its id. Verify existing callers (which keep `commit=True`) still pass.
 
 - [ ] **Step 4: Run to verify pass**
 
@@ -698,12 +698,49 @@ conds = [
 ]
 ```
 
-Apply the identical predicate swap in `get_my_transactions` (add the attribution outerjoin; swap the owner condition) — but do **not** add `not_(exclude_only_partner)` there (list views keep exclude-only rows visible for the owner). And in `budgets/v2_queries.py` personal-view queries, swap `(split_type=='personal') | (split_type is None)` for the same attribution-aware predicate.
+**Each of the three call sites needs a DIFFERENT predicate — do NOT reuse `owned_by_caller_clause` everywhere.** `owned_by_caller_clause` is correct ONLY for the exactly-one-owner *aggregates* (dashboard totals + category). It deliberately excludes the caller's own rows that are attributed away — which is right for totals but wrong for the visible list and for the personal-budget filter. Add these two named builders to `attribution.py` (Task 2 file) and use the right one per site:
+
+```python
+# backend/modules/transactions/attribution.py — append
+from sqlalchemy import and_, not_
+
+
+def list_visible_clause(caller_id: uuid.UUID):
+    """LIST views: the caller sees their OWN rows (even ones handed off — they
+    stay visible, labeled) PLUS rows handed off TO them. No exclusion.
+    Requires outerjoin(TransactionAttribution)."""
+    return or_(Transaction.user_id == caller_id, attributed_to_clause(caller_id))
+
+
+def personal_scope_clause(caller_id: uuid.UUID):
+    """PERSONAL-budget view: the caller's own personal/untagged rows that are
+    NOT attributed away, PLUS rows attributed to them. Excludes the caller's
+    own SHARED rows (those belong to the household view) and exclude-only
+    partner rows. Requires outerjoin(TransactionSplit) and
+    outerjoin(TransactionAttribution)."""
+    attributed_away = (TransactionAttribution.id.isnot(None)) & (
+        TransactionAttribution.status == "active"
+    )
+    own_personal = and_(
+        Transaction.user_id == caller_id,
+        or_(TransactionSplit.split_type == "personal", TransactionSplit.split_type.is_(None)),
+        not_(attributed_away),
+    )
+    return or_(own_personal, attributed_to_clause(caller_id))
+```
+
+Then wire per site (each must add `.outerjoin(TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id)`):
+
+- **`get_dashboard_summary`** (aggregate) — use `owned_by_caller_clause(user_id)` + `not_(exclude_only_partner)` as written above. ✅ (already correct)
+- **`get_my_transactions`** (list) — replace `Transaction.user_id == user_id` with `list_visible_clause(user_id)`. This keeps Rafael's handed-off charge visible (satisfies the Task 4 Step 1 assertion `any(t["id"] == txn.id for t in r_list)`) and shows Camila her attributed rows. Do NOT add the `exclude_only_partner` guard here.
+- **`budgets/v2_queries.py`** personal-view queries (~lines 232/239, 301/308, 396/403) — replace BOTH the `Transaction.user_id == user_id` clause AND the `(split_type=='personal') | (split_type.is_(None))` clause with the single `personal_scope_clause(user_id)`, and add the `TransactionAttribution` outerjoin to all three queries. Removing the standalone `user_id` clause is required — otherwise Camila's attributed rows (whose `Transaction.user_id` is Rafael's) are filtered out.
+
+- [ ] **Step 3b: Add a budgets-leak regression test** — assert the caller's own `shared` row does NOT appear in their personal budget after the swap (guards the `personal_scope_clause` against the "shared leaks into personal" failure). Put it in `tests/test_transaction_attribution.py` or the existing budgets test module if one exists.
 
 - [ ] **Step 4: Run to verify pass** (and no regressions)
 
 Run: `cd backend && uv run pytest tests/test_transaction_attribution.py tests/test_joint_account_split_default.py tests/test_merchant_review_approve_split_type.py -v`
-Expected: all PASS.
+Expected: all PASS. Also run any existing budgets test module (`ls tests | grep budget`) and confirm green.
 
 - [ ] **Step 5: Lint & commit**
 
@@ -725,7 +762,7 @@ Claude-Session: https://claude.ai/code/session_01KTzzogYq2HwKtDuvJttYFa"
 - Test: `backend/tests/test_transaction_attribution.py` (endpoint-level, via the app's auth dependency override used by other route tests — mirror `tests/test_bank_accounts_routes.py`)
 
 Endpoints:
-- `POST /transactions/{transaction_id}/attribute` body `{recipient_id?: uuid}` — caller must own the txn (or be an active member of its household); resolves recipient if omitted; on `AmbiguousRecipient` returns `409 {"detail":"ambiguous_recipient","candidates":[...]}`; on no recipient returns `422 {"detail":"no_partner_in_household"}`. Calls `hand_off`, commits.
+- `POST /transactions/{transaction_id}/attribute` body `{recipient_id?: uuid}` — caller must own the txn (or be an active member of its household); resolves recipient if omitted. **When `recipient_id` is passed explicitly, validate it is an active co-member of the txn's household** (spec §Data model requires both users be active members at write time) — return `422 {"detail":"recipient_not_in_household"}` otherwise; `resolve_recipient` already enforces this on the auto path. On `AmbiguousRecipient` returns `409 {"detail":"ambiguous_recipient","candidates":[...]}`; on no recipient returns `422 {"detail":"no_partner_in_household"}`. Calls `hand_off`, commits.
 - `POST /attributions/{attribution_id}/reject` — recipient only; calls `reject`; `404` if not found / not theirs.
 - `POST /attributions/{attribution_id}/acknowledge` — recipient only; sets `acknowledged_at`.
 - `DELETE /transactions/{transaction_id}/attribute` — sender only; calls `un_tag`.
