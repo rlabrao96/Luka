@@ -251,6 +251,59 @@ async def accept_invite(db: AsyncSession, token: str, user: User) -> HouseholdIn
     return existing
 
 
+async def leave_household(
+    db: AsyncSession, household_id: uuid.UUID, user_id: uuid.UUID
+) -> uuid.UUID:
+    """Let the caller leave a group household on their own.
+
+    If the caller is the SOLE active owner and other active members remain,
+    the oldest-joined remaining member is auto-promoted to owner first — so a
+    group is never left ownerless and a sole owner isn't trapped (previously
+    the only way out was deleting the account). Returns the caller's new
+    individual-household id.
+    """
+    me = (
+        await db.execute(
+            select(HouseholdMember).where(
+                HouseholdMember.household_id == household_id,
+                HouseholdMember.user_id == user_id,
+                HouseholdMember.left_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if me is None:
+        raise ValueError("No eres miembro activo de este grupo")
+
+    other_active = (
+        (
+            await db.execute(
+                select(HouseholdMember)
+                .where(
+                    HouseholdMember.household_id == household_id,
+                    HouseholdMember.left_at.is_(None),
+                    HouseholdMember.user_id != user_id,
+                )
+                .order_by(HouseholdMember.joined_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not other_active:
+        raise ValueError(
+            "Eres el único miembro del grupo. Elimina tu cuenta si deseas cerrarlo."
+        )
+
+    if me.role == "owner":
+        remaining_owners = sum(1 for m in other_active if m.role == "owner")
+        if remaining_owners == 0:
+            # Promote the oldest remaining member so the group keeps an owner.
+            other_active[0].role = "owner"
+            await db.flush()
+
+    return await remove_member(db, household_id, me.id)
+
+
 async def remove_member(
     db: AsyncSession, household_id: uuid.UUID, member_id: uuid.UUID
 ) -> uuid.UUID:

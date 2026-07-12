@@ -751,6 +751,12 @@ export const api = {
       { method: "DELETE" }
     ),
 
+  leaveHousehold: (householdId: string) =>
+    apiFetch<{ ok: boolean; new_household_id: string }>(
+      `/households/${householdId}/leave`,
+      { method: "POST" }
+    ),
+
   getBankAccounts: (householdId: string) =>
     apiFetch<BankAccountRow[]>(`/bank-accounts?household_id=${householdId}`),
 

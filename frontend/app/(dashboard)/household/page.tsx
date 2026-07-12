@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Settings, UserPlus } from "lucide-react";
@@ -19,6 +20,17 @@ import RatioSettingsModal from "./RatioSettingsModal";
 import InviteModal from "./InviteModal";
 import MemberCard from "./MemberCard";
 import { EquityReport } from "./EquityReport";
+import { useLeaveHousehold } from "@/app/lib/hooks/useHousehold";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { localeForCurrency } from "@/app/lib/locale";
 import { MonthSelector } from "../components/MonthSelector";
 import { PageHeader } from "../components/PageHeader";
@@ -38,6 +50,9 @@ export default function CompartidoPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>(nowKey);
   const [ratioModalOpen, setRatioModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const leaveHousehold = useLeaveHousehold();
+  const router = useRouter();
   const primaryCurrency = usePrimaryCurrency();
   const [currency, setCurrency] = useState("");
 
@@ -353,6 +368,51 @@ export default function CompartidoPage() {
       </Card>
 
       {currency && <EquityReport currency={currency} />}
+
+      {members.length > 1 && (
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() => setLeaveOpen(true)}
+            className="text-xs font-medium text-red-500 hover:text-red-600 hover:underline"
+          >
+            Salir del grupo
+          </button>
+        </div>
+      )}
+
+      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Salir del grupo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Volverás a tener una cuenta individual. Tus cuentas bancarias
+              vinculadas a este grupo se desactivarán.
+              {isOwner
+                ? " Como eres administrador, promoveremos al miembro más antiguo para que el grupo siga teniendo uno."
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={leaveHousehold.isPending}
+              onClick={() => {
+                leaveHousehold.mutate(undefined, {
+                  onSuccess: () => {
+                    setLeaveOpen(false);
+                    router.push("/");
+                  },
+                  onError: () => setLeaveOpen(false),
+                });
+              }}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              {leaveHousehold.isPending ? "Saliendo…" : "Salir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modals */}
       <RatioSettingsModal open={ratioModalOpen} onOpenChange={setRatioModalOpen}

@@ -101,6 +101,21 @@ export function useRemoveMember() {
   });
 }
 
+export function useLeaveHousehold() {
+  const householdId = useLukaStore((s) => s.householdId);
+  const setHousehold = useLukaStore((s) => s.setHousehold);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.leaveHousehold(householdId!),
+    onSuccess: (res) => {
+      // The caller now lives in a fresh individual household — repoint the
+      // store so every subsequent query targets the right household.
+      if (res.new_household_id) setHousehold(res.new_household_id);
+      queryClient.invalidateQueries();
+    },
+  });
+}
+
 export function useUpdateMemberRole() {
   const householdId = useLukaStore((s) => s.householdId);
   const queryClient = useQueryClient();

@@ -3,11 +3,12 @@ import uuid
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
+from core.rate_limit import limiter
 from core.security import get_current_user
 from modules.auth.models import User
 from core.security import invalidate_user_cache
@@ -183,7 +184,9 @@ async def invite_member(
 
 
 @invite_router.post("/invite/{token}")
+@limiter.limit("20/minute")
 async def accept_invite(
+    request: Request,
     token: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -294,6 +297,21 @@ async def remove_member_endpoint(
             raise HTTPException(400, "No puedes eliminar al último administrador")
     try:
         new_household_id = await service.remove_member(db, household_id, member_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "new_household_id": str(new_household_id)}
+
+
+@router.post("/{household_id}/leave")
+async def leave_household_endpoint(
+    household_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Leave a group household. A sole owner auto-promotes the oldest
+    remaining member before leaving, so no group is left ownerless."""
+    try:
+        new_household_id = await service.leave_household(db, household_id, current_user.id)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "new_household_id": str(new_household_id)}
