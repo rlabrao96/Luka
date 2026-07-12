@@ -10,6 +10,7 @@ import { BalanceCard } from "./components/BalanceCard";
 import { CashFlowCards } from "./components/CashFlowCards";
 import { BudgetBars } from "./components/BudgetBars";
 import { FirstRunCard } from "./components/FirstRunCard";
+import { DashboardTour } from "./components/DashboardTour";
 import { RecentTransactions } from "./components/RecentTransactions";
 import { EmptyState } from "./components/EmptyState";
 import { PageHeader } from "./components/PageHeader";
@@ -134,8 +135,11 @@ export default function DashboardPage() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
 
+  const hasData = accounts.length > 0 || myTxns.length > 0 || recentTxns.length > 0;
+
   return (
     <div className="space-y-6">
+      <DashboardTour enabled={!isViewingPast && hasData} />
       <PageHeader
         title={`${greeting}, ${firstName}`}
         subtitle="Aquí está tu resumen financiero"
@@ -178,7 +182,7 @@ export default function DashboardPage() {
       {!isViewingPast && (
         <BalanceCard accounts={accounts} currency={selectedCurrency} />
       )}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4" data-tour="cashflow">
         <CashFlowCards
           income={income}
           expenses={expenses}
@@ -188,7 +192,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Section 2: Spending Trend ── */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
+      <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5" data-tour="trend">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-sm font-semibold text-luka-dark">Tendencia de gastos</h2>
@@ -211,7 +215,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Section 3: Category Donut + Budget Bars ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-tour="categories">
         {/* Category donut */}
         <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
           <div className="mb-4">
