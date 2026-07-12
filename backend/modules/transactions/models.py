@@ -83,6 +83,33 @@ class TransactionSplit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TransactionAttribution(Base):
+    """A transaction on a shared card handed off to a household partner.
+
+    One row per transaction (unique). 'active' → counts for the recipient;
+    'rejected' → bounced back to the sender (row kept so a re-hand-off can
+    reactivate it). The row's presence is what distinguishes a handed-off
+    ``split_type='partner'`` transaction from an exclude-only one.
+    """
+
+    __tablename__ = "transaction_attributions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    attributed_to_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    attributed_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="active", server_default="active"
+    )  # active|rejected
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ProcessedWebhook(Base):
     __tablename__ = "processed_webhooks"
 
