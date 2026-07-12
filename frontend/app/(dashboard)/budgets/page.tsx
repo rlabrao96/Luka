@@ -115,8 +115,25 @@ function SectionFlowBody({
       </div>
     );
   }
+  const safeToday = Number(data.spendable.safe_to_spend_today ?? 0);
   return (
     <div className="min-h-[22rem]">
+      {safeToday > 0 && (
+        <div className="mb-3 flex items-baseline justify-between rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-luka-primary">
+              Hoy puedes gastar
+            </p>
+            <p className="text-2xl font-bold tabular-nums text-luka-dark">
+              {formatMoney(safeToday, currency)}
+            </p>
+          </div>
+          <p className="max-w-[45%] text-right text-[11px] leading-snug text-slate-500">
+            Disponible del mes ({formatMoney(Number(data.spendable.remaining), currency)})
+            repartido en los días que quedan.
+          </p>
+        </div>
+      )}
       <p className="text-xs text-slate-500 mb-2">
         Haz clic en cualquier categoría para ver las 5 transacciones más grandes.
       </p>

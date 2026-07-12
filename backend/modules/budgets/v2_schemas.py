@@ -41,6 +41,9 @@ class SpendableBlock(BaseModel):
     spent: Decimal
     remaining: Decimal
     pct_used: Decimal
+    # remaining ÷ days left in the month (whole minor units, floor) — the
+    # "hoy puedes gastar" number. 0 when remaining is 0.
+    safe_to_spend_today: Decimal = Decimal("0")
 
 
 class RiskCategory(BaseModel):

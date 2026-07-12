@@ -28,7 +28,7 @@ from __future__ import annotations
 import calendar
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1269,11 +1269,18 @@ async def get_budget_v2(
     pct_used = (mtd_spent / spendable_amount) if spendable_amount > _ZERO else _ZERO
     # Round pct_used to 3 decimal places for a sane API contract.
     pct_used_rounded = Decimal(str(round(float(pct_used), 3))) if pct_used else _ZERO
+    _, _, _days_in_month = _month_bounds_datetime(month)
+    _today_day = _today_day_in_month(month, _days_in_month)
+    _days_left = max(1, _days_in_month - _today_day + 1)
+    safe_today = (spendable_remaining / Decimal(_days_left)).quantize(
+        Decimal("1"), rounding=ROUND_FLOOR
+    )
     spendable_block = SpendableBlock(
         amount=spendable_amount,
         spent=mtd_spent,
         remaining=spendable_remaining,
         pct_used=pct_used_rounded,
+        safe_to_spend_today=safe_today,
     )
 
     # ---- risk categories -------------------------------------------------

@@ -1155,6 +1155,8 @@ export interface BudgetV2SpendableBlock {
   spent: number;
   remaining: number;
   pct_used: number;
+  // Stored minor units; 'hoy puedes gastar' = remaining / days left.
+  safe_to_spend_today: string | number;
 }
 
 export interface BudgetV2RiskCategory {
