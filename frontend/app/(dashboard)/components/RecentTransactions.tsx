@@ -84,6 +84,7 @@ function CategoryCell({ txn }: CategoryCellProps) {
     category: string | null;
     count: number;
     merchantName: string;
+    mode: "bulk" | "learned";
   } | null>(null);
   const queryClient = useQueryClient();
 
@@ -140,13 +141,12 @@ function CategoryCell({ txn }: CategoryCellProps) {
       // would benefit from the same category. Only prompt if there are any.
       try {
         const res = await api.getCategoryMatchingCount(txn.id, cat);
-        if (res.count > 0) {
-          setBulkPrompt({
-            category: cat,
-            count: res.count,
-            merchantName: res.raw_merchant_name,
-          });
-        }
+        setBulkPrompt({
+          category: cat,
+          count: res.count,
+          merchantName: res.raw_merchant_name,
+          mode: res.count > 0 ? "bulk" : "learned",
+        });
       } catch {
         // Non-fatal: the anchor update already succeeded.
       }
@@ -229,6 +229,7 @@ function CategoryCell({ txn }: CategoryCellProps) {
           category={bulkPrompt.category}
           merchantName={bulkPrompt.merchantName}
           matchingCount={bulkPrompt.count}
+          mode={bulkPrompt.mode}
           onClose={() => setBulkPrompt(null)}
         />
       )}

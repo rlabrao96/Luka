@@ -127,6 +127,7 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
     category: string | null;
     count: number;
     merchantName: string;
+    mode: "bulk" | "learned";
   } | null>(null);
   const queryClient = useQueryClient();
 
@@ -175,13 +176,12 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
       await api.updateTransactionCategory(txn.id, cat);
       try {
         const res = await api.getCategoryMatchingCount(txn.id, cat);
-        if (res.count > 0) {
-          setBulkPrompt({
-            category: cat,
-            count: res.count,
-            merchantName: res.raw_merchant_name,
-          });
-        }
+        setBulkPrompt({
+          category: cat,
+          count: res.count,
+          merchantName: res.raw_merchant_name,
+          mode: res.count > 0 ? "bulk" : "learned",
+        });
       } catch {
         // Anchor update succeeded — non-fatal.
       }
@@ -263,6 +263,7 @@ function PendingCategoryCell({ txn }: PendingCategoryCellProps) {
           category={bulkPrompt.category}
           merchantName={bulkPrompt.merchantName}
           matchingCount={bulkPrompt.count}
+          mode={bulkPrompt.mode}
           onClose={() => setBulkPrompt(null)}
         />
       )}
