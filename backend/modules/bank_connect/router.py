@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -28,6 +29,8 @@ from modules.bank_connect.service import (
 )
 from modules.households.models import BankAccount, HouseholdMember
 from modules.transactions.models import Transaction, TransactionSplit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/bank-connect", tags=["bank-connect"])
 
@@ -189,8 +192,21 @@ async def handle_connect_callback(
     when triggering the scrape — this endpoint creates real transactions and
     deletes matched email rows, so it must not be open to the internet.
     """
-    if not verify_callback_token(body.jobId, token):
+    # Strict when a token is PRESENT but wrong; grace path when absent.
+    # INCIDENT 2026-07-12: requiring the token unconditionally 401'd the
+    # scraper's queued callbacks (their URLs predate the token change — and
+    # the scraper may use a fixed configured webhook URL), causing an
+    # infinite retry storm and dropped bank syncs. Without a token the
+    # unguessable per-job UUID remains the auth factor (pre-H1 posture) and
+    # unknown job ids still 404 below. Flip to strict once Luka Connect
+    # confirms it echoes tokenized callback URLs (see NEXT-STEPS).
+    if token is not None and not verify_callback_token(body.jobId, token):
         raise HTTPException(status_code=401, detail="Invalid callback token")
+    if token is None:
+        logger.warning(
+            "connect callback WITHOUT token for job %s — grace path (legacy URL)",
+            body.jobId,
+        )
     try:
         job_uuid = uuid.UUID(body.jobId)
     except ValueError:
