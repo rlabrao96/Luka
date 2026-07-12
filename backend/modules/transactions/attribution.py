@@ -5,10 +5,14 @@ a household partner. See docs/superpowers/specs/2026-07-12-partner-card-charge-a
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.transactions.models import Transaction, TransactionAttribution
+from modules.households.models import HouseholdMember
+from modules.notifications.service import create_notification
+from modules.transactions.models import Transaction, TransactionAttribution, TransactionSplit
 
 
 def effective_owner_id(owner_user_id: uuid.UUID, attribution: TransactionAttribution | None):
@@ -39,3 +43,156 @@ def owned_by_caller_clause(caller_id: uuid.UUID):
     )
     own_kept = (Transaction.user_id == caller_id) & (~attributed_away)
     return or_(own_kept, attributed_to_clause(caller_id))
+
+
+class AmbiguousRecipient(Exception):
+    """More than one other active member — caller must choose."""
+
+    def __init__(self, candidate_ids: list[uuid.UUID]):
+        self.candidate_ids = candidate_ids
+        super().__init__("multiple candidate recipients")
+
+
+async def resolve_recipient(db, household_id, sender_id):
+    ids = (
+        (
+            await db.execute(
+                select(HouseholdMember.user_id).where(
+                    HouseholdMember.household_id == household_id,
+                    HouseholdMember.user_id != sender_id,
+                    HouseholdMember.left_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not ids:
+        return None
+    if len(ids) > 1:
+        raise AmbiguousRecipient(list(ids))
+    return ids[0]
+
+
+async def _set_split(db, transaction_id, split_type, decided_by):
+    split = (
+        await db.execute(
+            select(TransactionSplit).where(TransactionSplit.transaction_id == transaction_id)
+        )
+    ).scalar_one_or_none()
+    if split:
+        split.split_type = split_type
+        split.decided_by_user_id = decided_by
+        split.decided_at = datetime.now(timezone.utc)
+    else:
+        db.add(
+            TransactionSplit(
+                transaction_id=transaction_id,
+                split_type=split_type,
+                decided_by_user_id=decided_by,
+                decided_at=datetime.now(timezone.utc),
+            )
+        )
+
+
+async def hand_off(db: AsyncSession, txn, sender_id, recipient_id):
+    """Tag the txn as the recipient's (split=partner) + upsert attribution + notify."""
+    from modules.transactions.service import mark_user_edited
+
+    await _set_split(db, txn.id, "partner", sender_id)
+    mark_user_edited(txn, "split_type")
+
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one_or_none()
+    if attr is None:
+        attr = TransactionAttribution(
+            transaction_id=txn.id,
+            attributed_to_user_id=recipient_id,
+            attributed_by_user_id=sender_id,
+            status="active",
+        )
+        db.add(attr)
+    else:
+        attr.attributed_to_user_id = recipient_id
+        attr.attributed_by_user_id = sender_id
+        attr.status = "active"
+        attr.acknowledged_at = None
+    await db.flush()
+
+    await create_notification(
+        db,
+        user_id=recipient_id,
+        type="charge_attributed",
+        title=f"{txn.raw_merchant_name} — ¿es tuyo?",
+        payload={
+            "transaction_id": str(txn.id),
+            "attribution_id": str(attr.id),
+            "merchant": txn.raw_merchant_name,
+            "amount": txn.amount if isinstance(txn.amount, int) else str(txn.amount),
+            "currency": txn.currency,
+        },
+        commit=False,
+    )
+
+
+async def reject(db: AsyncSession, attribution_id, by_user_id):
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.id == attribution_id)
+        )
+    ).scalar_one_or_none()
+    if attr is None or attr.attributed_to_user_id != by_user_id:
+        return False
+    attr.status = "rejected"
+    attr.acknowledged_at = None
+    txn = (
+        await db.execute(select(Transaction).where(Transaction.id == attr.transaction_id))
+    ).scalar_one()
+    await _set_split(db, txn.id, "personal", by_user_id)
+    await db.flush()
+    await create_notification(
+        db,
+        user_id=attr.attributed_by_user_id,
+        type="attribution_rejected",
+        title=f"{txn.raw_merchant_name} vuelve a tus gastos",
+        payload={
+            "transaction_id": str(txn.id),
+            "merchant": txn.raw_merchant_name,
+            "amount": txn.amount if isinstance(txn.amount, int) else str(txn.amount),
+            "currency": txn.currency,
+        },
+        commit=False,
+    )
+    return True
+
+
+async def un_tag(db: AsyncSession, transaction_id, by_user_id):
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(
+                TransactionAttribution.transaction_id == transaction_id
+            )
+        )
+    ).scalar_one_or_none()
+    if attr is None or attr.attributed_by_user_id != by_user_id:
+        return False
+    recipient, was_ack = attr.attributed_to_user_id, attr.acknowledged_at is not None
+    await db.delete(attr)
+    await _set_split(db, transaction_id, "personal", by_user_id)
+    await db.flush()
+    if was_ack:
+        txn = (
+            await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+        ).scalar_one()
+        await create_notification(
+            db,
+            user_id=recipient,
+            type="attribution_removed",
+            title=f"{txn.raw_merchant_name} se quitó de tus gastos",
+            payload={"transaction_id": str(transaction_id)},
+            commit=False,
+        )
+    return True

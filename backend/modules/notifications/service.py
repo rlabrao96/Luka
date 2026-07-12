@@ -80,6 +80,7 @@ async def create_notification(
     type: str,
     title: str,
     payload: dict | None = None,
+    commit: bool = True,
 ) -> Notification:
     notif = Notification(
         user_id=user_id,
@@ -88,6 +89,9 @@ async def create_notification(
         payload=payload,
     )
     db.add(notif)
+    if not commit:
+        await db.flush()
+        return notif
     await db.commit()
     await db.refresh(notif)
     return notif

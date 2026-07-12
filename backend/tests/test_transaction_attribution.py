@@ -122,3 +122,57 @@ async def test_effective_owner_and_predicate(db):
         .all()
     )
     assert txn.id in rows
+
+
+async def test_hand_off_reject_and_re_handoff(db):
+    from modules.notifications.models import Notification
+    from modules.transactions.attribution import hand_off, reject, resolve_recipient
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+
+    assert await resolve_recipient(db, hh.id, rafael.id) == camila.id
+
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one()
+    assert attr.status == "active"
+    split = (
+        await db.execute(select(TransactionSplit).where(TransactionSplit.transaction_id == txn.id))
+    ).scalar_one()
+    assert split.split_type == "partner"
+    notif = (
+        await db.execute(select(Notification).where(Notification.type == "charge_attributed"))
+    ).scalar_one()
+    assert notif.user_id == camila.id
+
+    await reject(db, attr.id, by_user_id=camila.id)
+    await db.flush()
+    await db.refresh(attr)
+    await db.refresh(split)
+    assert attr.status == "rejected"
+    assert split.split_type == "personal"
+    assert (
+        await db.execute(select(Notification).where(Notification.type == "attribution_rejected"))
+    ).scalar_one().user_id == rafael.id
+
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+    rows = (
+        (
+            await db.execute(
+                select(TransactionAttribution).where(
+                    TransactionAttribution.transaction_id == txn.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1 and rows[0].status == "active"
