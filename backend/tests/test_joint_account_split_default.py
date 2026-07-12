@@ -37,12 +37,12 @@ from modules.transactions.models import Transaction, TransactionSplit
 # ---------------------------------------------------------------- helpers
 
 
-async def _seed_joint_household(db) -> tuple[User, Household, BankAccount]:
-    """Create a user + household + JOINT bank account, all flushed."""
+async def _seed_household(db, account_type: str) -> tuple[User, Household, BankAccount]:
+    """Create a user + household + bank account of the given type, all flushed."""
     user = User(
         id=uuid.uuid4(),
-        email=f"joint-{uuid.uuid4().hex[:8]}@luka.test",
-        full_name="Joint Test",
+        email=f"{account_type}-{uuid.uuid4().hex[:8]}@luka.test",
+        full_name=f"{account_type.title()} Test",
         email_provider="gmail",
         whatsapp_verified=False,
         preferred_currency="CLP",
@@ -50,7 +50,7 @@ async def _seed_joint_household(db) -> tuple[User, Household, BankAccount]:
     db.add(user)
     await db.flush()
 
-    household = Household(id=uuid.uuid4(), name="Joint HH", type="couple")
+    household = Household(id=uuid.uuid4(), name=f"{account_type.title()} HH", type="couple")
     db.add(household)
     await db.flush()
 
@@ -62,15 +62,20 @@ async def _seed_joint_household(db) -> tuple[User, Household, BankAccount]:
         household_id=household.id,
         user_id=user.id,
         bank_name="Bank Of America",
-        account_type="joint",  # <-- the case under test
+        account_type=account_type,  # <-- the case under test
         account_kind="checking_account",
-        account_name="Joint Checking",
+        account_name=f"{account_type.title()} Checking",
         currency="CLP",
         is_active=True,
     )
     db.add(account)
     await db.flush()
     return user, household, account
+
+
+async def _seed_joint_household(db) -> tuple[User, Household, BankAccount]:
+    """Create a user + household + JOINT bank account, all flushed."""
+    return await _seed_household(db, "joint")
 
 
 # ---------------------------------------------------------------- Plaid path
@@ -119,7 +124,7 @@ async def test_plaid_sync_joint_account_defaults_split_to_shared(db):
 
     assert split is not None, "Plaid path must create a default split row"
     assert split.split_type == "shared", (
-        "Joint account Plaid txn defaulted to " f"{split.split_type!r}; expected 'shared'."
+        f"Joint account Plaid txn defaulted to {split.split_type!r}; expected 'shared'."
     )
 
 
@@ -161,9 +166,9 @@ async def test_bank_connect_process_movements_joint_account_defaults_to_shared(d
     ba_map = {(account.account_name, "CLP"): account.id}
 
     created, enriched, skipped = await _process_movements(db, cred, [movement], ba_map)
-    assert (
-        created == 1
-    ), f"expected 1 created, got created={created} enriched={enriched} skipped={skipped}"
+    assert created == 1, (
+        f"expected 1 created, got created={created} enriched={enriched} skipped={skipped}"
+    )
     await db.flush()
 
     # Find the inserted txn (only one connect txn for this user in this test).
@@ -182,5 +187,91 @@ async def test_bank_connect_process_movements_joint_account_defaults_to_shared(d
 
     assert split is not None, "bank_connect path must create a default split row"
     assert split.split_type == "shared", (
-        "Joint account bank_connect txn defaulted to " f"{split.split_type!r}; expected 'shared'."
+        f"Joint account bank_connect txn defaulted to {split.split_type!r}; expected 'shared'."
     )
+
+
+# ---------------------------------------------------------------- partner path
+
+
+async def test_partner_account_defaults_split_to_partner(db):
+    """An additional / authorized-user card marked account_type='partner'
+    (the partner's own card) must default its new transactions to
+    split_type='partner' so they never count as the owner's spending."""
+    from modules.transactions.service import ensure_default_split
+
+    user, household, account = await _seed_household(db, "partner")
+
+    new_tx = Transaction(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        household_id=household.id,
+        bank_account_id=account.id,
+        raw_merchant_name="Sephora",
+        amount=Decimal("-40000"),
+        currency="CLP",
+        transaction_date=datetime.now(timezone.utc),
+        source="plaid",
+        source_type="plaid",
+        status="settled",
+        transaction_type="expense",
+    )
+    db.add(new_tx)
+    await db.flush()
+
+    await ensure_default_split(db, new_tx, default_split_type=_split_default_for("partner"))
+    await db.flush()
+
+    split = (
+        await db.execute(
+            select(TransactionSplit).where(TransactionSplit.transaction_id == new_tx.id)
+        )
+    ).scalar_one_or_none()
+
+    assert split is not None, "partner account must create a default split row"
+    assert split.split_type == "partner", (
+        f"Partner account txn defaulted to {split.split_type!r}; expected 'partner'."
+    )
+
+
+async def test_partner_spending_excluded_from_dashboard_summary(db):
+    """The owner's dashboard summary must exclude a partner-account expense —
+    her spending is not his money."""
+    from modules.transactions.service import ensure_default_split, get_dashboard_summary
+
+    user, household, account = await _seed_household(db, "partner")
+
+    txn = Transaction(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        household_id=household.id,
+        bank_account_id=account.id,
+        raw_merchant_name="Sephora",
+        amount=Decimal("-40000"),
+        currency="CLP",
+        transaction_date=datetime.now(timezone.utc),
+        source="plaid",
+        source_type="plaid",
+        status="settled",
+        transaction_type="expense",
+    )
+    db.add(txn)
+    await db.flush()
+    await ensure_default_split(db, txn, default_split_type=_split_default_for("partner"))
+    await db.flush()
+
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    summary = await get_dashboard_summary(db, user.id, month, "CLP")
+
+    assert summary["expenses"] == 0, (
+        f"partner-account expense leaked into owner's dashboard (expenses={summary['expenses']})"
+    )
+    assert summary["categories"] == [], (
+        "partner-account expense leaked into owner's category breakdown"
+    )
+
+
+def _split_default_for(account_type: str) -> str:
+    from modules.transactions.service import split_type_for_account
+
+    return split_type_for_account(account_type)

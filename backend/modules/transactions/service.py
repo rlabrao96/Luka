@@ -60,6 +60,24 @@ def mark_user_edited(txn: Transaction, *fields: str) -> None:
     txn.user_edited_fields = current
 
 
+def split_type_for_account(account_type: str | None) -> str:
+    """Map a bank account's type to the default split_type of its transactions.
+
+    - joint   -> shared   (both partners' money)
+    - partner -> partner  (an authorized-user / additional card that belongs to
+                           the partner; their spending, NOT the account owner's)
+    - else    -> personal
+    A 'partner' split is excluded from the owner's personal AND shared totals,
+    so an additional card marked 'partner' keeps its spending out of the
+    owner's dashboard, budgets, and category numbers.
+    """
+    if account_type == "joint":
+        return "shared"
+    if account_type == "partner":
+        return "partner"
+    return "personal"
+
+
 def authorized_txn_query(transaction_id, user_id):
     """Select a transaction the caller may EDIT.
 
@@ -112,7 +130,7 @@ async def ensure_default_split(
         account_type = await db.scalar(
             select(BankAccount.account_type).where(BankAccount.id == txn.bank_account_id)
         )
-        default_split_type = "shared" if account_type == "joint" else "personal"
+        default_split_type = split_type_for_account(account_type)
 
     # ON CONFLICT DO NOTHING: concurrent ingestion paths (webhook + Plaid sync)
     # can race the SELECT above; the unique index (migration 051) makes the
@@ -263,6 +281,12 @@ async def get_dashboard_summary(
         Transaction.reimbursement_group_id.is_(None),
         Transaction.transaction_date >= start,
         Transaction.transaction_date < end,
+        # Exclude a partner's spending (additional / authorized-user card
+        # marked account_type='partner') — it isn't the owner's money.
+        or_(
+            TransactionSplit.split_type.is_(None),
+            TransactionSplit.split_type != "partner",
+        ),
     ]
 
     totals = (
@@ -274,7 +298,10 @@ async def get_dashboard_summary(
                 func.coalesce(
                     func.sum(func.abs(Transaction.amount)).filter(Transaction.amount < 0), 0
                 ).label("expenses"),
-            ).where(*conds)
+            )
+            .select_from(Transaction)
+            .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .where(*conds)
         )
     ).one()
 
@@ -287,6 +314,8 @@ async def get_dashboard_summary(
             cat_expr,
             func.sum(func.abs(Transaction.amount)).label("amount"),
         )
+        .select_from(Transaction)
+        .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         .where(*conds, Transaction.amount < 0)
         .group_by(cat_expr)
         .order_by(func.sum(func.abs(Transaction.amount)).desc())

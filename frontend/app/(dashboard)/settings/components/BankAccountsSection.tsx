@@ -54,7 +54,11 @@ function BankIcon({ bank, size = 36 }: { bank: BankDef; size?: number }) {
    Label helpers
    ═══════════════════════════════════════════════════════════════════ */
 
-const ACCOUNT_TYPE_LABEL: Record<string, string> = { personal: "Personal", partner: "Personal", joint: "Hogar" };
+const ACCOUNT_TYPE_LABEL: Record<string, string> = {
+  personal: "Personal",
+  partner: "De mi pareja",
+  joint: "Hogar",
+};
 const ACCOUNT_TYPE_COLOR: Record<string, string> = {
   personal: "bg-blue-100 text-blue-700",
   partner: "bg-purple-100 text-purple-700",
@@ -335,7 +339,7 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
     finally { setToggling(false); }
   }
 
-  async function handleTypeChange(newType: "personal" | "joint") {
+  async function handleTypeChange(newType: "personal" | "partner" | "joint") {
     if (!householdId || saving || newType === account.account_type) return;
     setSaving(true);
     onUpdated(account.id, { account_type: newType });
@@ -343,6 +347,7 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
       await api.updateBankAccount(account.id, householdId, { account_type: newType });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     } catch { onUpdated(account.id, { account_type: account.account_type }); }
     finally { setSaving(false); }
   }
@@ -368,16 +373,20 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
         {isOwn ? (
           <select
             value={account.account_type}
-            onChange={(e) => handleTypeChange(e.target.value as "personal" | "joint")}
+            onChange={(e) => handleTypeChange(e.target.value as "personal" | "partner" | "joint")}
             disabled={saving}
+            title="De mi pareja: tarjeta adicional que usa y paga tu pareja. Sus gastos no cuentan como tuyos."
             className={`text-xs font-medium px-2 py-1 rounded-full border appearance-none cursor-pointer pr-6 disabled:opacity-50 ${
               account.account_type === "joint"
                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                : "bg-blue-50 text-blue-700 border-blue-200"
+                : account.account_type === "partner"
+                  ? "bg-purple-50 text-purple-700 border-purple-200"
+                  : "bg-blue-50 text-blue-700 border-blue-200"
             }`}
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}
           >
             <option value="personal">Personal</option>
+            <option value="partner">De mi pareja</option>
             <option value="joint">Compartida</option>
           </select>
         ) : (

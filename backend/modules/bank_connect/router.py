@@ -494,12 +494,17 @@ async def _process_movements(
             enriched += 1
         else:
             # No email match. ensure_default_split is a no-op for transfers and
-            # idempotent otherwise — single source of truth for the personal default.
-            from modules.transactions.service import ensure_default_split
+            # idempotent otherwise — single source of truth for the split default.
+            # joint→shared, partner→partner (partner's own card, kept out of the
+            # owner's totals), else personal.
+            from modules.transactions.service import ensure_default_split, split_type_for_account
 
-            is_joint = ba_id is not None and account_type_map.get(ba_id) == "joint"
             await ensure_default_split(
-                db, txn, default_split_type="shared" if is_joint else "personal"
+                db,
+                txn,
+                default_split_type=split_type_for_account(
+                    account_type_map.get(ba_id) if ba_id is not None else None
+                ),
             )
         created += 1
 

@@ -242,15 +242,17 @@ async def run_plaid_sync(
         session.add(new_tx)
         await session.flush()
 
-        # Default to a personal split so category-usage queries and partner edits
-        # behave consistently. apply_match_and_delete_emails may re-link an
-        # existing email-side split onto this txn — the helper is idempotent so
-        # the default is only used when no match attaches one.
-        from modules.transactions.service import ensure_default_split
+        # Default the split from the account type: joint→shared, partner→partner
+        # (an authorized-user / additional card that belongs to the partner, kept
+        # out of the owner's totals), else personal. apply_match_and_delete_emails
+        # may re-link an existing email-side split onto this txn — the helper is
+        # idempotent so the default is only used when no match attaches one.
+        from modules.transactions.service import ensure_default_split, split_type_for_account
 
-        is_joint = account_type_map.get(bank_account_id) == "joint"
         await ensure_default_split(
-            session, new_tx, default_split_type="shared" if is_joint else "personal"
+            session,
+            new_tx,
+            default_split_type=split_type_for_account(account_type_map.get(bank_account_id)),
         )
 
         if match:
