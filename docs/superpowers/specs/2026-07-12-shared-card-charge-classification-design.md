@@ -122,14 +122,14 @@ A daily cron (fast worker, alongside the existing daily notification crons) send
 - Dual visibility: both members see a pending shared-card charge in "Por clasificar"; neither sees the owner's non-shared-card transactions there.
 - Daily notification: fires once per member/day when pending>0; not when 0.
 - Non-`shared_card` accounts: unchanged (no pending, no four-way).
-- Ingestion: a charge on a shared_card via Plaid AND via Connect both land `pending_classification`.
+- Ingestion: a charge on a shared_card via Plaid AND via Connect both land `needs_classification=true`.
 
 ## Build order (for the plan)
 
-1. Card flag + pending status + totals-exclusion + ingestion sets pending. (Foundation; charges start pending and count for nobody.)
+1. Card flag (`shared_card`) + `needs_classification` column + totals-exclusion (use `IS NOT TRUE` for NULL-safety) + ingestion sets the flag. (Foundation; charges start pending and count for nobody.)
 2. "Por clasificar" dual-visibility surface (endpoint + UI list).
 3. Four-way sort action (endpoint + the split/attribution writes + first-wins guard) + split-editor wiring on shared-card rows.
-4. Effective-payer in settlement/contribution + personal-view exclusion of attributed-shared rows.
+4. Effective-payer in `households/service.py` settlement/breakdown + `personal_scope_clause` exclusion of attributed-shared rows.
 5. Daily notification cron + card.
 6. Edge cases (leave-household, re-sync, change-away-from-shared_card) + full verification.
 
