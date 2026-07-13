@@ -343,6 +343,19 @@ export interface BankAccountRow {
   error_code: string | null;
 }
 
+export interface AccountPersonBalance {
+  user_id: string;
+  name: string;
+  gastos: number;
+  pagos: number;
+  saldo: number;
+}
+
+export interface AccountPersonBalancesResponse {
+  balances: AccountPersonBalance[];
+  currency: string;
+}
+
 export interface RecentCharge {
   date: string;
   amount: number;
@@ -790,6 +803,11 @@ export const api = {
 
   getBankAccounts: (householdId: string) =>
     apiFetch<BankAccountRow[]>(`/bank-accounts?household_id=${householdId}`),
+
+  getAccountPersonBalances: (accountId: string, householdId: string) =>
+    apiFetch<AccountPersonBalancesResponse>(
+      `/bank-accounts/${accountId}/person-balances?household_id=${householdId}`,
+    ),
 
   deleteBankAccount: (accountId: string, householdId: string) =>
     apiFetch<{ ok: boolean }>(`/bank-accounts/${accountId}?household_id=${householdId}`, {

@@ -650,3 +650,60 @@ async def test_account_person_balances(db):
     assert camila_balance["gastos"] == 1200
     assert camila_balance["pagos"] == 1000
     assert camila_balance["saldo"] == 200
+
+
+async def test_person_balances_endpoint_owner_ok(app, db, http_client):
+    """The card owner gets the per-person breakdown + the account currency."""
+    from modules.transactions.attribution import hand_off
+
+    rafael, camila, hh = await _couple(db)
+    bank_account = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=rafael.id,
+        bank_name="Amex",
+        account_type="partner",
+        currency="USD",
+    )
+    db.add(bank_account)
+    await db.flush()
+
+    await _card_txn(db, rafael, hh, bank_account, -3000)
+    camila_charge = await _card_txn(db, rafael, hh, bank_account, -1200)
+    db.add(TransactionSplit(transaction_id=camila_charge.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, camila_charge, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+
+    _override(app, rafael, db)
+    r = await http_client.get(
+        f"/bank-accounts/{bank_account.id}/person-balances?household_id={hh.id}"
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["currency"] == "USD"
+    by_user = {b["user_id"]: b for b in body["balances"]}
+    assert by_user[str(rafael.id)]["saldo"] == 3000
+    assert by_user[str(camila.id)]["saldo"] == 1200
+
+
+async def test_person_balances_endpoint_non_owner_forbidden(app, db, http_client):
+    """A household member who does NOT own the card must get 403 — the breakdown
+    exposes the owner's own charges/payments and is owner-only."""
+    rafael, camila, hh = await _couple(db)
+    bank_account = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=rafael.id,
+        bank_name="Amex",
+        account_type="partner",
+        currency="USD",
+    )
+    db.add(bank_account)
+    await db.flush()
+
+    _override(app, camila, db)
+    r = await http_client.get(
+        f"/bank-accounts/{bank_account.id}/person-balances?household_id={hh.id}"
+    )
+    assert r.status_code == 403

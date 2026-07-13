@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow, type BankConnection, type PlaidItem } from "@/app/lib/api";
+import { formatStoredAmount } from "@/app/lib/currency";
 import { useBankConnections, useSyncStatus } from "@/app/lib/hooks/useSyncStatus";
 import { findBankLogo } from "@/app/lib/bank-logos";
 import { BankLogo } from "../../components/BankLogo";
@@ -696,12 +697,27 @@ function PartnerCardHint({ accounts }: { accounts: BankAccountRow[] }) {
 function DetectedAccountCard({
   account,
   householdId,
+  currentUserId,
 }: {
   account: BankAccountRow;
   householdId: string;
+  currentUserId: string | null;
 }) {
   const queryClient = useQueryClient();
   const [updating, setUpdating] = useState(false);
+
+  // Per-person balance breakdown, shown only on a shared card the current user
+  // OWNS (the endpoint is owner-only). Gate the fetch on it being an owned
+  // credit card so we don't fire a 403 for a partner-owned joint card.
+  const isOwn = account.user_id === currentUserId;
+  const { data: personBalances } = useQuery({
+    queryKey: ["account-person-balances", account.id],
+    queryFn: () => api.getAccountPersonBalances(account.id, householdId),
+    enabled: isOwn && account.account_kind === "credit_card",
+    staleTime: 60_000,
+  });
+  const balances = personBalances?.balances ?? [];
+  const showBalances = balances.length >= 2;
 
   const kindLabels: Record<string, string> = {
     checking_account: "Cta. Corriente",
@@ -853,6 +869,33 @@ function DetectedAccountCard({
           {hideButton}
         </div>
       </div>
+
+      {/* Per-person balance breakdown (shared card, owner-only) */}
+      {showBalances && (
+        <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+          <div className="flex items-center justify-end gap-3 text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+            <span className="w-16 text-right">Gastos</span>
+            <span className="w-16 text-right">Pagos</span>
+            <span className="w-16 text-right">Saldo</span>
+          </div>
+          {balances.map((b) => (
+            <div key={b.user_id} className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-medium text-slate-600 truncate">{b.name}</span>
+              <div className="flex items-center gap-3 tabular-nums shrink-0">
+                <span className="w-16 text-right text-[11px] text-slate-500">
+                  {formatStoredAmount(b.gastos, personBalances!.currency)}
+                </span>
+                <span className="w-16 text-right text-[11px] text-slate-500">
+                  {formatStoredAmount(b.pagos, personBalances!.currency)}
+                </span>
+                <span className="w-16 text-right text-[11px] font-bold text-slate-700">
+                  {formatStoredAmount(b.saldo, personBalances!.currency)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -972,6 +1015,7 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
                       key={a.id}
                       account={a}
                       householdId={householdId!}
+                      currentUserId={userId}
                     />
                   ))}
                 </div>

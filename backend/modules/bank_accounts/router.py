@@ -10,6 +10,7 @@ from core.security import get_current_user
 from modules.auth.models import User
 from modules.households.models import BankAccount
 from modules.households.auth import require_membership
+from modules.transactions.attribution import account_person_balances
 from modules.transactions.models import Transaction, TransactionSplit
 
 router = APIRouter(prefix="/bank-accounts", tags=["bank-accounts"])
@@ -180,6 +181,37 @@ async def update_bank_account(
         "id": str(account.id),
         "account_type": account.account_type,
         "is_active": account.is_active,
+    }
+
+
+@router.get("/{account_id}/person-balances")
+async def get_account_person_balances(
+    account_id: uuid.UUID,
+    household_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-person gastos/pagos/saldo breakdown for a shared card.
+
+    Owner-only: the breakdown exposes the owner's OWN charges/payments on the
+    card, so a partner must never see it. A non-owner household member gets 403.
+    """
+    await require_membership(household_id, current_user.id, db)
+
+    account = await db.scalar(
+        select(BankAccount).where(
+            BankAccount.id == account_id,
+            BankAccount.household_id == household_id,
+        )
+    )
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the account owner can see the breakdown")
+
+    return {
+        "balances": await account_person_balances(db, account_id),
+        "currency": account.currency,
     }
 
 
