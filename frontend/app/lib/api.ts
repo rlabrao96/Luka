@@ -225,6 +225,23 @@ export interface PendingTransactions {
   unmatched_email: Transaction[];
 }
 
+// Shared-card charges pending four-way sort (Task 9 — por-clasificar).
+export interface PorClasificarRow {
+  id: string;
+  raw_merchant_name: string;
+  display_name: string | null;
+  amount: string | number;
+  currency: string;
+  transaction_date: string | null;
+  bank_account_id: string | null;
+}
+
+export type ClassifyOutcome =
+  | "owner_personal"
+  | "partner_personal"
+  | "owner_shared"
+  | "partner_shared";
+
 export interface HouseholdSummaryRow {
   user_id: string;
   full_name: string;
@@ -589,6 +606,17 @@ export const api = {
 
   getPendingTransactions: () =>
     apiFetch<PendingTransactions>("/transactions/pending"),
+
+  getPorClasificar: (householdId: string) =>
+    apiFetch<PorClasificarRow[]>(
+      `/transactions/por-clasificar?household_id=${householdId}`,
+    ),
+
+  classifyTransaction: (id: string, outcome: ClassifyOutcome, partnerId?: string) =>
+    apiFetch<{ ok: boolean }>(`/transactions/${id}/classify`, {
+      method: "POST",
+      body: JSON.stringify({ outcome, partner_id: partnerId ?? null }),
+    }),
 
   deleteTransaction: (id: string) =>
     apiFetch<void>(`/transactions/${id}`, { method: "DELETE" }),
