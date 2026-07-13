@@ -14,7 +14,6 @@ import { DashboardTour } from "./components/DashboardTour";
 import { RecentTransactions } from "./components/RecentTransactions";
 import { EmptyState } from "./components/EmptyState";
 import { PageHeader } from "./components/PageHeader";
-import { PorClasificar } from "./components/PorClasificar";
 
 import { useDashboardSummary, useMyTransactions, useMonthlySpending, usePendingTransactions } from "@/app/lib/hooks/useTransactions";
 import { useBudgetStatus, useCategoryBudgets } from "@/app/lib/hooks/useBudget";
@@ -178,9 +177,6 @@ export default function DashboardPage() {
             emailConnected={Boolean(me.email_provider)}
           />
         )}
-
-      {/* Pending shared-card charges — self-hides when there's nothing to sort. */}
-      {!isViewingPast && householdId && <PorClasificar />}
 
       {/* ── Section 1: Balance + Cash Flow ── */}
       {!isViewingPast && (

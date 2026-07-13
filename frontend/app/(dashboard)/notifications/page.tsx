@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { formatStoredAmount } from "@/app/lib/currency";
 import { resolveAppLocale } from "@/app/lib/locale";
 import { PageHeader } from "../components/PageHeader";
+import { PorClasificar } from "../components/PorClasificar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -251,6 +252,10 @@ export default function NotificationsPage() {
         }
       />
 
+      {/* Shared-card charges awaiting the four-way sort. Self-hides when empty.
+          Lives here (the notification center) rather than the dashboard. */}
+      <PorClasificar />
+
       {notifications.length === 0 ? (
         <div className="text-center py-12 text-luka-muted">
           No tienes notificaciones
@@ -344,20 +349,6 @@ export default function NotificationsPage() {
                       className="px-4 py-2 border border-slate-200 text-xs text-slate-500 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       Es mía
-                    </button>
-                  </div>
-                )}
-
-                {!isDone && notif.type === "pending_card_classification" && (
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={() => {
-                        updateNotification.mutate({ id: notif.id, status: "read" });
-                        router.push("/");
-                      }}
-                      className="px-4 py-2 bg-luka-primary text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Ver
                     </button>
                   </div>
                 )}
