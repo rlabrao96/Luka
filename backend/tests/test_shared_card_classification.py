@@ -695,3 +695,68 @@ async def test_needs_classification_shared_charge_has_no_settlement_effect(db):
     await db.flush()
 
     assert (await get_settlement(db, hh.id, currency="USD"))["transfers"] == []
+
+
+# ---------------------------------------------------------------- personal_scope_clause guard
+
+
+async def test_partner_shared_excluded_from_partners_personal_scope_but_visible_in_list(db):
+    """A partner_shared charge (split=shared + active attribution to Camila) is
+    Camila's settlement credit (Task 6) but NOT her personal expense — it's shared.
+    She must still see it in her transaction list."""
+    from modules.transactions.attribution import list_visible_clause, personal_scope_clause
+    from modules.transactions.classification import classify
+    from modules.transactions.models import TransactionAttribution, TransactionSplit
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await classify(db, txn.id, rafael.id, "partner_shared", partner_id=camila.id)
+    await db.flush()
+
+    def _joined(clause):
+        return (
+            select(Transaction.id)
+            .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .outerjoin(
+                TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id
+            )
+            .where(clause)
+        )
+
+    personal_ids = (await db.execute(_joined(personal_scope_clause(camila.id)))).scalars().all()
+    assert txn.id not in personal_ids
+
+    list_ids = (await db.execute(_joined(list_visible_clause(camila.id)))).scalars().all()
+    assert txn.id in list_ids
+
+
+async def test_partner_personal_still_in_partners_personal_scope(db):
+    """A partner_personal charge (split=partner + active attribution) is Camila's
+    own personal expense — unaffected by the shared-only guard."""
+    from modules.transactions.attribution import personal_scope_clause
+    from modules.transactions.classification import classify
+    from modules.transactions.models import TransactionAttribution, TransactionSplit
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await classify(db, txn.id, rafael.id, "partner_personal", partner_id=camila.id)
+    await db.flush()
+
+    personal_ids = (
+        (
+            await db.execute(
+                select(Transaction.id)
+                .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+                .outerjoin(
+                    TransactionAttribution,
+                    TransactionAttribution.transaction_id == Transaction.id,
+                )
+                .where(personal_scope_clause(camila.id))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert txn.id in personal_ids

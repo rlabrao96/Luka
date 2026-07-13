@@ -65,15 +65,21 @@ def list_visible_clause(caller_id: uuid.UUID):
 
 def personal_scope_clause(caller_id: uuid.UUID):
     """PERSONAL-budget view: the caller's own personal/untagged rows that are
-    NOT attributed away, PLUS rows attributed to them. Excludes the caller's own
-    SHARED rows and exclude-only partner rows. Requires outerjoin(TransactionSplit)
-    AND outerjoin(TransactionAttribution)."""
+    NOT attributed away, PLUS rows attributed to them — EXCEPT a partner-shared
+    charge (split_type='shared') attributed to them, which is a shared expense
+    they paid, not a personal one (it still counts toward settlement, just not
+    the personal budget). Excludes the caller's own SHARED rows and exclude-only
+    partner rows. Requires outerjoin(TransactionSplit) AND
+    outerjoin(TransactionAttribution)."""
     own_personal = and_(
         Transaction.user_id == caller_id,
         or_(TransactionSplit.split_type == "personal", TransactionSplit.split_type.is_(None)),
         not_(_attributed_away()),
     )
-    return or_(own_personal, attributed_to_clause(caller_id))
+    attributed_not_shared = and_(
+        attributed_to_clause(caller_id), TransactionSplit.split_type != "shared"
+    )
+    return or_(own_personal, attributed_not_shared)
 
 
 async def account_person_balances(db: AsyncSession, bank_account_id) -> list[dict]:
