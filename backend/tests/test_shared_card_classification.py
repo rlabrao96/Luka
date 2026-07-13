@@ -358,3 +358,206 @@ async def test_por_clasificar_endpoint_non_member_forbidden(app, db, http_client
 
     r = await http_client.get(f"/transactions/por-clasificar?household_id={hh.id}")
     assert r.status_code == 403
+
+
+# ---------------------------------------------------------------- classify op (four-way)
+
+
+async def _split(db, txn_id):
+    from modules.transactions.models import TransactionSplit
+
+    return (
+        await db.execute(select(TransactionSplit).where(TransactionSplit.transaction_id == txn_id))
+    ).scalar_one_or_none()
+
+
+async def _attr(db, txn_id):
+    from modules.transactions.models import TransactionAttribution
+
+    return (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn_id)
+        )
+    ).scalar_one_or_none()
+
+
+async def test_classify_owner_personal(db):
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+
+    await classify(db, txn.id, rafael.id, "owner_personal")
+    await db.flush()
+
+    assert (await _split(db, txn.id)).split_type == "personal"
+    assert await _attr(db, txn.id) is None
+    assert (await db.get(Transaction, txn.id)).needs_classification is False
+
+
+async def test_classify_owner_shared(db):
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+
+    await classify(db, txn.id, rafael.id, "owner_shared")
+    await db.flush()
+
+    assert (await _split(db, txn.id)).split_type == "shared"
+    assert await _attr(db, txn.id) is None
+    assert (await db.get(Transaction, txn.id)).needs_classification is False
+
+
+async def test_classify_partner_personal(db):
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+
+    await classify(db, txn.id, rafael.id, "partner_personal", partner_id=camila.id)
+    await db.flush()
+
+    assert (await _split(db, txn.id)).split_type == "partner"
+    attr = await _attr(db, txn.id)
+    assert attr is not None
+    assert attr.status == "active"
+    assert attr.attributed_to_user_id == camila.id
+    assert attr.attributed_by_user_id == rafael.id
+    assert (await db.get(Transaction, txn.id)).needs_classification is False
+
+
+async def test_classify_partner_shared(db):
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+
+    await classify(db, txn.id, rafael.id, "partner_shared", partner_id=camila.id)
+    await db.flush()
+
+    assert (await _split(db, txn.id)).split_type == "shared"
+    attr = await _attr(db, txn.id)
+    assert attr is not None
+    assert attr.status == "active"
+    assert attr.attributed_to_user_id == camila.id
+    assert (await db.get(Transaction, txn.id)).needs_classification is False
+
+
+async def test_classify_partner_resolves_implicit_recipient(db):
+    """partner_* with partner_id omitted resolves the sole other member."""
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+
+    await classify(db, txn.id, rafael.id, "partner_personal")  # no partner_id
+    await db.flush()
+
+    attr = await _attr(db, txn.id)
+    assert attr is not None
+    assert attr.attributed_to_user_id == camila.id
+
+
+async def test_classify_first_wins_raises_already_classified(db):
+    import pytest
+
+    from modules.transactions.classification import AlreadyClassified, classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=False)  # already sorted
+
+    with pytest.raises(AlreadyClassified):
+        await classify(db, txn.id, rafael.id, "owner_personal")
+
+
+async def test_classify_partner_to_owner_deletes_attribution(db):
+    """Re-sorting a partner charge as owner_personal must drop the attribution."""
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+
+    await classify(db, txn.id, rafael.id, "partner_personal", partner_id=camila.id)
+    await db.flush()
+    assert await _attr(db, txn.id) is not None
+
+    # Re-pend and re-sort as owner_personal (simulates a fresh decision path).
+    txn.needs_classification = True
+    await db.flush()
+    await classify(db, txn.id, rafael.id, "owner_personal")
+    await db.flush()
+
+    assert await _attr(db, txn.id) is None
+    assert (await _split(db, txn.id)).split_type == "personal"
+
+
+# ---------------------------------------------------------------- POST /transactions/{id}/classify
+
+
+async def test_classify_endpoint_member_ok(app, db, http_client):
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+    _override(app, camila, db)
+
+    r = await http_client.post(
+        f"/transactions/{txn.id}/classify", json={"outcome": "partner_personal"}
+    )
+    assert r.status_code == 200, r.text
+
+    attr = await _attr(db, txn.id)
+    assert attr is not None
+    # Camila is the actor here; the sole other member (rafael) is the recipient.
+    assert attr.attributed_to_user_id == rafael.id
+    assert attr.attributed_by_user_id == camila.id
+    assert (await _split(db, txn.id)).split_type == "partner"
+    assert (await db.get(Transaction, txn.id)).needs_classification is False
+
+
+async def test_classify_endpoint_second_call_conflicts(app, db, http_client):
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+    _override(app, rafael, db)
+
+    r1 = await http_client.post(
+        f"/transactions/{txn.id}/classify", json={"outcome": "owner_shared"}
+    )
+    assert r1.status_code == 200, r1.text
+
+    r2 = await http_client.post(
+        f"/transactions/{txn.id}/classify", json={"outcome": "owner_personal"}
+    )
+    assert r2.status_code == 409
+    assert r2.json()["detail"] == "already_classified"
+
+
+async def test_classify_endpoint_non_member_forbidden(app, db, http_client):
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, needs_classification=True)
+
+    outsider = User(
+        id=uuid.uuid4(),
+        email=f"outsider-{uuid.uuid4().hex[:8]}@luka.test",
+        full_name="Outsider",
+        email_provider="gmail",
+        whatsapp_verified=False,
+        preferred_currency="USD",
+    )
+    db.add(outsider)
+    await db.flush()
+    _override(app, outsider, db)
+
+    r = await http_client.post(
+        f"/transactions/{txn.id}/classify", json={"outcome": "owner_personal"}
+    )
+    assert r.status_code == 403

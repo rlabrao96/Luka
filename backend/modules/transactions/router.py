@@ -15,6 +15,7 @@ from modules.transactions.schemas import (
     CategoryMatchingCountResponse,
     SplitTypeUpdateRequest,
     AttributeRequest,
+    ClassifyRequest,
     MerchantNameUpdateRequest,
     MerchantNameUpdateResponse,
     MerchantNameMatchingCountResponse,
@@ -247,6 +248,46 @@ async def por_clasificar(
         }
         for t in rows
     ]
+
+
+@router.post("/{transaction_id}/classify")
+async def classify_transaction(
+    transaction_id: uuid.UUID,
+    body: ClassifyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Four-way sort of a pending shared-card charge. Any active household
+    member may sort; first-to-sort wins (a second call → 409)."""
+    from sqlalchemy import select
+
+    from modules.transactions.attribution import AmbiguousRecipient
+    from modules.transactions.classification import (
+        AlreadyClassified,
+        NotPending,
+        classify,
+    )
+    from modules.transactions.models import Transaction
+
+    txn = (
+        await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    ).scalar_one_or_none()
+    if txn is None or txn.household_id is None:
+        raise HTTPException(404, "Transaction not found")
+    await require_membership(txn.household_id, current_user.id, db)
+
+    try:
+        await classify(db, transaction_id, current_user.id, body.outcome, body.partner_id)
+    except AlreadyClassified:
+        raise HTTPException(409, "already_classified")
+    except NotPending:
+        raise HTTPException(404, "Transaction not found")
+    except AmbiguousRecipient:
+        raise HTTPException(409, "ambiguous_recipient")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    await db.commit()
+    return {"ok": True}
 
 
 @router.get(

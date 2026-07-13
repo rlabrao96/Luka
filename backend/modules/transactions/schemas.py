@@ -72,6 +72,15 @@ class AttributeRequest(BaseModel):
     recipient_id: uuid.UUID | None = None
 
 
+class ClassifyRequest(BaseModel):
+    """POST body for four-way sorting a pending shared-card charge. When
+    ``partner_id`` is omitted for a partner-* outcome the server resolves the
+    sole other active member (409 if ambiguous)."""
+
+    outcome: Literal["owner_personal", "partner_personal", "owner_shared", "partner_shared"]
+    partner_id: uuid.UUID | None = None
+
+
 class MerchantNameUpdateRequest(BaseModel):
     """PATCH body for renaming a transaction's vendor.
 
