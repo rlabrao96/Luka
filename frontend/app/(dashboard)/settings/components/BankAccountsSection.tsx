@@ -61,11 +61,13 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   personal: "Personal",
   partner: "De mi pareja",
   joint: "Hogar",
+  shared_card: "Tarjeta compartida",
 };
 const ACCOUNT_TYPE_COLOR: Record<string, string> = {
   personal: "bg-blue-100 text-blue-700",
   partner: "bg-purple-100 text-purple-700",
   joint: "bg-emerald-100 text-emerald-700",
+  shared_card: "bg-amber-100 text-amber-700",
 };
 const ACCOUNT_KIND_LABEL: Record<string, string> = {
   checking_account: "Cuenta Corriente",
@@ -342,7 +344,7 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
     finally { setToggling(false); }
   }
 
-  async function handleTypeChange(newType: "personal" | "partner" | "joint") {
+  async function handleTypeChange(newType: "personal" | "partner" | "joint" | "shared_card") {
     if (!householdId || saving || newType === account.account_type) return;
     setSaving(true);
     onUpdated(account.id, { account_type: newType });
@@ -351,6 +353,7 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["por-clasificar"] });
     } catch { onUpdated(account.id, { account_type: account.account_type }); }
     finally { setSaving(false); }
   }
@@ -376,7 +379,9 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
         {isOwn ? (
           <select
             value={account.account_type}
-            onChange={(e) => handleTypeChange(e.target.value as "personal" | "partner" | "joint")}
+            onChange={(e) =>
+              handleTypeChange(e.target.value as "personal" | "partner" | "joint" | "shared_card")
+            }
             disabled={saving}
             title="De mi pareja: tarjeta adicional que usa y paga tu pareja. Sus gastos no cuentan como tuyos."
             className={`text-xs font-medium px-2 py-1 rounded-full border appearance-none cursor-pointer pr-6 disabled:opacity-50 ${
@@ -384,13 +389,21 @@ function AccountCard({ account, currentUserId, householdId, onDeleted, onUpdated
                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                 : account.account_type === "partner"
                   ? "bg-purple-50 text-purple-700 border-purple-200"
-                  : "bg-blue-50 text-blue-700 border-blue-200"
+                  : account.account_type === "shared_card"
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-blue-50 text-blue-700 border-blue-200"
             }`}
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}
           >
             <option value="personal">Personal</option>
             <option value="partner">De mi pareja</option>
             <option value="joint">Compartida</option>
+            <option
+              value="shared_card"
+              title="Tarjeta que usan ambos; cada cargo se clasifica (mío / de mi pareja / compartido)."
+            >
+              Tarjeta compartida
+            </option>
           </select>
         ) : (
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
@@ -741,7 +754,7 @@ function DetectedAccountCard({
     }
   }
 
-  async function changeType(newType: "personal" | "partner" | "joint") {
+  async function changeType(newType: "personal" | "partner" | "joint" | "shared_card") {
     if (newType === account.account_type) return;
     setUpdating(true);
     try {
@@ -751,6 +764,7 @@ function DetectedAccountCard({
       await queryClient.invalidateQueries({ queryKey: ["bank-accounts", householdId] });
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      await queryClient.invalidateQueries({ queryKey: ["por-clasificar"] });
     } finally {
       setUpdating(false);
     }
@@ -771,7 +785,9 @@ function DetectedAccountCard({
   const typeSelect = (
     <select
       value={account.account_type}
-      onChange={(e) => changeType(e.target.value as "personal" | "partner" | "joint")}
+      onChange={(e) =>
+        changeType(e.target.value as "personal" | "partner" | "joint" | "shared_card")
+      }
       disabled={updating}
       title="De mi pareja: tarjeta adicional que usa y paga tu pareja. Sus gastos no cuentan como tuyos."
       className={`text-[10px] font-medium px-2 py-1 rounded-md border cursor-pointer appearance-none pr-5 disabled:opacity-50 transition-colors ${
@@ -779,13 +795,21 @@ function DetectedAccountCard({
           ? "bg-emerald-50 border-emerald-200 text-emerald-700"
           : account.account_type === "partner"
             ? "bg-purple-50 border-purple-200 text-purple-700"
-            : "bg-blue-50 border-blue-200 text-blue-700"
+            : account.account_type === "shared_card"
+              ? "bg-amber-50 border-amber-200 text-amber-700"
+              : "bg-blue-50 border-blue-200 text-blue-700"
       }`}
       style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 4px center" }}
     >
       <option value="personal">Personal</option>
       <option value="partner">De mi pareja</option>
       <option value="joint">Compartida</option>
+      <option
+        value="shared_card"
+        title="Tarjeta que usan ambos; cada cargo se clasifica (mío / de mi pareja / compartido)."
+      >
+        Tarjeta compartida
+      </option>
     </select>
   );
 

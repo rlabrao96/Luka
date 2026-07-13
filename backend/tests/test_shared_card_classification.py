@@ -760,3 +760,92 @@ async def test_partner_personal_still_in_partners_personal_scope(db):
         .all()
     )
     assert txn.id in personal_ids
+
+
+# ---------------------------------------------------------------- Task 8: PATCH backfill
+
+
+async def test_switch_to_shared_card_pends_existing_non_transfer_transactions(db):
+    """Switching an account's type TO shared_card must pend its existing
+    non-transfer transactions for classification (no split backfill), and
+    must leave a transfer row alone."""
+    from modules.bank_accounts.router import UpdateBankAccountBody, update_bank_account
+    from modules.transactions.models import TransactionSplit
+
+    rafael, camila, hh = await _couple(db)
+    acct = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=rafael.id,
+        bank_name="American Express",
+        account_type="personal",
+        account_kind="credit_card",
+        account_name="Platinum",
+        currency="USD",
+        is_active=True,
+    )
+    db.add(acct)
+    await db.flush()
+
+    expense = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=False)
+    transfer = await _charge(
+        db, rafael, hh, acct, amount="-150.00", needs_classification=False, ttype="transfer"
+    )
+    # Pre-existing personal split — should be untouched (no split backfill on this path).
+    db.add(TransactionSplit(transaction_id=expense.id, split_type="personal"))
+    await db.flush()
+
+    await update_bank_account(
+        account_id=acct.id,
+        household_id=hh.id,
+        body=UpdateBankAccountBody(account_type="shared_card"),
+        current_user=rafael,
+        db=db,
+    )
+    await db.flush()
+
+    assert (await db.get(Transaction, expense.id)).needs_classification is True
+    assert (await db.get(Transaction, transfer.id)).needs_classification is False
+    assert (await db.get(BankAccount, acct.id)).account_type == "shared_card"
+    # Split untouched by the shared_card path.
+    split = (
+        await db.execute(
+            select(TransactionSplit).where(TransactionSplit.transaction_id == expense.id)
+        )
+    ).scalar_one()
+    assert split.split_type == "personal"
+
+
+async def test_switch_away_from_shared_card_clears_needs_classification_and_backfills_split(db):
+    """Switching an account's type AWAY from shared_card must clear
+    needs_classification on its transactions and run the normal split
+    backfill for the new type."""
+    from modules.bank_accounts.router import UpdateBankAccountBody, update_bank_account
+    from modules.transactions.models import TransactionSplit
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    pending = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    transfer = await _charge(
+        db, rafael, hh, acct, amount="-150.00", needs_classification=False, ttype="transfer"
+    )
+
+    await update_bank_account(
+        account_id=acct.id,
+        household_id=hh.id,
+        body=UpdateBankAccountBody(account_type="personal"),
+        current_user=rafael,
+        db=db,
+    )
+    await db.flush()
+
+    assert (await db.get(Transaction, pending.id)).needs_classification is False
+    assert (await db.get(Transaction, transfer.id)).needs_classification is False
+    assert (await db.get(BankAccount, acct.id)).account_type == "personal"
+
+    split = (
+        await db.execute(
+            select(TransactionSplit).where(TransactionSplit.transaction_id == pending.id)
+        )
+    ).scalar_one()
+    assert split.split_type == "personal"

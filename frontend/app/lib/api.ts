@@ -321,14 +321,14 @@ export interface CategoryBudgetResponse {
 }
 
 export interface UpdateBankAccountPayload {
-  account_type?: "personal" | "partner" | "joint";
+  account_type?: "personal" | "partner" | "joint" | "shared_card";
   is_active?: boolean;
 }
 
 export interface BankAccountRow {
   id: string;
   bank_name: string;
-  account_type: "personal" | "partner" | "joint";
+  account_type: "personal" | "partner" | "joint" | "shared_card";
   account_kind: string | null;
   account_name: string | null;
   account_number: string | null;

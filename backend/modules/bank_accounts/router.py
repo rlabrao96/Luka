@@ -146,33 +146,60 @@ async def update_bank_account(
         raise HTTPException(status_code=403, detail="Only the account owner can edit it")
 
     if body.account_type is not None and body.account_type != account.account_type:
+        to_shared = body.account_type == "shared_card"
+        from_shared = account.account_type == "shared_card"
         account.account_type = body.account_type
-        # Backfill existing splits to match the new account type
-        new_split_type = "shared" if body.account_type == "joint" else body.account_type
-        txn_ids_result = await db.execute(
-            select(Transaction.id).where(Transaction.bank_account_id == account_id)
-        )
-        txn_ids = [row[0] for row in txn_ids_result.fetchall()]
-        if txn_ids:
-            # Update existing splits
+
+        if to_shared:
+            # Entering shared_card: pend existing non-transfer history so the
+            # owner can sort it (mío / de mi pareja / compartido). No split
+            # backfill — classification decides the split, not the account type.
             await db.execute(
-                update(TransactionSplit)
-                .where(TransactionSplit.transaction_id.in_(txn_ids))
-                .values(split_type=new_split_type)
-            )
-            # Create splits for transactions that don't have one yet
-            existing_result = await db.execute(
-                select(TransactionSplit.transaction_id).where(
-                    TransactionSplit.transaction_id.in_(txn_ids)
+                update(Transaction)
+                .where(
+                    Transaction.bank_account_id == account_id,
+                    Transaction.transaction_type != "transfer",
                 )
+                .values(needs_classification=True)
             )
-            existing_ids = {row[0] for row in existing_result.fetchall()}
-            missing_ids = [tid for tid in txn_ids if tid not in existing_ids]
-            if missing_ids:
+        else:
+            if from_shared:
+                # Leaving shared_card: unsorted rows just stop being pending.
+                # They keep whatever split they already have (acceptable).
                 await db.execute(
-                    insert(TransactionSplit),
-                    [{"transaction_id": tid, "split_type": new_split_type} for tid in missing_ids],
+                    update(Transaction)
+                    .where(Transaction.bank_account_id == account_id)
+                    .values(needs_classification=False)
                 )
+            # Backfill existing splits to match the new account type
+            new_split_type = "shared" if body.account_type == "joint" else body.account_type
+            txn_ids_result = await db.execute(
+                select(Transaction.id).where(Transaction.bank_account_id == account_id)
+            )
+            txn_ids = [row[0] for row in txn_ids_result.fetchall()]
+            if txn_ids:
+                # Update existing splits
+                await db.execute(
+                    update(TransactionSplit)
+                    .where(TransactionSplit.transaction_id.in_(txn_ids))
+                    .values(split_type=new_split_type)
+                )
+                # Create splits for transactions that don't have one yet
+                existing_result = await db.execute(
+                    select(TransactionSplit.transaction_id).where(
+                        TransactionSplit.transaction_id.in_(txn_ids)
+                    )
+                )
+                existing_ids = {row[0] for row in existing_result.fetchall()}
+                missing_ids = [tid for tid in txn_ids if tid not in existing_ids]
+                if missing_ids:
+                    await db.execute(
+                        insert(TransactionSplit),
+                        [
+                            {"transaction_id": tid, "split_type": new_split_type}
+                            for tid in missing_ids
+                        ],
+                    )
     if body.is_active is not None:
         account.is_active = body.is_active
 
