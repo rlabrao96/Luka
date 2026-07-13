@@ -290,9 +290,7 @@ async def leave_household(
         .all()
     )
     if not other_active:
-        raise ValueError(
-            "Eres el único miembro del grupo. Elimina tu cuenta si deseas cerrarlo."
-        )
+        raise ValueError("Eres el único miembro del grupo. Elimina tu cuenta si deseas cerrarlo.")
 
     if me.role == "owner":
         remaining_owners = sum(1 for m in other_active if m.role == "owner")
@@ -330,6 +328,12 @@ async def remove_member(
         ),
         {"uid": str(removed_user_id), "hid": str(household_id)},
     )
+
+    # Undo any charge attributions involving the leaving member (as recipient
+    # or sender) — nothing should stay "owned" by a non-member.
+    from modules.transactions.attribution import revert_attributions_for_member
+
+    await revert_attributions_for_member(db, removed_user_id)
 
     # Create a new individual household for the removed user
     user_result = await db.execute(

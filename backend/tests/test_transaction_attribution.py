@@ -472,6 +472,62 @@ async def test_attribute_endpoint_ambiguous(app, db, http_client):
     assert set(body["candidates"]) == {str(camila.id), str(third.id)}
 
 
+async def test_recipient_leaving_reverts_attribution(db):
+    """When the recipient (Camila) leaves the household, her active attribution
+    must revert: status → rejected, and the transaction's split goes back to
+    personal — nothing stays "owned" by a non-member."""
+    from modules.households.service import leave_household
+    from modules.transactions.attribution import hand_off
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+
+    await leave_household(db, hh.id, camila.id)
+
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one()
+    split = (
+        await db.execute(select(TransactionSplit).where(TransactionSplit.transaction_id == txn.id))
+    ).scalar_one()
+    assert attr.status == "rejected"
+    assert split.split_type == "personal"
+
+
+async def test_sender_leaving_reverts_attribution(db):
+    """When the sender/owner (Rafael) leaves the household, the attribution he
+    created on Camila must also revert — nothing stays attributed BY a
+    non-member either."""
+    from modules.households.service import leave_household
+    from modules.transactions.attribution import hand_off
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+
+    await leave_household(db, hh.id, rafael.id)
+
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one()
+    split = (
+        await db.execute(select(TransactionSplit).where(TransactionSplit.transaction_id == txn.id))
+    ).scalar_one()
+    assert attr.status == "rejected"
+    assert split.split_type == "personal"
+
+
 async def test_attribute_endpoint_non_owner_forbidden(app, db, http_client):
     """Only the transaction's owner may hand it off. A member who does NOT own
     the charge must not be able to attribute it (would mutate the owner's row

@@ -225,6 +225,32 @@ async def acknowledge(db: AsyncSession, attribution_id, by_user_id):
     return attr
 
 
+async def revert_attributions_for_member(db: AsyncSession, user_id):
+    """Undo every active attribution involving a leaving member (as recipient
+    OR sender): mark it rejected and revert the transaction's split to personal,
+    so nothing stays attributed to/from a non-member."""
+    attrs = (
+        (
+            await db.execute(
+                select(TransactionAttribution).where(
+                    TransactionAttribution.status == "active",
+                    or_(
+                        TransactionAttribution.attributed_to_user_id == user_id,
+                        TransactionAttribution.attributed_by_user_id == user_id,
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for attr in attrs:
+        attr.status = "rejected"
+        attr.acknowledged_at = None
+        await _set_split(db, attr.transaction_id, "personal", user_id)
+    await db.flush()
+
+
 async def un_tag(db: AsyncSession, transaction_id, by_user_id):
     attr = (
         await db.execute(
