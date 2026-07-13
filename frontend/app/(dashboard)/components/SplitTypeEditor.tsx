@@ -60,10 +60,16 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
             await api.updateTransactionSplitType(txn.id, "partner");
             invalidate(false);
           } else if (err instanceof ApiError && err.message === "ambiguous_recipient") {
-            // Multiple candidates: a member-picker is out of scope for v1 and
-            // couples never reach this. Leave the value unchanged and log.
-            console.warn("Attribution ambiguous — recipient picker not implemented", err);
+            // >1 other active member — we can't auto-pick the recipient. A
+            // member-picker is gated to group (non-couple) households; until
+            // then, tell the user instead of silently reverting. Couples never
+            // reach this branch (exactly one other member).
             setLocalSplit(previous);
+            if (typeof window !== "undefined") {
+              window.alert(
+                "No pudimos asignar el cargo automáticamente porque tu hogar tiene más de un miembro. Esta función estará disponible para grupos próximamente."
+              );
+            }
           } else {
             throw err;
           }
@@ -83,7 +89,13 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
         invalidate(false);
       }
     } catch {
+      // Optimistic best-guess revert, THEN refetch server truth. The switch-away
+      // path makes two non-atomic calls (un-attribute, then set 'shared'); if the
+      // second fails the backend is already 'personal' while `previous` is
+      // 'partner', so trusting the optimistic revert alone would leave a stale
+      // chip until the next natural refetch. Invalidating self-corrects the row.
       setLocalSplit(previous);
+      invalidate(true);
     } finally {
       setSaving(false);
     }
