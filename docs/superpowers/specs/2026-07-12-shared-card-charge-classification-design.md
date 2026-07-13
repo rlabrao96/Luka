@@ -45,38 +45,51 @@ A **daily notification** nudges each partner about pending charges awaiting sort
 
 `bank_accounts.account_type` gains a value **`shared_card`** (alongside `personal` / `partner` / `joint`). Set in Settings → Cuentas Bancarias by the account owner. Only `shared_card` accounts trigger the pending + four-way workflow.
 
-### 2. Pending state
+### 2. Pending state — a DEDICATED signal, NOT the `status` column
 
-New charges landing on a `shared_card` account are created with **`status = 'pending_classification'`** (a new status value). This status is added to the single totals-exclusion rule in `modules/transactions/totals.py`, so a pending charge counts for **nobody** — not the owner's or partner's dashboard, not any budget, not category breakdowns, not settlement — until it is sorted. It remains a single `transactions` row (no duplication); the classification writes onto that row + an attribution row.
+`transactions.status` already encodes the **bank posting state** (`pending`/`settled`/`orphan`) and is overwritten unconditionally on every Plaid sync (`plaid/sync.py:308`: `tx.status = "pending" if plaid_tx.pending else "settled"`), independent of `user_edited_fields`. Overloading a `pending_classification` value onto it would (a) conflict with a charge that is simultaneously bank-pending, and (b) get silently clobbered to `settled` on the next sync — marking an unsorted charge as classified. These two dimensions are orthogonal.
 
-Ingestion sites that must set `pending_classification` when the target account is `shared_card`: Plaid sync (`modules/plaid/sync.py`), Luka Connect (`modules/bank_connect/router.py`), email pipeline, and any manual/WhatsApp path. Centralize the "is this a shared_card? → pending" decision so all creation sites agree.
+Therefore classification-pending is a **new dedicated boolean column `transactions.needs_classification`** (default `false`):
 
-Transfers (CC payments) on a `shared_card` are NOT pending — a bill payment is a transfer and already excluded from totals; it needs no who-paid sort.
+- Set `true` at ingestion for a **non-transfer** charge whose target account is `shared_card`. (Transfers / CC bill payments are never pending — already excluded from totals, no who-paid sort needed.)
+- Added to the single totals-exclusion rule in `modules/transactions/totals.py`, so a `needs_classification=true` charge counts for **nobody** — not either partner's dashboard, not any budget, not category breakdowns, not settlement — until sorted.
+- **Survives re-sync** precisely because it is NOT the `status` column: Plaid/Connect syncs update `status` (bank state) but never touch `needs_classification`, so a bank pending→settled transition proceeds normally while the classification flag persists until a human sorts it.
+- Sorting the charge sets `needs_classification=false` (and writes the split/attribution). It remains a single `transactions` row — no duplication.
+- Also exclude `needs_classification=true` from `attribution.account_person_balances` (the per-person card balance view, which currently filters only `status notin (pending, orphan)`), so unsorted charges don't leak there.
+
+Centralize the "is this account `shared_card` and this a non-transfer? → needs_classification=true" decision so all creation sites (Plaid `modules/plaid/sync.py`, Luka Connect `modules/bank_connect/router.py`, email pipeline, manual/WhatsApp) agree.
 
 ### 3. Shared review surface (both accounts)
 
-Pending `shared_card` charges are visible to **both active members** of the account's household, regardless of `Transaction.user_id`. A new **"Por clasificar"** list (endpoint + UI) returns pending charges on the caller's household's `shared_card` accounts. This is the one place the transaction becomes cross-member visible; it is scoped strictly to pending shared-card rows (a partner never gains visibility into the owner's other transactions).
+Charges with `needs_classification=true` on the household's `shared_card` accounts are visible to **both active members**, regardless of `Transaction.user_id`. A new **"Por clasificar"** list (endpoint + UI) returns them. This is the one place the transaction becomes cross-member visible; it is scoped strictly to `needs_classification=true` shared-card rows (a partner never gains visibility into the owner's other transactions).
 
 ### 4. Four-way sort action
 
 A single classify endpoint, callable by either active member, takes a `transaction_id` + one of the four outcomes and writes:
 
-- **owner-personal:** `split_type='personal'`, no attribution. `status → settled`.
-- **partner-personal:** `split_type='partner'` + attribution `attributed_to = partner`, `attributed_by = actor`. `status → settled`. (Identical to the shipped "De mi pareja" result — the partner's personal expense.)
-- **owner-shared:** `split_type='shared'`, no attribution. `status → settled`.
-- **partner-shared:** `split_type='shared'` + attribution `attributed_to = partner` (recording the **payer**), `attributed_by = actor`. `status → settled`.
+- **owner-personal:** `split_type='personal'`, no attribution. `needs_classification → false`.
+- **partner-personal:** `split_type='partner'` + attribution `attributed_to = partner`, `attributed_by = actor`. `needs_classification → false`. (Identical to the shipped "De mi pareja" result — the partner's personal expense.)
+- **owner-shared:** `split_type='shared'`, no attribution. `needs_classification → false`.
+- **partner-shared:** `split_type='shared'` + attribution `attributed_to = partner` (recording the **payer**), `attributed_by = actor`. `needs_classification → false`.
 
-The attribution row's meaning is disambiguated by the row's `split_type`: with `split_type='partner'` it means "partner's personal expense" (→ effective **owner**); with `split_type='shared'` it means "partner paid this shared expense" (→ effective **payer**). No new column is required — `attributed_to_user_id` + `split_type` encode all four outcomes.
+The attribution row's meaning is disambiguated by the row's `split_type`: with `split_type='partner'` it means "partner's personal expense" (→ effective **owner** = partner); with `split_type='shared'` it means "partner paid this shared expense" (→ effective **payer** = partner). No new column beyond `needs_classification` — `attributed_to_user_id` + `split_type` encode all four outcomes.
 
-**First-to-sort wins (optimistic concurrency):** the classify endpoint only acts on a row still in `pending_classification`. If it has already been sorted (status advanced), it returns `409 already_classified` with the actor who sorted it; the UI removes the row from the queue and shows "ya lo clasificó {name}". Mirrors the Trips optimistic-concurrency pattern.
+**First-to-sort wins (optimistic concurrency):** the classify endpoint only acts on a row still `needs_classification=true`. If it was already sorted (flag now false), it returns `409 already_classified` with the actor who sorted it; the UI removes the row and shows "ya lo clasificó {name}". Mirrors the Trips optimistic-concurrency pattern.
 
 Either partner may also **re-open / re-sort** a mistakenly-sorted charge (a "volver a clasificar" affordance) — out of v1 scope unless trivial; note as a follow-up.
 
-### 5. Effective-payer in settlement/contribution
+### 5. Effective-payer in settlement — and the precise predicate guard
 
-Today `contribution_service` credits a shared expense's payment to `Transaction.user_id`. Add an **effective-payer** expression — for a `shared` row, payer = `attributed_to_user_id` when an active attribution exists, else `Transaction.user_id` — mirroring the `effective_owner` helper built for personal rows. Apply it in the household contribution/settlement/breakdown queries so a **partner-shared** charge credits the partner, not the account owner.
+**Where the payer is credited:** NOT `contribution_service.py` (that only handles income). The shared-expense payer crediting lives in **`modules/households/service.py`** — the raw-SQL settlement / per-person / category-breakdown blocks (~lines 462, 539, 656, 735, 809) that `JOIN users u ON u.id = t.user_id`, `GROUP BY t.user_id`, `FILTER (WHERE ts.split_type='shared')`. Each must become `LEFT JOIN transaction_attributions a ON a.transaction_id = t.id AND a.status='active'` and group/credit by **`COALESCE(a.attributed_to_user_id, t.user_id)`** for shared rows. So a **partner-shared** charge credits the partner; an **owner-shared** charge credits the owner.
 
-**Personal rows** are already routed correctly by the shipped exactly-one-owner predicates (attributed → partner's personal; else owner's), with no settlement effect. The one adjustment: the **personal-view predicates must not swallow attributed-SHARED rows** — `attributed_to_clause` (used in personal totals/list/budget) must additionally require the row is NOT `split_type='shared'`, so a partner-shared charge counts in the shared pot (via effective-payer) and NOT as the partner's personal expense. This is the key interaction to get right and test.
+**Single helper:** add **`effective_payer_id(owner_user_id, attribution)`** (Python) alongside `effective_owner_id` in `modules/transactions/attribution.py`, and a matching SQL `COALESCE(...)` expression used by every `service.py` shared-paid query so they cannot drift.
+
+**The precise predicate guard (reviewer-critical).** A partner-shared charge must count in the shared pot (via effective-payer), NOT as the partner's *personal* expense — but the paying partner must still SEE it. `attributed_to_clause` is reused in three predicates; the guard goes on exactly one:
+- **`personal_scope_clause` (personal budget) — ADD the guard:** include an attributed row only when it is NOT `split_type='shared'`. Otherwise a partner-shared charge would wrongly appear in the partner's personal budget.
+- **`list_visible_clause` (the partner's transaction list) — NO guard:** the partner who *paid* must still see the charge in their list (labeled shared). Keep including attributed rows.
+- **`owned_by_caller_clause` (dashboard totals) — NO guard:** a partner-shared charge appears in the *payer's* dashboard cash-flow (consistent with how a member's own shared expense already shows), and is excluded from the *owner's* dashboard because it is attributed away. Exactly-one dashboard, no double-count; settlement handles the shared split separately.
+
+**Personal rows** remain routed by the shipped exactly-one-owner predicates (attributed → partner's personal; else owner's), with no settlement effect. This §5 interaction is the highest-correctness-risk part of the feature — every case gets a test (see Testing).
 
 ### 6. Daily notification
 
@@ -95,7 +108,7 @@ A daily cron (fast worker, alongside the existing daily notification crons) send
 - **Transfers / CC bill payments** on a shared_card: never pending; excluded from totals as today.
 - **Refund / reversal** of a pending charge: if a pending charge is later removed/refunded by the bank, drop it from the queue (no classification needed).
 - **Member leaves the household:** pending shared-card rows and any partner attributions revert per the shipped leave-household hook (`revert_attributions_for_member`) — extend it to also resolve pending rows to owner-personal.
-- **Re-sync / dedup:** the `pending_classification` status must survive re-sync; a user-sorted row must not be re-pended (respect `user_edited_fields` / the settled status).
+- **Re-sync / dedup:** `needs_classification` survives re-sync by construction (syncs touch `status`, never this flag); a sorted row (`needs_classification=false`) is never re-pended. The `split_type`/attribution written by a sort are protected via the existing `mark_user_edited(txn, "split_type")` path.
 - **Exactly-one-owner still holds:** a sorted charge counts for exactly one person (personal) or the shared pot with one payer (shared); a pending charge counts for nobody. No double-count, no silent drop after sort.
 - **Concurrency:** two members sorting the same row — first wins (status guard); second gets 409.
 
@@ -122,6 +135,6 @@ A daily cron (fast worker, alongside the existing daily notification crons) send
 
 ## Touch points (reference)
 
-- Backend: `modules/households/models.py` (account_type value), `modules/transactions/models.py` (status), `modules/transactions/totals.py` (exclude pending), `modules/transactions/attribution.py` (effective_payer, classify ops), `modules/transactions/service.py` + `modules/budgets/v2_queries.py` (personal-view attributed-shared exclusion), `modules/households/contribution_service.py` (effective-payer), `modules/plaid/sync.py` + `modules/bank_connect/router.py` (pending on ingest), a new classify + "por clasificar" router, a daily-notification job, a new Alembic migration.
+- Backend: `modules/households/models.py` (`shared_card` account_type value), `modules/transactions/models.py` (new `needs_classification` column), `modules/transactions/totals.py` (exclude `needs_classification`), `modules/transactions/attribution.py` (`effective_payer_id` helper + SQL expr, classify ops, first-wins guard, `account_person_balances` exclusion), `modules/budgets/v2_queries.py` (`personal_scope_clause` attributed-shared guard — NOT the other predicates), **`modules/households/service.py`** (the ~5 raw-SQL shared-payer blocks → `LEFT JOIN transaction_attributions` + `COALESCE(attributed_to, t.user_id)`), `modules/plaid/sync.py` + `modules/bank_connect/router.py` (set `needs_classification` on ingest for shared_card), a new classify + "por clasificar" router, a daily-notification cron job (fast worker), a new Alembic migration (column + account_type). The `bank_accounts` PATCH endpoint accepts `shared_card`.
 - Frontend: bank-account type selector (`shared_card` option), a "Por clasificar" review surface, the four-way sort control on shared-card rows, notification rendering for `pending_card_classification`, `app/lib/api.ts` types.
 </content>
