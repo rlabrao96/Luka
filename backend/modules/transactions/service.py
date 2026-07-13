@@ -177,6 +177,7 @@ async def get_my_transactions(
         select(
             Transaction,
             TransactionSplit,
+            TransactionAttribution,
             BankAccount.bank_name,
             BankAccount.account_kind,
             CanonicalMerchant.display_name.label("display_name"),
@@ -193,16 +194,27 @@ async def get_my_transactions(
         q = q.limit(limit)
     result = await db.execute(q)
     rows = result.all()
-    return [
-        {
-            **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
-            "split_type": split.split_type if split else None,
-            "bank_name": bank_name or txn.source_bank_name,
-            "account_kind": account_kind,
-            "display_name": display_name,
-        }
-        for txn, split, bank_name, account_kind, display_name in rows
-    ]
+    out = []
+    for txn, split, attr, bank_name, account_kind, display_name in rows:
+        # Caller's relationship to any ACTIVE attribution on this row.
+        # attributed_to_me → caller is the RECIPIENT (row lives on someone else's
+        # card; read-only for the caller). attributed_by_me → caller is the SENDER
+        # who handed it off (still editable → can un-tag). Rejected rows convey no
+        # relationship (the hand-off bounced back to the sender).
+        active = attr is not None and attr.status == "active"
+        out.append(
+            {
+                **{k: v for k, v in vars(txn).items() if not k.startswith("_")},
+                "split_type": split.split_type if split else None,
+                "bank_name": bank_name or txn.source_bank_name,
+                "account_kind": account_kind,
+                "display_name": display_name,
+                "attributed_to_me": active and attr.attributed_to_user_id == user_id,
+                "attributed_by_me": active and attr.attributed_by_user_id == user_id,
+                "attribution_id": str(attr.id) if active else None,
+            }
+        )
+    return out
 
 
 async def search_transactions(

@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { api, type Transaction } from "@/app/lib/api";
+import { api, ApiError, type Transaction } from "@/app/lib/api";
 
 const SPLIT_OPTIONS = [
   { value: "personal", label: "Personal", className: "bg-blue-50 text-blue-600" },
@@ -13,6 +13,8 @@ const SPLIT_OPTIONS = [
   // authorized-user Amex): drops it out of your totals without hiding yours.
   { value: "partner", label: "De mi pareja", className: "bg-purple-50 text-purple-600" },
 ];
+
+const PARTNER_CLASS = "bg-purple-50 text-purple-600";
 
 interface SplitTypeEditorProps {
   txn: Transaction;
@@ -31,20 +33,78 @@ export function SplitTypeEditor({ txn, isMobile }: SplitTypeEditorProps) {
 
   const current = SPLIT_OPTIONS.find((o) => o.value === localSplit) ?? SPLIT_OPTIONS[0];
 
+  function invalidate(withNotifications: boolean) {
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    if (withNotifications) {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  }
+
   async function handleSelect(value: string) {
     setOpen(false);
     if (value === localSplit) return;
+    const previous = txn.split_type ?? "personal";
     setSaving(true);
     setLocalSplit(value);
     try {
-      await api.updateTransactionSplitType(txn.id, value);
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      if (value === "partner") {
+        // Owner tags a partner charge → hand it off (server auto-resolves the
+        // couple partner). Fall back to a plain exclude-only "partner" split
+        // when there's no partner to hand off to (single-user household).
+        try {
+          await api.attributeTransaction(txn.id);
+          invalidate(true);
+        } catch (err) {
+          if (err instanceof ApiError && err.message === "no_partner_in_household") {
+            await api.updateTransactionSplitType(txn.id, "partner");
+            invalidate(false);
+          } else if (err instanceof ApiError && err.message === "ambiguous_recipient") {
+            // Multiple candidates: a member-picker is out of scope for v1 and
+            // couples never reach this. Leave the value unchanged and log.
+            console.warn("Attribution ambiguous — recipient picker not implemented", err);
+            setLocalSplit(previous);
+          } else {
+            throw err;
+          }
+        }
+      } else if (txn.attributed_by_me) {
+        // Sender switches a handed-off charge away from partner: remove the
+        // attribution first (notifies the recipient if acknowledged). Un-tagging
+        // reverts the split to personal, so only "shared" needs a follow-up set.
+        await api.unattributeTransaction(txn.id);
+        if (value === "shared") {
+          await api.updateTransactionSplitType(txn.id, "shared");
+        }
+        invalidate(true);
+      } else {
+        // Plain personal↔shared (or leaving an exclude-only partner split).
+        await api.updateTransactionSplitType(txn.id, value);
+        invalidate(false);
+      }
     } catch {
-      setLocalSplit(txn.split_type ?? "personal");
+      setLocalSplit(previous);
     } finally {
       setSaving(false);
     }
+  }
+
+  // Recipient view: the charge lives on the partner's card and was handed off
+  // to the caller. It's read-only here — confirm/reject happens from the
+  // notification, not this control.
+  if (txn.attributed_to_me) {
+    return (
+      <span
+        title="Cargo de la tarjeta compartida de tu pareja"
+        className={cn(
+          "inline-block text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 text-center cursor-default",
+          PARTNER_CLASS,
+          isMobile ? "w-[80px]" : "w-[90px]"
+        )}
+      >
+        De mi pareja
+      </span>
+    );
   }
 
   if (isMobile) {

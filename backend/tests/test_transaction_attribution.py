@@ -553,3 +553,33 @@ async def test_attribute_endpoint_non_owner_forbidden(app, db, http_client):
         f"/transactions/{txn.id}/attribute", json={"recipient_id": str(camila.id)}
     )
     assert r.status_code == 403
+
+
+async def test_list_rows_carry_attribution_role(db):
+    """After hand_off, the list row exposes the caller's relationship to the
+    active attribution: recipient sees attributed_to_me, sender attributed_by_me."""
+    from modules.transactions.attribution import hand_off
+    from modules.transactions.service import get_my_transactions
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+
+    since = txn.transaction_date.date()
+    c_row = next(
+        t for t in await get_my_transactions(db, camila.id, since=since) if t["id"] == txn.id
+    )
+    r_row = next(
+        t for t in await get_my_transactions(db, rafael.id, since=since) if t["id"] == txn.id
+    )
+
+    assert c_row["attributed_to_me"] is True
+    assert c_row["attributed_by_me"] is False
+    assert c_row["attribution_id"] is not None
+
+    assert r_row["attributed_by_me"] is True
+    assert r_row["attributed_to_me"] is False
+    assert r_row["attribution_id"] == c_row["attribution_id"]

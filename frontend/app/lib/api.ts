@@ -207,6 +207,14 @@ export interface Transaction {
   // `orphaned_at` records when a row was dismissed / aged out.
   created_at: string | null;
   orphaned_at: string | null;
+  // Partner-card attribution (Task 7). Caller's relationship to any ACTIVE
+  // attribution on this row. `attributed_to_me` → caller is the recipient
+  // (someone else's card; read-only). `attributed_by_me` → caller is the
+  // sender who handed it off (can un-tag). `attribution_id` → active
+  // attribution id for the recipient's confirm/reject actions.
+  attributed_to_me?: boolean;
+  attributed_by_me?: boolean;
+  attribution_id?: string | null;
 }
 
 export interface PendingTransactions {
@@ -834,6 +842,38 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ split_type: splitType }),
     }),
+
+  // --- Partner-card attribution (Task 7) ---
+  // Hand a charge on a shared card off to the household partner. Omitting
+  // recipientId lets the server auto-resolve the couple partner. On failure
+  // apiFetch throws an ApiError whose `.message` is the backend `detail`
+  // string (e.g. "no_partner_in_household", "ambiguous_recipient",
+  // "recipient_not_in_household") and `.status` the HTTP code (409/422) —
+  // callers branch on those to decide fallback behaviour.
+  attributeTransaction: (transactionId: string, recipientId?: string) =>
+    apiFetch<{ ok: boolean; recipient_id: string | null }>(
+      `/transactions/${transactionId}/attribute`,
+      {
+        method: "POST",
+        body: JSON.stringify({ recipient_id: recipientId ?? null }),
+      },
+    ),
+
+  unattributeTransaction: (transactionId: string) =>
+    apiFetch<{ ok: boolean }>(`/transactions/${transactionId}/attribute`, {
+      method: "DELETE",
+    }),
+
+  rejectAttribution: (attributionId: string) =>
+    apiFetch<{ ok: boolean }>(`/transactions/attributions/${attributionId}/reject`, {
+      method: "POST",
+    }),
+
+  acknowledgeAttribution: (attributionId: string) =>
+    apiFetch<{ ok: boolean }>(
+      `/transactions/attributions/${attributionId}/acknowledge`,
+      { method: "POST" },
+    ),
 
   updateMerchantName: (
     transactionId: string,
