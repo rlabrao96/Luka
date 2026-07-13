@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.households.models import HouseholdMember
@@ -43,6 +43,29 @@ def owned_by_caller_clause(caller_id: uuid.UUID):
     )
     own_kept = (Transaction.user_id == caller_id) & (~attributed_away)
     return or_(own_kept, attributed_to_clause(caller_id))
+
+
+def list_visible_clause(caller_id: uuid.UUID):
+    """LIST views: the caller sees their OWN rows (even ones handed off — they
+    stay visible, labeled) PLUS rows handed off TO them. No exclusion.
+    Requires outerjoin(TransactionAttribution)."""
+    return or_(Transaction.user_id == caller_id, attributed_to_clause(caller_id))
+
+
+def personal_scope_clause(caller_id: uuid.UUID):
+    """PERSONAL-budget view: the caller's own personal/untagged rows that are
+    NOT attributed away, PLUS rows attributed to them. Excludes the caller's own
+    SHARED rows and exclude-only partner rows. Requires outerjoin(TransactionSplit)
+    AND outerjoin(TransactionAttribution)."""
+    attributed_away = (TransactionAttribution.id.isnot(None)) & (
+        TransactionAttribution.status == "active"
+    )
+    own_personal = and_(
+        Transaction.user_id == caller_id,
+        or_(TransactionSplit.split_type == "personal", TransactionSplit.split_type.is_(None)),
+        not_(attributed_away),
+    )
+    return or_(own_personal, attributed_to_clause(caller_id))
 
 
 class AmbiguousRecipient(Exception):

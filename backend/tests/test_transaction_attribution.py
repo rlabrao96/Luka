@@ -176,3 +176,61 @@ async def test_hand_off_reject_and_re_handoff(db):
         .all()
     )
     assert len(rows) == 1 and rows[0].status == "active"
+
+
+async def test_exactly_one_owner_in_dashboard(db):
+    from modules.transactions.attribution import hand_off
+    from modules.transactions.service import get_dashboard_summary, get_my_transactions
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh, amount="-40.00")
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    r_sum = await get_dashboard_summary(db, rafael.id, month, "USD")
+    c_sum = await get_dashboard_summary(db, camila.id, month, "USD")
+    assert r_sum["expenses"] == 0, "handed-off charge must leave Rafael's totals"
+    assert c_sum["expenses"] != 0, "handed-off charge must count for Camila"
+
+    r_list = await get_my_transactions(db, rafael.id, since=txn.transaction_date.date())
+    c_list = await get_my_transactions(db, camila.id, since=txn.transaction_date.date())
+    assert any(t["id"] == txn.id for t in r_list), "sender still sees the handed-off row (labeled)"
+    assert any(t["id"] == txn.id for t in c_list), "recipient sees the attributed row"
+
+
+async def test_budget_personal_scope(db):
+    """Real personal-budget entry point (`_month_category_sums`, view="personal"):
+    (i) a charge handed to Camila lands in HER personal spend; (ii) Rafael's own
+    shared-split charge never leaks into his personal spend (and his handed-off
+    charge has left it), so his personal total is 0."""
+    from modules.budgets.v2_queries import _month_category_sums
+    from modules.transactions.attribution import hand_off
+
+    rafael, camila, hh = await _couple(db)
+
+    handed = await _charge(db, rafael, hh, amount="-40.00")
+    db.add(TransactionSplit(transaction_id=handed.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, handed, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+
+    shared = await _charge(db, rafael, hh, amount="-25.00")
+    db.add(TransactionSplit(transaction_id=shared.id, split_type="shared"))
+    await db.flush()
+
+    month = datetime.now(timezone.utc).date().replace(day=1)
+    camila_rows = await _month_category_sums(
+        db, view="personal", user_id=camila.id, household_id=hh.id, month=month, currency="USD"
+    )
+    rafael_rows = await _month_category_sums(
+        db, view="personal", user_id=rafael.id, household_id=hh.id, month=month, currency="USD"
+    )
+    assert sum((amt for _, amt in camila_rows), Decimal("0")) == Decimal("40.00"), (
+        "handed-off charge must appear in Camila's personal budget spend"
+    )
+    assert sum((amt for _, amt in rafael_rows), Decimal("0")) == Decimal("0"), (
+        "Rafael's own shared charge must NOT leak into personal; handed-off charge left too"
+    )

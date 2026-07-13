@@ -32,7 +32,8 @@ from modules.subscriptions.read import (
     get_user_shared_unpaid_known_bills,
 )
 from modules.households.models import HouseholdMember
-from modules.transactions.models import Transaction, TransactionSplit
+from modules.transactions.attribution import personal_scope_clause
+from modules.transactions.models import Transaction, TransactionAttribution, TransactionSplit
 from modules.transactions.totals import counts_toward_totals_clauses
 
 _ZERO = Decimal("0")
@@ -226,17 +227,22 @@ async def _month_category_sums(
             .select_from(Transaction)
             .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         )
+        base = base.outerjoin(
+            TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id
+        )
         for target, onclause in trip_joins:
             base = base.outerjoin(target, onclause)
         base = base.where(
-            Transaction.user_id == user_id,
+            # personal_scope_clause replaces BOTH the user_id filter and the
+            # personal/NULL split filter: an attributed row's Transaction.user_id
+            # is the SENDER's, so a standalone user_id clause would drop it.
+            personal_scope_clause(user_id),
             Transaction.household_id == household_id,
             Transaction.currency == currency,
             Transaction.transaction_type == "expense",
             *counts_toward_totals_clauses(),
             Transaction.transaction_date >= first_day,
             Transaction.transaction_date < first_day_next,
-            (TransactionSplit.split_type == "personal") | (TransactionSplit.split_type.is_(None)),
         )
     else:
         base = (
@@ -295,17 +301,21 @@ async def _three_month_category_stats(
             .select_from(Transaction)
             .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         )
+        q = q.outerjoin(
+            TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id
+        )
         for target, onclause in trip_joins:
             q = q.outerjoin(target, onclause)
         q = q.where(
-            Transaction.user_id == user_id,
+            # personal_scope_clause replaces BOTH the user_id and personal/NULL
+            # split filters (attributed rows carry the sender's Transaction.user_id).
+            personal_scope_clause(user_id),
             Transaction.household_id == household_id,
             Transaction.currency == currency,
             Transaction.transaction_type == "expense",
             *counts_toward_totals_clauses(),
             Transaction.transaction_date >= window_start,
             Transaction.transaction_date < current_start,
-            (TransactionSplit.split_type == "personal") | (TransactionSplit.split_type.is_(None)),
         )
     else:
         q = (
@@ -390,17 +400,21 @@ async def _daily_burn_14d(
             .select_from(Transaction)
             .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
         )
+        q = q.outerjoin(
+            TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id
+        )
         for target, onclause in trip_joins:
             q = q.outerjoin(target, onclause)
         q = q.where(
-            Transaction.user_id == user_id,
+            # personal_scope_clause replaces BOTH the user_id and personal/NULL
+            # split filters (attributed rows carry the sender's Transaction.user_id).
+            personal_scope_clause(user_id),
             Transaction.household_id == household_id,
             Transaction.currency == currency,
             Transaction.transaction_type == "expense",
             *counts_toward_totals_clauses(),
             Transaction.transaction_date >= fourteen_days_ago,
             Transaction.transaction_date <= today,
-            (TransactionSplit.split_type == "personal") | (TransactionSplit.split_type.is_(None)),
         )
     else:
         q = (

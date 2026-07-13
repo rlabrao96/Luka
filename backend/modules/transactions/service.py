@@ -3,9 +3,19 @@ import uuid
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, or_, select, text, delete as sql_delete, update as sql_update
+from sqlalchemy import (
+    and_,
+    func,
+    not_,
+    or_,
+    select,
+    text,
+    delete as sql_delete,
+    update as sql_update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from modules.transactions.models import Transaction, TransactionSplit
+from modules.transactions.attribution import list_visible_clause, owned_by_caller_clause
+from modules.transactions.models import Transaction, TransactionAttribution, TransactionSplit
 
 # exclude_from_totals is re-exported for backwards compatibility; the canonical
 # definition (and the rationale for the exclusion rule) lives in totals.py.
@@ -150,7 +160,7 @@ async def get_my_transactions(
     limit: int | None = None,
 ) -> list[dict]:
     conds = [
-        Transaction.user_id == user_id,
+        list_visible_clause(user_id),
         Transaction.status.notin_(["pending", "orphan"]),
     ]
     if month:
@@ -172,6 +182,7 @@ async def get_my_transactions(
             CanonicalMerchant.display_name.label("display_name"),
         )
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id)
         .outerjoin(BankAccount, BankAccount.id == Transaction.bank_account_id)
         .outerjoin(Merchant, Transaction.raw_merchant_name == Merchant.raw_name)
         .outerjoin(CanonicalMerchant, Merchant.canonical_merchant_id == CanonicalMerchant.id)
@@ -272,8 +283,18 @@ async def get_dashboard_summary(
     year, mon = (int(x) for x in month.split("-"))
     start, end, _ = month_bounds_datetime(date(year, mon, 1), currency)
 
+    # Exactly-one-owner AGGREGATES: a charge counts for whoever effectively owns
+    # it. `owned_by_caller_clause` = own-and-not-attributed-away OR attributed-to-
+    # me (replaces the old `Transaction.user_id == user_id`). The partner guard
+    # keeps ACCOUNT-LEVEL exclude-only partner rows (no attribution row) counting
+    # for nobody, while a handed-off partner row (which HAS an attribution) counts
+    # for its recipient via the ownership clause.
+    exclude_only_partner = and_(
+        TransactionSplit.split_type == "partner",
+        TransactionAttribution.id.is_(None),
+    )
     conds = [
-        Transaction.user_id == user_id,
+        owned_by_caller_clause(user_id),
         Transaction.currency == currency,
         Transaction.status.notin_(["pending", "orphan"]),
         Transaction.transaction_type != "transfer",
@@ -281,12 +302,7 @@ async def get_dashboard_summary(
         Transaction.reimbursement_group_id.is_(None),
         Transaction.transaction_date >= start,
         Transaction.transaction_date < end,
-        # Exclude a partner's spending (additional / authorized-user card
-        # marked account_type='partner') — it isn't the owner's money.
-        or_(
-            TransactionSplit.split_type.is_(None),
-            TransactionSplit.split_type != "partner",
-        ),
+        not_(exclude_only_partner),
     ]
 
     totals = (
@@ -301,6 +317,9 @@ async def get_dashboard_summary(
             )
             .select_from(Transaction)
             .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+            .outerjoin(
+                TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id
+            )
             .where(*conds)
         )
     ).one()
@@ -316,6 +335,7 @@ async def get_dashboard_summary(
         )
         .select_from(Transaction)
         .outerjoin(TransactionSplit, TransactionSplit.transaction_id == Transaction.id)
+        .outerjoin(TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id)
         .where(*conds, Transaction.amount < 0)
         .group_by(cat_expr)
         .order_by(func.sum(func.abs(Transaction.amount)).desc())
