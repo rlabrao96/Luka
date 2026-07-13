@@ -583,3 +583,70 @@ async def test_list_rows_carry_attribution_role(db):
     assert r_row["attributed_by_me"] is True
     assert r_row["attributed_to_me"] is False
     assert r_row["attribution_id"] == c_row["attribution_id"]
+
+
+async def _card_txn(db, owner, hh, bank_account, amount):
+    txn = Transaction(
+        id=uuid.uuid4(),
+        user_id=owner.id,
+        household_id=hh.id,
+        bank_account_id=bank_account.id,
+        raw_merchant_name="Card activity",
+        amount=Decimal(str(amount)),
+        currency="USD",
+        transaction_date=datetime.now(timezone.utc),
+        source="plaid",
+        source_type="plaid",
+        status="settled",
+        transaction_type="expense" if amount < 0 else "income",
+    )
+    db.add(txn)
+    await db.flush()
+    return txn
+
+
+async def test_account_person_balances(db):
+    """Per-person gastos/pagos/saldo breakdown for a shared card: Rafael's own
+    activity nets to zero, Camila's handed-off charge/payment leaves her owing
+    the difference."""
+    from modules.transactions.attribution import account_person_balances, hand_off
+
+    rafael, camila, hh = await _couple(db)
+    bank_account = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=rafael.id,
+        bank_name="Amex",
+        account_type="partner",
+        currency="USD",
+    )
+    db.add(bank_account)
+    await db.flush()
+
+    await _card_txn(db, rafael, hh, bank_account, -3000)
+    await _card_txn(db, rafael, hh, bank_account, 3000)
+
+    camila_charge = await _card_txn(db, rafael, hh, bank_account, -1200)
+    db.add(TransactionSplit(transaction_id=camila_charge.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, camila_charge, sender_id=rafael.id, recipient_id=camila.id)
+
+    camila_payment = await _card_txn(db, rafael, hh, bank_account, 1000)
+    db.add(TransactionSplit(transaction_id=camila_payment.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, camila_payment, sender_id=rafael.id, recipient_id=camila.id)
+
+    await db.flush()
+
+    balances = await account_person_balances(db, bank_account.id)
+    by_user = {b["user_id"]: b for b in balances}
+
+    rafael_balance = by_user[str(rafael.id)]
+    assert rafael_balance["gastos"] == 3000
+    assert rafael_balance["pagos"] == 3000
+    assert rafael_balance["saldo"] == 0
+
+    camila_balance = by_user[str(camila.id)]
+    assert camila_balance["gastos"] == 1200
+    assert camila_balance["pagos"] == 1000
+    assert camila_balance["saldo"] == 200

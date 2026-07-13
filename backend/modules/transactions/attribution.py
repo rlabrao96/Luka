@@ -7,9 +7,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, not_, or_, select
+from sqlalchemy import and_, case, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.auth.models import User
 from modules.households.models import HouseholdMember
 from modules.notifications.service import create_notification
 from modules.transactions.models import Transaction, TransactionAttribution, TransactionSplit
@@ -65,6 +66,57 @@ def personal_scope_clause(caller_id: uuid.UUID):
         not_(_attributed_away()),
     )
     return or_(own_personal, attributed_to_clause(caller_id))
+
+
+async def account_person_balances(db: AsyncSession, bank_account_id) -> list[dict]:
+    """Per-effective-owner gastos/pagos/saldo breakdown for a single shared card.
+
+    Unlike the counts-toward-totals aggregates (dashboard, budgets), a card
+    payment (transaction_type='transfer') is NOT excluded here — for a card
+    BALANCE we want both charges and payments. Only ``bank_account_id`` and a
+    pending/orphan status guard scope the rows.
+    """
+    # One reused expression object for SELECT and GROUP BY — see get_dashboard_summary's
+    # cat_expr note: two separately-built `case(...)` calls would bind as two
+    # different parameters and Postgres would reject the grouping.
+    effective_owner = case(
+        (
+            (TransactionAttribution.id.isnot(None)) & (TransactionAttribution.status == "active"),
+            TransactionAttribution.attributed_to_user_id,
+        ),
+        else_=Transaction.user_id,
+    )
+
+    gastos = func.coalesce(func.sum(func.abs(Transaction.amount)).filter(Transaction.amount < 0), 0)
+    pagos = func.coalesce(func.sum(Transaction.amount).filter(Transaction.amount > 0), 0)
+
+    rows = await db.execute(
+        select(
+            effective_owner.label("user_id"),
+            User.full_name,
+            gastos.label("gastos"),
+            pagos.label("pagos"),
+        )
+        .select_from(Transaction)
+        .outerjoin(TransactionAttribution, TransactionAttribution.transaction_id == Transaction.id)
+        .join(User, User.id == effective_owner)
+        .where(
+            Transaction.bank_account_id == bank_account_id,
+            Transaction.status.notin_(["pending", "orphan"]),
+        )
+        .group_by(effective_owner, User.id, User.full_name)
+    )
+
+    return [
+        {
+            "user_id": str(row.user_id),
+            "name": row.full_name,
+            "gastos": int(row.gastos),
+            "pagos": int(row.pagos),
+            "saldo": int(row.gastos) - int(row.pagos),
+        }
+        for row in rows
+    ]
 
 
 class AmbiguousRecipient(Exception):
