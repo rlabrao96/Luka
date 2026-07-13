@@ -38,6 +38,9 @@ const ICONS: Record<string, typeof Store> = {
   subscription_price_increase: TrendingUp,
   subscription_upcoming_charge: BellRing,
   new_account_detected: CreditCard,
+  charge_attributed: CreditCard,
+  attribution_rejected: CreditCard,
+  attribution_removed: CreditCard,
 };
 
 /** Per-type subtitle under the notification title. Titles already carry the
@@ -86,6 +89,21 @@ function NotifDetail({ notif }: { notif: { type: string; payload: NotificationIt
       </p>
     );
   }
+  if (notif.type === "charge_attributed" && p.merchant && p.amount != null) {
+    const ccy = p.currency ?? "CLP";
+    return (
+      <p className="mt-0.5 text-xs text-luka-muted">
+        <span className="font-medium">{p.merchant}</span> ·{" "}
+        {formatStoredAmount(Number(p.amount), ccy)}
+      </p>
+    );
+  }
+  if (notif.type === "attribution_rejected") {
+    return <p className="mt-0.5 text-xs text-luka-muted">Vuelve a tus gastos.</p>;
+  }
+  if (notif.type === "attribution_removed") {
+    return <p className="mt-0.5 text-xs text-luka-muted">Se quitó de tus gastos.</p>;
+  }
   return null;
 }
 
@@ -132,6 +150,28 @@ export default function NotificationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
+  });
+
+  // charge_attributed: the recipient confirms ("Confirmar" → acknowledge, keeps
+  // the charge attributed to them) or rejects ("No es mío" → reject, the
+  // charge reverts to the sender's own ledger). Either way the notification
+  // is marked actioned.
+  const respondToAttribution = useMutation({
+    mutationFn: async ({ notif, accept }: { notif: NotificationItem; accept: boolean }) => {
+      const attributionId = notif.payload?.attribution_id;
+      if (!attributionId) return;
+      if (accept) {
+        await api.acknowledgeAttribution(attributionId);
+      } else {
+        await api.rejectAttribution(attributionId);
+      }
+      await api.updateNotification(notif.id, "actioned");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
@@ -295,6 +335,25 @@ export default function NotificationsPage() {
                       className="px-4 py-2 border border-slate-200 text-xs text-slate-500 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       Es mía
+                    </button>
+                  </div>
+                )}
+
+                {!isDone && notif.type === "charge_attributed" && (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => respondToAttribution.mutate({ notif, accept: true })}
+                      disabled={respondToAttribution.isPending || !notif.payload?.attribution_id}
+                      className="px-4 py-2 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                    >
+                      Confirmar
+                    </button>
+                    <button
+                      onClick={() => respondToAttribution.mutate({ notif, accept: false })}
+                      disabled={respondToAttribution.isPending || !notif.payload?.attribution_id}
+                      className="px-4 py-2 border border-slate-200 text-xs text-slate-500 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
+                    >
+                      No es mío
                     </button>
                   </div>
                 )}

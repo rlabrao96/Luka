@@ -452,6 +452,10 @@ export interface NotificationItem {
     account_kind?: string;
     account_label?: string;
     mask?: string;
+    // charge_attributed / attribution_rejected / attribution_removed
+    transaction_id?: string;
+    attribution_id?: string;
+    amount?: string | number;
   } | null;
   created_at: string;
   read_at: string | null;
