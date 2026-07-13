@@ -271,7 +271,12 @@ async def update_split_type(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    found = await service.update_split_type(db, transaction_id, current_user.id, body.split_type)
+    try:
+        found = await service.update_split_type(
+            db, transaction_id, current_user.id, body.split_type
+        )
+    except service.TransactionAttributedError:
+        raise HTTPException(409, "transaction_attributed_use_attribute_endpoints")
     if not found:
         raise HTTPException(404, "Transaction not found")
     return {"ok": True}

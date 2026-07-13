@@ -707,3 +707,32 @@ async def test_person_balances_endpoint_non_owner_forbidden(app, db, http_client
         f"/bank-accounts/{bank_account.id}/person-balances?household_id={hh.id}"
     )
     assert r.status_code == 403
+
+
+async def test_update_split_type_blocked_on_attributed_txn(db):
+    """The generic split editor must refuse a handed-off charge — flipping its
+    split out-of-band would desync split_type from the active attribution and
+    could leak it into the household pot. Attribution state changes only via the
+    dedicated endpoints."""
+    import pytest
+
+    from modules.transactions.attribution import hand_off
+    from modules.transactions.service import TransactionAttributedError, update_split_type
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+
+    # Rafael owns the row, so authorized_txn_query returns it — but the active
+    # attribution must block the generic split change.
+    with pytest.raises(TransactionAttributedError):
+        await update_split_type(db, txn.id, rafael.id, "shared")
+
+    # Split stays 'partner' (untouched).
+    split = (
+        await db.execute(select(TransactionSplit).where(TransactionSplit.transaction_id == txn.id))
+    ).scalar_one()
+    assert split.split_type == "partner"

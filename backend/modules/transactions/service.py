@@ -599,6 +599,11 @@ async def update_category_bulk(
     return sibling_count + 1
 
 
+class TransactionAttributedError(Exception):
+    """The transaction is handed off to a partner; its split is managed only via
+    the attribute/reject/un-attribute endpoints, not the generic split editor."""
+
+
 async def update_split_type(
     db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID, split_type: str
 ) -> bool:
@@ -608,6 +613,19 @@ async def update_split_type(
     txn = result.scalar_one_or_none()
     if not txn:
         return False
+
+    # A handed-off charge carries an active attribution; flipping its split here
+    # (e.g. to 'shared') would desync split_type from the attribution and could
+    # leak the charge into the household pot. Attribution state changes only
+    # through the dedicated endpoints — refuse and point the caller there.
+    active_attr = await db.scalar(
+        select(TransactionAttribution).where(
+            TransactionAttribution.transaction_id == transaction_id,
+            TransactionAttribution.status == "active",
+        )
+    )
+    if active_attr is not None:
+        raise TransactionAttributedError()
 
     # split_type lives on TransactionSplit, not Transaction — upsert the row
     split_result = await db.execute(
