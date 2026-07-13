@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Store, CheckCircle, AlertTriangle, Trash2, CheckCheck, TrendingUp, BellRing, BarChart3, CreditCard } from "lucide-react";
+import { Store, CheckCircle, AlertTriangle, Trash2, CheckCheck, TrendingUp, BellRing, BarChart3, CreditCard, Tags } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNotifications, useUpdateNotification, useDeleteNotification } from "@/app/lib/hooks/useNotifications";
 import { api, type NotificationItem } from "@/app/lib/api";
@@ -41,6 +41,7 @@ const ICONS: Record<string, typeof Store> = {
   charge_attributed: CreditCard,
   attribution_rejected: CreditCard,
   attribution_removed: CreditCard,
+  pending_card_classification: Tags,
 };
 
 /** Per-type subtitle under the notification title. Titles already carry the
@@ -103,6 +104,14 @@ function NotifDetail({ notif }: { notif: { type: string; payload: NotificationIt
   }
   if (notif.type === "attribution_removed") {
     return <p className="mt-0.5 text-xs text-luka-muted">Se quitó de tus gastos.</p>;
+  }
+  if (notif.type === "pending_card_classification") {
+    const n = p.count ?? 0;
+    return (
+      <p className="mt-0.5 text-xs text-luka-muted">
+        {n} {n === 1 ? "cargo" : "cargos"} en tu tarjeta compartida esperan clasificación.
+      </p>
+    );
   }
   return null;
 }
@@ -335,6 +344,20 @@ export default function NotificationsPage() {
                       className="px-4 py-2 border border-slate-200 text-xs text-slate-500 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       Es mía
+                    </button>
+                  </div>
+                )}
+
+                {!isDone && notif.type === "pending_card_classification" && (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => {
+                        updateNotification.mutate({ id: notif.id, status: "read" });
+                        router.push("/");
+                      }}
+                      className="px-4 py-2 bg-luka-primary text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Ver
                     </button>
                   </div>
                 )}

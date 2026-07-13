@@ -718,6 +718,20 @@ async def subscription_precharge_for_user(ctx: dict, user_id: str) -> None:
             logger.warning("precharge alerts failed for user %s", user_id, exc_info=True)
 
 
+async def notify_pending_classification(ctx: dict) -> None:
+    """Daily cron: nudge active household members with pending shared-card charges."""
+    from modules.notifications.pending_classification import (
+        send_pending_classification_notifications,
+    )
+
+    async with AsyncSessionLocal() as db:
+        try:
+            sent = await send_pending_classification_notifications(db)
+            logger.info("notify_pending_classification: sent %d notifications", sent)
+        except Exception:
+            logger.warning("notify_pending_classification failed", exc_info=True)
+
+
 async def failed_jobs_digest(ctx: dict) -> None:
     """Daily observability heartbeat: surface job failures loudly.
 

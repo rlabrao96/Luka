@@ -488,6 +488,8 @@ export interface NotificationItem {
     transaction_id?: string;
     attribution_id?: string;
     amount?: string | number;
+    // pending_card_classification
+    count?: number;
   } | null;
   created_at: string;
   read_at: string | null;

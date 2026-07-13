@@ -10,10 +10,10 @@ from decimal import Decimal
 from sqlalchemy import select
 
 import modules.merchants.models  # noqa: F401
-import modules.notifications.models  # noqa: F401
 import modules.plaid.models  # noqa: F401
 from modules.auth.models import User
 from modules.households.models import BankAccount, Household, HouseholdMember
+from modules.notifications.models import Notification
 from modules.transactions.models import Transaction
 
 
@@ -849,3 +849,138 @@ async def test_switch_away_from_shared_card_clears_needs_classification_and_back
         )
     ).scalar_one()
     assert split.split_type == "personal"
+
+
+# ---------------------------------------------------------------- Task 10: daily notification
+
+
+async def test_notify_pending_classification_notifies_all_active_members(db):
+    from modules.notifications.pending_classification import (
+        PENDING_CLASSIFICATION_TYPE,
+        send_pending_classification_notifications,
+    )
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await _charge(db, rafael, hh, acct, amount="-15.00", needs_classification=True)
+
+    sent = await send_pending_classification_notifications(db)
+    assert sent == 2  # one per active member (rafael + camila)
+
+    for user in (rafael, camila):
+        notifs = (
+            (
+                await db.execute(
+                    select(Notification).where(
+                        Notification.user_id == user.id,
+                        Notification.type == PENDING_CLASSIFICATION_TYPE,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(notifs) == 1
+        assert notifs[0].payload["count"] == 2
+        assert notifs[0].payload["household_id"] == str(hh.id)
+        assert "2 cargos" in notifs[0].title
+
+
+async def test_notify_pending_classification_zero_pending_no_notification(db):
+    from modules.notifications.pending_classification import (
+        PENDING_CLASSIFICATION_TYPE,
+        send_pending_classification_notifications,
+    )
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    await _charge(db, rafael, hh, acct, amount="-10.00", needs_classification=False)
+
+    sent = await send_pending_classification_notifications(db)
+    assert sent == 0
+
+    for user in (rafael, camila):
+        notifs = (
+            (
+                await db.execute(
+                    select(Notification).where(
+                        Notification.user_id == user.id,
+                        Notification.type == PENDING_CLASSIFICATION_TYPE,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert notifs == []
+
+
+async def test_notify_pending_classification_idempotent_same_day(db):
+    from modules.notifications.pending_classification import (
+        PENDING_CLASSIFICATION_TYPE,
+        send_pending_classification_notifications,
+    )
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+
+    first = await send_pending_classification_notifications(db)
+    assert first == 2
+
+    second = await send_pending_classification_notifications(db)
+    assert second == 0, "running the job twice the same day must not double-notify"
+
+    for user in (rafael, camila):
+        notifs = (
+            (
+                await db.execute(
+                    select(Notification).where(
+                        Notification.user_id == user.id,
+                        Notification.type == PENDING_CLASSIFICATION_TYPE,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(notifs) == 1, "idempotent per user/day — no duplicate row"
+
+
+async def test_notify_pending_classification_excludes_left_members(db):
+    from modules.notifications.pending_classification import (
+        PENDING_CLASSIFICATION_TYPE,
+        send_pending_classification_notifications,
+    )
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+
+    member = (
+        await db.execute(
+            select(HouseholdMember).where(
+                HouseholdMember.household_id == hh.id, HouseholdMember.user_id == camila.id
+            )
+        )
+    ).scalar_one()
+    member.left_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    sent = await send_pending_classification_notifications(db)
+    assert sent == 1
+
+    camila_notifs = (
+        (
+            await db.execute(
+                select(Notification).where(
+                    Notification.user_id == camila.id,
+                    Notification.type == PENDING_CLASSIFICATION_TYPE,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert camila_notifs == []
