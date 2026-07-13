@@ -686,9 +686,12 @@ from modules.transactions.models import TransactionAttribution
 Keep the existing `split_type != 'partner'` exclusion? **No** — replace it. The attribution predicate now supersedes it: a caller's own row that is actively attributed away is excluded by `owned_by_caller_clause`; a row attributed to the caller is included even though its `split_type='partner'`. Removing the standalone partner exclusion here is required, or Camila's attributed (partner-split) rows would be filtered out. (Rafael still excludes his handed-off rows because they're attributed away.)
 > Exclude-only partner rows (no attribution) with `Transaction.user_id == caller`: `owned_by_caller_clause` keeps them (not attributed away). To preserve today's "exclude-only counts for nobody" for account-level partner cards, keep a narrower guard: `AND NOT (split_type='partner' AND no active attribution)`. Implement as: `owned_by_caller_clause(user_id) AND NOT (TransactionSplit.split_type == 'partner' AND attributed_to_clause is false)`. Simplest correct form:
 ```python
-from sqlalchemy import and_, not_
+from sqlalchemy import and_, func, not_
+# NULL-SAFE: email-ingested rows have NO split row (split_type IS NULL). A bare
+# `split_type == "partner"` yields UNKNOWN for those, and not_(UNKNOWN) drops
+# them from the WHERE — silently losing ~every email expense. coalesce fixes it.
 exclude_only_partner = and_(
-    TransactionSplit.split_type == "partner",
+    func.coalesce(TransactionSplit.split_type, "") == "partner",
     TransactionAttribution.id.is_(None),
 )
 conds = [
