@@ -254,6 +254,14 @@ async def run_plaid_sync(
         session.add(new_tx)
         await session.flush()
 
+        # Non-transfer charges on a shared_card are pended for classification —
+        # they enter the classification queue and count for nobody until sorted.
+        from modules.transactions.classification import should_pend
+
+        new_tx.needs_classification = should_pend(
+            account_type_map.get(bank_account_id), new_tx.transaction_type
+        )
+
         # Default the split from the account type: joint→shared, partner→partner
         # (an authorized-user / additional card that belongs to the partner, kept
         # out of the owner's totals), else personal. apply_match_and_delete_emails

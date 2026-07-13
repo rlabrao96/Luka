@@ -476,6 +476,14 @@ async def _process_movements(
 
         is_transfer = txn.transaction_type == "transfer"
 
+        # Non-transfer charges on a shared_card are pended for classification —
+        # they enter the classification queue and count for nobody until sorted.
+        from modules.transactions.classification import should_pend
+
+        txn.needs_classification = should_pend(
+            account_type_map.get(ba_id) if ba_id is not None else None, txn.transaction_type
+        )
+
         if email_txn:
             # Transfer enrichment from the email to the new Connect transaction.
             # For transfers (CC payments, own-account moves), don't copy category

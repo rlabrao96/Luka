@@ -112,3 +112,141 @@ async def test_pending_charge_counts_for_nobody(db):
     assert total_gastos == 10, (
         f"only the settled -10.00 charge should count (pending -40.00 excluded), got {total_gastos}"
     )
+
+
+# ---------------------------------------------------------------- should_pend (pure helper)
+
+
+def test_should_pend_non_transfer_on_shared_card():
+    from modules.transactions.classification import should_pend
+
+    assert should_pend("shared_card", "expense") is True
+
+
+def test_should_pend_income_on_shared_card():
+    from modules.transactions.classification import should_pend
+
+    assert should_pend("shared_card", "income") is True
+
+
+def test_should_pend_transfer_on_shared_card_is_false():
+    from modules.transactions.classification import should_pend
+
+    assert should_pend("shared_card", "transfer") is False
+
+
+def test_should_pend_non_shared_card_is_false():
+    from modules.transactions.classification import should_pend
+
+    assert should_pend("personal", "expense") is False
+
+
+# ---------------------------------------------------------------- ingestion wiring (Connect)
+
+
+async def test_bank_connect_process_movements_shared_card_pends_classification(db):
+    """A non-transfer movement landing on a shared_card account via Connect
+    ingestion must be created with needs_classification=True."""
+    import uuid as uuid_mod
+
+    from modules.bank_connect.models import BankCredential
+    from modules.bank_connect.router import _process_movements
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+
+    cred = BankCredential(
+        id=uuid_mod.uuid4(),
+        user_id=rafael.id,
+        bank_code="bci",
+        encrypted_rut=b"x",
+        encrypted_password=b"x",
+        encryption_iv=b"x",
+    )
+    db.add(cred)
+    await db.flush()
+
+    movement = {
+        "accountName": acct.account_name,
+        "currency": "USD",
+        "source": "credit_card",
+        "amount": -40.00,
+        "description": "SEPHORA STORE",
+        "date": "2025-01-15",
+        "time": "12:30",
+    }
+    ba_map = {(acct.account_name, "USD"): acct.id}
+
+    created, enriched, skipped = await _process_movements(db, cred, [movement], ba_map)
+    assert created == 1, (
+        f"expected 1 created, got created={created} enriched={enriched} skipped={skipped}"
+    )
+    await db.flush()
+
+    txn = (
+        await db.execute(
+            select(Transaction).where(
+                Transaction.user_id == rafael.id,
+                Transaction.source == "connect",
+            )
+        )
+    ).scalar_one()
+
+    assert txn.transaction_type != "transfer"
+    assert txn.needs_classification is True, (
+        "non-transfer charge on a shared_card must be pended for classification"
+    )
+
+
+async def test_bank_connect_process_movements_shared_card_transfer_not_pended(db):
+    """A CC-bill-payment transfer on a shared_card account must NEVER be pended,
+    even though the account is shared_card."""
+    import uuid as uuid_mod
+
+    from modules.bank_connect.models import BankCredential
+    from modules.bank_connect.router import _process_movements
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+
+    cred = BankCredential(
+        id=uuid_mod.uuid4(),
+        user_id=rafael.id,
+        bank_code="bci",
+        encrypted_rut=b"x",
+        encrypted_password=b"x",
+        encryption_iv=b"x",
+    )
+    db.add(cred)
+    await db.flush()
+
+    movement = {
+        "accountName": acct.account_name,
+        "currency": "USD",
+        "source": "credit_card",
+        "amount": -150.00,
+        "description": "Pago Tarjeta Visa",
+        "date": "2025-01-15",
+        "time": "12:30",
+    }
+    ba_map = {(acct.account_name, "USD"): acct.id}
+
+    created, enriched, skipped = await _process_movements(db, cred, [movement], ba_map)
+    assert created == 1, (
+        f"expected 1 created, got created={created} enriched={enriched} skipped={skipped}"
+    )
+    await db.flush()
+
+    txn = (
+        await db.execute(
+            select(Transaction).where(
+                Transaction.user_id == rafael.id,
+                Transaction.source == "connect",
+            )
+        )
+    ).scalar_one()
+
+    assert txn.transaction_type == "transfer"
+    assert txn.needs_classification is False, (
+        "a transfer on a shared_card must never be pended for classification"
+    )
