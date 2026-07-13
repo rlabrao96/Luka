@@ -30,6 +30,11 @@ def attributed_to_clause(caller_id: uuid.UUID):
     )
 
 
+def _attributed_away():
+    """A row that is actively handed off to someone (so it leaves the owner's totals)."""
+    return (TransactionAttribution.id.isnot(None)) & (TransactionAttribution.status == "active")
+
+
 def owned_by_caller_clause(caller_id: uuid.UUID):
     """A transaction counts for ``caller_id`` when it is their own row and NOT
     actively attributed away, OR it is actively attributed TO them.
@@ -38,10 +43,7 @@ def owned_by_caller_clause(caller_id: uuid.UUID):
     single predicate the exactly-one-owner AGGREGATES use (dashboard totals,
     category breakdown), guaranteeing exactly-one-owner by construction.
     """
-    attributed_away = (TransactionAttribution.id.isnot(None)) & (
-        TransactionAttribution.status == "active"
-    )
-    own_kept = (Transaction.user_id == caller_id) & (~attributed_away)
+    own_kept = (Transaction.user_id == caller_id) & (~_attributed_away())
     return or_(own_kept, attributed_to_clause(caller_id))
 
 
@@ -57,13 +59,10 @@ def personal_scope_clause(caller_id: uuid.UUID):
     NOT attributed away, PLUS rows attributed to them. Excludes the caller's own
     SHARED rows and exclude-only partner rows. Requires outerjoin(TransactionSplit)
     AND outerjoin(TransactionAttribution)."""
-    attributed_away = (TransactionAttribution.id.isnot(None)) & (
-        TransactionAttribution.status == "active"
-    )
     own_personal = and_(
         Transaction.user_id == caller_id,
         or_(TransactionSplit.split_type == "personal", TransactionSplit.split_type.is_(None)),
-        not_(attributed_away),
+        not_(_attributed_away()),
     )
     return or_(own_personal, attributed_to_clause(caller_id))
 

@@ -201,6 +201,48 @@ async def test_exactly_one_owner_in_dashboard(db):
     assert any(t["id"] == txn.id for t in c_list), "recipient sees the attributed row"
 
 
+async def test_dashboard_includes_null_split_charge(db):
+    """Email-ingested rows have NO TransactionSplit row (split_type IS NULL).
+    The exclude-only-partner guard must be NULL-safe so they still count."""
+    from modules.transactions.service import get_dashboard_summary
+
+    rafael, _camila, hh = await _couple(db)
+    await _charge(db, rafael, hh, amount="-40.00")  # deliberately no split row
+    await db.flush()
+
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    r_sum = await get_dashboard_summary(db, rafael.id, month, "USD")
+    assert r_sum["expenses"] != 0, "null-split (email-ingested) charge must count in totals"
+    assert any(c["amount"] for c in r_sum["categories"]), (
+        "null-split charge must appear in categories"
+    )
+
+
+async def test_dashboard_rejected_attribution_reverts_to_owner(db):
+    from modules.transactions.attribution import hand_off, reject
+    from modules.transactions.service import get_dashboard_summary
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh, amount="-40.00")
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one()
+    await reject(db, attr.id, by_user_id=camila.id)
+    await db.flush()
+
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    r_sum = await get_dashboard_summary(db, rafael.id, month, "USD")
+    c_sum = await get_dashboard_summary(db, camila.id, month, "USD")
+    assert r_sum["expenses"] != 0, "rejected attribution counts for the original owner again"
+    assert c_sum["expenses"] == 0, "rejected attribution must not count for the recipient"
+
+
 async def test_budget_personal_scope(db):
     """Real personal-budget entry point (`_month_category_sums`, view="personal"):
     (i) a charge handed to Camila lands in HER personal spend; (ii) Rafael's own

@@ -289,8 +289,12 @@ async def get_dashboard_summary(
     # keeps ACCOUNT-LEVEL exclude-only partner rows (no attribution row) counting
     # for nobody, while a handed-off partner row (which HAS an attribution) counts
     # for its recipient via the ownership clause.
+    # NULL-safe: email-ingested rows have no TransactionSplit row (split_type
+    # IS NULL). A bare `split_type == "partner"` yields UNKNOWN, and not_(UNKNOWN)
+    # would drop the row from the WHERE — silently dropping every email-ingested
+    # expense. coalesce("") makes a null split compare FALSE, so it counts.
     exclude_only_partner = and_(
-        TransactionSplit.split_type == "partner",
+        func.coalesce(TransactionSplit.split_type, "") == "partner",
         TransactionAttribution.id.is_(None),
     )
     conds = [
