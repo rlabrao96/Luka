@@ -64,6 +64,14 @@ class SplitTypeUpdateRequest(BaseModel):
     split_type: Literal["personal", "shared", "partner"]
 
 
+class AttributeRequest(BaseModel):
+    """POST body for handing a charge off to a household partner. When
+    ``recipient_id`` is omitted the server resolves the sole other active
+    member (409 if ambiguous, 422 if none)."""
+
+    recipient_id: uuid.UUID | None = None
+
+
 class MerchantNameUpdateRequest(BaseModel):
     """PATCH body for renaming a transaction's vendor.
 

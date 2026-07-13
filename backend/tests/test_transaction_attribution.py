@@ -276,3 +276,197 @@ async def test_budget_personal_scope(db):
     assert sum((amt for _, amt in rafael_rows), Decimal("0")) == Decimal("0"), (
         "Rafael's own shared charge must NOT leak into personal; handed-off charge left too"
     )
+
+
+# ---------------------------------------------------------------------------
+# Endpoint tests — /transactions/{id}/attribute, /attributions/{id}/...
+# Real DB + savepoint `db`; deps overridden per test_trips_router.py pattern.
+# ---------------------------------------------------------------------------
+
+
+def _override(app, user, db):
+    from core.database import get_db
+    from core.security import get_current_user
+
+    async def _fake_db():
+        yield db
+
+    async def _fake_user():
+        return user
+
+    app.dependency_overrides[get_db] = _fake_db
+    app.dependency_overrides[get_current_user] = _fake_user
+
+
+async def _notifs(db, user_id, type_):
+    from modules.notifications.models import Notification
+
+    return (
+        (
+            await db.execute(
+                select(Notification).where(
+                    Notification.user_id == user_id, Notification.type == type_
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def test_attribute_endpoint_implicit_recipient(app, db, http_client):
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    _override(app, rafael, db)
+
+    r = await http_client.post(f"/transactions/{txn.id}/attribute", json={})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ok": True, "recipient_id": str(camila.id)}
+
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one()
+    assert attr.status == "active"
+    assert attr.attributed_to_user_id == camila.id
+    assert len(await _notifs(db, camila.id, "charge_attributed")) == 1
+
+
+async def test_attribute_endpoint_redundant_no_second_notification(app, db, http_client):
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    _override(app, rafael, db)
+
+    r1 = await http_client.post(f"/transactions/{txn.id}/attribute", json={})
+    assert r1.status_code == 200
+    r2 = await http_client.post(
+        f"/transactions/{txn.id}/attribute", json={"recipient_id": str(camila.id)}
+    )
+    assert r2.status_code == 200
+    # Dedup: still exactly one charge_attributed notification.
+    assert len(await _notifs(db, camila.id, "charge_attributed")) == 1
+
+
+async def test_reject_endpoint_by_recipient(app, db, http_client):
+    from modules.transactions.attribution import hand_off
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one()
+
+    _override(app, camila, db)
+    r = await http_client.post(f"/transactions/attributions/{attr.id}/reject")
+    assert r.status_code == 200, r.text
+
+    await db.refresh(attr)
+    assert attr.status == "rejected"
+    split = (
+        await db.execute(select(TransactionSplit).where(TransactionSplit.transaction_id == txn.id))
+    ).scalar_one()
+    assert split.split_type == "personal"
+    assert len(await _notifs(db, rafael.id, "attribution_rejected")) == 1
+
+
+async def test_reject_endpoint_forbidden_and_not_found(app, db, http_client):
+    from modules.transactions.attribution import hand_off
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one()
+
+    # Rafael is NOT the recipient → 403.
+    _override(app, rafael, db)
+    r = await http_client.post(f"/transactions/attributions/{attr.id}/reject")
+    assert r.status_code == 403
+
+    # Unknown attribution id → 404.
+    _override(app, camila, db)
+    r = await http_client.post(f"/transactions/attributions/{uuid.uuid4()}/reject")
+    assert r.status_code == 404
+
+
+async def test_acknowledge_endpoint(app, db, http_client):
+    from modules.transactions.attribution import hand_off
+
+    rafael, camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="personal"))
+    await db.flush()
+    await hand_off(db, txn, sender_id=rafael.id, recipient_id=camila.id)
+    await db.flush()
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
+        )
+    ).scalar_one()
+
+    # Non-recipient → 403.
+    _override(app, rafael, db)
+    r = await http_client.post(f"/transactions/attributions/{attr.id}/acknowledge")
+    assert r.status_code == 403
+
+    # Recipient → 200, acknowledged_at set.
+    _override(app, camila, db)
+    r = await http_client.post(f"/transactions/attributions/{attr.id}/acknowledge")
+    assert r.status_code == 200, r.text
+    await db.refresh(attr)
+    assert attr.acknowledged_at is not None
+
+
+async def test_attribute_endpoint_explicit_recipient_not_member(app, db, http_client):
+    rafael, _camila, hh = await _couple(db)
+    txn = await _charge(db, rafael, hh)
+    await db.flush()
+    _override(app, rafael, db)
+
+    r = await http_client.post(
+        f"/transactions/{txn.id}/attribute", json={"recipient_id": str(uuid.uuid4())}
+    )
+    assert r.status_code == 422
+    assert r.json()["detail"] == "recipient_not_in_household"
+
+
+async def test_attribute_endpoint_ambiguous(app, db, http_client):
+    rafael, camila, hh = await _couple(db)
+    # Third active member → ambiguous when no recipient is named.
+    third = User(
+        id=uuid.uuid4(),
+        email=f"tomas-{uuid.uuid4().hex[:8]}@luka.test",
+        full_name="Tomas",
+        email_provider="gmail",
+        whatsapp_verified=False,
+        preferred_currency="USD",
+    )
+    db.add(third)
+    await db.flush()
+    db.add(HouseholdMember(household_id=hh.id, user_id=third.id, role="member"))
+    txn = await _charge(db, rafael, hh)
+    await db.flush()
+    _override(app, rafael, db)
+
+    r = await http_client.post(f"/transactions/{txn.id}/attribute", json={})
+    assert r.status_code == 409
+    body = r.json()
+    assert body["detail"] == "ambiguous_recipient"
+    assert set(body["candidates"]) == {str(camila.id), str(third.id)}

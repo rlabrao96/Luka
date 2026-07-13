@@ -14,6 +14,7 @@ from modules.transactions.schemas import (
     CategoryUpdateResponse,
     CategoryMatchingCountResponse,
     SplitTypeUpdateRequest,
+    AttributeRequest,
     MerchantNameUpdateRequest,
     MerchantNameUpdateResponse,
     MerchantNameMatchingCountResponse,
@@ -273,6 +274,139 @@ async def update_split_type(
     found = await service.update_split_type(db, transaction_id, current_user.id, body.split_type)
     if not found:
         raise HTTPException(404, "Transaction not found")
+    return {"ok": True}
+
+
+# --------------------------------------------------------------- attribution
+# Partner-card charge attribution: hand a charge off to a household partner so
+# it counts for THEM (split=partner + a TransactionAttribution row). Literal
+# `/attributions/...` routes are declared before the `/{transaction_id}/...`
+# param routes so a param can never swallow the `attributions` segment.
+
+
+@router.post("/attributions/{attribution_id}/reject")
+async def reject_attribution(
+    attribution_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Recipient declines a charge handed to them; it reverts to the sender."""
+    from modules.transactions import attribution as attr_ops
+
+    try:
+        await attr_ops.reject(db, attribution_id, by_user_id=current_user.id)
+    except attr_ops.AttributionNotFound:
+        raise HTTPException(404, "Attribution not found")
+    except attr_ops.AttributionForbidden:
+        raise HTTPException(403, "Not the recipient of this attribution")
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/attributions/{attribution_id}/acknowledge")
+async def acknowledge_attribution(
+    attribution_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Recipient confirms a charge handed to them (marks it acknowledged)."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from modules.transactions.models import TransactionAttribution
+
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.id == attribution_id)
+        )
+    ).scalar_one_or_none()
+    if attr is None:
+        raise HTTPException(404, "Attribution not found")
+    if attr.attributed_to_user_id != current_user.id:
+        raise HTTPException(403, "Not the recipient of this attribution")
+    attr.acknowledged_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/{transaction_id}/attribute")
+async def attribute_transaction(
+    transaction_id: uuid.UUID,
+    body: AttributeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Hand this charge off to a household partner. With no ``recipient_id`` the
+    server resolves the sole other active member (409 ambiguous / 422 none)."""
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import select
+
+    from modules.households.models import HouseholdMember
+    from modules.transactions import attribution as attr_ops
+    from modules.transactions.models import Transaction
+
+    txn = (
+        await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    ).scalar_one_or_none()
+    if txn is None:
+        raise HTTPException(404, "Transaction not found")
+
+    # Caller must be an active member of the transaction's household.
+    if txn.household_id is None:
+        raise HTTPException(403, "Transaction has no household")
+    await require_membership(txn.household_id, current_user.id, db)
+
+    if body.recipient_id is not None:
+        if body.recipient_id == current_user.id:
+            raise HTTPException(422, "recipient_not_in_household")
+        member = (
+            await db.execute(
+                select(HouseholdMember.user_id).where(
+                    HouseholdMember.household_id == txn.household_id,
+                    HouseholdMember.user_id == body.recipient_id,
+                    HouseholdMember.left_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if member is None:
+            raise HTTPException(422, "recipient_not_in_household")
+        recipient = body.recipient_id
+    else:
+        try:
+            recipient = await attr_ops.resolve_recipient(db, txn.household_id, current_user.id)
+        except attr_ops.AmbiguousRecipient as err:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": "ambiguous_recipient",
+                    "candidates": [str(c) for c in err.candidate_ids],
+                },
+            )
+        if recipient is None:
+            raise HTTPException(422, "no_partner_in_household")
+
+    await attr_ops.hand_off(db, txn, sender_id=current_user.id, recipient_id=recipient)
+    await db.commit()
+    return {"ok": True, "recipient_id": str(recipient)}
+
+
+@router.delete("/{transaction_id}/attribute")
+async def un_attribute_transaction(
+    transaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Sender removes a hand-off they created; the charge reverts to them."""
+    from modules.transactions import attribution as attr_ops
+
+    try:
+        await attr_ops.un_tag(db, transaction_id, by_user_id=current_user.id)
+    except attr_ops.AttributionNotFound:
+        raise HTTPException(404, "Attribution not found")
+    except attr_ops.AttributionForbidden:
+        raise HTTPException(403, "Not the sender of this attribution")
+    await db.commit()
     return {"ok": True}
 
 

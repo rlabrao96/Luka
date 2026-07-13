@@ -75,6 +75,14 @@ class AmbiguousRecipient(Exception):
         super().__init__("multiple candidate recipients")
 
 
+class AttributionNotFound(Exception):
+    """No attribution row for the given id / transaction."""
+
+
+class AttributionForbidden(Exception):
+    """Caller is not the party allowed to perform this action."""
+
+
 async def resolve_recipient(db, household_id, sender_id):
     ids = (
         (
@@ -129,6 +137,11 @@ async def hand_off(db: AsyncSession, txn, sender_id, recipient_id):
             select(TransactionAttribution).where(TransactionAttribution.transaction_id == txn.id)
         )
     ).scalar_one_or_none()
+    # Redundant re-tag: already active and pointed at the same recipient. Capture
+    # this BEFORE the upsert so we can skip re-notifying the recipient.
+    is_redundant = (
+        attr is not None and attr.status == "active" and attr.attributed_to_user_id == recipient_id
+    )
     if attr is None:
         attr = TransactionAttribution(
             transaction_id=txn.id,
@@ -141,8 +154,12 @@ async def hand_off(db: AsyncSession, txn, sender_id, recipient_id):
         attr.attributed_to_user_id = recipient_id
         attr.attributed_by_user_id = sender_id
         attr.status = "active"
-        attr.acknowledged_at = None
+        if not is_redundant:
+            attr.acknowledged_at = None
     await db.flush()
+
+    if is_redundant:
+        return
 
     await create_notification(
         db,
@@ -166,8 +183,10 @@ async def reject(db: AsyncSession, attribution_id, by_user_id):
             select(TransactionAttribution).where(TransactionAttribution.id == attribution_id)
         )
     ).scalar_one_or_none()
-    if attr is None or attr.attributed_to_user_id != by_user_id:
-        return False
+    if attr is None:
+        raise AttributionNotFound
+    if attr.attributed_to_user_id != by_user_id:
+        raise AttributionForbidden
     attr.status = "rejected"
     attr.acknowledged_at = None
     txn = (
@@ -188,7 +207,7 @@ async def reject(db: AsyncSession, attribution_id, by_user_id):
         },
         commit=False,
     )
-    return True
+    return attr
 
 
 async def un_tag(db: AsyncSession, transaction_id, by_user_id):
@@ -199,8 +218,10 @@ async def un_tag(db: AsyncSession, transaction_id, by_user_id):
             )
         )
     ).scalar_one_or_none()
-    if attr is None or attr.attributed_by_user_id != by_user_id:
-        return False
+    if attr is None:
+        raise AttributionNotFound
+    if attr.attributed_by_user_id != by_user_id:
+        raise AttributionForbidden
     recipient, was_ack = attr.attributed_to_user_id, attr.acknowledged_at is not None
     await db.delete(attr)
     await _set_split(db, transaction_id, "personal", by_user_id)
@@ -217,4 +238,4 @@ async def un_tag(db: AsyncSession, transaction_id, by_user_id):
             payload={"transaction_id": str(transaction_id)},
             commit=False,
         )
-    return True
+    return attr
