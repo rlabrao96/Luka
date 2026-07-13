@@ -250,3 +250,111 @@ async def test_bank_connect_process_movements_shared_card_transfer_not_pended(db
     assert txn.needs_classification is False, (
         "a transfer on a shared_card must never be pended for classification"
     )
+
+
+# ---------------------------------------------------------------- list_pending_for_household
+
+
+async def test_list_pending_for_household_returns_shared_card_pending_rows():
+    from modules.transactions.classification import list_pending_for_household
+
+    assert callable(list_pending_for_household)
+
+
+async def test_list_pending_for_household_both_members_see_same_set(db):
+    from modules.transactions.classification import list_pending_for_household
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    pending = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+
+    rows_rafael = await list_pending_for_household(db, hh.id)
+    rows_camila = await list_pending_for_household(db, hh.id)
+
+    ids_rafael = {t.id for t in rows_rafael}
+    ids_camila = {t.id for t in rows_camila}
+    assert ids_rafael == ids_camila == {pending.id}
+
+
+async def test_list_pending_for_household_excludes_non_shared_card_account(db):
+    from modules.transactions.classification import list_pending_for_household
+
+    rafael, camila, hh = await _couple(db)
+    acct = BankAccount(
+        id=uuid.uuid4(),
+        household_id=hh.id,
+        user_id=rafael.id,
+        bank_name="Bci",
+        account_type="personal",
+        account_kind="checking",
+        account_name="Cuenta Corriente",
+        currency="USD",
+        is_active=True,
+    )
+    db.add(acct)
+    await db.flush()
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+
+    rows = await list_pending_for_household(db, hh.id)
+    assert txn.id not in {t.id for t in rows}
+
+
+async def test_list_pending_for_household_excludes_settled_shared_card_charge(db):
+    from modules.transactions.classification import list_pending_for_household
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    settled = await _charge(db, rafael, hh, acct, amount="-10.00", needs_classification=False)
+
+    rows = await list_pending_for_household(db, hh.id)
+    assert settled.id not in {t.id for t in rows}
+
+
+# ---------------------------------------------------------------- GET /transactions/por-clasificar
+
+
+def _override(app, user, db):
+    from core.database import get_db
+    from core.security import get_current_user
+
+    async def _fake_db():
+        yield db
+
+    async def _fake_user():
+        return user
+
+    app.dependency_overrides[get_db] = _fake_db
+    app.dependency_overrides[get_current_user] = _fake_user
+
+
+async def test_por_clasificar_endpoint_active_member_gets_rows(app, db, http_client):
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    pending = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    _override(app, camila, db)
+
+    r = await http_client.get(f"/transactions/por-clasificar?household_id={hh.id}")
+    assert r.status_code == 200, r.text
+    ids = {row["id"] for row in r.json()}
+    assert ids == {str(pending.id)}
+
+
+async def test_por_clasificar_endpoint_non_member_forbidden(app, db, http_client):
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+
+    outsider = User(
+        id=uuid.uuid4(),
+        email=f"outsider-{uuid.uuid4().hex[:8]}@luka.test",
+        full_name="Outsider",
+        email_provider="gmail",
+        whatsapp_verified=False,
+        preferred_currency="USD",
+    )
+    db.add(outsider)
+    await db.flush()
+    _override(app, outsider, db)
+
+    r = await http_client.get(f"/transactions/por-clasificar?household_id={hh.id}")
+    assert r.status_code == 403

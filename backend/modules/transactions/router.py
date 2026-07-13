@@ -225,6 +225,30 @@ async def pending_transactions(
     return await service.get_pending_transactions(db, current_user.id)
 
 
+@router.get("/por-clasificar")
+async def por_clasificar(
+    household_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_membership(household_id, current_user.id, db)
+    from modules.transactions.classification import list_pending_for_household
+
+    rows = await list_pending_for_household(db, household_id)
+    return [
+        {
+            "id": str(t.id),
+            "raw_merchant_name": t.raw_merchant_name,
+            "display_name": None,
+            "amount": t.amount if isinstance(t.amount, int) else str(t.amount),
+            "currency": t.currency,
+            "transaction_date": t.transaction_date.isoformat() if t.transaction_date else None,
+            "bank_account_id": str(t.bank_account_id) if t.bank_account_id else None,
+        }
+        for t in rows
+    ]
+
+
 @router.get(
     "/{transaction_id}/category/matching-count",
     response_model=CategoryMatchingCountResponse,
