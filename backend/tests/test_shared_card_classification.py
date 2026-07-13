@@ -1008,3 +1008,23 @@ async def test_notify_pending_classification_excludes_left_members(db):
         .all()
     )
     assert camila_notifs == []
+
+
+async def test_pending_charge_excluded_from_dashboard_summary(db):
+    """The dashboard summary hand-rolls its exclusion list; a pending shared-card
+    charge must NOT leak into the owner's totals or category chart until sorted."""
+    from datetime import datetime, timezone
+
+    from modules.transactions.service import get_dashboard_summary
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    # pending (unsorted) charge + a settled/counted one
+    await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await _charge(db, rafael, hh, acct, amount="-10.00", needs_classification=False)
+    await db.flush()
+
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    summary = await get_dashboard_summary(db, rafael.id, month, "USD")
+    # Only the settled -10.00 counts; the pending -40.00 must be excluded.
+    assert summary["expenses"] == 10, f"pending charge leaked into dashboard: {summary['expenses']}"

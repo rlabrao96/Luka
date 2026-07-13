@@ -316,6 +316,11 @@ async def get_dashboard_summary(
         Transaction.transaction_type != "transfer",
         Transaction.refund_pair_id.is_(None),
         Transaction.reimbursement_group_id.is_(None),
+        # An unsorted shared-card charge counts for nobody until classified. This
+        # aggregate hand-rolls the exclusion list rather than calling
+        # counts_toward_totals_clauses(), so the needs_classification exclusion
+        # must be mirrored here explicitly (NULL-safe).
+        Transaction.needs_classification.isnot(True),
         Transaction.transaction_date >= start,
         Transaction.transaction_date < end,
         not_(exclude_only_partner),
