@@ -1,7 +1,18 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from core.database import Base
@@ -62,6 +73,13 @@ class Transaction(Base):
     # match. Future reconciliation passes skip rows where this is non-null.
     matched_email_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # Shared-card charge classification (migration 056). Set true when the
+    # charge lands on a `shared_card` bank account and hasn't been sorted yet
+    # into personal/shared/reimbursable/attributed. No downstream logic reads
+    # this in Task 1 — storage only.
+    needs_classification: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

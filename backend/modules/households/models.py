@@ -59,7 +59,7 @@ class BankAccount(Base):
     bank_name: Mapped[str] = mapped_column(String, nullable=False)
     account_type: Mapped[str] = mapped_column(
         String, nullable=False
-    )  # 'personal' | 'partner' | 'joint'
+    )  # 'personal' | 'partner' | 'joint' | 'shared_card'
     cardholder_name: Mapped[str | None] = mapped_column(String, nullable=True)
     email_sender_pattern: Mapped[str | None] = mapped_column(String, nullable=True)
     account_kind: Mapped[str | None] = mapped_column(

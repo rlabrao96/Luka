@@ -73,7 +73,7 @@ async def list_bank_accounts(
 
 class CreateBankAccountBody(BaseModel):
     bank_name: str
-    account_type: Literal["personal", "partner", "joint"]
+    account_type: Literal["personal", "partner", "joint", "shared_card"]
     account_kind: Optional[str] = None
     account_number: Optional[str] = None
     cardholder_name: Optional[str] = None
@@ -119,7 +119,7 @@ async def create_bank_account(
 
 
 class UpdateBankAccountBody(BaseModel):
-    account_type: Literal["personal", "partner", "joint"] | None = None
+    account_type: Literal["personal", "partner", "joint", "shared_card"] | None = None
     is_active: bool | None = None
 
 
