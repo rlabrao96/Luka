@@ -470,3 +470,30 @@ async def test_attribute_endpoint_ambiguous(app, db, http_client):
     body = r.json()
     assert body["detail"] == "ambiguous_recipient"
     assert set(body["candidates"]) == {str(camila.id), str(third.id)}
+
+
+async def test_attribute_endpoint_non_owner_forbidden(app, db, http_client):
+    """Only the transaction's owner may hand it off. A member who does NOT own
+    the charge must not be able to attribute it (would mutate the owner's row
+    and expose it to a third party)."""
+    rafael, camila, hh = await _couple(db)
+    diego = User(
+        id=uuid.uuid4(),
+        email=f"diego-{uuid.uuid4().hex[:8]}@luka.test",
+        full_name="Diego",
+        email_provider="gmail",
+        whatsapp_verified=False,
+        preferred_currency="USD",
+    )
+    db.add(diego)
+    await db.flush()
+    db.add(HouseholdMember(household_id=hh.id, user_id=diego.id, role="member"))
+    txn = await _charge(db, rafael, hh)  # owned by Rafael
+    await db.flush()
+
+    # Diego is a household member but NOT the card owner → 403.
+    _override(app, diego, db)
+    r = await http_client.post(
+        f"/transactions/{txn.id}/attribute", json={"recipient_id": str(camila.id)}
+    )
+    assert r.status_code == 403

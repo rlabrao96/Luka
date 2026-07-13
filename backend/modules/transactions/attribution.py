@@ -210,6 +210,21 @@ async def reject(db: AsyncSession, attribution_id, by_user_id):
     return attr
 
 
+async def acknowledge(db: AsyncSession, attribution_id, by_user_id):
+    """Recipient confirms a charge handed to them (marks it acknowledged)."""
+    attr = (
+        await db.execute(
+            select(TransactionAttribution).where(TransactionAttribution.id == attribution_id)
+        )
+    ).scalar_one_or_none()
+    if attr is None:
+        raise AttributionNotFound
+    if attr.attributed_to_user_id != by_user_id:
+        raise AttributionForbidden
+    attr.acknowledged_at = datetime.now(timezone.utc)
+    return attr
+
+
 async def un_tag(db: AsyncSession, transaction_id, by_user_id):
     attr = (
         await db.execute(

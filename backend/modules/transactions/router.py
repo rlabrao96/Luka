@@ -310,22 +310,14 @@ async def acknowledge_attribution(
     current_user: User = Depends(get_current_user),
 ):
     """Recipient confirms a charge handed to them (marks it acknowledged)."""
-    from datetime import datetime, timezone
+    from modules.transactions import attribution as attr_ops
 
-    from sqlalchemy import select
-
-    from modules.transactions.models import TransactionAttribution
-
-    attr = (
-        await db.execute(
-            select(TransactionAttribution).where(TransactionAttribution.id == attribution_id)
-        )
-    ).scalar_one_or_none()
-    if attr is None:
+    try:
+        await attr_ops.acknowledge(db, attribution_id, by_user_id=current_user.id)
+    except attr_ops.AttributionNotFound:
         raise HTTPException(404, "Attribution not found")
-    if attr.attributed_to_user_id != current_user.id:
+    except attr_ops.AttributionForbidden:
         raise HTTPException(403, "Not the recipient of this attribution")
-    attr.acknowledged_at = datetime.now(timezone.utc)
     await db.commit()
     return {"ok": True}
 
@@ -352,9 +344,12 @@ async def attribute_transaction(
     if txn is None:
         raise HTTPException(404, "Transaction not found")
 
-    # Caller must be an active member of the transaction's household.
+    # Only the card owner (the charge's owner) may hand it off. Confirm the
+    # owner is also still an active household member (defense in depth).
     if txn.household_id is None:
         raise HTTPException(403, "Transaction has no household")
+    if txn.user_id != current_user.id:
+        raise HTTPException(403, "Only the card owner can attribute this charge")
     await require_membership(txn.household_id, current_user.id, db)
 
     if body.recipient_id is not None:
