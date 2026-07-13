@@ -561,3 +561,137 @@ async def test_classify_endpoint_non_member_forbidden(app, db, http_client):
         f"/transactions/{txn.id}/classify", json={"outcome": "owner_personal"}
     )
     assert r.status_code == 403
+
+
+# ---------------------------------------------------------------- Task 6: effective-payer
+# A partner-shared charge (a shared expense the partner PAID on the shared card)
+# must credit the PARTNER (the payer) in every settlement/breakdown aggregate,
+# not the account owner whose user_id sits on the transaction row.
+
+
+def _paid(rows, key="shared_paid"):
+    """Map effective-payer user_id -> amount from a service aggregate result."""
+    return {str(r["user_id"]): r[key] for r in rows}
+
+
+def test_effective_payer_id_unit():
+    from types import SimpleNamespace
+
+    from modules.transactions.attribution import effective_payer_id
+
+    owner = uuid.uuid4()
+    partner = uuid.uuid4()
+    active = SimpleNamespace(status="active", attributed_to_user_id=partner)
+    rejected = SimpleNamespace(status="rejected", attributed_to_user_id=partner)
+
+    assert effective_payer_id(owner, None) == owner
+    assert effective_payer_id(owner, rejected) == owner
+    assert effective_payer_id(owner, active) == partner
+
+
+async def test_partner_shared_credits_partner_everywhere(db):
+    """Shared charge PAID by the partner on the owner's card credits the partner."""
+    from modules.households.service import (
+        get_category_breakdown,
+        get_contribution_summary,
+        get_member_stats,
+        get_settlement,
+    )
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await classify(db, txn.id, rafael.id, "partner_shared", partner_id=camila.id)
+    await db.flush()
+
+    # Settlement: Camila effectively paid 40 → Rafael owes her his half (20).
+    transfers = (await get_settlement(db, hh.id, currency="USD"))["transfers"]
+    assert len(transfers) == 1
+    assert transfers[0]["from_user_id"] == str(rafael.id)
+    assert transfers[0]["to_user_id"] == str(camila.id)
+    assert transfers[0]["amount"] == Decimal("20")
+
+    # Contribution summary: shared_paid attributed to Camila, not Rafael.
+    contrib = _paid(await get_contribution_summary(db, hh.id, currency="USD"))
+    assert contrib.get(str(camila.id)) == Decimal("40.00")
+    assert Decimal(str(contrib.get(str(rafael.id), 0))) == 0
+
+    # Category breakdown: the only member with spend is Camila.
+    breakdown = await get_category_breakdown(db, hh.id, currency="USD")
+    assert len(breakdown) == 1
+    mt = {m["user_id"]: m["amount"] for m in breakdown[0]["member_totals"]}
+    assert mt == {str(camila.id): Decimal("40.00")}
+
+    # Member stats (viewer=Rafael sees the OTHER member): Camila's shared total is 40.
+    seen_by_rafael = _paid(await get_member_stats(db, hh.id, rafael.id), key="total_spent")
+    assert seen_by_rafael.get(str(camila.id)) == Decimal("40.00")
+    # Viewer=Camila sees Rafael: he paid nothing effectively.
+    seen_by_camila = _paid(await get_member_stats(db, hh.id, camila.id), key="total_spent")
+    assert Decimal(str(seen_by_camila.get(str(rafael.id), 0))) == 0
+
+
+async def test_owner_shared_credits_owner(db):
+    """Shared charge the owner kept as their own still credits the owner (COALESCE fallback)."""
+    from modules.households.service import get_contribution_summary, get_settlement
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await classify(db, txn.id, rafael.id, "owner_shared")
+    await db.flush()
+
+    transfers = (await get_settlement(db, hh.id, currency="USD"))["transfers"]
+    assert len(transfers) == 1
+    assert transfers[0]["from_user_id"] == str(camila.id)
+    assert transfers[0]["to_user_id"] == str(rafael.id)
+    assert transfers[0]["amount"] == Decimal("20")
+
+    contrib = _paid(await get_contribution_summary(db, hh.id, currency="USD"))
+    assert contrib.get(str(rafael.id)) == Decimal("40.00")
+    assert Decimal(str(contrib.get(str(camila.id), 0))) == 0
+
+
+async def test_partner_personal_has_no_shared_effect(db):
+    from modules.households.service import get_contribution_summary, get_settlement
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await classify(db, txn.id, rafael.id, "partner_personal", partner_id=camila.id)
+    await db.flush()
+
+    assert (await get_settlement(db, hh.id, currency="USD"))["transfers"] == []
+    contrib = _paid(await get_contribution_summary(db, hh.id, currency="USD"))
+    assert all(Decimal(str(v)) == 0 for v in contrib.values())
+
+
+async def test_owner_personal_has_no_shared_effect(db):
+    from modules.households.service import get_contribution_summary, get_settlement
+    from modules.transactions.classification import classify
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await classify(db, txn.id, rafael.id, "owner_personal")
+    await db.flush()
+
+    assert (await get_settlement(db, hh.id, currency="USD"))["transfers"] == []
+    contrib = _paid(await get_contribution_summary(db, hh.id, currency="USD"))
+    assert all(Decimal(str(v)) == 0 for v in contrib.values())
+
+
+async def test_needs_classification_shared_charge_has_no_settlement_effect(db):
+    """An unsorted shared charge is excluded by totals — no settlement effect."""
+    from modules.households.service import get_settlement
+    from modules.transactions.models import TransactionSplit
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    db.add(TransactionSplit(transaction_id=txn.id, split_type="shared"))
+    await db.flush()
+
+    assert (await get_settlement(db, hh.id, currency="USD"))["transfers"] == []

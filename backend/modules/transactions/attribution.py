@@ -24,6 +24,14 @@ def effective_owner_id(owner_user_id: uuid.UUID, attribution: TransactionAttribu
     return owner_user_id
 
 
+def effective_payer_id(owner_user_id: uuid.UUID, attribution: TransactionAttribution | None):
+    """For a SHARED row: who PAID it = the active-attributed partner, else the
+    account/transaction owner. Mirror of ``effective_owner_id`` for settlement."""
+    if attribution is not None and attribution.status == "active":
+        return attribution.attributed_to_user_id
+    return owner_user_id
+
+
 def attributed_to_clause(caller_id: uuid.UUID):
     """Rows actively attributed to ``caller_id``. Requires outerjoin(TransactionAttribution)."""
     return (TransactionAttribution.attributed_to_user_id == caller_id) & (

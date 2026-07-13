@@ -456,13 +456,14 @@ async def get_contribution_summary(
     result = await db.execute(
         text(f"""
         SELECT
-            t.user_id,
+            COALESCE(a.attributed_to_user_id, t.user_id) AS user_id,
             u.full_name,
             u.email,
             COALESCE(SUM(ABS(t.amount)) FILTER (WHERE ts.split_type = 'shared'), 0) AS shared_paid
         FROM transactions t
         JOIN transaction_splits ts ON ts.transaction_id = t.id
-        JOIN users u ON u.id = t.user_id
+        LEFT JOIN transaction_attributions a ON a.transaction_id = t.id AND a.status = 'active'
+        JOIN users u ON u.id = COALESCE(a.attributed_to_user_id, t.user_id)
         JOIN household_members hm ON hm.user_id = u.id AND hm.household_id = t.household_id
         WHERE t.household_id = :household_id
           AND t.transaction_type = 'expense'
@@ -470,7 +471,7 @@ async def get_contribution_summary(
           AND t.transaction_date >= :m_start AND t.transaction_date < :m_end
           AND hm.left_at IS NULL
           {currency_clause}
-        GROUP BY t.user_id, u.full_name, u.email
+        GROUP BY COALESCE(a.attributed_to_user_id, t.user_id), u.full_name, u.email
         """),
         params,
     )
@@ -533,7 +534,8 @@ async def get_category_breakdown(
                COALESCE(SUM(ABS(t.amount)), 0) AS amount
         FROM transactions t
         JOIN transaction_splits ts ON ts.transaction_id = t.id
-        JOIN users u ON u.id = t.user_id
+        LEFT JOIN transaction_attributions a ON a.transaction_id = t.id AND a.status = 'active'
+        JOIN users u ON u.id = COALESCE(a.attributed_to_user_id, t.user_id)
         JOIN household_members hm ON hm.user_id = u.id AND hm.household_id = t.household_id
         WHERE t.household_id = :household_id
           AND ts.split_type = 'shared'
@@ -649,16 +651,19 @@ async def get_settlement(
         FROM household_members hm
         JOIN users u ON u.id = hm.user_id
         LEFT JOIN (
-            SELECT t.user_id, SUM(ABS(t.amount)) AS total
+            SELECT COALESCE(a.attributed_to_user_id, t.user_id) AS user_id,
+                   SUM(ABS(t.amount)) AS total
             FROM transactions t
             JOIN transaction_splits ts ON ts.transaction_id = t.id
+            LEFT JOIN transaction_attributions a
+                 ON a.transaction_id = t.id AND a.status = 'active'
             WHERE t.household_id = :household_id
               AND ts.split_type = 'shared'
               AND t.transaction_type = 'expense'
               AND {totals_exclusion_sql("t")}
               AND {month_clause}
               {currency_clause}
-            GROUP BY t.user_id
+            GROUP BY COALESCE(a.attributed_to_user_id, t.user_id)
         ) agg ON agg.user_id = hm.user_id
         WHERE hm.household_id = :household_id
           AND hm.left_at IS NULL
@@ -726,18 +731,21 @@ async def get_equity_report(
 
     totals_res = await db.execute(
         text(f"""
-            SELECT t.user_id,
+            SELECT COALESCE(a.attributed_to_user_id, t.user_id) AS user_id,
                    DATE_TRUNC('month', t.transaction_date::DATE)::DATE AS month_start,
                    COALESCE(SUM(ABS(t.amount)), 0) AS total
             FROM transactions t
             JOIN transaction_splits ts ON ts.transaction_id = t.id
+            LEFT JOIN transaction_attributions a
+                 ON a.transaction_id = t.id AND a.status = 'active'
             WHERE t.household_id = :hid
               AND ts.split_type = 'shared'
               AND t.transaction_type = 'expense'
               AND {totals_exclusion_sql("t")}
               AND t.currency = :ccy
               AND t.transaction_date >= CAST(:window_start AS DATE)
-            GROUP BY t.user_id, DATE_TRUNC('month', t.transaction_date::DATE)
+            GROUP BY COALESCE(a.attributed_to_user_id, t.user_id),
+                     DATE_TRUNC('month', t.transaction_date::DATE)
         """),
         {
             "hid": str(household_id),
@@ -804,7 +812,12 @@ async def get_member_stats(
                    COALESCE(SUM(ABS(t.amount)), 0) AS total_spent
             FROM household_members hm
             JOIN users u ON u.id = hm.user_id
-            LEFT JOIN transactions t ON t.user_id = u.id AND t.household_id = :household_id
+            LEFT JOIN (
+                SELECT t.*, COALESCE(a.attributed_to_user_id, t.user_id) AS payer_id
+                FROM transactions t
+                LEFT JOIN transaction_attributions a
+                     ON a.transaction_id = t.id AND a.status = 'active'
+            ) t ON t.payer_id = u.id AND t.household_id = :household_id
                  AND t.transaction_type = 'expense'
                  AND {totals_exclusion_sql("t")}
             LEFT JOIN transaction_splits ts
