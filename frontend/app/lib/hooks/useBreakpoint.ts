@@ -18,7 +18,11 @@ type BreakpointKey = keyof typeof BP;
  *  - "lg": phones + tablets (≤1023px) — matches the dashboard layout's
  *    `lg:pb-0` / Sidebar `hidden lg:flex` switch. */
 export function useBreakpoint(bp: BreakpointKey): boolean {
-  const [matches, setMatches] = useState(false);
+  // Lazy-init from the real media query so the first paint already reflects the
+  // viewport (no desktop→mobile flash). Guarded for SSR where `window` is absent.
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(BP[bp]).matches : false
+  );
   useEffect(() => {
     const mq = window.matchMedia(BP[bp]);
     setMatches(mq.matches);

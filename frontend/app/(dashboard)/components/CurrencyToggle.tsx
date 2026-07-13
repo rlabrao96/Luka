@@ -35,7 +35,7 @@ export function CurrencyToggle({
             type="button"
             onClick={() => onChange(c.currency_code)}
             aria-pressed={active}
-            className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary ${
+            className={`min-h-11 sm:min-h-9 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-luka-primary ${
               active
                 ? "bg-luka-primary text-white"
                 : "bg-slate-100 text-slate-500 hover:bg-slate-200"

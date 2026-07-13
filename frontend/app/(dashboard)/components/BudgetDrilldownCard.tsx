@@ -34,7 +34,7 @@ export function BudgetDrilldownCard({
   const showDismiss = block !== undefined || loading || error;
 
   return (
-    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-[var(--shadow-card)]">
+    <div className="rounded-xl border border-slate-100 bg-white p-3 sm:p-5 shadow-[var(--shadow-card)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">

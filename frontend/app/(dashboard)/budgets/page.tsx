@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Settings2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { api, type BudgetV2Response } from "@/app/lib/api";
@@ -19,6 +19,12 @@ import { currentMonthKey, dateFromMonthKey } from "@/app/lib/months";
 // Load it on demand so the budgets route shell paints first.
 const BudgetSankey = dynamic(
   () => import("@/app/(dashboard)/components/BudgetSankey"),
+  { ssr: false, loading: () => <SectionSkeleton /> }
+);
+// Phone-native flow view — swapped in below `md`. Lightweight (no Recharts),
+// so it's safe to leave in the tree; the Sankey stays behind `hidden md:block`.
+const BudgetFlowMobile = dynamic(
+  () => import("@/app/(dashboard)/components/BudgetFlowMobile"),
   { ssr: false, loading: () => <SectionSkeleton /> }
 );
 
@@ -116,46 +122,66 @@ function SectionFlowBody({
     );
   }
   const safeToday = Number(data.spendable.safe_to_spend_today ?? 0);
+  // Normalized node/link arrays shared by the desktop Sankey and the mobile
+  // flow view — same numbers feed both, so totals can never diverge.
+  const flowNodes = data.sankey.nodes.map((n) => ({
+    id: n.id,
+    label: n.label,
+    value: Number(n.value),
+    risk: n.risk ?? undefined,
+    level: n.level ?? undefined,
+    kind: n.kind ?? undefined,
+    member_id: n.member_id ?? undefined,
+  }));
+  const flowLinks = data.sankey.links.map((l) => ({
+    source: l.source,
+    target: l.target,
+    value: Number(l.value),
+  }));
   return (
     <div className="min-h-[22rem]">
       {safeToday > 0 && (
-        <div className="mb-3 flex items-baseline justify-between rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+        <div className="mb-3 flex flex-col gap-1 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-luka-primary">
               Hoy puedes gastar
             </p>
-            <p className="text-2xl font-bold tabular-nums text-luka-dark">
+            <p className="text-xl font-bold tabular-nums text-luka-dark sm:text-2xl">
               {formatMoney(safeToday, currency)}
             </p>
           </div>
-          <p className="max-w-[45%] text-right text-[11px] leading-snug text-slate-500">
+          <p className="text-[11px] leading-snug text-slate-500 sm:max-w-[45%] sm:text-right">
             Disponible del mes ({formatMoney(Number(data.spendable.remaining), currency)})
             repartido en los días que quedan.
           </p>
         </div>
       )}
       <p className="text-xs text-slate-500 mb-2">
-        Haz clic en cualquier categoría para ver las 5 transacciones más grandes.
+        <span className="hidden md:inline">Haz clic</span>
+        <span className="md:hidden">Toca</span> en cualquier categoría para ver las 5
+        transacciones más grandes.
       </p>
-      <BudgetSankey
-        nodes={data.sankey.nodes.map((n) => ({
-          id: n.id,
-          label: n.label,
-          value: Number(n.value),
-          risk: n.risk ?? undefined,
-          level: n.level ?? undefined,
-          kind: n.kind ?? undefined,
-          member_id: n.member_id ?? undefined,
-        }))}
-        links={data.sankey.links.map((l) => ({
-          source: l.source,
-          target: l.target,
-          value: Number(l.value),
-        }))}
-        currency={currency}
-        onNodeClick={onNodeClick ? (n) => onNodeClick(n.id) : undefined}
-        activeNodeId={activeNodeId ?? undefined}
-      />
+      {/* The Sankey can't reflow to a phone, so below `md` we render the same
+          node/link data as a vertical flow. Pure CSS swap → no first-paint
+          flash. Sankey stays lazy (Recharts) behind `hidden md:block`. */}
+      <div className="md:hidden">
+        <BudgetFlowMobile
+          nodes={flowNodes}
+          links={flowLinks}
+          currency={currency}
+          onNodeClick={onNodeClick ? (n) => onNodeClick(n.id) : undefined}
+          activeNodeId={activeNodeId ?? undefined}
+        />
+      </div>
+      <div className="hidden md:block">
+        <BudgetSankey
+          nodes={flowNodes}
+          links={flowLinks}
+          currency={currency}
+          onNodeClick={onNodeClick ? (n) => onNodeClick(n.id) : undefined}
+          activeNodeId={activeNodeId ?? undefined}
+        />
+      </div>
     </div>
   );
 }
@@ -212,7 +238,13 @@ export default function BudgetsPage() {
         currency: selectedCurrency,
         view: "household",
       }),
-    enabled: !!householdId,
+    // Wait for the resolved currency (starts "") so the first fetch already
+    // carries the real currency — otherwise the query refires once currency
+    // hydrates, double-fetching the Sankey. (B1)
+    enabled: !!householdId && !!selectedCurrency,
+    // Keep the last chart on screen while a month/currency toggle refetches
+    // instead of flashing back to a skeleton. (B4)
+    placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
   });
   const personal = useQuery({
@@ -223,7 +255,15 @@ export default function BudgetsPage() {
         currency: selectedCurrency,
         view: "personal",
       }),
-    enabled: !!householdId,
+    // Defer the Personal fetch until the Household query has settled so it
+    // stays off the cold-load critical path — the Hogar chart (primary,
+    // above-the-fold) wins the connection and paints first. Personal then
+    // streams in. We can't skip it entirely: the "same as Hogar" collapse
+    // provably needs personal.data (single-member households can still have a
+    // distinct personal view — `gasto_personal` vs `gastos_hogar_personal`),
+    // so a household-only predicate would risk hiding a valid section. (B3)
+    enabled: !!householdId && !!selectedCurrency && !household.isPending,
+    placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
   });
 
@@ -308,7 +348,7 @@ export default function BudgetsPage() {
               type="button"
               aria-label="Configurar presupuesto"
               onClick={() => setConfigOpen(true)}
-              className="relative w-9 h-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
+              className="relative h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-slate-200 bg-white hover:border-luka-primary hover:-translate-y-px transition-all shadow-[var(--shadow-card)] flex items-center justify-center"
             >
               <Settings2 size={16} className="text-slate-700" />
               {needsSetup && (
@@ -345,7 +385,7 @@ export default function BudgetsPage() {
         ) : (
           <div className="space-y-3">
             {household.data && (
-              <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
+              <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-3 sm:p-5">
                 <SectionFlowBody
                   data={household.data}
                   currency={selectedCurrency}
@@ -409,7 +449,7 @@ export default function BudgetsPage() {
             ) : (
               <div className="space-y-3">
                 {personal.data && (
-                  <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-5">
+                  <div className="bg-white rounded-xl border border-slate-100 shadow-[var(--shadow-card)] p-3 sm:p-5">
                     <SectionFlowBody
                       data={personal.data}
                       currency={selectedCurrency}

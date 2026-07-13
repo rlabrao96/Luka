@@ -88,7 +88,7 @@ export function MonthSelector({
 
   const triggerSize =
     size === "md"
-      ? "h-9 px-3 text-sm"
+      ? "h-11 sm:h-9 px-3 text-sm"
       : "py-1 px-3 text-xs";
 
   return (

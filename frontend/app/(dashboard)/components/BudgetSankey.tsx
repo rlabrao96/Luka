@@ -3,25 +3,15 @@ import { useCallback, useMemo } from "react";
 import { Sankey, Tooltip, ResponsiveContainer, Rectangle, Layer } from "recharts";
 import { formatMoney, type Currency } from "@/app/lib/format";
 import { useBreakpoint } from "@/app/lib/hooks/useBreakpoint";
+import {
+  colorFor,
+  isDrillable,
+  type BudgetFlowNode,
+  type BudgetFlowLink,
+} from "@/app/(dashboard)/components/budgetFlow";
 
-type Node = {
-  id: string;
-  label: string;
-  value: number;
-  risk?: boolean;
-  level?: number | null;
-  kind?:
-    | "source"
-    | "hub"
-    | "allocation"
-    | "bill"
-    | "spent"
-    | "unused"
-    | "deficit"
-    | null;
-  member_id?: string | null;
-};
-type Link = { source: string; target: string; value: number };
+type Node = BudgetFlowNode;
+type Link = BudgetFlowLink;
 
 interface Props {
   nodes: Node[];
@@ -29,29 +19,6 @@ interface Props {
   currency: Currency;
   onNodeClick?: (node: Node) => void;
   activeNodeId?: string | null;
-}
-
-// Nodes that have no per-transaction breakdown — don't dress them up as
-// clickable. Keep in sync with the backend `skip` set in
-// `v2_service.get_node_drilldown`.
-const NON_DRILLABLE: ReadonlySet<string> = new Set([
-  "ingresos_hogar",
-  "ingresos_personales",
-  "disponible_personal",
-  "otras_fuentes",
-  "deficit_personal",
-  "spent_remaining",
-  "gastos_fijos",
-  "gastos_fijos_personal",
-  "cuotas",
-  "cuotas_personal",
-  "gasto_personal",
-]);
-
-function isDrillable(node: Node): boolean {
-  if (NON_DRILLABLE.has(node.id)) return false;
-  if (node.id.startsWith("member_")) return false;
-  return true;
 }
 
 type RechartsNodeProps = {
@@ -65,26 +32,6 @@ type RechartsNodeProps = {
 type RechartsTooltipPayload = {
   payload?: (Node & { source?: number; target?: number }) | undefined;
 };
-
-function colorFor(node: Node): string {
-  // Red ramp for money that is out / at risk:
-  //   risk=true  → #EF4444 (red-500, overshoot alert)
-  //   bill       → #F87171 (red-400, committed but unpaid this month)
-  //   spent      → #FCA5A5 (red-300, already spent in a category)
-  if (node.risk) return "#EF4444";
-  if (node.kind === "bill") return "#F87171";
-  if (node.kind === "spent") return "#FCA5A5";
-  // Unused = money still available (spent_remaining / "Aún disponible").
-  // Green so users visually separate "good, room to spend" from the red ramp.
-  if (node.kind === "unused") return "#10B981";
-  // Deficit = synthetic plug when outflows exceed real income. Amber so
-  // users immediately see it's not real revenue.
-  if (node.kind === "deficit") return "#F59E0B";
-  if (node.kind === "hub") return "#2563EB";
-  if (node.kind === "source") return "#60A5FA";
-  if (node.kind === "allocation") return "#93C5FD";
-  return "#CBD5E1";
-}
 
 function EmptyState() {
   return (
@@ -351,7 +298,9 @@ export default function BudgetSankey({
               nodePadding={narrow ? 20 : 32}
               nodeWidth={16}
               linkCurvature={0.5}
-              iterations={64}
+              // Fewer relaxation passes on narrow viewports — the layout is
+              // simpler there and 64 iterations is wasted work on a phone. (B5)
+              iterations={narrow ? 32 : 64}
               // `align="left"` pins each node to its earliest possible column
               // (shortest path from a source). The default `justify` pushes
               // ALL terminal nodes to the rightmost column — which dragged
