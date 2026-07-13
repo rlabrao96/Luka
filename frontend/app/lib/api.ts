@@ -176,6 +176,8 @@ export interface UserMe {
   fixed_contribution_amount: string | null;
   fixed_contribution_currency: string | null;
   feature_trips_enabled: boolean;
+  // Initial-sync cutoff (YYYY-MM-DD) for newly-connected banks; null = no cutoff.
+  transactions_since: string | null;
 }
 
 export interface Transaction {
@@ -960,7 +962,7 @@ export const api = {
     apiFetch("/plaid/items"),
 
   // --- Profile ---
-  async updateProfile(payload: { full_name?: string; phone_whatsapp?: string; preferred_currency?: string }) {
+  async updateProfile(payload: { full_name?: string; phone_whatsapp?: string; preferred_currency?: string; transactions_since?: string }) {
     return apiFetch<UserMe>("/auth/me", {
       method: "PATCH",
       body: JSON.stringify(payload),

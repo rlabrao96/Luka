@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 from pydantic import BaseModel, field_serializer
 
@@ -18,6 +19,8 @@ class UserResponse(BaseModel):
     fixed_contribution_amount: Decimal | None = None
     fixed_contribution_currency: str | None = None
     feature_trips_enabled: bool = False
+    # Initial-sync cutoff (YYYY-MM-DD) for newly-connected banks; null = no cutoff.
+    transactions_since: date | None = None
     model_config = {"from_attributes": True}
 
     @field_serializer("fixed_contribution_amount")
@@ -58,6 +61,10 @@ class UpdateProfileRequest(BaseModel):
     full_name: str | None = None
     phone_whatsapp: str | None = None
     preferred_currency: str | None = None
+    # Initial-sync cutoff for newly-connected banks. Only applied when provided
+    # (matches the other fields' update-when-not-None convention). The picker
+    # always sends a concrete month-start; there is no "clear" affordance.
+    transactions_since: date | None = None
 
 
 class StoreProviderTokensRequest(BaseModel):

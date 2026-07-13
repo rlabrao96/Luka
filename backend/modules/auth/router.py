@@ -55,6 +55,7 @@ def _user_response(current_user: User, membership: dict | None) -> UserResponse:
             membership.get("fixed_contribution_currency") if membership else None
         ),
         feature_trips_enabled=bool(current_user.feature_trips_enabled),
+        transactions_since=current_user.transactions_since,
     )
 
 
@@ -92,6 +93,16 @@ async def update_profile(
         user.preferred_currency = body.preferred_currency
         # Sync user_currencies BEFORE commit — both changes land in one transaction
         await sync_preferred_currency(db, user.id, body.preferred_currency)
+    if body.transactions_since is not None:
+        # Bound how far back a newly-connected bank backfills. Guard the range:
+        # not in the future, not absurdly old (the picker offers ~4 months).
+        from datetime import date as _date, timedelta
+
+        if body.transactions_since > _date.today():
+            raise HTTPException(status_code=422, detail="La fecha no puede estar en el futuro")
+        if body.transactions_since < _date.today() - timedelta(days=400):
+            raise HTTPException(status_code=422, detail="La fecha es demasiado antigua")
+        user.transactions_since = body.transactions_since
     await db.commit()
     await db.refresh(user)
     await invalidate_user_cache(user.email)

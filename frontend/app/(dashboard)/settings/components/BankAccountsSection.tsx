@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { useLukaStore } from "@/app/lib/store";
 import { api, type BankAccountRow, type BankConnection, type PlaidItem } from "@/app/lib/api";
 import { formatStoredAmount } from "@/app/lib/currency";
+import { getLastNMonths } from "@/app/lib/months";
+import { resolveAppLocale } from "@/app/lib/locale";
 import { useBankConnections, useSyncStatus } from "@/app/lib/hooks/useSyncStatus";
 import { findBankLogo } from "@/app/lib/bank-logos";
 import { BankLogo } from "../../components/BankLogo";
@@ -904,6 +906,45 @@ function DetectedAccountCard({
    Exported section — single unified card
    ═══════════════════════════════════════════════════════════════════ */
 
+/** "Sincronizar desde" picker: bounds how far back a newly-connected bank
+ *  backfills. Offers the current month + the 3 prior (month-starts); the choice
+ *  is a per-user setting (`transactions_since`) the Plaid + Connect syncs honor.
+ *  Applies to banks connected AFTER changing it — existing data isn't re-trimmed. */
+function SyncSincePicker() {
+  const queryClient = useQueryClient();
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.getMe(), staleTime: 60_000 });
+
+  // Current month + 3 prior, e.g. Julio / Junio / Mayo / Abril 2026.
+  const options = getLastNMonths(resolveAppLocale(), 4, { month: "long", year: "numeric" });
+  const oldestKey = options[options.length - 1]?.key; // widest window = default
+
+  // The stored cutoff (YYYY-MM-DD) → its month key; fall back to the widest.
+  const selectedKey = me?.transactions_since ? me.transactions_since.slice(0, 7) : oldestKey;
+
+  const save = useMutation({
+    mutationFn: (monthKey: string) => api.updateProfile({ transactions_since: `${monthKey}-01` }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me"] }),
+  });
+
+  return (
+    <label className="flex items-center gap-2 text-xs text-slate-500">
+      <span className="whitespace-nowrap">Sincronizar desde</span>
+      <select
+        value={selectedKey}
+        onChange={(e) => save.mutate(e.target.value)}
+        disabled={save.isPending}
+        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
+      >
+        {options.map((o) => (
+          <option key={o.key} value={o.key}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function BankAccountsSection({ householdId }: { householdId: string | null }) {
   const userId = useLukaStore((s) => s.userId);
   const queryClient = useQueryClient();
@@ -951,6 +992,10 @@ export function BankAccountsSection({ householdId }: { householdId: string | nul
         <Button size="sm" variant="outline" onClick={() => setShowCountrySelector(true)} className="text-luka-primary border-luka-primary hover:bg-luka-light">
           + Conectar banco
         </Button>
+      </div>
+
+      <div className="px-5 pb-2 flex items-center justify-end">
+        <SyncSincePicker />
       </div>
 
       <div className="px-5 pb-5 space-y-3">

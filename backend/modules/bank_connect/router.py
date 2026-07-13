@@ -373,6 +373,12 @@ async def _process_movements(
         select(HouseholdMember.household_id).where(HouseholdMember.user_id == cred.user_id)
     )
     household_id = hm_result.scalar_one_or_none()
+
+    # Initial-sync cutoff: skip scraped movements older than the user's chosen
+    # start date (bounds a newly-connected bank's backfill). NULL = no cutoff.
+    from modules.auth.models import User
+
+    since_cutoff = await db.scalar(select(User.transactions_since).where(User.id == cred.user_id))
     if not household_id:
         return 0, 0, len(movements)
 
@@ -396,6 +402,11 @@ async def _process_movements(
         try:
             mov_date = parse_movement_date(mov["date"], mov.get("time"))
         except Exception:
+            skipped += 1
+            continue
+
+        # Respect the user's initial-sync cutoff.
+        if since_cutoff and mov_date.date() < since_cutoff:
             skipped += 1
             continue
 

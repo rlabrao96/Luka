@@ -1,6 +1,6 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Boolean, DateTime, String, Text, func, text
+from datetime import date, datetime
+from sqlalchemy import Boolean, Date, DateTime, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from core.database import Base
@@ -25,6 +25,10 @@ class User(Base):
     feature_trips_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # Initial-sync cutoff: bulk-history ingestion (Plaid, Luka Connect) skips
+    # transactions dated before this. NULL = no cutoff (all history the bank
+    # provides). Set via the "Sincronizar desde" picker in the bank sync menu.
+    transactions_since: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

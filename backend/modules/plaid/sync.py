@@ -86,6 +86,15 @@ async def run_plaid_sync(
     if item.error_code:
         return {"error": f"Item has error: {item.error_code}"}
 
+    # Initial-sync cutoff: the user can bound how far back a newly-connected
+    # bank backfills. Cursor sync pulls all history the institution exposes, so
+    # we skip anything dated before the cutoff at ingestion. NULL = no cutoff.
+    from modules.auth.models import User
+
+    since_cutoff = await session.scalar(
+        select(User.transactions_since).where(User.id == item.user_id)
+    )
+
     access_token = decrypt_token(item.access_token_enc)
     cursor = item.cursor
     all_added = []
@@ -192,6 +201,9 @@ async def run_plaid_sync(
 
     # Process added transactions
     for plaid_tx in all_added:
+        # Respect the user's initial-sync cutoff. plaid_tx.date is a date.
+        if since_cutoff and plaid_tx.date < since_cutoff:
+            continue
         plaid_account_id = plaid_tx.account_id
         bank_account_id = account_map.get(plaid_account_id)
         if not bank_account_id:
