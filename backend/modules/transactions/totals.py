@@ -32,7 +32,8 @@ def totals_exclusion_sql(alias: str = "t") -> str:
         f"{alias}.status != 'orphan' "
         f"AND {alias}.transaction_type != 'transfer' "
         f"AND {alias}.refund_pair_id IS NULL "
-        f"AND {alias}.reimbursement_group_id IS NULL"
+        f"AND {alias}.reimbursement_group_id IS NULL "
+        f"AND {alias}.needs_classification IS NOT TRUE"
     )
 
 
@@ -46,6 +47,7 @@ def counts_toward_totals_clauses() -> tuple:
         Transaction.transaction_type != "transfer",
         Transaction.refund_pair_id.is_(None),
         Transaction.reimbursement_group_id.is_(None),
+        Transaction.needs_classification.isnot(True),
     )
 
 

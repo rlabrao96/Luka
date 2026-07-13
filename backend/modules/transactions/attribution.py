@@ -103,6 +103,7 @@ async def account_person_balances(db: AsyncSession, bank_account_id) -> list[dic
         .where(
             Transaction.bank_account_id == bank_account_id,
             Transaction.status.notin_(["pending", "orphan"]),
+            Transaction.needs_classification.isnot(True),
         )
         .group_by(effective_owner, User.id, User.full_name)
     )
