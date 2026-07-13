@@ -948,6 +948,30 @@ async def test_notify_pending_classification_idempotent_same_day(db):
         assert len(notifs) == 1, "idempotent per user/day — no duplicate row"
 
 
+# ---------------------------------------------------------------- Task 11: leave-household edge
+
+
+async def test_member_leaving_resolves_pending_charge_to_owner_personal(db):
+    """A pending shared-card charge must resolve to owner-personal when a
+    member leaves the household — the classification queue was a two-person
+    surface and nothing should stay pending against a non-member."""
+    from modules.households.service import leave_household
+
+    rafael, camila, hh = await _couple(db)
+    acct = await _shared_card(db, rafael, hh)
+    txn = await _charge(db, rafael, hh, acct, amount="-40.00", needs_classification=True)
+    await db.flush()
+
+    await leave_household(db, hh.id, camila.id)
+
+    refreshed = await db.get(Transaction, txn.id)
+    assert refreshed.needs_classification is False
+    split = await _split(db, txn.id)
+    assert split is not None
+    assert split.split_type == "personal"
+    assert await _attr(db, txn.id) is None
+
+
 async def test_notify_pending_classification_excludes_left_members(db):
     from modules.notifications.pending_classification import (
         PENDING_CLASSIFICATION_TYPE,

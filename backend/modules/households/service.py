@@ -335,6 +335,12 @@ async def remove_member(
 
     await revert_attributions_for_member(db, removed_user_id)
 
+    # Resolve pending shared-card charges to owner-personal so nothing stays
+    # pending after a member leaves (the queue was a two-person surface).
+    from modules.transactions.classification import resolve_pending_to_owner_on_leave
+
+    await resolve_pending_to_owner_on_leave(db, household_id)
+
     # Create a new individual household for the removed user
     user_result = await db.execute(
         text("SELECT email, full_name FROM users WHERE id = :id"),

@@ -106,3 +106,44 @@ async def classify(db: AsyncSession, transaction_id, actor_id, outcome, partner_
     txn.needs_classification = False
     await db.flush()
     return txn
+
+
+async def resolve_pending_to_owner_on_leave(db: AsyncSession, household_id):
+    """When a member leaves, resolve every still-``needs_classification=True``
+    shared-card charge in that household to owner-personal. The classification
+    queue is a two-person surface (both partners see and sort it) — once a
+    member leaves, nothing should keep pending against them, so the remaining
+    owner keeps the charge as a personal expense.
+    """
+    from modules.transactions.attribution import _set_split
+
+    rows = (
+        (
+            await db.execute(
+                select(Transaction)
+                .join(BankAccount, BankAccount.id == Transaction.bank_account_id)
+                .where(
+                    Transaction.household_id == household_id,
+                    Transaction.needs_classification.is_(True),
+                    BankAccount.account_type == "shared_card",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    for txn in rows:
+        await _set_split(db, txn.id, "personal", txn.user_id)
+        attr = (
+            await db.execute(
+                select(TransactionAttribution).where(
+                    TransactionAttribution.transaction_id == txn.id
+                )
+            )
+        ).scalar_one_or_none()
+        if attr is not None:
+            await db.delete(attr)
+        txn.needs_classification = False
+
+    await db.flush()
